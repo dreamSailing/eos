@@ -49,6 +49,7 @@ nul
 dist/
 output/
 build/
+release/
 
 # Installer
 installer.iss
