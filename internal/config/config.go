@@ -1,0 +1,513 @@
+package config
+
+import (
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+type ModelEntry struct {
+	Name                    string `json:"name"`
+	APIBase                 string `json:"api_base"`
+	APIKey                  string `json:"api_key"`
+	Model                   string `json:"model"`
+	Source                  string `json:"source,omitempty"`
+	Provider                string `json:"provider,omitempty"`                  // 服务商类型 (deepseek, dashscope, etc.)
+	APIType                 string `json:"api_type,omitempty"`                  // API 类型 (standard, code-plan)
+	ThinkingEnabled         bool   `json:"thinking_enabled,omitempty"`          // 是否为该模型启用思考
+	ThinkingCapability      string `json:"thinking_capability,omitempty"`       // "none", "low", "medium", "high"
+	SupportsReasoningEffort bool   `json:"supports_reasoning_effort,omitempty"` // 是否支持 ReasoningEffort 参数
+}
+
+// ThinkingConfig 思考模式全局配置
+type ThinkingConfig struct {
+	Enabled         bool     `json:"enabled"`          // 是否启用思考模式
+	AutoDetect      bool     `json:"auto_detect"`      // 是否自动检测模型思考能力
+	ReasoningEffort string   `json:"reasoning_effort"` // 推理级别: "low", "medium", "high"
+	CustomModels    []string `json:"custom_models"`    // 额外支持思考的自定义模型列表
+}
+
+type AgentConfig struct {
+	MaxStep              int `json:"max_step,omitempty"`
+	InvokeTimeoutSeconds int `json:"invoke_timeout_seconds,omitempty"`
+	ToolTimeoutSeconds   int `json:"tool_timeout_seconds,omitempty"`
+}
+
+// SkillsDirEntry Skills 目录配置条目
+type SkillsDirEntry struct {
+	Path    string `json:"path"`    // Skills 目录路径
+	Enabled bool   `json:"enabled"` // 是否启用
+}
+
+// MCPClientType MCP客户端类型
+type MCPClientType string
+
+const (
+	MCPTypeStdio MCPClientType = "stdio" // 本地命令行工具
+	MCPTypeSSE   MCPClientType = "sse"   // 远程SSE服务
+)
+
+// MCPEntry MCP服务配置条目
+type MCPEntry struct {
+	Name    string            `json:"name"`               // 服务名称（唯一标识）
+	Type    MCPClientType     `json:"type"`               // 客户端类型: "stdio" 或 "sse"
+	Command string            `json:"command,omitempty"`  // stdio: 执行命令
+	Args    []string          `json:"args,omitempty"`     // stdio: 命令参数
+	Envs    map[string]string `json:"envs,omitempty"`     // stdio: 环境变量
+	BaseURL string            `json:"base_url,omitempty"` // sse: 服务URL
+	Enabled bool              `json:"enabled"`            // 是否启用
+}
+
+// LSPConfig LSP 配置
+type LSPConfig struct {
+	Enabled    *bool           `json:"enabled,omitempty"`     // 是否启用 LSP（默认 true）
+	AutoDetect *bool           `json:"auto_detect,omitempty"` // 自动检测语言服务器（默认 true）
+	Go         LSPServerConfig `json:"go,omitempty"`         // Go 语言配置
+	Python     LSPServerConfig `json:"python,omitempty"`     // Python 语言配置
+	TypeScript LSPServerConfig `json:"typescript,omitempty"` // TypeScript 语言配置
+}
+
+func (c LSPConfig) EnabledValue() bool {
+	if c.Enabled == nil {
+		return true
+	}
+	return *c.Enabled
+}
+
+func (c LSPConfig) AutoDetectValue() bool {
+	if c.AutoDetect == nil {
+		return true
+	}
+	return *c.AutoDetect
+}
+
+// LSPServerConfig LSP 服务器配置
+type LSPServerConfig struct {
+	Enabled bool     `json:"enabled"`           // 是否启用
+	Command string   `json:"command,omitempty"` // 自定义命令（留空使用自动检测）
+	Args    []string `json:"args,omitempty"`    // 自定义参数
+}
+
+type Config struct {
+	Models   []ModelEntry     `json:"models,omitempty"`
+	Active   string           `json:"active_model,omitempty"`
+	Thinking ThinkingConfig   `json:"thinking,omitempty"` // 思考模式配置
+	Agent    AgentConfig      `json:"agent,omitempty"`
+	MCP      []MCPEntry       `json:"mcp,omitempty"`      // MCP服务配置
+	Skills   []SkillsDirEntry `json:"skills,omitempty"`   // Skills 目录配置
+	LSP      LSPConfig        `json:"lsp,omitempty"`      // LSP 配置
+	TrustedWorkspaces []string `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
+	Language string           `json:"language,omitempty"` // 语言设置 (zh, en)
+}
+
+func Path() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		slog.Error("config.path.user_home_dir.error",
+			"error", err)
+		return ".vb.json"
+	}
+	return filepath.Join(home, ".vb.json")
+}
+
+func Load() (Config, string) {
+	p := Path()
+	var cfg Config
+	b, err := os.ReadFile(p)
+	if err != nil {
+		slog.Debug("config.load.file_not_found",
+			"path", p,
+			"error", err)
+		return cfg, p
+	}
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		slog.Error("config.load.unmarshal.error",
+			"path", p,
+			"data_size", len(b),
+			"error", err)
+	}
+
+	if len(cfg.MCP) == 0 {
+		if migrated, ok := tryMigrateLegacyMCPServers(b, &cfg); ok {
+			if err := Save(cfg, p); err != nil {
+				slog.Warn("config.load.migrate_mcp.save.error", "path", p, "error", err.Error())
+			} else {
+				slog.Info("config.load.migrate_mcp.save.success", "path", p, "mcp_count", len(migrated))
+			}
+		}
+	}
+	slog.Debug("config.load.success",
+		"path", p,
+		"models_count", len(cfg.Models),
+		"active_model", cfg.Active)
+	return cfg, p
+}
+
+func tryMigrateLegacyMCPServers(b []byte, cfg *Config) ([]MCPEntry, bool) {
+	entries, err := ParseLegacyMCPServersJSON(b)
+	if err != nil || len(entries) == 0 {
+		return nil, false
+	}
+	cfg.MCP = entries
+	return entries, true
+}
+
+func ParseLegacyMCPServersJSON(b []byte) ([]MCPEntry, error) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(b, &top); err != nil {
+		return nil, err
+	}
+	raw, ok := top["mcpServers"]
+	if !ok || len(raw) == 0 {
+		return nil, errors.New("missing mcpServers")
+	}
+	return parseLegacyMCPServersRaw(raw)
+}
+
+func parseLegacyMCPServersRaw(raw json.RawMessage) ([]MCPEntry, error) {
+	var servers map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &servers); err != nil {
+		return nil, err
+	}
+	if len(servers) == 0 {
+		return nil, nil
+	}
+
+	entries := make([]MCPEntry, 0, len(servers))
+	for name, body := range servers {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		var obj map[string]any
+		_ = json.Unmarshal(body, &obj)
+
+		entry := MCPEntry{
+			Name:    name,
+			Enabled: true,
+		}
+
+		if v, ok := obj["enabled"].(bool); ok {
+			entry.Enabled = v
+		}
+		if v, ok := obj["type"].(string); ok {
+			entry.Type = MCPClientType(strings.TrimSpace(v))
+		}
+		if v, ok := obj["command"].(string); ok {
+			entry.Command = strings.TrimSpace(v)
+		}
+		if v, ok := obj["args"].([]any); ok {
+			args := make([]string, 0, len(v))
+			for _, a := range v {
+				if s, ok := a.(string); ok {
+					s = strings.TrimSpace(s)
+					if s != "" {
+						args = append(args, s)
+					}
+				}
+			}
+			entry.Args = args
+		}
+		if v, ok := obj["base_url"].(string); ok {
+			entry.BaseURL = strings.TrimSpace(v)
+		}
+		if entry.BaseURL == "" {
+			if v, ok := obj["url"].(string); ok {
+				entry.BaseURL = strings.TrimSpace(v)
+			}
+		}
+
+		if envs := parseLegacyEnvMap(obj["envs"]); len(envs) > 0 {
+			entry.Envs = envs
+		} else if env := parseLegacyEnvMap(obj["env"]); len(env) > 0 {
+			entry.Envs = env
+		}
+
+		if entry.Type == "" {
+			if entry.BaseURL != "" {
+				entry.Type = MCPTypeSSE
+			} else {
+				entry.Type = MCPTypeStdio
+			}
+		}
+
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+func parseLegacyEnvMap(v any) map[string]string {
+	m, ok := v.(map[string]any)
+	if !ok || len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k, vv := range m {
+		ks := strings.TrimSpace(k)
+		if ks == "" {
+			continue
+		}
+		if s, ok := vv.(string); ok {
+			out[ks] = s
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func Save(cfg Config, p string) error {
+	bs, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		slog.Error("config.save.marshal.error",
+			"path", p,
+			"models_count", len(cfg.Models),
+			"active_model", cfg.Active,
+			"error", err)
+		return err
+	}
+	if err := os.WriteFile(p, bs, 0600); err != nil {
+		slog.Error("config.save.write_file.error",
+			"path", p,
+			"data_size", len(bs),
+			"error", err)
+		return err
+	}
+	slog.Debug("config.save.success",
+		"path", p,
+		"models_count", len(cfg.Models),
+		"active_model", cfg.Active)
+	return nil
+}
+
+func InferDefaultModel(base string) string {
+	// 内置服务商的默认模型映射
+	providerDefaults := map[string]string{
+		"api.deepseek.com":          "deepseek-chat",
+		"dashscope.aliyuncs.com":    "qwen3.5-plus",
+		"ark.cn-beijing.volces.com": "doubao-seed-1.6",
+		"open.bigmodel.cn":          "glm-4-plus",
+		"api.moonshot.cn":           "kimi-k2-5",
+		"api.openai.com":            "gpt-4o",
+		"api.anthropic.com":         "claude-4.5-sonnet",
+	}
+
+	b := strings.ToLower(strings.TrimSpace(base))
+
+	// 检查已知服务商
+	for domain, model := range providerDefaults {
+		if strings.Contains(b, domain) {
+			// 特殊处理：字节豆包 Code Plan API
+			if domain == "ark.cn-beijing.volces.com" {
+				if strings.Contains(b, "coding") {
+					if strings.Contains(b, "/v3") {
+						return "ark-code-latest" // OpenAI 兼容版本
+					}
+					return "ark-code-latest-claude" // Anthropic 兼容版本
+				}
+			}
+			return model
+		}
+	}
+
+	// 回退到旧的检测逻辑
+	if strings.Contains(b, "dashscope.aliyuncs.com") && strings.Contains(b, "compatible-mode") {
+		return "qwen3.5-plus"
+	}
+	if strings.Contains(b, "api.kimi.com") && strings.Contains(b, "/coding/") {
+		return "kimi-for-coding"
+	}
+
+	return ""
+}
+
+func ActiveModel(cfg Config) (ModelEntry, bool) {
+	for _, m := range cfg.Models {
+		if m.Name == cfg.Active {
+			return m, true
+		}
+	}
+	return ModelEntry{}, false
+}
+
+func SetActive(cfg *Config, name string) bool {
+	found := false
+	for _, m := range cfg.Models {
+		if m.Name == name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return false
+	}
+	cfg.Active = name
+	return true
+}
+
+func AddModel(cfg *Config, entry ModelEntry) bool {
+	for _, m := range cfg.Models {
+		if m.Name == entry.Name {
+			return false
+		}
+	}
+	cfg.Models = append(cfg.Models, entry)
+	return true
+}
+
+func UpdateModel(cfg *Config, entry ModelEntry) bool {
+	for i, m := range cfg.Models {
+		if m.Name == entry.Name {
+			if strings.ToLower(m.Source) == "env" {
+				return false
+			}
+			cfg.Models[i] = entry
+			return true
+		}
+	}
+	return false
+}
+
+func DeleteModel(cfg *Config, name string) bool {
+	idx := -1
+	for i, m := range cfg.Models {
+		if m.Name == name {
+			idx = i
+			if strings.ToLower(m.Source) == "env" {
+				return false
+			}
+		}
+	}
+	if idx < 0 {
+		return false
+	}
+	if cfg.Active == name {
+		return false
+	}
+	cfg.Models = append(cfg.Models[:idx], cfg.Models[idx+1:]...)
+	return true
+}
+
+// AddMCPServer 添加MCP服务
+func AddMCPServer(cfg *Config, entry MCPEntry) bool {
+	for _, m := range cfg.MCP {
+		if m.Name == entry.Name {
+			return false
+		}
+	}
+	cfg.MCP = append(cfg.MCP, entry)
+	return true
+}
+
+// UpdateMCPServer 更新MCP服务
+func UpdateMCPServer(cfg *Config, entry MCPEntry) bool {
+	for i, m := range cfg.MCP {
+		if m.Name == entry.Name {
+			cfg.MCP[i] = entry
+			return true
+		}
+	}
+	return false
+}
+
+// DeleteMCPServer 删除MCP服务
+func DeleteMCPServer(cfg *Config, name string) bool {
+	idx := -1
+	for i, m := range cfg.MCP {
+		if m.Name == name {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return false
+	}
+	cfg.MCP = append(cfg.MCP[:idx], cfg.MCP[idx+1:]...)
+	return true
+}
+
+// GetEnabledMCPServers 获取所有启用的MCP服务
+func GetEnabledMCPServers(cfg *Config) []MCPEntry {
+	var enabled []MCPEntry
+	for _, m := range cfg.MCP {
+		if m.Enabled {
+			enabled = append(enabled, m)
+		}
+	}
+	return enabled
+}
+
+// ToggleMCPServer 切换MCP服务的启用状态
+func ToggleMCPServer(cfg *Config, name string) bool {
+	for i, m := range cfg.MCP {
+		if m.Name == name {
+			cfg.MCP[i].Enabled = !cfg.MCP[i].Enabled
+			return true
+		}
+	}
+	return false
+}
+
+// AddSkillsDir 添加 Skills 目录
+func AddSkillsDir(cfg *Config, entry SkillsDirEntry) bool {
+	for _, s := range cfg.Skills {
+		if s.Path == entry.Path {
+			return false
+		}
+	}
+	cfg.Skills = append(cfg.Skills, entry)
+	return true
+}
+
+// UpdateSkillsDir 更新 Skills 目录
+func UpdateSkillsDir(cfg *Config, entry SkillsDirEntry) bool {
+	for i, s := range cfg.Skills {
+		if s.Path == entry.Path {
+			cfg.Skills[i] = entry
+			return true
+		}
+	}
+	return false
+}
+
+// DeleteSkillsDir 删除 Skills 目录
+func DeleteSkillsDir(cfg *Config, path string) bool {
+	idx := -1
+	for i, s := range cfg.Skills {
+		if s.Path == path {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return false
+	}
+	cfg.Skills = append(cfg.Skills[:idx], cfg.Skills[idx+1:]...)
+	return true
+}
+
+// GetEnabledSkillsDirs 获取所有启用的 Skills 目录
+func GetEnabledSkillsDirs(cfg *Config) []string {
+	var paths []string
+	for _, s := range cfg.Skills {
+		if s.Enabled {
+			paths = append(paths, s.Path)
+		}
+	}
+	return paths
+}
+
+// ToggleSkillsDir 切换 Skills 目录的启用状态
+func ToggleSkillsDir(cfg *Config, path string) bool {
+	for i, s := range cfg.Skills {
+		if s.Path == path {
+			cfg.Skills[i].Enabled = !cfg.Skills[i].Enabled
+			return true
+		}
+	}
+	return false
+}

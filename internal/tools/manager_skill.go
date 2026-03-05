@@ -1,0 +1,152 @@
+package tools
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"strings"
+	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+)
+
+func (m *Manager) skillStructured(ctx context.Context, params map[string]any) ToolResult {
+	if m.skillManager == nil {
+		return ToolResult{
+			Type:   "tool_result",
+			Tool:   ToolSkill,
+			Status: "error",
+			Error:  "skill manager not initialized",
+		}
+	}
+
+	command, _ := params["command"].(string)
+	if command == "" {
+		available := m.skillManager.FormatSkillsForPrompt()
+		return ToolResult{
+			Type:   "tool_result",
+			Tool:   ToolSkill,
+			Status: "error",
+			Error:  "missing required parameter: command. Available skills:\n" + available,
+		}
+	}
+
+	s, ok := m.skillManager.Get(command)
+	if !ok || s == nil {
+		available := m.skillManager.FormatSkillsForPrompt()
+		errorMsg := fmt.Sprintf("skill not found: %s\n\nAvailable skills:\n%s", command, available)
+
+		suggestion := m.suggestSkill(command)
+		if suggestion != "" {
+			errorMsg += fmt.Sprintf("\n\nDid you mean: %s?", suggestion)
+		}
+
+		return ToolResult{
+			Type:   "tool_result",
+			Tool:   ToolSkill,
+			Status: "error",
+			Error:  errorMsg,
+		}
+	}
+
+	if s.DisableModelInvocation {
+		return ToolResult{
+			Type:   "tool_result",
+			Tool:   ToolSkill,
+			Status: "error",
+			Error:  "skill is not model-invocable: " + command,
+		}
+	}
+
+	if strings.EqualFold(strings.TrimSpace(s.Context), "fork") {
+		ctxMod := s.GetContextModifier()
+		data := map[string]any{
+			"skill_name": command,
+			"fork":       true,
+			"context":    "fork",
+			"agent":      strings.TrimSpace(s.Agent),
+			"prompt":     s.RenderPrompt(""),
+			"continue":   true,
+		}
+		if ctxMod != nil {
+			if len(ctxMod.AllowedTools) > 0 {
+				data["allowed_tools"] = ctxMod.AllowedTools
+			}
+			if ctxMod.ModelOverride != "" {
+				data["model_override"] = ctxMod.ModelOverride
+			}
+		}
+		return ToolResult{
+			Type:    "tool_result",
+			Tool:    ToolSkill,
+			Status:  "success",
+			Data:    data,
+			Display: fmt.Sprintf("Skill '%s' running (fork)", command),
+		}
+	}
+
+	messages, ctxMod, err := m.skillManager.InjectSkillWithArguments(ctx, command, "")
+	if err != nil {
+		slog.Error("tools.skill.inject.error",
+			"component", utils.ComponentTool,
+			"skill", command,
+			"error", err,
+		)
+
+		available := m.skillManager.FormatSkillsForPrompt()
+		errorMsg := fmt.Sprintf("skill not found: %s\n\nAvailable skills:\n%s", command, available)
+
+		suggestion := m.suggestSkill(command)
+		if suggestion != "" {
+			errorMsg += fmt.Sprintf("\n\nDid you mean: %s?", suggestion)
+		}
+
+		return ToolResult{
+			Type:   "tool_result",
+			Tool:   ToolSkill,
+			Status: "error",
+			Error:  errorMsg,
+		}
+	}
+
+	data := map[string]any{
+		"skill_name": command,
+		"injected":   true,
+	}
+
+	if ctxMod != nil {
+		if len(ctxMod.AllowedTools) > 0 {
+			data["allowed_tools"] = ctxMod.AllowedTools
+		}
+		if ctxMod.ModelOverride != "" {
+			data["model_override"] = ctxMod.ModelOverride
+		}
+	}
+
+	if len(messages) > 0 {
+		data["messages"] = messages
+	}
+
+	return ToolResult{
+		Type:    "tool_result",
+		Tool:    ToolSkill,
+		Status:  "success",
+		Data:    data,
+		Display: fmt.Sprintf("Skill '%s' activated", command),
+	}
+}
+
+func (m *Manager) suggestSkill(name string) string {
+	skills := m.skillManager.List()
+	if len(skills) == 0 {
+		return ""
+	}
+
+	nameLower := strings.ToLower(name)
+	for _, skill := range skills {
+		if strings.Contains(strings.ToLower(skill.Name), nameLower) ||
+			strings.Contains(nameLower, strings.ToLower(skill.Name)) {
+			return skill.Name
+		}
+	}
+
+	return ""
+}
