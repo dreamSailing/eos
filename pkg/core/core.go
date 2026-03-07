@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -55,6 +56,19 @@ type MCPServer struct {
 	Type    string
 	Target  string
 	Enabled bool
+}
+
+type Settings struct {
+	Language       string
+	Theme          string
+	MidRiskConfirm bool
+}
+
+type VersionItem struct {
+	ID        string
+	File      string
+	CreatedAt time.Time
+	Summary   string
 }
 
 func NewRuntime() *Runtime {
@@ -406,6 +420,134 @@ func (r *Runtime) ResetRules() error {
 	return r.SaveRules(sharedruntime.RulesMdTemplate())
 }
 
+func (r *Runtime) GetSettings() Settings {
+	path := r.settingsPath()
+	cur := r.core.GetSettings()
+	s, err := r.core.LoadSettings(path)
+	if err == nil && s != nil {
+		cur = *s
+	}
+	return Settings{
+		Language:       cur.Language,
+		Theme:          cur.Theme,
+		MidRiskConfirm: true,
+	}
+}
+
+func (r *Runtime) SaveSettings(v Settings) error {
+	path := r.settingsPath()
+	cur := r.core.GetSettings()
+	if strings.TrimSpace(v.Language) != "" {
+		cur.Language = strings.TrimSpace(v.Language)
+	}
+	if strings.TrimSpace(v.Theme) != "" {
+		cur.Theme = strings.TrimSpace(v.Theme)
+	}
+	return r.core.SaveSettings(path, &cur)
+}
+
+func (r *Runtime) ListVersions() []VersionItem {
+	files, err := r.core.ListVersionFiles()
+	if err != nil || len(files) == 0 {
+		return nil
+	}
+	wd, _ := os.Getwd()
+	out := make([]VersionItem, 0)
+	for _, f := range files {
+		abs := filepath.Join(wd, filepath.FromSlash(f.PathRel))
+		versions, verErr := r.core.ListVersionsForPath(abs)
+		if verErr != nil {
+			continue
+		}
+		for _, v := range versions {
+			out = append(out, VersionItem{
+				ID:        v.ID,
+				File:      filepath.ToSlash(v.PathRel),
+				CreatedAt: v.Timestamp,
+				Summary:   fmt.Sprintf("size=%d", v.Size),
+			})
+		}
+	}
+	slices.SortFunc(out, func(a, b VersionItem) int {
+		if a.CreatedAt.After(b.CreatedAt) {
+			return -1
+		}
+		if a.CreatedAt.Before(b.CreatedAt) {
+			return 1
+		}
+		if d := strings.Compare(a.File, b.File); d != 0 {
+			return d
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
+	return out
+}
+
+func (r *Runtime) RollbackVersion(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("version id required")
+	}
+	it, err := r.findVersionByID(id)
+	if err != nil {
+		return err
+	}
+	res := r.core.RollbackFile(it.File, it.ID)
+	if e := resultToError(res); e != nil {
+		return e
+	}
+	return nil
+}
+
+func (r *Runtime) DeleteVersion(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("version id required")
+	}
+	it, err := r.findVersionByID(id)
+	if err != nil {
+		return err
+	}
+	res := r.core.DeleteVersion(it.File, it.ID)
+	if e := resultToError(res); e != nil {
+		return e
+	}
+	return nil
+}
+
+func (r *Runtime) DeleteFileVersions(file string) int {
+	target := filepath.ToSlash(strings.TrimSpace(file))
+	if target == "" {
+		return 0
+	}
+	count := 0
+	for _, v := range r.ListVersions() {
+		if filepath.ToSlash(v.File) == target {
+			count++
+		}
+	}
+	if count == 0 {
+		return 0
+	}
+	res := r.core.DeleteAllVersions(target)
+	if resultToError(res) != nil {
+		return 0
+	}
+	return count
+}
+
+func (r *Runtime) ClearVersions() int {
+	items := r.ListVersions()
+	if len(items) == 0 {
+		return 0
+	}
+	res := r.core.DeleteAllFileVersions()
+	if resultToError(res) != nil {
+		return 0
+	}
+	return len(items)
+}
+
 func (r *Runtime) projectRulesPath() string {
 	root := strings.TrimSpace(r.core.GetActiveRoot())
 	if root == "" {
@@ -417,6 +559,37 @@ func (r *Runtime) projectRulesPath() string {
 		return filepath.Join(".vb", "Rules.md")
 	}
 	return filepath.Join(root, ".vb", "Rules.md")
+}
+
+func (r *Runtime) settingsPath() string {
+	root := strings.TrimSpace(r.core.GetActiveRoot())
+	if root != "" {
+		return filepath.Join(root, ".vb", "settings.json")
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return filepath.Join(home, ".vb", "settings.json")
+	}
+	return filepath.Join(".vb", "settings.json")
+}
+
+func (r *Runtime) findVersionByID(id string) (VersionItem, error) {
+	for _, it := range r.ListVersions() {
+		if strings.TrimSpace(it.ID) == id {
+			return it, nil
+		}
+	}
+	return VersionItem{}, errors.New("version not found")
+}
+
+func resultToError(s string) error {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	if strings.HasPrefix(strings.ToLower(s), "error:") {
+		return errors.New(strings.TrimSpace(s[6:]))
+	}
+	return nil
 }
 
 func resolveWorkspacePath(raw string) (string, error) {
