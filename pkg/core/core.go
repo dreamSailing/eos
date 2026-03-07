@@ -71,6 +71,21 @@ type VersionItem struct {
 	Summary   string
 }
 
+type LSPServer struct {
+	Language string
+	Status   string
+	Command  string
+}
+
+type CostItem struct {
+	Time      time.Time
+	Model     string
+	Input     int
+	Reply     int
+	Token     int
+	CostCents int
+}
+
 func NewRuntime() *Runtime {
 	cm := session.NewContextManager()
 	tm := tools.NewManager()
@@ -546,6 +561,169 @@ func (r *Runtime) ClearVersions() int {
 		return 0
 	}
 	return len(items)
+}
+
+func (r *Runtime) ListLSP() []LSPServer {
+	st := r.core.LSPStatus()
+	out := make([]LSPServer, 0, len(st.Servers))
+	for _, it := range st.Servers {
+		status := "stopped"
+		cmd := strings.TrimSpace(it.Command)
+		if !it.Found {
+			status = "not_found"
+		}
+		if strings.EqualFold(strings.TrimSpace(st.ActiveLanguage), strings.TrimSpace(it.Language)) {
+			status = "running"
+			if strings.TrimSpace(st.ActiveServer) != "" {
+				cmd = strings.TrimSpace(st.ActiveServer)
+			}
+		}
+		out = append(out, LSPServer{
+			Language: it.Language,
+			Status:   status,
+			Command:  cmd,
+		})
+	}
+	return out
+}
+
+func (r *Runtime) DetectLSP(language string) string {
+	lang := strings.ToLower(strings.TrimSpace(language))
+	if lang == "" {
+		lang = strings.ToLower(strings.TrimSpace(r.core.LSPStatus().DetectedLanguage))
+	}
+	st := r.core.LSPStatus()
+	for _, it := range st.Servers {
+		if strings.ToLower(strings.TrimSpace(it.Language)) != lang {
+			continue
+		}
+		if !it.Found {
+			return it.Language + " server not found"
+		}
+		return it.Language + ": " + strings.TrimSpace(it.Command)
+	}
+	return "language not supported: " + language
+}
+
+func (r *Runtime) StartLSP(language string) string {
+	lang := strings.ToLower(strings.TrimSpace(language))
+	if lang == "" {
+		lang = strings.ToLower(strings.TrimSpace(r.core.LSPStatus().DetectedLanguage))
+	}
+	if lang == "" {
+		return "cannot detect language"
+	}
+	st := r.core.LSPStatus()
+	if strings.EqualFold(strings.TrimSpace(st.ActiveLanguage), lang) && strings.TrimSpace(st.ActiveServer) != "" {
+		return st.ActiveLanguage + " already running"
+	}
+	for _, it := range st.Servers {
+		if strings.ToLower(strings.TrimSpace(it.Language)) != lang {
+			continue
+		}
+		if !it.Found {
+			return it.Language + " server not found"
+		}
+		return "LSP auto-starts when needed: " + it.Language
+	}
+	return "language not supported: " + language
+}
+
+func (r *Runtime) LSPDiagnostics() []string {
+	raw := strings.TrimSpace(r.core.ProblemsAndDiagnosticsMarkdown())
+	if raw == "" {
+		return nil
+	}
+	lines := strings.Split(raw, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "##") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+func (r *Runtime) ContextPreview() []string {
+	msgs := r.core.BuildPreview()
+	out := make([]string, 0, len(msgs))
+	for _, m := range msgs {
+		content := strings.TrimSpace(m.Content)
+		if content == "" {
+			continue
+		}
+		out = append(out, strings.TrimSpace(m.Role)+": "+content)
+	}
+	return out
+}
+
+func (r *Runtime) ContextStats() (int, int) {
+	cm := r.core.GetContext()
+	if cm == nil {
+		return 0, 0
+	}
+	_, tokens, _ := cm.GetConversationUsage()
+	return len(r.core.BuildPreview()), tokens
+}
+
+func (r *Runtime) CompactContext() string {
+	beforeCount, beforeTokens := r.ContextStats()
+	r.core.CompactContext()
+	afterCount, afterTokens := r.ContextStats()
+	return fmt.Sprintf("context compacted: messages %d→%d, tokens %d→%d", beforeCount, afterCount, beforeTokens, afterTokens)
+}
+
+func (r *Runtime) ClearContext() {
+	r.core.ClearContext()
+}
+
+func (r *Runtime) ExportContext(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return errors.New("path required")
+	}
+	abs := path
+	if !filepath.IsAbs(abs) {
+		wd, _ := os.Getwd()
+		abs = filepath.Join(wd, path)
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		return err
+	}
+	content := strings.Join(r.ContextPreview(), "\n")
+	return os.WriteFile(abs, []byte(content), 0o644)
+}
+
+func (r *Runtime) CostSummary() string {
+	s := r.core.GetTokenStats()
+	return fmt.Sprintf("rounds=%d input=%d reply=%d total=%d", s.Rounds, s.Input, s.Reply, s.Total)
+}
+
+func (r *Runtime) CostItems() []CostItem {
+	raw := r.core.GetTokenHistory()
+	items := make([]CostItem, 0, len(raw))
+	for _, it := range raw {
+		items = append(items, CostItem{
+			Time:      it.Timestamp,
+			Model:     it.Model,
+			Input:     it.Input,
+			Reply:     it.Reply,
+			Token:     it.Total,
+			CostCents: 0,
+		})
+	}
+	slices.SortFunc(items, func(a, b CostItem) int {
+		if a.Time.After(b.Time) {
+			return -1
+		}
+		if a.Time.Before(b.Time) {
+			return 1
+		}
+		return strings.Compare(a.Model, b.Model)
+	})
+	return items
 }
 
 func (r *Runtime) projectRulesPath() string {
