@@ -11,6 +11,7 @@ import (
 
 	"github.com/dreamSailing/vb-coding/internal/bridge"
 	"github.com/dreamSailing/vb-coding/internal/config"
+	sharedruntime "github.com/dreamSailing/vb-coding/internal/runtime"
 	"github.com/dreamSailing/vb-coding/internal/session"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 	"github.com/dreamSailing/vb-coding/internal/tools/bg"
@@ -47,6 +48,13 @@ type Workspace struct {
 	Path    string
 	Trusted bool
 	Active  bool
+}
+
+type MCPServer struct {
+	Name    string
+	Type    string
+	Target  string
+	Enabled bool
 }
 
 func NewRuntime() *Runtime {
@@ -296,6 +304,119 @@ func (r *Runtime) TrustWorkspace(path string) error {
 	}
 	cfg.TrustedWorkspaces = append(cfg.TrustedWorkspaces, want)
 	return config.Save(cfg, cfgPath)
+}
+
+func (r *Runtime) ListMCP() []MCPServer {
+	items := r.core.ListMCPServers()
+	out := make([]MCPServer, 0, len(items))
+	for _, it := range items {
+		target := strings.TrimSpace(it.Command)
+		if strings.TrimSpace(it.BaseURL) != "" {
+			target = strings.TrimSpace(it.BaseURL)
+		}
+		out = append(out, MCPServer{
+			Name:    it.Name,
+			Type:    string(it.Type),
+			Target:  target,
+			Enabled: it.Enabled,
+		})
+	}
+	slices.SortFunc(out, func(a, b MCPServer) int { return strings.Compare(a.Name, b.Name) })
+	return out
+}
+
+func (r *Runtime) UpsertMCP(name, kind, target string, enabled bool) error {
+	name = strings.TrimSpace(name)
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	target = strings.TrimSpace(target)
+	if name == "" || target == "" {
+		return errors.New("name and target required")
+	}
+	entry := config.MCPEntry{
+		Name:    name,
+		Type:    config.MCPClientType(kind),
+		Enabled: enabled,
+	}
+	if kind == "sse" {
+		entry.BaseURL = target
+	} else {
+		entry.Type = config.MCPClientType("stdio")
+		entry.Command = target
+	}
+	if !r.core.UpdateMCPServer(entry) {
+		return r.core.AddMCPServers([]config.MCPEntry{entry})
+	}
+	return nil
+}
+
+func (r *Runtime) DeleteMCP(name string) error {
+	if !r.core.DeleteMCPServer(strings.TrimSpace(name)) {
+		return errors.New("mcp server not found")
+	}
+	return nil
+}
+
+func (r *Runtime) SetMCPEnabled(name string, enabled bool) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("name required")
+	}
+	items := r.core.ListMCPServers()
+	for _, it := range items {
+		if strings.TrimSpace(it.Name) != name {
+			continue
+		}
+		if it.Enabled == enabled {
+			return nil
+		}
+		if r.core.ToggleMCPServer(name) {
+			return nil
+		}
+		return errors.New("toggle mcp server failed")
+	}
+	return errors.New("mcp server not found")
+}
+
+func (r *Runtime) GetRules() string {
+	path := r.projectRulesPath()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return sharedruntime.RulesMdTemplate()
+	}
+	text := strings.TrimSpace(string(raw))
+	if text == "" {
+		return sharedruntime.RulesMdTemplate()
+	}
+	return text
+}
+
+func (r *Runtime) SaveRules(v string) error {
+	path := r.projectRulesPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	content := strings.TrimSpace(v)
+	if content == "" {
+		content = sharedruntime.RulesMdTemplate()
+	}
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func (r *Runtime) ResetRules() error {
+	return r.SaveRules(sharedruntime.RulesMdTemplate())
+}
+
+func (r *Runtime) projectRulesPath() string {
+	root := strings.TrimSpace(r.core.GetActiveRoot())
+	if root == "" {
+		if wd, err := os.Getwd(); err == nil {
+			root = wd
+		}
+	}
+	if strings.TrimSpace(root) == "" {
+		return filepath.Join(".vb", "Rules.md")
+	}
+	return filepath.Join(root, ".vb", "Rules.md")
 }
 
 func resolveWorkspacePath(raw string) (string, error) {
