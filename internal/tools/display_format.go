@@ -1,7 +1,5 @@
 package tools
 
-import "strings"
-
 const (
 	ToolStatusPending = "pending"
 	ToolStatusSuccess = "success"
@@ -79,19 +77,6 @@ func FormatToolResult(toolName, toolRest, status, summary string) []string {
 	}
 
 	return []string{"[" + style.Color + "]" + mainLine + "[-]"}
-}
-
-func shouldCollapseToolDisplay(display string) bool {
-	if strings.TrimSpace(display) == "" {
-		return false
-	}
-	if strings.Contains(display, "\n") {
-		return true
-	}
-	if len(display) > 200 {
-		return true
-	}
-	return false
 }
 
 func TruncateDisplay(display string, maxLen int) string {

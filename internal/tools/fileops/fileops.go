@@ -10,28 +10,46 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
-type FileOperations struct{}
+type FileOperations struct {
+	root string
+}
 
 func NewFileOperations() *FileOperations {
 	return &FileOperations{}
 }
 
+func (f *FileOperations) SetRoot(root string) {
+	if f == nil {
+		return
+	}
+	f.root = strings.TrimSpace(root)
+}
+
+func (f *FileOperations) Root() string {
+	if f == nil {
+		return ""
+	}
+	return strings.TrimSpace(f.root)
+}
+
 func (f *FileOperations) ReadFile(path string) (string, error) {
-	// 解析并验证路径
-	result := utils.ResolvePath(path)
-	if !result.IsValid {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("path is empty")
+	}
+	if !filepath.IsAbs(path) {
 		slog.Error("fileops.read_file.path_invalid", "component", utils.ComponentTool,
 			"path", path,
-			"reason", result.ErrMsg,
+			"reason", "absolute path required",
 		)
-		return "", fmt.Errorf("invalid path: %s", result.ErrMsg)
+		return "", fmt.Errorf("invalid path: absolute path required")
 	}
 
 	// 验证文件是否适合读取
-	valid, size, errMsg := utils.ValidateFileForRead(result.AbsPath, utils.MaxFileSize)
+	valid, size, errMsg := utils.ValidateFileForRead(path, utils.MaxFileSize)
 	if !valid {
 		slog.Error("fileops.read_file.validation_failed", "component", utils.ComponentTool,
-			"path", result.AbsPath,
+			"path", path,
 			"size", size,
 			"reason", errMsg,
 		)
@@ -39,17 +57,17 @@ func (f *FileOperations) ReadFile(path string) (string, error) {
 	}
 
 	// 读取文件内容
-	content, err := os.ReadFile(result.AbsPath)
+	content, err := os.ReadFile(path)
 	if err != nil {
 		slog.Error("fileops.read_file.error", "component", utils.ComponentTool,
-			"path", result.AbsPath,
+			"path", path,
 			"error", err.Error(),
 		)
 		return "", err
 	}
 
 	slog.Debug("fileops.read_file.success", "component", utils.ComponentTool,
-		"path", result.AbsPath,
+		"path", path,
 		"size", size,
 	)
 	return string(content), nil

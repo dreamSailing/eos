@@ -21,7 +21,7 @@ func (m *Manager) historyStructured(ctx context.Context, params map[string]any) 
 	}
 	switch mode {
 	case "list_files":
-		files, err := scanVersionFiles()
+		files, err := scanVersionFiles(WorkspaceRootFromContext(ctx))
 		if err != nil {
 			return ToolResult{Type: "tool_result", Tool: "history", Status: "error", Error: err.Error()}
 		}
@@ -37,7 +37,7 @@ func (m *Manager) historyStructured(ctx context.Context, params map[string]any) 
 		}
 		return ToolResult{Type: "tool_result", Tool: "history", Status: "success", Data: map[string]any{"mode": mode, "files": out}}
 	case "list_versions":
-		ap, rel, errMsg := resolvePathParam(params, "path")
+		ap, rel, errMsg := resolvePathParam(WorkspaceRootFromContext(ctx), params, "path")
 		if errMsg != "" {
 			return ToolResult{Type: "tool_result", Tool: "history", Status: "error", Error: errMsg}
 		}
@@ -56,7 +56,7 @@ func (m *Manager) historyStructured(ctx context.Context, params map[string]any) 
 		}
 		return ToolResult{Type: "tool_result", Tool: "history", Status: "success", Data: map[string]any{"mode": mode, "path": filepath.ToSlash(rel), "versions": items}}
 	case "read_version":
-		ap, rel, errMsg := resolvePathParam(params, "path")
+		ap, rel, errMsg := resolvePathParam(WorkspaceRootFromContext(ctx), params, "path")
 		if errMsg != "" {
 			return ToolResult{Type: "tool_result", Tool: "history", Status: "error", Error: errMsg}
 		}
@@ -71,7 +71,7 @@ func (m *Manager) historyStructured(ctx context.Context, params map[string]any) 
 		}
 		return ToolResult{Type: "tool_result", Tool: "history", Status: "success", Data: map[string]any{"mode": mode, "path": filepath.ToSlash(rel), "version_id": id, "content": txt}}
 	case "rollback":
-		ap, rel, errMsg := resolvePathParam(params, "path")
+		ap, rel, errMsg := resolvePathParam(WorkspaceRootFromContext(ctx), params, "path")
 		if errMsg != "" {
 			return ToolResult{Type: "tool_result", Tool: "history", Status: "error", Error: errMsg}
 		}
@@ -99,7 +99,7 @@ func (m *Manager) historyStructured(ctx context.Context, params map[string]any) 
 		return ToolResult{Type: "tool_result", Tool: "history", Status: "success", Data: map[string]any{"mode": mode, "path": filepath.ToSlash(rel), "version_id": id}, Display: "Rolled back " + filepath.ToSlash(rel)}
 	case "list_checkpoints":
 		limit := toInt(params["limit"], 20)
-		cps, err := fileops.ListCheckpoints(limit)
+		cps, err := fileops.ListCheckpointsUnder(WorkspaceRootFromContext(ctx), limit)
 		if err != nil {
 			return ToolResult{Type: "tool_result", Tool: "history", Status: "error", Error: err.Error()}
 		}
@@ -124,7 +124,7 @@ func (m *Manager) historyStructured(ctx context.Context, params map[string]any) 
 		if traceID == "" {
 			return ToolResult{Type: "tool_result", Tool: "history", Status: "error", Error: "trace_id required"}
 		}
-		cp, err := fileops.LoadCheckpoint(traceID)
+		cp, err := fileops.LoadCheckpointUnder(WorkspaceRootFromContext(ctx), traceID)
 		if err != nil {
 			return ToolResult{Type: "tool_result", Tool: "history", Status: "error", Error: err.Error()}
 		}
@@ -143,7 +143,7 @@ func (m *Manager) historyStructured(ctx context.Context, params map[string]any) 
 			if strings.TrimSpace(rel) == "" || vid == "" {
 				continue
 			}
-			ap, resRel, errMsg := resolvePathString(rel)
+			ap, resRel, errMsg := resolvePathString(WorkspaceRootFromContext(ctx), rel)
 			if errMsg != "" {
 				errs = append(errs, rel+": "+errMsg)
 				continue
@@ -179,26 +179,29 @@ func (m *Manager) historyStructured(ctx context.Context, params map[string]any) 
 	}
 }
 
-func resolvePathParam(params map[string]any, key string) (abs string, rel string, errMsg string) {
+func resolvePathParam(root string, params map[string]any, key string) (abs string, rel string, errMsg string) {
 	p, _ := params[key].(string)
-	return resolvePathString(p)
+	return resolvePathString(root, p)
 }
 
-func resolvePathString(p string) (abs string, rel string, errMsg string) {
+func resolvePathString(root string, p string) (abs string, rel string, errMsg string) {
 	p = strings.TrimSpace(p)
 	if p == "" {
 		return "", "", "path required"
 	}
 	p = normalizePathPlaceholder(p)
-	res := utils.ResolvePath(p)
+	res := utils.ResolvePathUnder(root, p)
 	if !res.IsValid {
 		return "", "", "path outside working directory"
 	}
 	return res.AbsPath, res.RelPath, ""
 }
 
-func scanVersionFiles() ([]fileops.VersionFileEntry, error) {
-	wd, _ := os.Getwd()
+func scanVersionFiles(root string) ([]fileops.VersionFileEntry, error) {
+	wd := strings.TrimSpace(root)
+	if wd == "" {
+		wd, _ = os.Getwd()
+	}
 	versionsDir := filepath.Join(wd, ".vb", "versions")
 	if _, err := os.Stat(versionsDir); err != nil {
 		if os.IsNotExist(err) {
@@ -263,4 +266,3 @@ func scanVersionFiles() ([]fileops.VersionFileEntry, error) {
 	sort.Slice(out, func(i, j int) bool { return out[i].LastModified.After(out[j].LastModified) })
 	return out, nil
 }
-

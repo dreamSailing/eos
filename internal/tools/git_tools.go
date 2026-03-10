@@ -12,7 +12,7 @@ import (
 )
 
 func (m *Manager) gitStatusStructured(ctx context.Context, params map[string]interface{}) ToolResult {
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	changes, err := ops.Status()
 	if err != nil {
 		slog.Error("git_status.error", "component", utils.ComponentTool, "err", err.Error())
@@ -35,7 +35,7 @@ func (m *Manager) gitAddStructured(ctx context.Context, params map[string]interf
 					paths = append(paths, s)
 					continue
 				}
-				res := utils.ResolvePath(s)
+				res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), s)
 				if !res.IsValid {
 					return ToolResult{Type: "tool_result", Tool: ToolGitAdd, Status: "error", Error: "path outside working directory"}
 				}
@@ -43,7 +43,7 @@ func (m *Manager) gitAddStructured(ctx context.Context, params map[string]interf
 			}
 		}
 	}
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	n, err := ops.Add(paths)
 	if err != nil {
 		slog.Error("git_add.error", "component", utils.ComponentTool, "paths", len(paths), "err", err.Error())
@@ -56,7 +56,7 @@ func (m *Manager) gitCommitStructured(ctx context.Context, params map[string]int
 	msg, _ := params["message"].(string)
 	name, _ := params["author_name"].(string)
 	email, _ := params["author_email"].(string)
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	out, err := ops.Commit(msg, name, email)
 	if err != nil {
 		slog.Error("git_commit.error", "component", utils.ComponentTool, "author_name", name, "author_email", email, "err", err.Error())
@@ -66,7 +66,7 @@ func (m *Manager) gitCommitStructured(ctx context.Context, params map[string]int
 }
 
 func (m *Manager) gitBranchListStructured(ctx context.Context, params map[string]interface{}) ToolResult {
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	bs, cur, err := ops.BranchList()
 	if err != nil {
 		slog.Error("git_branch_list.error", "component", utils.ComponentTool, "err", err.Error())
@@ -81,7 +81,7 @@ func (m *Manager) gitCheckoutStructured(ctx context.Context, params map[string]i
 	if v, ok := params["create"].(bool); ok {
 		create = v
 	}
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	br, err := ops.Checkout(name, create)
 	if err != nil {
 		slog.Error("git_checkout.error", "component", utils.ComponentTool, "name", name, "create", create, "err", err.Error())
@@ -91,7 +91,7 @@ func (m *Manager) gitCheckoutStructured(ctx context.Context, params map[string]i
 }
 
 func (m *Manager) gitInitStructured(ctx context.Context, params map[string]interface{}) ToolResult {
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	p, err := ops.Init()
 	if err != nil {
 		slog.Error("git_init.error", "component", utils.ComponentTool, "err", err.Error())
@@ -105,7 +105,7 @@ func (m *Manager) gitPullStructured(ctx context.Context, params map[string]inter
 	branch, _ := params["branch"].(string)
 	user, _ := params["username"].(string)
 	pass, _ := params["password"].(string)
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	s, err := ops.Pull(remote, branch, user, pass)
 	if err != nil {
 		slog.Error("git_pull.error", "component", utils.ComponentTool, "remote", remote, "branch", branch, "user", user, "err", err.Error())
@@ -119,7 +119,7 @@ func (m *Manager) gitPushStructured(ctx context.Context, params map[string]inter
 	branch, _ := params["branch"].(string)
 	user, _ := params["username"].(string)
 	pass, _ := params["password"].(string)
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	s, err := ops.Push(remote, branch, user, pass)
 	if err != nil {
 		slog.Error("git_push.error", "component", utils.ComponentTool, "remote", remote, "branch", branch, "user", user, "err", err.Error())
@@ -132,11 +132,11 @@ func (m *Manager) gitDiffStructured(ctx context.Context, params map[string]inter
 	p, _ := params["path"].(string)
 	p = strings.TrimSpace(p)
 	p = normalizePathPlaceholder(p)
-	res := utils.ResolvePath(p)
+	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), p)
 	if !res.IsValid {
 		return ToolResult{Type: "tool_result", Tool: ToolGitDiff, Status: "error", Error: "path outside working directory"}
 	}
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	txt, err := ops.Diff(res.AbsPath)
 	if err != nil {
 		slog.Error("git_diff.error", "component", utils.ComponentTool, "path", p, "err", err.Error())

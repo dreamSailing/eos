@@ -12,6 +12,7 @@ const (
 	ctxKeyAllowedTools ctxKey = "vb.allowed_tools"
 	ctxKeyLanguage     ctxKey = "vb.language"
 	ctxKeyTraceID      ctxKey = "vb.trace_id"
+	ctxKeyWorkspaceRoot ctxKey = "vb.workspace_root"
 )
 
 var OnToolCall func(traceID string, toolName string)
@@ -90,6 +91,23 @@ func WithTraceID(ctx context.Context, traceID string) context.Context {
 		ctx = context.Background()
 	}
 	return context.WithValue(ctx, ctxKeyTraceID, strings.TrimSpace(traceID))
+}
+
+func WithWorkspaceRoot(ctx context.Context, root string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, ctxKeyWorkspaceRoot, strings.TrimSpace(root))
+}
+
+func WorkspaceRootFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(ctxKeyWorkspaceRoot).(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
 }
 
 func NotifyToolCall(ctx context.Context, toolName string) {

@@ -1,0 +1,299 @@
+package serve
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	toolapiimpl "github.com/dreamSailing/vb-coding/internal/toolapi/impl"
+)
+
+func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {
+	workspace := t.TempDir()
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+
+	srv, err := NewServer(Options{
+		Transport:             "stdio",
+		DefaultWorkspacePath:  workspace,
+		DefaultAllowedTools:   []string{"bash"},
+		RequireApprovalDigest: false,
+	}, inR, outW, io.Discard, toolapiimpl.NewServices())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Run(ctx) }()
+	defer func() {
+		cancel()
+		_ = inW.Close()
+		_ = outW.Close()
+		_ = <-done
+	}()
+
+	rd := bufio.NewReader(outR)
+	write := func(obj any) {
+		b, _ := json.Marshal(obj)
+		_, _ = inW.Write(append(b, '\n'))
+	}
+
+	readLine := func(timeout time.Duration) map[string]any {
+		type res struct {
+			line string
+			err  error
+		}
+		ch := make(chan res, 1)
+		go func() {
+			l, e := rd.ReadString('\n')
+			ch <- res{line: l, err: e}
+		}()
+		select {
+		case r := <-ch:
+			if r.err != nil {
+				t.Fatalf("read: %v", r.err)
+			}
+			m := map[string]any{}
+			if err := json.Unmarshal([]byte(strings.TrimSpace(r.line)), &m); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			return m
+		case <-time.After(timeout):
+			t.Fatalf("timeout reading output")
+			return nil
+		}
+	}
+
+	readResponse := func(id float64, timeout time.Duration) map[string]any {
+		deadline := time.Now().Add(timeout)
+		for {
+			remain := time.Until(deadline)
+			if remain <= 0 {
+				t.Fatalf("timeout waiting response id=%v", id)
+			}
+			m := readLine(remain)
+			if m["id"] == nil {
+				continue
+			}
+			mid, ok := m["id"].(float64)
+			if !ok || mid != id {
+				continue
+			}
+			return m
+		}
+	}
+
+	write(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"}})
+	_ = readResponse(1, 2*time.Second)
+
+	write(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "session.create",
+		"params": map[string]any{
+			"workspacePath": workspace,
+			"options": map[string]any{
+				"executionMode":        "plan",
+				"allowedTools":         []any{"bash"},
+				"requireApprovalDigest": false,
+			},
+		},
+	})
+	resp := readResponse(2, 2*time.Second)
+	resObj, _ := resp["result"].(map[string]any)
+	sid, _ := resObj["sessionID"].(string)
+	if strings.TrimSpace(sid) == "" {
+		t.Fatalf("missing sessionID: %v", resp)
+	}
+
+	write(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tool.execute",
+		"params": map[string]any{
+			"sessionID": sid,
+			"call": map[string]any{
+				"id":         "c_plan_1",
+				"tool":       "bash",
+				"parameters": map[string]any{"command": "Write-Output hi"},
+			},
+		},
+	})
+	execResp := readResponse(3, 2*time.Second)
+	if execResp["error"] == nil {
+		t.Fatalf("expected error, got: %v", execResp)
+	}
+	errObj, _ := execResp["error"].(map[string]any)
+	if int(errObj["code"].(float64)) != -32003 {
+		t.Fatalf("unexpected error: %v", execResp)
+	}
+}
+
+func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
+	workspace := t.TempDir()
+	p := filepath.Join(workspace, "a.txt")
+	if err := os.WriteFile(p, []byte("ok"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+
+	srv, err := NewServer(Options{
+		Transport:             "stdio",
+		DefaultWorkspacePath:  workspace,
+		DefaultAllowedTools:   []string{"bash", "read"},
+		RequireApprovalDigest: false,
+	}, inR, outW, io.Discard, toolapiimpl.NewServices())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Run(ctx) }()
+	defer func() {
+		cancel()
+		_ = inW.Close()
+		_ = outW.Close()
+		_ = <-done
+	}()
+
+	rd := bufio.NewReader(outR)
+	write := func(obj any) {
+		b, _ := json.Marshal(obj)
+		_, _ = inW.Write(append(b, '\n'))
+	}
+
+	readLine := func(timeout time.Duration) map[string]any {
+		type res struct {
+			line string
+			err  error
+		}
+		ch := make(chan res, 1)
+		go func() {
+			l, e := rd.ReadString('\n')
+			ch <- res{line: l, err: e}
+		}()
+		select {
+		case r := <-ch:
+			if r.err != nil {
+				t.Fatalf("read: %v", r.err)
+			}
+			m := map[string]any{}
+			if err := json.Unmarshal([]byte(strings.TrimSpace(r.line)), &m); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			return m
+		case <-time.After(timeout):
+			t.Fatalf("timeout reading output")
+			return nil
+		}
+	}
+
+	readResponse := func(id float64, timeout time.Duration) map[string]any {
+		deadline := time.Now().Add(timeout)
+		for {
+			remain := time.Until(deadline)
+			if remain <= 0 {
+				t.Fatalf("timeout waiting response id=%v", id)
+			}
+			m := readLine(remain)
+			if m["id"] == nil {
+				continue
+			}
+			mid, ok := m["id"].(float64)
+			if !ok || mid != id {
+				continue
+			}
+			return m
+		}
+	}
+
+	write(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"}})
+	_ = readResponse(1, 2*time.Second)
+
+	write(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "session.create",
+		"params": map[string]any{
+			"workspacePath": workspace,
+			"options": map[string]any{
+				"allowedTools":            []any{"bash", "read"},
+				"requireApprovalDigest":   false,
+				"maxConcurrentToolCalls":  1,
+				"executionMode":           "auto",
+				"trustedWorkspace":        true,
+				"confirmPolicyID":         "",
+			},
+		},
+	})
+	resp := readResponse(2, 2*time.Second)
+	resObj, _ := resp["result"].(map[string]any)
+	sid, _ := resObj["sessionID"].(string)
+	if strings.TrimSpace(sid) == "" {
+		t.Fatalf("missing sessionID: %v", resp)
+	}
+
+	write(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tool.execute",
+		"params": map[string]any{
+			"sessionID": sid,
+			"call": map[string]any{
+				"id":         "c_sleep",
+				"tool":       "bash",
+				"parameters": map[string]any{"command": "Start-Sleep -Seconds 5"},
+			},
+		},
+	})
+
+	write(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "tool.execute",
+		"params": map[string]any{
+			"sessionID": sid,
+			"call": map[string]any{
+				"id":         "c_read",
+				"tool":       "read",
+				"parameters": map[string]any{"path": p},
+			},
+		},
+	})
+	tooMany := readResponse(4, 2*time.Second)
+	if tooMany["error"] == nil {
+		t.Fatalf("expected error, got: %v", tooMany)
+	}
+
+	write(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      5,
+		"method":  "tool.cancel",
+		"params":  map[string]any{"sessionID": sid, "callID": "c_sleep"},
+	})
+	cancelResp := readResponse(5, 2*time.Second)
+	cancelRes, _ := cancelResp["result"].(map[string]any)
+	ok, _ := cancelRes["ok"].(bool)
+	if !ok {
+		t.Fatalf("expected ok=true, got: %v", cancelResp)
+	}
+
+	execResp := readResponse(3, 4*time.Second)
+	res, _ := execResp["result"].(map[string]any)
+	status, _ := res["status"].(string)
+	if status == "" {
+		t.Fatalf("missing status: %v", execResp)
+	}
+	if status != "error" {
+		t.Fatalf("expected status=error, got: %v", execResp)
+	}
+}

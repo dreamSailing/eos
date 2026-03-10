@@ -2,9 +2,10 @@ package fileops
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -12,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
 type VersionMeta struct {
@@ -37,8 +37,14 @@ type VersionExtra struct {
 	Operation string
 }
 
-func versionsDirFor(absPath string) (string, string, error) {
-	wd, _ := os.Getwd()
+func (f *FileOperations) versionsDirFor(absPath string) (string, string, error) {
+	wd := ""
+	if f != nil {
+		wd = strings.TrimSpace(f.root)
+	}
+	if wd == "" {
+		wd, _ = os.Getwd()
+	}
 	rel, err := filepath.Rel(wd, absPath)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return "", "", err
@@ -53,7 +59,7 @@ func (f *FileOperations) SaveVersion(absPath string, oldContent string) (Version
 
 func (f *FileOperations) SaveVersionWithExtra(absPath string, oldContent string, extra VersionExtra) (VersionMeta, error) {
 	vm := VersionMeta{}
-	dir, rel, err := versionsDirFor(absPath)
+	dir, rel, err := f.versionsDirFor(absPath)
 	if err != nil {
 		slog.Error("fileops.save_version.versions_dir.error", "component", utils.ComponentTool,
 			"abs_path", absPath,
@@ -129,9 +135,16 @@ func (f *FileOperations) SaveVersionWithExtra(absPath string, oldContent string,
 		)
 		return vm, err
 	}
-	writeVersionIndex(rel, vm, extra)
+	wd := ""
+	if f != nil {
+		wd = strings.TrimSpace(f.root)
+	}
+	if wd == "" {
+		wd, _ = os.Getwd()
+	}
+	writeVersionIndexUnder(wd, rel, vm, extra)
 	if strings.TrimSpace(extra.TraceID) != "" {
-		_ = recordCheckpoint(strings.TrimSpace(extra.TraceID), filepath.ToSlash(rel), vm.ID)
+		_ = recordCheckpointUnder(wd, strings.TrimSpace(extra.TraceID), filepath.ToSlash(rel), vm.ID)
 	}
 	_ = f.trimOldVersions(dir, 20)
 	return vm, nil
@@ -148,12 +161,15 @@ type Checkpoint struct {
 	Files     map[string]string `json:"files"`
 }
 
-func checkpointPath(traceID string) (string, error) {
+func checkpointPathUnder(root string, traceID string) (string, error) {
 	traceID = strings.TrimSpace(traceID)
 	if traceID == "" {
 		return "", fmt.Errorf("trace_id required")
 	}
-	wd, _ := os.Getwd()
+	wd := strings.TrimSpace(root)
+	if wd == "" {
+		wd, _ = os.Getwd()
+	}
 	dir := filepath.Join(wd, ".vb", "versions", "_checkpoints")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
@@ -162,7 +178,11 @@ func checkpointPath(traceID string) (string, error) {
 }
 
 func LoadCheckpoint(traceID string) (*Checkpoint, error) {
-	p, err := checkpointPath(traceID)
+	return LoadCheckpointUnder("", traceID)
+}
+
+func LoadCheckpointUnder(root string, traceID string) (*Checkpoint, error) {
+	p, err := checkpointPathUnder(root, traceID)
 	if err != nil {
 		return nil, err
 	}
@@ -178,14 +198,18 @@ func LoadCheckpoint(traceID string) (*Checkpoint, error) {
 }
 
 func UpdateCheckpointSummary(traceID string, userText string, success bool) error {
-	p, err := checkpointPath(traceID)
+	return UpdateCheckpointSummaryUnder("", traceID, userText, success)
+}
+
+func UpdateCheckpointSummaryUnder(root string, traceID string, userText string, success bool) error {
+	p, err := checkpointPathUnder(root, traceID)
 	if err != nil {
 		return err
 	}
 	checkpointMu.Lock()
 	defer checkpointMu.Unlock()
 	var cp Checkpoint
-	if b, err := os.ReadFile(p); err == nil {
+	if b, readErr := os.ReadFile(p); readErr == nil {
 		_ = json.Unmarshal(b, &cp)
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -207,15 +231,15 @@ func UpdateCheckpointSummary(traceID string, userText string, success bool) erro
 	return os.WriteFile(p, out, 0644)
 }
 
-func recordCheckpoint(traceID string, pathRel string, versionID string) error {
-	p, err := checkpointPath(traceID)
+func recordCheckpointUnder(root string, traceID string, pathRel string, versionID string) error {
+	p, err := checkpointPathUnder(root, traceID)
 	if err != nil {
 		return err
 	}
 	checkpointMu.Lock()
 	defer checkpointMu.Unlock()
 	var cp Checkpoint
-	if b, err := os.ReadFile(p); err == nil {
+	if b, readErr := os.ReadFile(p); readErr == nil {
 		_ = json.Unmarshal(b, &cp)
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -238,8 +262,11 @@ func recordCheckpoint(traceID string, pathRel string, versionID string) error {
 	return os.WriteFile(p, out, 0644)
 }
 
-func writeVersionIndex(pathRel string, vm VersionMeta, extra VersionExtra) {
-	wd, _ := os.Getwd()
+func writeVersionIndexUnder(root string, pathRel string, vm VersionMeta, extra VersionExtra) {
+	wd := strings.TrimSpace(root)
+	if wd == "" {
+		wd, _ = os.Getwd()
+	}
 	p := filepath.Join(wd, ".vb", "versions", "_index.jsonl")
 	dir := filepath.Dir(p)
 	_ = os.MkdirAll(dir, 0755)
@@ -285,7 +312,14 @@ type CheckpointSummary struct {
 }
 
 func ListCheckpoints(limit int) ([]CheckpointSummary, error) {
-	wd, _ := os.Getwd()
+	return ListCheckpointsUnder("", limit)
+}
+
+func ListCheckpointsUnder(root string, limit int) ([]CheckpointSummary, error) {
+	wd := strings.TrimSpace(root)
+	if wd == "" {
+		wd, _ = os.Getwd()
+	}
 	dir := filepath.Join(wd, ".vb", "versions", "_checkpoints")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -350,8 +384,8 @@ func (f *FileOperations) trimOldVersions(dir string, keep int) error {
 	var ids []string
 	for _, e := range entries {
 		name := e.Name()
-		if strings.HasSuffix(name, ".content") {
-			ids = append(ids, strings.TrimSuffix(name, ".content"))
+		if id, ok := strings.CutSuffix(name, ".content"); ok {
+			ids = append(ids, id)
 		}
 	}
 	sort.Strings(ids)
@@ -367,7 +401,7 @@ func (f *FileOperations) trimOldVersions(dir string, keep int) error {
 }
 
 func (f *FileOperations) ListVersions(absPath string) ([]VersionMeta, error) {
-	dir, rel, err := versionsDirFor(absPath)
+	dir, rel, err := f.versionsDirFor(absPath)
 	if err != nil {
 		slog.Error("fileops.list_versions.versions_dir.error", "component", utils.ComponentTool,
 			"abs_path", absPath,
@@ -386,8 +420,8 @@ func (f *FileOperations) ListVersions(absPath string) ([]VersionMeta, error) {
 	}
 	var ids []string
 	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".content") {
-			ids = append(ids, strings.TrimSuffix(e.Name(), ".content"))
+		if id, ok := strings.CutSuffix(e.Name(), ".content"); ok {
+			ids = append(ids, id)
 		}
 	}
 	sort.Strings(ids)
@@ -405,7 +439,7 @@ func (f *FileOperations) ListVersions(absPath string) ([]VersionMeta, error) {
 }
 
 func (f *FileOperations) ReadVersion(absPath, id string) (string, error) {
-	dir, _, err := versionsDirFor(absPath)
+	dir, _, err := f.versionsDirFor(absPath)
 	if err != nil {
 		slog.Error("fileops.read_version.versions_dir.error", "component", utils.ComponentTool,
 			"abs_path", absPath,
@@ -431,7 +465,7 @@ func (f *FileOperations) ReadVersion(absPath, id string) (string, error) {
 // DeleteVersion 删除指定文件的单个版本
 // 返回删除后剩余的版本数量和可能的错误
 func (f *FileOperations) DeleteVersion(absPath, versionID string) (int, error) {
-	dir, _, err := versionsDirFor(absPath)
+	dir, _, err := f.versionsDirFor(absPath)
 	if err != nil {
 		slog.Error("fileops.delete_version.versions_dir.error", "component", utils.ComponentTool,
 			"abs_path", absPath,
@@ -482,7 +516,7 @@ func (f *FileOperations) DeleteVersion(absPath, versionID string) (int, error) {
 
 // DeleteAllVersions 删除指定文件的所有版本（整个版本目录）
 func (f *FileOperations) DeleteAllVersions(absPath string) error {
-	dir, _, err := versionsDirFor(absPath)
+	dir, _, err := f.versionsDirFor(absPath)
 	if err != nil {
 		slog.Error("fileops.delete_all_versions.versions_dir.error", "component", utils.ComponentTool,
 			"abs_path", absPath,

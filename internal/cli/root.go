@@ -58,6 +58,8 @@ func init() {
 
 	// 全局 flags
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.vb-coding.yaml)")
+
+	rootCmd.AddCommand(newServeCmd())
 }
 
 // initConfig 读取配置文件与环境变量。

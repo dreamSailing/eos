@@ -59,7 +59,7 @@ func (m *Manager) fsWrite(ctx context.Context, params map[string]any) ToolResult
 	}
 	path = normalizePathPlaceholder(path)
 
-	res := utils.ResolvePath(path)
+	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), path)
 	if !res.IsValid {
 		slog.Error("fs.write.out_of_root", "component", utils.ComponentTool, "path", path, "error", res.ErrMsg)
 		return ToolResult{Type: "tool_result", Tool: "fs", Status: "error", Error: i18n.T("tool.error.outside_root", lang)}
@@ -96,7 +96,7 @@ func (m *Manager) fsCreate(ctx context.Context, params map[string]any) ToolResul
 	path = normalizePathPlaceholder(path)
 	fileType, _ := params["type"].(string)
 
-	res := utils.ResolvePath(path)
+	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), path)
 	if !res.IsValid {
 		slog.Error("fs.create.out_of_root", "component", utils.ComponentTool, "path", path, "error", res.ErrMsg)
 		return ToolResult{Type: "tool_result", Tool: "fs", Status: "error", Error: i18n.T("tool.error.outside_root", lang)}
@@ -138,7 +138,7 @@ func (m *Manager) fsDelete(ctx context.Context, params map[string]any) ToolResul
 	}
 	path = normalizePathPlaceholder(path)
 
-	res := utils.ResolvePath(path)
+	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), path)
 	if !res.IsValid {
 		slog.Error("fs.delete.out_of_root", "component", utils.ComponentTool, "path", path, "error", res.ErrMsg)
 		return ToolResult{Type: "tool_result", Tool: "fs", Status: "error", Error: i18n.T("tool.error.outside_root", lang)}

@@ -6,17 +6,10 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+
 	"github.com/dreamSailing/vb-coding/internal/i18n"
 	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
-
-func (m *Manager) moveFileStructured(ctx context.Context, params map[string]any) ToolResult {
-	return m.fileOpStructured(ctx, "move_file", m.fileOps.MoveFile, params)
-}
-
-func (m *Manager) copyFileStructured(ctx context.Context, params map[string]any) ToolResult {
-	return m.fileOpStructured(ctx, "copy_file", m.fileOps.CopyFile, params)
-}
 
 func (m *Manager) fsMove(ctx context.Context, params map[string]any) ToolResult {
 	return m.fileOpStructured(ctx, "fs", m.fileOps.MoveFile, params)
@@ -33,8 +26,8 @@ func (m *Manager) fsCopy(ctx context.Context, params map[string]any) ToolResult 
 	src = normalizePathPlaceholder(src)
 	dst = normalizePathPlaceholder(dst)
 
-	resSrc := utils.ResolvePath(src)
-	resDst := utils.ResolvePath(dst)
+	resSrc := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), src)
+	resDst := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), dst)
 	if !resSrc.IsValid || !resDst.IsValid {
 		slog.Error("fs.copy.out_of_root", "component", utils.ComponentTool, "src", src, "dst", dst, "src_error", resSrc.ErrMsg, "dst_error", resDst.ErrMsg)
 		return ToolResult{Type: "tool_result", Tool: "fs", Status: "error", Error: i18n.T("tool.error.outside_root", lang)}
@@ -84,7 +77,7 @@ func (m *Manager) fileOpStructured(ctx context.Context, toolName string, op func
 	return ToolResult{Type: "tool_result", Tool: toolName, Status: "success", Data: map[string]any{"source": filepath.ToSlash(relSrc), "destination": filepath.ToSlash(relDst)}, Display: i18n.T("tool.success.moved", lang, filepath.ToSlash(relSrc), filepath.ToSlash(relDst))}
 }
 
-func resolveSourceDestinationPaths(_ context.Context, params map[string]any) (string, string, string, string, string) {
+func resolveSourceDestinationPaths(ctx context.Context, params map[string]any) (string, string, string, string, string) {
 	source, okS := params["source"].(string)
 	dest, okD := params["destination"].(string)
 	if !okS || !okD {
@@ -92,8 +85,9 @@ func resolveSourceDestinationPaths(_ context.Context, params map[string]any) (st
 	}
 	source = normalizePathPlaceholder(source)
 	dest = normalizePathPlaceholder(dest)
-	resSrc := utils.ResolvePath(source)
-	resDst := utils.ResolvePath(dest)
+	root := WorkspaceRootFromContext(ctx)
+	resSrc := utils.ResolvePathUnder(root, source)
+	resDst := utils.ResolvePathUnder(root, dest)
 	if !resSrc.IsValid || !resDst.IsValid {
 		return "", "", "", "", "path outside working directory"
 	}

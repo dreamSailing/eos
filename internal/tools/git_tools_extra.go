@@ -37,14 +37,14 @@ func (m *Manager) gitLogStructured(ctx context.Context, params map[string]interf
 	p = strings.TrimSpace(p)
 	if p != "" {
 		p = normalizePathPlaceholder(p)
-		res := utils.ResolvePath(p)
+		res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), p)
 		if !res.IsValid {
 			return ToolResult{Type: "tool_result", Tool: ToolGitLog, Status: "error", Error: "path outside working directory"}
 		}
 		p = res.AbsPath
 	}
 
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	out, err := ops.Log(limit, oneline, graph, all, p)
 	if err != nil {
 		slog.Error("git_log.error", "component", utils.ComponentTool, "err", err.Error())
@@ -83,7 +83,7 @@ func (m *Manager) gitStashStructured(ctx context.Context, params map[string]inte
 		includeUntracked = v
 	}
 
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	out, err := ops.Stash(action, message, index, includeUntracked)
 	if err != nil {
 		slog.Error("git_stash.error", "component", utils.ComponentTool, "action", action, "err", err.Error())
@@ -115,7 +115,7 @@ func (m *Manager) gitResetStructured(ctx context.Context, params map[string]inte
 		return ToolResult{Type: "tool_result", Tool: ToolGitReset, Status: "error", Error: "target required"}
 	}
 
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	out, err := ops.Reset(mode, target)
 	if err != nil {
 		slog.Error("git_reset.error", "component", utils.ComponentTool, "mode", mode, "target", target, "err", err.Error())
@@ -153,7 +153,7 @@ func (m *Manager) gitRevertStructured(ctx context.Context, params map[string]int
 		mainline = v
 	}
 
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	out, err := ops.Revert(commit, noEdit, mainline)
 	if err != nil {
 		slog.Error("git_revert.error", "component", utils.ComponentTool, "commit", commit, "err", err.Error())
@@ -188,7 +188,7 @@ func (m *Manager) gitMergeStructured(ctx context.Context, params map[string]inte
 		noFF = v
 	}
 
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	out, err := ops.Merge(branch, noEdit, noFF)
 	if err != nil {
 		slog.Error("git_merge.error", "component", utils.ComponentTool, "branch", branch, "err", err.Error())
@@ -221,7 +221,7 @@ func (m *Manager) gitRebaseStructured(ctx context.Context, params map[string]int
 	branch, _ := params["branch"].(string)
 	branch = strings.TrimSpace(branch)
 
-	ops := gitops.NewOps()
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
 	out, err := ops.Rebase(action, upstream, onto, branch)
 	if err != nil {
 		slog.Error("git_rebase.error", "component", utils.ComponentTool, "action", action, "upstream", upstream, "err", err.Error())

@@ -21,7 +21,14 @@ import (
 type Ops struct{ Root string }
 
 func NewOps() *Ops {
-	wd, _ := os.Getwd()
+	return NewOpsWithRoot("")
+}
+
+func NewOpsWithRoot(rootDir string) *Ops {
+	wd := strings.TrimSpace(rootDir)
+	if wd == "" {
+		wd, _ = os.Getwd()
+	}
 	root := wd
 	cur := wd
 	for {

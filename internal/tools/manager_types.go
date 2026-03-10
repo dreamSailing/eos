@@ -3,13 +3,13 @@ package tools
 import (
 	"context"
 	"fmt"
-	"path/filepath"
-	"strings"
-	"sync"
 	"github.com/dreamSailing/vb-coding/internal/mcp"
 	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
 	"github.com/dreamSailing/vb-coding/internal/tools/shell"
+	"path/filepath"
+	"strings"
+	"sync"
 )
 
 // ToolCall represents a tool invocation

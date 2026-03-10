@@ -81,7 +81,7 @@ func (m *Manager) editSingle(ctx context.Context, params map[string]interface{})
 		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "find parameter is required for single mode", Display: "Error: find parameter is required"}
 	}
 	file = normalizePathPlaceholder(file)
-	res := utils.ResolvePath(file)
+	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), file)
 	if !res.IsValid {
 		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "path outside working directory", Display: "Error: path outside working directory"}
 	}
@@ -133,7 +133,7 @@ func (m *Manager) editMulti(ctx context.Context, params map[string]interface{}) 
 		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "edits parameter is required for multi mode", Display: "Error: edits parameter is required"}
 	}
 	file = normalizePathPlaceholder(file)
-	res := utils.ResolvePath(file)
+	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), file)
 	if !res.IsValid {
 		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "path outside working directory", Display: "Error: path outside working directory"}
 	}
@@ -242,7 +242,7 @@ func (m *Manager) editBatch(ctx context.Context, params map[string]interface{}) 
 			continue
 		}
 		file = normalizePathPlaceholder(file)
-		res := utils.ResolvePath(file)
+		res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), file)
 		if !res.IsValid {
 			results = append(results, map[string]interface{}{"path": filepath.ToSlash(file), "error": "path outside working directory"})
 			continue

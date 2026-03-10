@@ -31,7 +31,7 @@ func (m *Manager) readStructured(ctx context.Context, params map[string]any) Too
 
 	// 使用 utils.ResolvePath 进行统一的路径解析和验证
 	// 它处理了 Windows 下的 / 开头路径、相对路径、路径遍历检查等
-	res := utils.ResolvePath(path)
+	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), path)
 	if !res.IsValid {
 		slog.Error("read.resolve_path.error", "component", utils.ComponentTool, "path", path, "error", res.ErrMsg)
 		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: i18n.T("tool.error.outside_root", lang)}

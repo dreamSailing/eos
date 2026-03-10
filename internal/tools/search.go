@@ -59,7 +59,7 @@ func (m *Manager) searchStructured(ctx context.Context, params map[string]any) T
 		root = "."
 	}
 	root = normalizePathPlaceholder(root)
-	res := utils.ResolvePath(root)
+	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), root)
 	if !res.IsValid {
 		slog.Error("search.out_of_root", "component", utils.ComponentTool, "mode", mode, "pattern", pattern, "path", root, "error", res.ErrMsg)
 		return ToolResult{Type: "tool_result", Tool: "search", Status: "error", Error: "path outside working directory"}

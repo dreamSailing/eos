@@ -19,7 +19,7 @@ func (m *Manager) generateDiffStructured(ctx context.Context, params map[string]
 		return ToolResult{Type: "tool_result", Tool: "generate_diff", Status: "error", Error: i18n.T("tool.error.content_required", lang)}
 	}
 	path = normalizePathPlaceholder(path)
-	res := utils.ResolvePath(path)
+	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), path)
 	if !res.IsValid {
 		return ToolResult{Type: "tool_result", Tool: "generate_diff", Status: "error", Error: i18n.T("tool.error.outside_root", lang)}
 	}
@@ -82,7 +82,7 @@ func (m *Manager) fsDiff(ctx context.Context, params map[string]any) ToolResult 
 		return ToolResult{Type: "tool_result", Tool: "fs", Status: "error", Error: i18n.T("tool.error.content_required", lang)}
 	}
 	path = normalizePathPlaceholder(path)
-	res := utils.ResolvePath(path)
+	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), path)
 	if !res.IsValid {
 		return ToolResult{Type: "tool_result", Tool: "fs", Status: "error", Error: i18n.T("tool.error.outside_root", lang)}
 	}

@@ -16,7 +16,7 @@ func (m *Manager) projectStructureStructured(ctx context.Context, params map[str
 		start = normalizePathPlaceholder(strings.TrimSpace(p))
 	}
 
-	res := utils.ResolvePath(start)
+	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), start)
 	if !res.IsValid {
 		return ToolResult{Type: "tool_result", Tool: ToolProjectStructure, Status: "error", Error: "path outside working directory"}
 	}

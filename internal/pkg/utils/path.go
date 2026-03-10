@@ -29,18 +29,35 @@ type PathResolutionResult struct {
 //
 //	PathResolutionResult: 包含绝对路径、相对路径和验证状态
 func ResolvePath(path string) PathResolutionResult {
+	return ResolvePathUnder("", path)
+}
+
+// ResolvePathUnder 解析文件路径，转换为绝对路径并验证安全性
+// 确保路径在指定 rootDir 范围内（防止路径遍历攻击）。
+//
+// 当 rootDir 为空时，等价于 ResolvePath：以当前工作目录作为 rootDir。
+func ResolvePathUnder(rootDir string, path string) PathResolutionResult {
 	if strings.TrimSpace(path) == "" {
 		return PathResolutionResult{ErrMsg: "path is empty", IsValid: false}
 	}
 
-	wd, err := os.Getwd()
-	if err != nil {
-		slog.Error("path.resolve.getwd.error",
-			"component", ComponentSystem,
-			"error", err,
-		)
-		return PathResolutionResult{ErrMsg: "failed to get working directory", IsValid: false}
+	wd := strings.TrimSpace(rootDir)
+	if wd == "" {
+		var err error
+		wd, err = os.Getwd()
+		if err != nil {
+			slog.Error("path.resolve.getwd.error",
+				"component", ComponentSystem,
+				"error", err,
+			)
+			return PathResolutionResult{ErrMsg: "failed to get working directory", IsValid: false}
+		}
 	}
+	wdAbs, err := filepath.Abs(wd)
+	if err == nil {
+		wd = wdAbs
+	}
+	wd = filepath.Clean(wd)
 
 	// 规范化路径输入
 	normalized := normalizePathInput(expandHomePath(path))
