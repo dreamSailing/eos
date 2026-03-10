@@ -98,5 +98,141 @@ func FixJSONEscapeSequences(data string) string {
 // 用于处理 AI 生成的可能包含无效转义序列的 JSON
 func UnmarshalWithEscapeFix(data string, v any) error {
 	fixed := FixJSONEscapeSequences(data)
-	return json.Unmarshal([]byte(fixed), v)
+	if err := json.Unmarshal([]byte(fixed), v); err != nil {
+		fixed = FixCommonJSONErrors(fixed)
+		return json.Unmarshal([]byte(fixed), v)
+	}
+	return nil
+}
+
+func FixCommonJSONErrors(data string) string {
+	fixed := fixCommaAfterKey(data)
+	fixed = fixTrailingCommas(fixed)
+	return fixed
+}
+
+func fixCommaAfterKey(data string) string {
+	inString := false
+	escape := false
+	stringStartChar := byte(0)
+	braceDepth := 0
+	lastStringEnd := -1
+	expectKey := false
+
+	for i := 0; i < len(data); i++ {
+		ch := data[i]
+
+		if inString {
+			if escape {
+				escape = false
+				continue
+			}
+			if ch == '\\' {
+				escape = true
+				continue
+			}
+			if ch == stringStartChar {
+				inString = false
+				if expectKey && braceDepth > 0 {
+					lastStringEnd = i
+				}
+			}
+			continue
+		}
+
+		switch ch {
+		case '"', '\'':
+			inString = true
+			stringStartChar = ch
+		case '{':
+			braceDepth++
+			expectKey = true
+		case '}':
+			braceDepth--
+			expectKey = false
+		case '[':
+			expectKey = false
+		case ']':
+			expectKey = false
+		case ',':
+			if braceDepth > 0 && lastStringEnd >= 0 && i == lastStringEnd+1 {
+				j := i + 1
+				for j < len(data) && (data[j] == ' ' || data[j] == '\t' || data[j] == '\n' || data[j] == '\r') {
+					j++
+				}
+				if j < len(data) {
+					next := data[j]
+					if next == '"' || next == '\'' || next == '{' || next == '[' ||
+						next == 't' || next == 'f' || next == 'n' ||
+						next == '-' || (next >= '0' && next <= '9') {
+						fixed := data[:i] + ":" + data[i+1:]
+						return fixCommaAfterKey(fixed)
+					}
+				}
+			}
+			if braceDepth > 0 {
+				expectKey = true
+			}
+			lastStringEnd = -1
+		case ':':
+			expectKey = false
+			lastStringEnd = -1
+		case ' ', '\t', '\n', '\r':
+		default:
+			expectKey = false
+			lastStringEnd = -1
+		}
+	}
+
+	return data
+}
+
+func fixTrailingCommas(data string) string {
+	var result strings.Builder
+	result.Grow(len(data))
+
+	inString := false
+	escape := false
+	stringStartChar := byte(0)
+
+	for i := 0; i < len(data); i++ {
+		ch := data[i]
+
+		if inString {
+			result.WriteByte(ch)
+			if escape {
+				escape = false
+				continue
+			}
+			if ch == '\\' {
+				escape = true
+				continue
+			}
+			if ch == stringStartChar {
+				inString = false
+			}
+			continue
+		}
+
+		if ch == '"' || ch == '\'' {
+			inString = true
+			stringStartChar = ch
+			result.WriteByte(ch)
+			continue
+		}
+
+		if ch == ',' {
+			j := i + 1
+			for j < len(data) && (data[j] == ' ' || data[j] == '\t' || data[j] == '\n' || data[j] == '\r') {
+				j++
+			}
+			if j < len(data) && (data[j] == '}' || data[j] == ']') {
+				continue
+			}
+		}
+
+		result.WriteByte(ch)
+	}
+
+	return result.String()
 }
