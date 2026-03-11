@@ -400,6 +400,37 @@ func (o *Ops) Log(limit int, oneline, graph, all bool, path string) (*LogOut, er
 	return &LogOut{Branch: branch, Entries: entries, Text: txt}, nil
 }
 
+type ShowOut struct {
+	Branch   string `json:"branch"`
+	Revision string `json:"revision"`
+	Text     string `json:"text"`
+}
+
+func (o *Ops) Show(revision, path string) (*ShowOut, error) {
+	rev := strings.TrimSpace(revision)
+	if rev == "" {
+		rev = "HEAD"
+	}
+	args := []string{"show", rev}
+	pp := strings.TrimSpace(path)
+	if pp != "" {
+		if filepath.IsAbs(pp) {
+			if rel, e := filepath.Rel(o.Root, pp); e == nil {
+				pp = rel
+			}
+		}
+		pp = filepath.ToSlash(pp)
+		args = append(args, "--", pp)
+	}
+
+	txt, err := o.runGitWithTimeout(30*time.Second, args...)
+	if err != nil {
+		return nil, err
+	}
+	branch, _ := o.branchName()
+	return &ShowOut{Branch: branch, Revision: rev, Text: txt}, nil
+}
+
 type StashEntry struct {
 	Index   int    `json:"index"`
 	Ref     string `json:"ref"`

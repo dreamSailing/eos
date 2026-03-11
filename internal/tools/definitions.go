@@ -57,6 +57,7 @@ const (
 	ToolGitPush          = "git_push"
 	ToolGitDiff          = "git_diff"
 	ToolGitLog           = "git_log"
+	ToolGitShow          = "git_show"
 	ToolGitStash         = "git_stash"
 	ToolGitReset         = "git_reset"
 	ToolGitRevert        = "git_revert"
@@ -531,6 +532,20 @@ func GetAllToolDefinitions() []ToolDefinition {
 				{Description: "查看最近 20 条提交（单行）", Input: map[string]any{"limit": 20, "oneline": true}},
 				{Description: "查看全引用提交图（前 50 条）", Input: map[string]any{"limit": 50, "oneline": true, "graph": true, "all": true}},
 				{Description: "查看某文件的提交历史", Input: map[string]any{"limit": 30, "path": "internal/tools/manager_execute.go"}},
+			},
+		},
+		{
+			Name:        ToolGitShow,
+			Description: "查看指定提交的详情（默认 HEAD），可选限定路径",
+			Params: map[string]*schema.ParameterInfo{
+				"revision": {Type: schema.String, Required: false, Desc: "提交引用（默认 HEAD，如 HEAD~1、<hash>）"},
+				"path":     {Type: schema.String, Required: false, Desc: "可选：仅显示该路径在该提交中的变化"},
+			},
+			RiskLevel: RiskLevelLow,
+			Examples: []ToolExample{
+				{Description: "查看 HEAD 提交详情", Input: map[string]any{}},
+				{Description: "查看指定提交详情", Input: map[string]any{"revision": "HEAD~1"}},
+				{Description: "查看提交中某文件变化", Input: map[string]any{"revision": "abc1234", "path": "internal/tools/manager_types.go"}},
 			},
 		},
 		{

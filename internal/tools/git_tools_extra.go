@@ -63,6 +63,43 @@ func (m *Manager) gitLogStructured(ctx context.Context, params map[string]interf
 	return ToolResult{Type: "tool_result", Tool: ToolGitLog, Status: "success", Data: data, Display: display}
 }
 
+func (m *Manager) gitShowStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	revision, _ := params["revision"].(string)
+	revision = strings.TrimSpace(revision)
+	if revision == "" {
+		revision = "HEAD"
+	}
+
+	p, _ := params["path"].(string)
+	p = strings.TrimSpace(p)
+	if p != "" {
+		p = normalizePathPlaceholder(p)
+		res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), p)
+		if !res.IsValid {
+			return ToolResult{Type: "tool_result", Tool: ToolGitShow, Status: "error", Error: "path outside working directory"}
+		}
+		p = res.AbsPath
+	}
+
+	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
+	out, err := ops.Show(revision, p)
+	if err != nil {
+		slog.Error("git_show.error", "component", utils.ComponentTool, "revision", revision, "err", err.Error())
+		return ToolResult{Type: "tool_result", Tool: ToolGitShow, Status: "error", Error: fmt.Sprintf("%v", err)}
+	}
+
+	data := map[string]interface{}{
+		"branch":   out.Branch,
+		"revision": out.Revision,
+		"text":     out.Text,
+	}
+	display := strings.TrimSpace(out.Text)
+	if display == "" {
+		display = "git_show " + revision
+	}
+	return ToolResult{Type: "tool_result", Tool: ToolGitShow, Status: "success", Data: data, Display: display}
+}
+
 func (m *Manager) gitStashStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	action, _ := params["action"].(string)
 	action = strings.ToLower(strings.TrimSpace(action))

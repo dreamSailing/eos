@@ -3,11 +3,9 @@ package runtime
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 
-	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -95,6 +93,7 @@ func AllowedTools(role string) map[string]bool {
 		tools.ToolGitStatus: true,
 		tools.ToolGitDiff:   true,
 		tools.ToolGitLog:    true,
+		tools.ToolGitShow:   true,
 		strings.ToLower(tools.ToolProjectStructure): true,
 	}
 	rwDev := map[string]bool{
@@ -176,80 +175,6 @@ func RoleInstruction(role string) string {
 	default:
 		return RoleDefaultPrompt
 	}
-}
-
-func invokeRoleAgent(ctx context.Context, in []*schema.Message, role string, agent *react.Agent, onMeta func(string), onReasoning func(string), mcpToolsInfo string) ([]*schema.Message, error) {
-	if agent == nil {
-		return nil, fmt.Errorf("agent for role %s not initialized", role)
-	}
-
-	LogDebug("runtime.role_agent.invoke.start", "role", role, "input_messages", len(in))
-
-	roleNorm := strings.ToLower(strings.TrimSpace(role))
-	// 子 agent 使用角色的完整工具集
-	allowed := AllowedTools(roleNorm)
-	base := in
-	task := ""
-	if len(in) > 0 {
-		if d, ok := parseDispatchDirective(in[len(in)-1]); ok {
-			if strings.EqualFold(strings.TrimSpace(d.Type), "assign") {
-				base = in[:len(in)-1]
-				r := strings.ToLower(strings.TrimSpace(d.Role))
-				if r != "" && r == roleNorm {
-					allowed = intersectAllowedTools(allowed, d.ToolsAllowed)
-					task = strings.TrimSpace(d.Task)
-					LogDebug("runtime.role_agent.dispatch",
-						"role", role,
-						"task", task,
-						"available_tools_count", len(allowed))
-				}
-			}
-		} else {
-			// 检查是否有任务分配事件
-			lastMsg := in[len(in)-1]
-			for _, line := range strings.Split(lastMsg.Content, "\n") {
-				if strings.Contains(line, EventAgentTask+":") {
-					task = strings.TrimSpace(strings.TrimPrefix(line, EventAgentTask+":"))
-					LogDebug("runtime.role_agent.agent_task", "role", role, "task", task)
-					break
-				}
-			}
-		}
-	}
-	ctx = tools.WithRole(ctx, role)
-	ctx = tools.WithAllowedTools(ctx, allowed)
-
-	// 使用更丰富的提示词
-	instruction := RoleInstruction(role)
-	if task != "" {
-		instruction += "\n\n当前任务: " + task
-	}
-	if mcpToolsInfo != "" {
-		instruction += "\n\n" + mcpToolsInfo
-	}
-
-	msgs := append([]*schema.Message{schema.SystemMessage(instruction)}, base...)
-
-	LogDebug("runtime.role_agent.invoke", "role", role, "task", task, "allowed_tools_count", len(allowed))
-
-	// 调用 Agent
-	out, err := agent.Generate(ctx, msgs)
-	if err != nil {
-		return nil, wrapMaxStepError(err)
-	}
-
-	// 先处理推理内容（如果有）
-	if onReasoning != nil && out.ReasoningContent != "" {
-		onReasoning(out.ReasoningContent)
-		LogDebug("runtime.role_agent.reasoning", "role", role, "length", len(out.ReasoningContent))
-	}
-
-	// 发送 agent.final 事件，使子 Agent 输出显示为白色圆点（区别于调度 Agent 的绿色圆点）
-	if onMeta != nil && out.Content != "" {
-		onMeta(EventAgentFinal + ":" + out.Content)
-	}
-
-	return append(base, out), nil
 }
 
 func converterNode(ctx context.Context, in []*schema.Message) (*schema.Message, error) {

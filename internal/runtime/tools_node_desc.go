@@ -32,7 +32,7 @@ func getToolCategories() []toolCategory {
 		},
 		{
 			Name:     "Git 版本控制",
-			ToolKeys: []string{tools.ToolGitStatus, tools.ToolGitDiff, tools.ToolGitLog, tools.ToolGitAdd, tools.ToolGitCommit, tools.ToolGitBranchList, tools.ToolGitCheckout, tools.ToolGitInit, tools.ToolGitPull, tools.ToolGitPush, tools.ToolGitStash, tools.ToolGitReset, tools.ToolGitRevert, tools.ToolGitMerge, tools.ToolGitRebase},
+			ToolKeys: []string{tools.ToolGitStatus, tools.ToolGitDiff, tools.ToolGitLog, tools.ToolGitShow, tools.ToolGitAdd, tools.ToolGitCommit, tools.ToolGitBranchList, tools.ToolGitCheckout, tools.ToolGitInit, tools.ToolGitPull, tools.ToolGitPush, tools.ToolGitStash, tools.ToolGitReset, tools.ToolGitRevert, tools.ToolGitMerge, tools.ToolGitRebase},
 		},
 		{
 			Name:     "规划与任务",

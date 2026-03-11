@@ -68,6 +68,7 @@ func NewManager() *Manager {
 		ToolGitPush:          m.gitPushStructured,
 		ToolGitDiff:          m.gitDiffStructured,
 		ToolGitLog:           m.gitLogStructured,
+		ToolGitShow:          m.gitShowStructured,
 		ToolGitStash:         m.gitStashStructured,
 		ToolGitReset:         m.gitResetStructured,
 		ToolGitRevert:        m.gitRevertStructured,

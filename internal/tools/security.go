@@ -192,7 +192,7 @@ func ClassifyToolDanger(call ToolCall) (category string, level string, summary s
 		return "git-init", "medium", "git init", true
 	case ToolGitAdd:
 		return "git-add", "low", "git add", false
-	case ToolGitStatus, ToolGitBranchList, ToolGitDiff, ToolGitLog:
+	case ToolGitStatus, ToolGitBranchList, ToolGitDiff, ToolGitLog, ToolGitShow:
 		return "", "low", call.Tool, false
 	}
 

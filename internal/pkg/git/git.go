@@ -124,6 +124,16 @@ func (m *Manager) HandleCommand(ui UI, name []string) bool {
 				}
 			}
 			tc = tools.ToolCall{Tool: "git_log", Parameters: map[string]interface{}{"limit": limit, "oneline": oneline, "graph": graph, "all": all, "path": path}}
+		case "show":
+			revision := "HEAD"
+			path := ""
+			if len(name) >= 3 {
+				revision = strings.TrimSpace(name[2])
+			}
+			if len(name) >= 4 {
+				path = strings.TrimSpace(name[3])
+			}
+			tc = tools.ToolCall{Tool: "git_show", Parameters: map[string]interface{}{"revision": revision, "path": path}}
 		case "stash":
 			action := "list"
 			if len(name) >= 3 {
@@ -182,7 +192,7 @@ func (m *Manager) HandleCommand(ui UI, name []string) bool {
 			return m.ExecuteToolCall(ui, tc)
 		}
 	}
-	ui.WriteLine("yellow", "Usage: /git status|branches|add <paths...>|commit <msg>|checkout <name> [create]|init|diff <path>|pull [remote] [branch]|push [remote] [branch]|log [graph] [all] [limit] [path]|stash [list|save|pop|apply|drop] [args...]|reset <soft|mixed|hard> <target>|revert <commit>|merge <branch>|rebase <upstream>|rebase <continue|abort|skip>")
+	ui.WriteLine("yellow", "Usage: /git status|branches|add <paths...>|commit <msg>|checkout <name> [create]|init|diff <path>|pull [remote] [branch]|push [remote] [branch]|log [graph] [all] [limit] [path]|show [revision] [path]|stash [list|save|pop|apply|drop] [args...]|reset <soft|mixed|hard> <target>|revert <commit>|merge <branch>|rebase <upstream>|rebase <continue|abort|skip>")
 	return false
 }
 
