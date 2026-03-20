@@ -75,6 +75,8 @@ type promptResolveParams struct {
 	PolicyID        string `json:"policyID,omitempty"`
 	CorrelationID   string `json:"correlationID,omitempty"`
 	ApproverTraceID string `json:"approverTraceID,omitempty"`
+	Option          string `json:"option,omitempty"`
+	Text            string `json:"text,omitempty"`
 }
 
 type toolCancelParams struct {

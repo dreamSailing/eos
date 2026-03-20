@@ -518,6 +518,7 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	tools.SetPendingDiff = hooks.SetPendingDiff
 	tools.ClearReviewText = hooks.ClearReviewText
 	tools.UserConfirmPrompt = rc.userConfirmPrompt
+	tools.AskUserQuestionPrompt = rc.askUserQuestionPrompt
 	tools.OnToolCall = func(id string, toolName string) {
 		rc.RecordToolCall(id, toolName)
 	}

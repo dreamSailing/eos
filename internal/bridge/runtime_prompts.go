@@ -211,3 +211,31 @@ func (rc *RuntimeCore) userConfirmPrompt(ctx context.Context, req tools.UserConf
 		Text:        strings.TrimSpace(r.Text),
 	}, nil
 }
+
+func (rc *RuntimeCore) askUserQuestionPrompt(ctx context.Context, req tools.AskUserQuestionRequest) (tools.AskUserQuestionResponse, error) {
+	question := strings.TrimSpace(req.Question)
+	if question == "" {
+		return tools.AskUserQuestionResponse{}, errors.New("question required")
+	}
+	opts := make([]string, 0, len(req.Options))
+	for _, s := range req.Options {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			opts = append(opts, s)
+		}
+	}
+
+	r, err := rc.waitPrompt(ctx, PromptRequest{
+		Kind:     "inquiry",
+		Question: question,
+		Options:  opts,
+	})
+	if err != nil {
+		return tools.AskUserQuestionResponse{}, err
+	}
+
+	return tools.AskUserQuestionResponse{
+		Option: strings.TrimSpace(r.Option),
+		Text:   strings.TrimSpace(r.Text),
+	}, nil
+}

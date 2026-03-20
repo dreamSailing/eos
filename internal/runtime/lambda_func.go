@@ -89,6 +89,7 @@ func AllowedTools(role string) map[string]bool {
 		tools.ToolTodoRead:  true,
 		tools.ToolUserInput: true,
 		tools.ToolUserSelect: true,
+		tools.ToolAskUserQuestion: true,
 		"vision_parse":      true,
 		tools.ToolGitStatus: true,
 		tools.ToolGitDiff:   true,

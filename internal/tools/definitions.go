@@ -64,11 +64,25 @@ const (
 	ToolGitMerge         = "git_merge"
 	ToolGitRebase        = "git_rebase"
 	ToolProjectStructure = "ProjectStructure"
+	ToolAskUserQuestion  = "ask_user_question"
 )
 
 // GetAllToolDefinitions 返回所有工具的定义
 func GetAllToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
+		{
+			Name:        ToolAskUserQuestion,
+			Description: "向用户提问并获取用户的选择或文本回答。可提供选项列表。",
+			Params: map[string]*schema.ParameterInfo{
+				"question": {Type: schema.String, Required: true, Desc: "要询问用户的问题"},
+				"options":  {Type: schema.Array, Required: false, Desc: "可选：提供给用户的选项列表（字符串数组）"},
+			},
+			RiskLevel: RiskLevelLow,
+			Examples: []ToolExample{
+				{Description: "询问用户一个开放性问题", Input: map[string]any{"question": "你需要什么帮助？"}},
+				{Description: "询问用户并提供选项", Input: map[string]any{"question": "选择操作模式", "options": []string{"自动", "手动"}}},
+			},
+		},
 		{
 			Name:        ToolTimeNow,
 			Description: "获取本机当前日期时间（本地时区），并返回常用格式（本地/UTC、Unix 时间戳等）。",

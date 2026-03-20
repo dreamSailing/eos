@@ -80,6 +80,7 @@ func NewManager() *Manager {
 		ToolProjectStructure: m.projectStructureStructured,
 		ToolMCPStatus:        m.mcpStatusStructured,
 		ToolSkillsList:       m.skillsListStructured,
+		ToolAskUserQuestion:  m.askUserQuestionStructured,
 	}
 	return m
 }

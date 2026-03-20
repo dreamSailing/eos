@@ -22,6 +22,7 @@ type Event struct {
 	Type      string
 	RequestID string
 	Message   string
+	Data      map[string]any
 }
 
 type Runtime struct {
@@ -150,6 +151,14 @@ func (r *Runtime) ResolveConfirmation(requestID string, approve bool) {
 		decision = "allow_once"
 	}
 	r.core.SubmitPromptResponse(requestID, bridge.PromptResponse{Decision: decision})
+}
+
+func (r *Runtime) ResolveInquiry(requestID string, option, text string) {
+	r.core.SubmitPromptResponse(requestID, bridge.PromptResponse{
+		Decision: "resolve",
+		Option:   option,
+		Text:     text,
+	})
 }
 
 func (r *Runtime) Close() {
@@ -837,7 +846,10 @@ func mapBridgeEvent(ev bridge.Event) (Event, bool) {
 		if v, ok := ev.Data["question"].(string); ok && strings.TrimSpace(v) != "" {
 			msg = strings.TrimSpace(v)
 		}
-		return Event{Type: "ConfirmRequired", RequestID: ev.RID, Message: msg}, true
+		if kind, ok := ev.Data["kind"].(string); ok && kind == "inquiry" {
+			return Event{Type: "Inquiry", RequestID: ev.RID, Message: msg, Data: ev.Data}, true
+		}
+		return Event{Type: "ConfirmRequired", RequestID: ev.RID, Message: msg, Data: ev.Data}, true
 	case "final":
 		return Event{Type: "TextFinal", RequestID: ev.RID, Message: ev.Content}, true
 	case "error":

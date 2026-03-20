@@ -61,6 +61,8 @@ type approval struct {
 	used        bool
 	policyID    string
 	reason      string
+	option      string
+	text        string
 }
 
 func NewServer(opts Options, in io.Reader, out io.Writer, errw io.Writer, toolsSvc toolapi.Services) (*Server, error) {
@@ -475,7 +477,7 @@ func (s *Server) handlePromptResolve(req rpcRequest) {
 	}
 
 	decision := strings.ToLower(strings.TrimSpace(p.Decision))
-	if decision != "deny" && decision != "allow_once" && decision != "allow_session" {
+	if decision != "deny" && decision != "allow_once" && decision != "allow_session" && decision != "resolve" {
 		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams", Data: map[string]any{"field": "decision"}})
 		return
 	}
@@ -484,6 +486,8 @@ func (s *Server) handlePromptResolve(req rpcRequest) {
 	a.decision = decision
 	a.policyID = strings.TrimSpace(p.PolicyID)
 	a.reason = strings.TrimSpace(p.Reason)
+	a.option = p.Option
+	a.text = p.Text
 	if decision == "allow_session" {
 		sess.allowSession[a.digest] = time.Now().Add(10 * time.Minute)
 	}
@@ -597,6 +601,38 @@ func (s *Server) executeTool(ctx context.Context, sess *session, call toolCallDT
 		}
 	}
 
+	if call.Tool == "ask_user_question" {
+		if a, ok := s.getResolvedInquiry(sess, call, digest); ok {
+			s.notify(eventDTO{
+				Type:      "ToolCall",
+				Ts:        time.Now().Unix(),
+				SessionID: sess.id,
+				Call:      call,
+			})
+			res := toolapi.ToolResult{
+				ID:     call.ID,
+				Type:   "tool_result",
+				Tool:   call.Tool,
+				Status: "success",
+				Data: map[string]any{
+					"option": a.option,
+					"text":   a.text,
+				},
+				Display: "User answered",
+				Ts:      time.Now().Unix(),
+			}
+			s.notify(eventDTO{
+				Type:      "ToolResult",
+				Ts:        time.Now().Unix(),
+				SessionID: sess.id,
+				Result:    res,
+			})
+			return res, nil
+		}
+		requestID := s.ensurePendingInquiry(sess, call, digest)
+		return nil, &rpcError{Code: -32009, Message: "InquiryRequired", Data: map[string]any{"requestID": requestID}}
+	}
+
 	s.notify(eventDTO{
 		Type:      "ToolCall",
 		Ts:        time.Now().Unix(),
@@ -690,6 +726,77 @@ func (s *Server) ensurePendingApproval(sess *session, call toolCallDTO, preview 
 			"relatedCallID":  call.ID,
 			"call":           call,
 			"preview":        preview,
+			"approvalDigest": digest,
+			"ttlSeconds":     ttl,
+		},
+	})
+	return requestID
+}
+
+func (s *Server) getResolvedInquiry(sess *session, call toolCallDTO, digest string) (*approval, bool) {
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range sess.approvals {
+		if a.callID != call.ID {
+			continue
+		}
+		if a.digest != digest {
+			continue
+		}
+		if now.After(a.expiresAt) {
+			continue
+		}
+		if a.decision == "resolve" && !a.used {
+			a.used = true
+			return a, true
+		}
+	}
+	return nil, false
+}
+
+func (s *Server) ensurePendingInquiry(sess *session, call toolCallDTO, digest string) string {
+	now := time.Now().Unix()
+	ttl := int64(3600) // 1 hour
+	expiresAt := time.Now().Add(time.Duration(ttl) * time.Second)
+	requestID := "i_" + uuid.New().String()[:12]
+
+	s.mu.Lock()
+	sess.approvals[requestID] = &approval{
+		requestID:  requestID,
+		callID:     call.ID,
+		tool:       call.Tool,
+		parameters: cloneMap(call.Parameters),
+		digest:     digest,
+		expiresAt:  expiresAt,
+	}
+	s.mu.Unlock()
+
+	var question string
+	if q, ok := call.Parameters["question"].(string); ok {
+		question = q
+	}
+
+	var options []string
+	if opts, ok := call.Parameters["options"].([]interface{}); ok {
+		for _, opt := range opts {
+			if str, ok := opt.(string); ok {
+				options = append(options, str)
+			}
+		}
+	} else if opts, ok := call.Parameters["options"].([]string); ok {
+		options = opts
+	}
+
+	s.notify(eventDTO{
+		Type:      "PromptRequest",
+		Ts:        now,
+		SessionID: sess.id,
+		Request: map[string]any{
+			"requestID":      requestID,
+			"kind":           "inquiry",
+			"question":       question,
+			"options":        options,
 			"approvalDigest": digest,
 			"ttlSeconds":     ttl,
 		},
