@@ -101,6 +101,10 @@ export VB_MODEL="gpt-4o-mini"
 - `/settings` `/lsp` `/rules` `/lang` `/compact`
 - `/init`：在当前工作区初始化 `VB.md`
 
+## 服务模式 API
+
+- CLI 对外 API（`vb-coding serve`）：[internal/docs/serve/API.md](./internal/docs/serve/API.md)
+
 ## 项目结构（简版）
 
 ```text
