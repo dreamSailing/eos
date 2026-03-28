@@ -454,7 +454,7 @@ func (r *Runtime) GetSettings() Settings {
 	return Settings{
 		Language:       cur.Language,
 		Theme:          cur.Theme,
-		MidRiskConfirm: true,
+		MidRiskConfirm: false,
 	}
 }
 
@@ -868,22 +868,26 @@ func mapBridgeEvent(ev bridge.Event) (Event, bool) {
 
 func toRuntimeMode(mode string) string {
 	switch strings.TrimSpace(mode) {
+	case "手动确认", "manual":
+		return "manual"
 	case "计划优先", "plan":
 		return "plan"
 	case "自动无人值守", "auto":
 		return "auto"
 	default:
-		return "manual"
+		return "auto"
 	}
 }
 
 func fromRuntimeMode(mode string) string {
 	switch strings.TrimSpace(strings.ToLower(mode)) {
+	case "manual":
+		return "手动确认"
 	case "plan":
 		return "计划优先"
 	case "auto":
 		return "自动无人值守"
 	default:
-		return "手动确认"
+		return "自动无人值守"
 	}
 }

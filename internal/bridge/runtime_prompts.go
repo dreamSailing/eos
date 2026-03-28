@@ -12,6 +12,33 @@ import (
 	"github.com/google/uuid"
 )
 
+var autoModePromptCategories = map[string]bool{
+	"tool-delete":       true,
+	"delete_file":       true,
+	"git-push":          true,
+	"git-reset":         true,
+	"git-revert":        true,
+	"git-merge":         true,
+	"git-rebase":        true,
+	"git-stash-apply":   true,
+	"git-stash-drop":    true,
+	"bg-task-start":     true,
+	"bg-task-kill":      true,
+	"bash-session-kill": true,
+}
+
+func promptNeedsSafetyConfirmation(kind PromptKind, category, summary string) bool {
+	if kind != PromptKindPermission {
+		return false
+	}
+	category = strings.ToLower(strings.TrimSpace(category))
+	summary = strings.ToLower(strings.TrimSpace(summary))
+	if autoModePromptCategories[category] {
+		return true
+	}
+	return strings.Contains(summary, "restore checkpoint") || strings.Contains(summary, "恢复检查点")
+}
+
 type PromptKind string
 
 const (
@@ -95,7 +122,11 @@ func (rc *RuntimeCore) waitPrompt(ctx context.Context, req PromptRequest) (Promp
 			desktopEnabled = *s.DesktopNotifications
 		}
 	}
-	if desktopEnabled && rc.securityMgr != nil && rc.securityMgr.ExecutionMode() != "auto" {
+	shouldNotify := desktopEnabled
+	if shouldNotify && rc.securityMgr != nil && rc.securityMgr.ExecutionMode() == "auto" {
+		shouldNotify = promptNeedsSafetyConfirmation(req.Kind, req.Category, req.Summary)
+	}
+	if shouldNotify {
 		switch req.Kind {
 		case PromptKindPermission, PromptKindUserConfirm:
 			title := strings.TrimSpace(req.Title)
@@ -138,7 +169,7 @@ func (rc *RuntimeCore) waitPrompt(ctx context.Context, req PromptRequest) (Promp
 }
 
 func (rc *RuntimeCore) promptPermission(ctx context.Context, category, summary string) string {
-	if rc != nil && rc.securityMgr != nil && rc.securityMgr.ExecutionMode() == "auto" {
+	if rc != nil && rc.securityMgr != nil && rc.securityMgr.ExecutionMode() == "auto" && !promptNeedsSafetyConfirmation(PromptKindPermission, category, summary) {
 		rc.ClearPendingDiff()
 		return "allow"
 	}

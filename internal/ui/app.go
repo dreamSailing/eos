@@ -18,16 +18,16 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/pkg/clip"
 	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
 	"github.com/dreamSailing/vb-coding/internal/state"
+	"github.com/dreamSailing/vb-coding/internal/tools/bg"
 	"github.com/dreamSailing/vb-coding/internal/ui/adapter"
 	"github.com/dreamSailing/vb-coding/internal/ui/components/messages"
 	"github.com/dreamSailing/vb-coding/internal/ui/features/slash"
 	"github.com/dreamSailing/vb-coding/internal/ui/panels"
 	"github.com/dreamSailing/vb-coding/internal/ui/styles"
-	"github.com/dreamSailing/vb-coding/internal/ui/views/help"
 	"github.com/dreamSailing/vb-coding/internal/ui/views/confirm"
+	"github.com/dreamSailing/vb-coding/internal/ui/views/help"
 	"github.com/dreamSailing/vb-coding/internal/ui/views/setup"
 	"github.com/dreamSailing/vb-coding/internal/ui/views/shell"
-	"github.com/dreamSailing/vb-coding/internal/tools/bg"
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
@@ -62,8 +62,8 @@ type AppModel struct {
 	activePanel string
 
 	// 其他视图
-	helpView  *help.HelpView
-	setupView interface{} // 可以是 *setup.SetupView 或 *setup.ModelSetupView
+	helpView    *help.HelpView
+	setupView   interface{} // 可以是 *setup.SetupView 或 *setup.ModelSetupView
 	confirmView *confirm.Model
 	prevView    string
 
@@ -161,6 +161,7 @@ func (m *AppModel) refreshAILive() {
 }
 
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+
 func (m *AppModel) copyMarks() []string {
 	marks := []string{
 		i18n.T("op.copy", m.state.Language),
@@ -247,9 +248,9 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 		modelBase = "(none)"
 	}
 	shellModel.SetWelcomeInfo(modelName, modelBase, "")
-	shellModel.SetExecutionMode("manual")
+	shellModel.SetExecutionMode("auto")
 	shellModel.SetThinkingExpanded(false)
-	adapter.GetCore().SetExecutionMode("manual")
+	adapter.GetCore().SetExecutionMode("auto")
 
 	// 创建面板
 	panelMap := make(map[string]panels.Panel)
@@ -299,17 +300,17 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 			Mode:          "ai",
 			Language:      lang,
 			Theme:         "dark",
-			ExecutionMode: "manual",
+			ExecutionMode: "auto",
 		},
-		adapter:     adapter,
-		styles:      styles,
-		msgRenderer: messages.NewRenderer(styles, 80),
-		shell:       &shellModel,
-		panels:      panelMap,
-		helpView:    help.NewHelpView(styles, lang),
-		setupView:   setupView,
-		activeView:  activeView,
-		activePanel: "",
+		adapter:      adapter,
+		styles:       styles,
+		msgRenderer:  messages.NewRenderer(styles, 80),
+		shell:        &shellModel,
+		panels:       panelMap,
+		helpView:     help.NewHelpView(styles, lang),
+		setupView:    setupView,
+		activeView:   activeView,
+		activePanel:  "",
 		toolInflight: make(map[string]toolTrack),
 		history:      make([]historyEntry, 0, 128),
 	}
@@ -1238,10 +1239,10 @@ This file provides guidance to VB Coding when working with code in this reposito
 
 ## Build and Development Commands
 
-` + "```bash" + `
+`+"```bash"+`
 go test ./...
 go build -o vb-coding
-` + "```" + `
+`+"```"+`
 
 ## Repository Map
 
@@ -1998,32 +1999,6 @@ func (m *AppModel) pasteClipboardImage() tea.Cmd {
 	return func() tea.Msg { return nil }
 }
 
-func (m *AppModel) cycleExecutionMode() tea.Cmd {
-	if m.state.Processing {
-		return nil
-	}
-	switch strings.ToLower(strings.TrimSpace(m.state.ExecutionMode)) {
-	case "manual":
-		m.state.ExecutionMode = "plan"
-	case "plan":
-		m.state.ExecutionMode = "auto"
-	default:
-		m.state.ExecutionMode = "manual"
-	}
-	if m.shell != nil {
-		m.shell.SetExecutionMode(m.state.ExecutionMode)
-	}
-	if m.adapter != nil {
-		m.adapter.GetCore().SetExecutionMode(m.state.ExecutionMode)
-	}
-	label := i18n.T("exec_mode."+m.state.ExecutionMode, m.state.Language)
-	if strings.TrimSpace(label) == "" {
-		label = m.state.ExecutionMode
-	}
-	m.appendSystem(i18n.T("exec_mode.switched", m.state.Language, label), "info")
-	return func() tea.Msg { return nil }
-}
-
 func (m *AppModel) toggleThinkingExpand() tea.Cmd {
 	m.thinkingExpanded = !m.thinkingExpanded
 	if m.shell != nil {
@@ -2090,8 +2065,6 @@ func (m *AppModel) handleGlobalKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "alt+v":
 		return m.pasteClipboardImage()
-	case "alt+m":
-		return m.cycleExecutionMode()
 	case "alt+h":
 		if m.activeView == "shell" && m.shell != nil && m.shell.GetMode() == shell.ModeAI && state.Thinking() {
 			return m.toggleThinkingExpand()

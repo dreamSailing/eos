@@ -817,11 +817,6 @@ func (m Model) renderStatusBar() string {
 		}
 		leftParts = append(leftParts, thinkingPart)
 
-		mode := m.executionMode
-		if mode == "" {
-			mode = "auto"
-		}
-		leftParts = append(leftParts, m.styles.TextMuted.Render(i18n.T("status.plan", m.language)+":"+i18n.T("exec_mode."+mode, m.language)))
 	}
 
 	if m.processing {

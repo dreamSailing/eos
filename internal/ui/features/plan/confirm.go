@@ -12,20 +12,19 @@ type ConfirmMode int
 
 const (
 	ModeAuto ConfirmMode = iota
-	ModeManual
 	ModeEdit
 )
 
 // ConfirmModel 计划确认模型
 type ConfirmModel struct {
-	width       int
-	height      int
-	plan        string
-	mode        ConfirmMode
-	selected    int
-	onConfirm   func(ConfirmMode)
-	onCancel    func()
-	styles      *ConfirmStyles
+	width     int
+	height    int
+	plan      string
+	mode      ConfirmMode
+	selected  int
+	onConfirm func(ConfirmMode)
+	onCancel  func()
+	styles    *ConfirmStyles
 }
 
 // ConfirmStyles 确认面板样式
@@ -96,9 +95,6 @@ func (m *ConfirmModel) Update(msg tea.Msg) (*ConfirmModel, tea.Cmd) {
 			m.mode = ModeAuto
 		case "2":
 			m.selected = 1
-			m.mode = ModeManual
-		case "3":
-			m.selected = 2
 			m.mode = ModeEdit
 		case "up":
 			if m.selected > 0 {
@@ -106,7 +102,7 @@ func (m *ConfirmModel) Update(msg tea.Msg) (*ConfirmModel, tea.Cmd) {
 			}
 			m.mode = ConfirmMode(m.selected)
 		case "down":
-			if m.selected < 2 {
+			if m.selected < 1 {
 				m.selected++
 			}
 			m.mode = ConfirmMode(m.selected)
@@ -156,8 +152,7 @@ func (m *ConfirmModel) View() string {
 		desc string
 	}{
 		{"1", "Auto", "Execute all steps automatically"},
-		{"2", "Manual", "Confirm each step before execution"},
-		{"3", "Edit", "Modify the plan before execution"},
+		{"2", "Edit", "Revise the plan before execution"},
 	}
 
 	for i, opt := range options {
@@ -173,7 +168,7 @@ func (m *ConfirmModel) View() string {
 
 	content.WriteString("\n")
 	content.WriteString(m.styles.Description.Render(
-		"Enter: confirm | Esc: cancel | ↑/↓: select | 1/2/3: quick select"))
+		"Enter: confirm | Esc: cancel | ↑/↓: select | 1/2: quick select"))
 
 	return m.styles.Panel.Render(content.String())
 }

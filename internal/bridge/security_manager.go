@@ -1,9 +1,9 @@
 package bridge
 
 import (
+	"github.com/dreamSailing/vb-coding/internal/runtime"
 	"strings"
 	"sync"
-	"github.com/dreamSailing/vb-coding/internal/runtime"
 )
 
 // SecurityManager 管理权限和安全钩子
@@ -20,17 +20,17 @@ type SecurityManager struct {
 func NewSecurityManager() *SecurityManager {
 	return &SecurityManager{
 		permsAllowSession: make(map[string]bool),
-		executionMode:     "manual",
+		executionMode:     "auto",
 	}
 }
 
 func (s *SecurityManager) SetExecutionMode(mode string) {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	if mode == "" {
-		mode = "manual"
+		mode = "auto"
 	}
 	if mode != "manual" && mode != "plan" && mode != "auto" {
-		mode = "manual"
+		mode = "auto"
 	}
 	s.permMu.Lock()
 	s.executionMode = mode

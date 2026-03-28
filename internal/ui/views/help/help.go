@@ -113,7 +113,6 @@ func (h *HelpView) View() string {
 	b.WriteString(h.styles.TextInfo.Render(i18n.T("help.global", lang) + "\n"))
 	b.WriteString(h.renderKey("F2", i18n.T("help.key.f2", lang)) + "\n")
 	b.WriteString(h.renderKey("Tab", i18n.T("help.key.tab", lang)) + "\n")
-	b.WriteString(h.renderKey("Alt+M", i18n.T("help.key.alt_m", lang)) + "\n")
 	b.WriteString(h.renderKey("Alt+V", i18n.T("help.key.alt_v", lang)) + "\n")
 	b.WriteString(h.renderKey("Ctrl+J", i18n.T("help.key.ctrl_j", lang)) + "\n")
 	b.WriteString(h.renderKey("Esc Esc", i18n.T("help.key.esc_esc", lang)) + "\n")

@@ -12,7 +12,7 @@ func TestToRuntimeMode(t *testing.T) {
 	if got := toRuntimeMode("自动无人值守"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := toRuntimeMode("unknown"); got != "manual" {
+	if got := toRuntimeMode("unknown"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
 }
@@ -27,7 +27,7 @@ func TestFromRuntimeMode(t *testing.T) {
 	if got := fromRuntimeMode("auto"); got != "自动无人值守" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := fromRuntimeMode("unknown"); got != "手动确认" {
+	if got := fromRuntimeMode("unknown"); got != "自动无人值守" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
 }
