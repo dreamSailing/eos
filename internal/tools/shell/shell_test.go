@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMvdanExecutor_Execute(t *testing.T) {
@@ -12,11 +13,11 @@ func TestMvdanExecutor_Execute(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name       string
-		command    string
-		wantErr    bool
-		contains   string
-		skipOnWin  bool
+		name      string
+		command   string
+		wantErr   bool
+		contains  string
+		skipOnWin bool
 	}{
 		{
 			name:     "echo simple",
@@ -190,5 +191,33 @@ func TestSetExecutor(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "set_executor") {
 		t.Errorf("stdout = %q, want to contain 'set_executor'", stdout)
+	}
+}
+
+func TestShell_StartAsyncWithWorkingDir(t *testing.T) {
+	shell := NewShell()
+	dir := t.TempDir()
+
+	id, err := shell.StartAsyncWithWorkingDir("pwd", dir)
+	if err != nil {
+		t.Fatalf("StartAsyncWithWorkingDir error: %v", err)
+	}
+	t.Cleanup(func() { _ = shell.Kill(id) })
+
+	var stdout string
+	for i := 0; i < 20; i++ {
+		var done bool
+		stdout, _, done, err = shell.Output(id)
+		if err != nil {
+			t.Fatalf("Output error: %v", err)
+		}
+		if done {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	if !strings.Contains(strings.ReplaceAll(stdout, "\\", "/"), strings.ReplaceAll(dir, "\\", "/")) {
+		t.Fatalf("expected output %q to contain working dir %q", stdout, dir)
 	}
 }

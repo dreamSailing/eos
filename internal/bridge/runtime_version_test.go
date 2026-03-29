@@ -1,10 +1,11 @@
 package bridge
 
 import (
+	codectx "github.com/dreamSailing/vb-coding/internal/context"
+	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
 	"os"
 	"path/filepath"
 	"testing"
-	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
 )
 
 func TestListVersionFiles_Recursive(t *testing.T) {
@@ -40,3 +41,43 @@ func TestListVersionFiles_Recursive(t *testing.T) {
 	}
 }
 
+func TestListVersionFiles_UsesActiveRoot(t *testing.T) {
+	tmp := t.TempDir()
+	p := filepath.Join(tmp, "dir", "sub", "file.txt")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(p, []byte("new\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	versionDir := filepath.Join(tmp, ".vb", "versions", "dir", "sub", "file.txt")
+	if err := os.MkdirAll(versionDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(versionDir) error = %v", err)
+	}
+	versionID := "20260328-120000"
+	versionPath := filepath.Join(versionDir, versionID+".content")
+	if err := os.WriteFile(versionPath, []byte("old\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(versionPath) error = %v", err)
+	}
+
+	mgr := codectx.NewMultiEngine()
+	mgr.AddRoot(tmp)
+	mgr.SetActive(tmp)
+	rc := &RuntimeCore{workspaceMgr: mgr}
+
+	files, err := rc.ListVersionFiles()
+	if err != nil {
+		t.Fatalf("ListVersionFiles error: %v", err)
+	}
+	if len(files) != 1 || files[0].PathRel != "dir/sub/file.txt" {
+		t.Fatalf("expected active-root version file entry, got: %#v", files)
+	}
+
+	versions, err := rc.ListVersionsForPath(p)
+	if err != nil {
+		t.Fatalf("ListVersionsForPath() error = %v", err)
+	}
+	if len(versions) == 0 || versions[0].PathRel != "dir/sub/file.txt" || versions[0].ID != versionID {
+		t.Fatalf("expected versions for active-root file, got: %#v", versions)
+	}
+}

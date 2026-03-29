@@ -14,8 +14,7 @@ import (
 
 // ListVersionFiles 列出所有有版本的文件
 func (rc *RuntimeCore) ListVersionFiles() ([]fileops.VersionFileEntry, error) {
-	wd, _ := os.Getwd()
-	versionsDir := filepath.Join(wd, ".vb", "versions")
+	versionsDir := rc.versionsRoot()
 	if _, err := os.Stat(versionsDir); err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -89,13 +88,12 @@ func (rc *RuntimeCore) ListVersionFiles() ([]fileops.VersionFileEntry, error) {
 
 // ListVersionsForPath 列出指定文件的所有版本
 func (rc *RuntimeCore) ListVersionsForPath(absPath string) ([]fileops.VersionMeta, error) {
-	wd, _ := os.Getwd()
-	rel, err := filepath.Rel(wd, absPath)
-	if err != nil || strings.HasPrefix(rel, "..") {
+	rel, err := rc.relWithinRoot(absPath)
+	if err != nil {
 		return nil, filepath.SkipDir
 	}
 
-	versionsDir := filepath.Join(wd, ".vb", "versions", filepath.FromSlash(rel))
+	versionsDir := filepath.Join(rc.versionsRoot(), filepath.FromSlash(rel))
 	entries, err := os.ReadDir(versionsDir)
 	if err != nil {
 		return nil, err
@@ -157,8 +155,7 @@ func (rc *RuntimeCore) DeleteVersion(path, versionID string) string {
 		return "Tools manager not initialized"
 	}
 
-	wd, _ := os.Getwd()
-	absPath := filepath.Join(wd, filepath.FromSlash(path))
+	absPath := rc.resolveWithinRoot(path)
 
 	vs, err := rc.ListVersionsForPath(absPath)
 	if err != nil {

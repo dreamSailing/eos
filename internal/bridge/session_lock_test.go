@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	codectx "github.com/dreamSailing/vb-coding/internal/context"
 )
 
 func TestSessionLock_AcquireAndRelease(t *testing.T) {
@@ -92,5 +94,60 @@ func TestDetectCrashRecovery_StaleLock(t *testing.T) {
 	// lock 文件应该被清除
 	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
 		t.Fatalf("expected lock file to be cleaned up after detection")
+	}
+}
+
+func TestSessionLock_ReferenceCount(t *testing.T) {
+	root := t.TempDir()
+	lockPath := sessionLockPathForRoot(root)
+
+	acquireSessionLockPath(lockPath)
+	acquireSessionLockPath(lockPath)
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Fatalf("expected lock file after acquire: %v", err)
+	}
+
+	releaseSessionLockPath(lockPath)
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Fatalf("expected lock file to remain until final release: %v", err)
+	}
+
+	releaseSessionLockPath(lockPath)
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Fatalf("expected lock file removed after final release, err=%v", err)
+	}
+}
+
+func TestRuntimeCore_SyncSessionLock_FollowsActiveRoot(t *testing.T) {
+	first := t.TempDir()
+	second := t.TempDir()
+
+	mgr := codectx.NewMultiEngine()
+	mgr.AddRoot(first)
+	mgr.AddRoot(second)
+	mgr.SetActive(first)
+
+	rc := &RuntimeCore{workspaceMgr: mgr}
+	rc.syncSessionLock()
+
+	firstLock := sessionLockPathForRoot(first)
+	secondLock := sessionLockPathForRoot(second)
+	if _, err := os.Stat(firstLock); err != nil {
+		t.Fatalf("expected first lock file: %v", err)
+	}
+
+	if rc.SetActiveWorkspaceRoot(second) == nil {
+		t.Fatalf("expected second root to become active")
+	}
+	if _, err := os.Stat(secondLock); err != nil {
+		t.Fatalf("expected second lock file after switch: %v", err)
+	}
+	if _, err := os.Stat(firstLock); !os.IsNotExist(err) {
+		t.Fatalf("expected first lock file removed after switch, err=%v", err)
+	}
+
+	rc.releaseHeldSessionLock()
+	if _, err := os.Stat(secondLock); !os.IsNotExist(err) {
+		t.Fatalf("expected second lock file removed after release, err=%v", err)
 	}
 }

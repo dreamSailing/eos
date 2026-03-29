@@ -2,9 +2,6 @@ package bridge
 
 import (
 	"context"
-	"strings"
-	"sync"
-	"time"
 	"github.com/dreamSailing/vb-coding/internal/ai"
 	"github.com/dreamSailing/vb-coding/internal/config"
 	codectx "github.com/dreamSailing/vb-coding/internal/context"
@@ -16,6 +13,9 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/session"
 	"github.com/dreamSailing/vb-coding/internal/skills"
 	"github.com/dreamSailing/vb-coding/internal/tools"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -117,7 +117,8 @@ type RuntimeCore struct {
 	settings settings.Settings
 
 	// LSP 支持（条件编译）
-	lspManager *lspManagerEntry
+	lspManager      *lspManagerEntry
+	sessionLockPath string
 
 	// Goroutine 追踪
 	wg   sync.WaitGroup
@@ -530,7 +531,7 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	rc.lspManager = rc.initLSPManager()
 
 	// 创建会话锁，用于检测非正常退出
-	AcquireSessionLock()
+	rc.syncSessionLock()
 
 	rc.wg.Add(1)
 	go rc.loop()

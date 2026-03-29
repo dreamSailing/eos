@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
 	"github.com/dreamSailing/vb-coding/internal/ai"
 	"github.com/dreamSailing/vb-coding/internal/session"
 
@@ -198,7 +199,7 @@ func NewAgentChatTemplate(ctx context.Context) (einoprompt.ChatTemplate, error) 
 	return tpl, nil
 }
 
-func buildHistoryMessages(cm *session.ContextManager, extra []ai.Message) []*schema.Message {
+func buildHistoryMessages(cm *session.ContextManager, extra []ai.Message, workspaceRoot string) []*schema.Message {
 	if cm == nil {
 		return nil
 	}
@@ -225,7 +226,7 @@ func buildHistoryMessages(cm *session.ContextManager, extra []ai.Message) []*sch
 					})
 				}
 				for _, imgPath := range m.ImagePaths {
-					imgData, mime := readImageAsBase64(imgPath)
+					imgData, mime := readImageAsBase64(imgPath, workspaceRoot)
 					if imgData != "" {
 						parts = append(parts, schema.MessageInputPart{
 							Type: schema.ChatMessagePartTypeImageURL,
@@ -257,11 +258,14 @@ func buildHistoryMessages(cm *session.ContextManager, extra []ai.Message) []*sch
 	return out
 }
 
-func readImageAsBase64(imgPath string) (string, string) {
+func readImageAsBase64(imgPath string, workspaceRoot string) (string, string) {
 	absPath := imgPath
 	if !filepath.IsAbs(imgPath) {
-		wd, _ := os.Getwd()
-		absPath = filepath.Join(wd, imgPath)
+		root := strings.TrimSpace(workspaceRoot)
+		if root == "" {
+			root, _ = os.Getwd()
+		}
+		absPath = filepath.Join(root, imgPath)
 	}
 
 	data, err := os.ReadFile(absPath)

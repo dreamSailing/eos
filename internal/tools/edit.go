@@ -3,11 +3,11 @@ package tools
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
-	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
 )
 
 // editStructured 统一的编辑工具入口
@@ -416,7 +416,7 @@ func applyReplace(s, find, replace string, limit int, ci, regex bool) (string, i
 func (m *Manager) shellExecuteFormat(ctx context.Context, path string) error {
 	// best-effort: go files use gofmt -w
 	if strings.HasSuffix(strings.ToLower(path), ".go") {
-		_, err := m.shell.ExecuteCtx(ctx, fmt.Sprintf("gofmt -w \"%s\"", path))
+		_, err := m.shell.ExecuteWithWorkingDirCtx(ctx, fmt.Sprintf("gofmt -w \"%s\"", path), WorkspaceRootFromContext(ctx))
 		return err
 	}
 	return nil

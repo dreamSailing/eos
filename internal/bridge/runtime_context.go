@@ -69,15 +69,23 @@ func (rc *RuntimeCore) RemoveWorkspaceRoot(path string) {
 // SetActiveWorkspaceRoot 设置活动的工作区根目录
 func (rc *RuntimeCore) SetActiveWorkspaceRoot(path string) *codectx.Engine {
 	rc.mu.Lock()
-	defer rc.mu.Unlock()
+	var active *codectx.Engine
 	if rc.workspaceMgr != nil {
 		if e := rc.workspaceMgr.SetActive(path); e != nil {
 			rc.ctxEngine = e
-			return e
+			active = e
+		} else {
+			rc.mu.Unlock()
+			return nil
 		}
+	} else {
+		rc.mu.Unlock()
 		return nil
 	}
-	return nil
+	rc.mu.Unlock()
+	rc.refreshLSPManager()
+	rc.syncSessionLock()
+	return active
 }
 
 // SuggestContext 获取上下文建议

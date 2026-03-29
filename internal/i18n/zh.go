@@ -83,7 +83,7 @@ var zhText = map[string]string{
 	"usage.sessions":               "用法: /sessions",
 	"cmd.resume":                   "恢复最近或指定会话",
 	"usage.resume":                 "用法: /resume [id]",
-	"sessions.hint":                "发现 %d 个已保存会话，可用 /resume 恢复最近一次，或 /sessions 查看列表。",
+	"sessions.hint":                "发现 %d 个已保存会话，可用 /resume 恢复当前会话（若无则回退到最近一次），或 /sessions 查看列表。",
 	"sessions.crash_detected":      "⚠ 上次会话非正常退出！",
 	"sessions.crash_hint":          "可使用 /resume %s 恢复上次会话。",
 	"cmd.test":                     "临时测试命令",

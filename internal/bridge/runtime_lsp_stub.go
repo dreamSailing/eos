@@ -3,8 +3,6 @@
 
 package bridge
 
-import "os"
-
 // lspManagerEntry LSP 管理器条目（stub 版本）
 
 type lspManagerEntry struct{}
@@ -13,6 +11,8 @@ type lspManagerEntry struct{}
 func (rc *RuntimeCore) initLSPManager() *lspManagerEntry {
 	return nil
 }
+
+func (rc *RuntimeCore) refreshLSPManager() {}
 
 // ProcessLSPDiagnostics 处理 LSP 诊断信息（stub 版本）
 func (rc *RuntimeCore) ProcessLSPDiagnostics(lspEntry *lspManagerEntry) {
@@ -28,10 +28,9 @@ func (rc *RuntimeCore) LSPServersMarkdown() string {
 }
 
 func (rc *RuntimeCore) LSPStatus() LSPStatus {
-	wd, _ := os.Getwd()
 	return LSPStatus{
 		Enabled:   false,
-		Workspace: wd,
+		Workspace: rc.workingRoot(),
 		Message:   "disabled_build_tag",
 	}
 }

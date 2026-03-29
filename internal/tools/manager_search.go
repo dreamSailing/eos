@@ -90,5 +90,5 @@ func (m *Manager) GetToolIndexStats() map[string]any {
 
 // ExecuteBashDirect executes bash command bypassing tool call mechanism
 func (m *Manager) ExecuteBashDirect(ctx context.Context, cmd string) (string, error) {
-	return m.shell.ExecuteCtx(ctx, cmd)
+	return m.shell.ExecuteWithWorkingDirCtx(ctx, cmd, WorkspaceRootFromContext(ctx))
 }

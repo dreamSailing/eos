@@ -1,6 +1,8 @@
 package bridge
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -26,11 +28,25 @@ func TestExtractRelevantSnippetCentersOnKeyword(t *testing.T) {
 }
 
 func TestBuildInjectCandidatesDedup(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "internal", "bridge", "runtime_invoke.go")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(target, []byte("package bridge\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	mgr := codectx.NewMultiEngine()
+	mgr.AddRoot(root)
+	mgr.SetActive(root)
+	rc := &RuntimeCore{workspaceMgr: mgr}
+
 	sugg := []codectx.Suggestion{
 		{Path: "internal/bridge/runtime_invoke.go", Symbols: []string{"ProcessContextHints"}},
 		{Path: "internal/bridge/runtime_invoke.go", Symbols: []string{"ProcessContextHints"}},
 	}
-	out := buildInjectCandidates("runtime_invoke.go", sugg, 4)
+	out := buildInjectCandidates(rc, "runtime_invoke.go", sugg, 4)
 	seen := map[string]struct{}{}
 	for _, s := range out {
 		if _, ok := seen[s.Path]; ok {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	codectx "github.com/dreamSailing/vb-coding/internal/context"
 	"github.com/dreamSailing/vb-coding/internal/lsp"
 )
 
@@ -42,3 +43,24 @@ func TestURIToLocalPath_WindowsDrive(t *testing.T) {
 	}
 }
 
+func TestRuntimeCore_LSPStatus_UsesActiveRoot(t *testing.T) {
+	first := t.TempDir()
+	second := t.TempDir()
+
+	mgr := codectx.NewMultiEngine()
+	mgr.AddRoot(first)
+	mgr.AddRoot(second)
+	mgr.SetActive(first)
+
+	rc := &RuntimeCore{workspaceMgr: mgr}
+	if status := rc.LSPStatus(); status.Workspace != first {
+		t.Fatalf("expected first workspace %q, got %q", first, status.Workspace)
+	}
+
+	if rc.SetActiveWorkspaceRoot(second) == nil {
+		t.Fatalf("expected second workspace to become active")
+	}
+	if status := rc.LSPStatus(); status.Workspace != second {
+		t.Fatalf("expected second workspace %q, got %q", second, status.Workspace)
+	}
+}

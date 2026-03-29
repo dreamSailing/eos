@@ -5,6 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	ai "github.com/dreamSailing/vb-coding/internal/ai"
+	"github.com/dreamSailing/vb-coding/internal/config"
+	"github.com/dreamSailing/vb-coding/internal/hooks"
+	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/vb-coding/internal/tools/shell"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,23 +18,18 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/hooks"
-	ai "github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/tools"
-	"github.com/dreamSailing/vb-coding/internal/tools/shell"
 
 	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
 )
 
 type HookManager struct {
-	mu     sync.RWMutex
-	base   hooks.Config
-	loaded bool
-	tm     *tools.Manager
-	mdl    AIModel
-	agentEval func(context.Context, string) (string, error)
+	mu         sync.RWMutex
+	base       hooks.Config
+	loaded     bool
+	tm         *tools.Manager
+	mdl        AIModel
+	agentEval  func(context.Context, string) (string, error)
 	hookModels map[string]AIModel
 	agentEvals map[string]func(context.Context, string) (string, error)
 	onceSeen   map[string]bool
@@ -63,8 +63,8 @@ func (hm *HookManager) SetOnMeta(fn func(string)) {
 	hm.onMeta = fn
 }
 
-func (hm *HookManager) LoadFromDefaultLocations() error {
-	cfg, err := loadHookConfig()
+func (hm *HookManager) LoadFromDefaultLocations(ctx context.Context) error {
+	cfg, err := loadHookConfig(tools.WorkspaceRootFromContext(ctx))
 	if err != nil {
 		return err
 	}
@@ -172,15 +172,15 @@ func (hm *HookManager) UserPromptSubmit(ctx context.Context, prompt string) (hoo
 
 func (hm *HookManager) Stop(ctx context.Context, lastAssistantMessage string, stopHookActive bool) (hooks.Decision, error) {
 	return hm.runWithExtra(ctx, "Stop", "", nil, nil, map[string]any{
-		"stop_hook_active":      stopHookActive,
+		"stop_hook_active":       stopHookActive,
 		"last_assistant_message": strings.TrimSpace(lastAssistantMessage),
 	})
 }
 
 func (hm *HookManager) SubagentStop(ctx context.Context, agentType string, lastAssistantMessage string, stopHookActive bool) (hooks.Decision, error) {
 	return hm.runWithExtra(ctx, "SubagentStop", agentType, nil, nil, map[string]any{
-		"stop_hook_active":      stopHookActive,
-		"agent_type":            strings.TrimSpace(agentType),
+		"stop_hook_active":       stopHookActive,
+		"agent_type":             strings.TrimSpace(agentType),
 		"last_assistant_message": strings.TrimSpace(lastAssistantMessage),
 	})
 }
@@ -518,7 +518,9 @@ func hookInputPayload(ctx context.Context, event string, toolName string, toolIn
 	if tid := tools.TraceIDFromContext(ctx); strings.TrimSpace(tid) != "" {
 		payload["trace_id"] = tid
 	}
-	if wd, err := os.Getwd(); err == nil {
+	if wd := strings.TrimSpace(tools.WorkspaceRootFromContext(ctx)); wd != "" {
+		payload["cwd"] = filepath.ToSlash(wd)
+	} else if wd, err := os.Getwd(); err == nil {
 		payload["cwd"] = filepath.ToSlash(wd)
 	}
 	return payload
@@ -577,7 +579,9 @@ func runHookCommand(ctx context.Context, event string, command string, toolName 
 	if tid := tools.TraceIDFromContext(ctx); strings.TrimSpace(tid) != "" {
 		payload["trace_id"] = tid
 	}
-	if wd, err := os.Getwd(); err == nil {
+	if wd := strings.TrimSpace(tools.WorkspaceRootFromContext(ctx)); wd != "" {
+		payload["cwd"] = filepath.ToSlash(wd)
+	} else if wd, err := os.Getwd(); err == nil {
 		payload["cwd"] = filepath.ToSlash(wd)
 	}
 	in, _ := json.Marshal(payload)
@@ -887,7 +891,7 @@ func asMapStringAny(v any) map[string]any {
 	return out
 }
 
-func loadHookConfig() (hooks.Config, error) {
+func loadHookConfig(workspaceRoot string) (hooks.Config, error) {
 	var cfg hooks.Config
 	cfg.Hooks = map[string][]hooks.MatcherGroup{}
 
@@ -922,7 +926,21 @@ func loadHookConfig() (hooks.Config, error) {
 		}
 	}
 
-	if wd, err := os.Getwd(); err == nil {
+	if wd := strings.TrimSpace(workspaceRoot); wd != "" {
+		vbProject := filepath.Join(wd, ".vb", "settings.json")
+		vbLocal := filepath.Join(wd, ".vb", "settings.local.json")
+		workspaceUsesVB := fileExists(vbProject) || fileExists(vbLocal)
+
+		if workspaceUsesVB {
+			addIfExists(vbProject, "project_settings")
+			addIfExists(vbLocal, "local_settings")
+		} else {
+			addIfExists(filepath.Join(wd, ".claude", "settings.json"), "project_settings")
+			addIfExists(filepath.Join(wd, ".claude", "settings.local.json"), "local_settings")
+			addIfExists(filepath.Join(wd, ".trae", "settings.json"), "project_settings")
+			addIfExists(filepath.Join(wd, ".trae", "settings.local.json"), "local_settings")
+		}
+	} else if wd, err := os.Getwd(); err == nil {
 		vbProject := filepath.Join(wd, ".vb", "settings.json")
 		vbLocal := filepath.Join(wd, ".vb", "settings.local.json")
 		workspaceUsesVB := fileExists(vbProject) || fileExists(vbLocal)

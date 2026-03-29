@@ -81,7 +81,7 @@ var enText = map[string]string{
 	"usage.sessions":               "Usage: /sessions",
 	"cmd.resume":                   "Resume latest or specified session",
 	"usage.resume":                 "Usage: /resume [id]",
-	"sessions.hint":                "Found %d saved sessions. Use /resume to restore the latest one, or /sessions to list them.",
+	"sessions.hint":                "Found %d saved sessions. Use /resume to restore the current one (or latest fallback), or /sessions to list them.",
 	"sessions.crash_detected":      "⚠ Previous session exited abnormally!",
 	"sessions.crash_hint":          "Use /resume %s to recover your last session.",
 	"cmd.test":                     "Temporary test command",

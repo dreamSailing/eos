@@ -3,11 +3,11 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/vb-coding/internal/tools"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/tools"
 
 	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 
@@ -38,25 +38,25 @@ type DispatchResult struct {
 
 // DispatchTools 包装器，将子 Agent 包装为调度工具
 type DispatchTools struct {
-	plannerAgent   *react.Agent
-	seniorDevAgent *react.Agent
-	testerAgent    *react.Agent
-	reviewerAgent  *react.Agent
-	toolsManager   *tools.Manager
-	currentCtx     context.Context
-	currentMsgs    []*schema.Message
-	onMeta         func(string)
-	onReasoning    func(string)     // 思考内容回调
-	loopDetector   LoopDetector     // 循环检测器 (供 Exec Agent 使用)
-	mcpToolsInfo   string           // MCP 工具信息字符串，用于传递给子 Agent
-	mcpTools       []tool.BaseTool
-	subAgentMgr    *SubAgentManager // 子代理管理器
+	plannerAgent         *react.Agent
+	seniorDevAgent       *react.Agent
+	testerAgent          *react.Agent
+	reviewerAgent        *react.Agent
+	toolsManager         *tools.Manager
+	currentCtx           context.Context
+	currentMsgs          []*schema.Message
+	onMeta               func(string)
+	onReasoning          func(string) // 思考内容回调
+	loopDetector         LoopDetector // 循环检测器 (供 Exec Agent 使用)
+	mcpToolsInfo         string       // MCP 工具信息字符串，用于传递给子 Agent
+	mcpTools             []tool.BaseTool
+	subAgentMgr          *SubAgentManager // 子代理管理器
 	allowedToolsOverride map[string]bool
-	hookMgr       *HookManager
-	projectMu      sync.Mutex
-	projectPrompt  string
-	projectPromptAt time.Time
-	mu             sync.RWMutex     // 保护并发访问
+	hookMgr              *HookManager
+	projectMu            sync.Mutex
+	projectPrompt        string
+	projectPromptAt      time.Time
+	mu                   sync.RWMutex // 保护并发访问
 }
 
 // NewDispatchTools 创建调度工具包装器
@@ -70,7 +70,7 @@ func NewDispatchTools(
 	mcpTools []tool.BaseTool,
 ) *DispatchTools {
 	hm := NewHookManager(tm)
-	_ = hm.LoadFromDefaultLocations()
+	_ = hm.LoadFromDefaultLocations(ctx)
 	onMetaOrig := onMeta
 	onMetaWrapped := func(line string) {
 		if hm != nil {
@@ -537,7 +537,7 @@ func invokeRoleAgentWithSubContext(
 	}
 
 	// 构建系统提示词
-	systemPrompt := buildRoleSystemPrompt(role, mcpToolsInfo)
+	systemPrompt := buildRoleSystemPrompt(ctx, role, mcpToolsInfo)
 
 	// 使用子代理的隔离上下文
 	subCtx.mu.RLock()
@@ -600,7 +600,7 @@ func invokeRoleAgentWithSubContext(
 }
 
 // buildRoleSystemPrompt 构建角色特定的系统提示词
-func buildRoleSystemPrompt(role, mcpToolsInfo string) string {
+func buildRoleSystemPrompt(ctx context.Context, role, mcpToolsInfo string) string {
 	var prompt string
 	switch role {
 	case "planner":
@@ -622,7 +622,7 @@ func buildRoleSystemPrompt(role, mcpToolsInfo string) string {
 	}
 
 	// 注入环境信息
-	envInfo := utils.GetEnvInfo()
+	envInfo := envInfoForContext(ctx)
 	prompt += "\n\n" + utils.FormatEnvInfo(envInfo)
 
 	return prompt

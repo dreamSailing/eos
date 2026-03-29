@@ -29,9 +29,16 @@ func computeInjectBudgetBytes(rc *RuntimeCore, maxInjectKB int) int {
 	return clampInt(budget, 16*1024, 128*1024)
 }
 
-func buildInjectCandidates(query string, sugg []codectx.Suggestion, limit int) []codectx.Suggestion {
+func buildInjectCandidates(rc *RuntimeCore, query string, sugg []codectx.Suggestion, limit int) []codectx.Suggestion {
 	if limit <= 0 {
 		limit = 4
+	}
+
+	root := ""
+	versionsRoot := filepath.Join(".vb", "versions")
+	if rc != nil {
+		root = rc.workingRoot()
+		versionsRoot = rc.versionsRoot()
 	}
 
 	seen := map[string]struct{}{}
@@ -47,7 +54,7 @@ func buildInjectCandidates(query string, sugg []codectx.Suggestion, limit int) [
 		if !isSafeRelPath(p) {
 			return
 		}
-		if !fileExistsUnderWd(p) {
+		if !fileExistsUnderRoot(root, p) {
 			return
 		}
 		seen[p] = struct{}{}
@@ -60,7 +67,7 @@ func buildInjectCandidates(query string, sugg []codectx.Suggestion, limit int) [
 			return out
 		}
 	}
-	for _, p := range recentVersionedFilesList(6) {
+	for _, p := range recentVersionedFilesList(versionsRoot, 6) {
 		add(p, nil)
 		if len(out) >= limit {
 			return out
@@ -187,12 +194,10 @@ func tokenizeKeywords(text string) []string {
 	return out
 }
 
-func recentVersionedFilesList(limit int) []string {
+func recentVersionedFilesList(root string, limit int) []string {
 	if limit <= 0 {
 		limit = 6
 	}
-	wd, _ := os.Getwd()
-	root := filepath.Join(wd, ".vb", "versions")
 	if _, err := os.Stat(root); err != nil {
 		return nil
 	}
@@ -250,9 +255,11 @@ func recentVersionedFilesList(limit int) []string {
 	return out
 }
 
-func fileExistsUnderWd(rel string) bool {
-	wd, _ := os.Getwd()
-	ap := filepath.Join(wd, filepath.FromSlash(rel))
+func fileExistsUnderRoot(root, rel string) bool {
+	ap := filepath.Clean(filepath.FromSlash(rel))
+	if root != "" {
+		ap = filepath.Join(root, filepath.FromSlash(rel))
+	}
 	fi, err := os.Stat(ap)
 	return err == nil && !fi.IsDir()
 }

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -38,10 +37,9 @@ func (rc *RuntimeCore) initLSPManager() *lspManagerEntry {
 		return nil
 	}
 
-	// 获取工作区根目录
-	wd, err := filepath.Abs(".")
-	if err != nil {
-		slog.Debug("bridge.init_lsp.no_working_dir", "component", utils.ComponentSystem, "error", err.Error())
+	wd := strings.TrimSpace(rc.workingRoot())
+	if wd == "" {
+		slog.Debug("bridge.init_lsp.no_working_dir", "component", utils.ComponentSystem, "config_file", cfgPath)
 		return nil
 	}
 
@@ -77,6 +75,27 @@ func (rc *RuntimeCore) initLSPManager() *lspManagerEntry {
 		rootDir:  wd,
 		langType: langType,
 	}
+}
+
+func (rc *RuntimeCore) refreshLSPManager() {
+	if rc == nil {
+		return
+	}
+
+	root := strings.TrimSpace(rc.workingRoot())
+	rc.mu.RLock()
+	current := rc.lspManager
+	rc.mu.RUnlock()
+	if current != nil && strings.EqualFold(filepath.Clean(current.rootDir), filepath.Clean(root)) {
+		return
+	}
+
+	next := rc.initLSPManager()
+	rc.mu.Lock()
+	old := rc.lspManager
+	rc.lspManager = next
+	rc.mu.Unlock()
+	rc.ShutdownLSPManager(old)
 }
 
 // ProcessLSPDiagnostics 处理 LSP 诊断信息并添加到上下文
@@ -120,7 +139,7 @@ func (rc *RuntimeCore) ProblemsAndDiagnosticsMarkdown() string {
 }
 
 func (rc *RuntimeCore) LSPServersMarkdown() string {
-	wd, _ := os.Getwd()
+	wd := strings.TrimSpace(rc.workingRoot())
 	cfg, cfgPath := config.Load()
 	enabled := cfg.LSP.EnabledValue()
 	autoDetect := cfg.LSP.AutoDetectValue()
@@ -196,7 +215,7 @@ func (rc *RuntimeCore) LSPServersMarkdown() string {
 }
 
 func (rc *RuntimeCore) LSPStatus() LSPStatus {
-	wd, _ := os.Getwd()
+	wd := strings.TrimSpace(rc.workingRoot())
 	cfg, cfgPath := config.Load()
 	enabled := cfg.LSP.EnabledValue()
 	autoDetect := cfg.LSP.AutoDetectValue()

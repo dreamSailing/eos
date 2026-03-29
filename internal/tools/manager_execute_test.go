@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -66,5 +67,17 @@ func TestManager_ExecuteStructuredCacheAddsMarker(t *testing.T) {
 	}
 	if len(res2[0].Display) < 8 || res2[0].Display[:8] != "[cached]" {
 		t.Fatalf("expected cached marker, display=%q", res2[0].Display)
+	}
+}
+
+func TestManager_ExecuteBashDirect_UsesWorkspaceRootFromContext(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager()
+	out, err := m.ExecuteBashDirect(WithWorkspaceRoot(context.Background(), dir), "pwd")
+	if err != nil {
+		t.Fatalf("ExecuteBashDirect error: %v", err)
+	}
+	if !strings.Contains(strings.ReplaceAll(out, "\\", "/"), strings.ReplaceAll(dir, "\\", "/")) {
+		t.Fatalf("expected output %q to contain workspace root %q", out, dir)
 	}
 }

@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 	"log/slog"
 	"sync"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
 type asyncSession struct {
@@ -57,6 +57,48 @@ func (s *Shell) ExecuteCtx(ctx context.Context, command string) (string, error) 
 	return stdout, nil
 }
 
+func (s *Shell) StartAsyncWithWorkingDir(command, workingDir string) (string, error) {
+	sid := fmt.Sprintf("%d", time.Now().UnixNano())
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sess := &asyncSession{
+		id:       sid,
+		cancel:   cancel,
+		done:     make(chan struct{}, 1),
+		executor: s.executor,
+	}
+
+	s.mu.Lock()
+	s.sessions[sid] = sess
+	s.mu.Unlock()
+
+	go func() {
+		defer close(sess.done)
+		stdout, stderr, err := sess.executor.Execute(ctx, command, workingDir)
+
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+
+		if stdout != "" {
+			sess.out.WriteString(stdout)
+		}
+		if stderr != "" {
+			sess.err.WriteString(stderr)
+		}
+		if err != nil {
+			sess.err.WriteString(err.Error())
+		}
+	}()
+
+	slog.Debug("shell.start_async.success", "component", utils.ComponentTool,
+		"command", command,
+		"working_dir", workingDir,
+		"session_id", sid,
+	)
+
+	return sid, nil
+}
+
 func (s *Shell) ExecuteWithWorkingDir(command, workingDir string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -75,44 +117,7 @@ func (s *Shell) ExecuteWithWorkingDirCtx(ctx context.Context, command, workingDi
 }
 
 func (s *Shell) StartAsync(command string) (string, error) {
-	sid := fmt.Sprintf("%d", time.Now().UnixNano())
-	ctx, cancel := context.WithCancel(context.Background())
-
-	sess := &asyncSession{
-		id:       sid,
-		cancel:   cancel,
-		done:     make(chan struct{}, 1),
-		executor: s.executor,
-	}
-
-	s.mu.Lock()
-	s.sessions[sid] = sess
-	s.mu.Unlock()
-
-	go func() {
-		defer close(sess.done)
-		stdout, stderr, err := sess.executor.Execute(ctx, command, "")
-
-		sess.mu.Lock()
-		defer sess.mu.Unlock()
-
-		if stdout != "" {
-			sess.out.WriteString(stdout)
-		}
-		if stderr != "" {
-			sess.err.WriteString(stderr)
-		}
-		if err != nil {
-			sess.err.WriteString(err.Error())
-		}
-	}()
-
-	slog.Debug("shell.start_async.success", "component", utils.ComponentTool,
-		"command", command,
-		"session_id", sid,
-	)
-
-	return sid, nil
+	return s.StartAsyncWithWorkingDir(command, "")
 }
 
 func (s *Shell) Output(id string) (string, string, bool, error) {

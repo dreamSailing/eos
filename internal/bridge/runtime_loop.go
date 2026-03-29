@@ -4,15 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
-	"os"
-	"path/filepath"
-	"sort"
-	"strconv"
-	stdruntime "runtime"
-	"strings"
-	"sync"
-	"time"
 	"github.com/dreamSailing/vb-coding/internal/ai"
 	"github.com/dreamSailing/vb-coding/internal/config"
 	"github.com/dreamSailing/vb-coding/internal/notify"
@@ -22,6 +13,15 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/state"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
+	"log/slog"
+	"os"
+	"path/filepath"
+	stdruntime "runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 )
 
 // loop 运行时事件循环
@@ -109,8 +109,7 @@ func (rc *RuntimeCore) loop() {
 			addDir(filepath.Join(home, ".trae", "skills"))
 		}
 
-		if wd, err := os.Getwd(); err == nil {
-			workspaceRoot := wd
+		if workspaceRoot := strings.TrimSpace(rc.workingRoot()); workspaceRoot != "" {
 			addDir(filepath.Join(workspaceRoot, ".vb", "skills"))
 			addDir(filepath.Join(workspaceRoot, ".claude", "skills"))
 			addDir(filepath.Join(workspaceRoot, ".trae", "skills"))
@@ -347,14 +346,14 @@ func (rc *RuntimeCore) loop() {
 				go func(tRT *einoruntime.EinoRuntime, tReq graphInvokeReq) {
 					defer rc.wg.Done()
 					defer rc.removePendingGraph(tReq.resCh)
-					
+
 					// 重置解析器并确保在结束时刷新
 					if rc.parser == nil {
 						rc.parser = NewStreamParser(rc.eventsCh)
 					}
 					rc.parser.Reset()
 					defer rc.parser.Flush()
-					
+
 					defer func() {
 						if rr := recover(); rr != nil {
 							tReq.resCh <- graphInvokeRes{msg: nil, err: ErrRuntimeLoopUnavailable}
@@ -687,7 +686,7 @@ func (rc *RuntimeCore) cleanupPendingRequests() {
 // Shutdown 优雅关闭运行时，等待所有 goroutine 完成
 func (rc *RuntimeCore) Shutdown() {
 	// 释放会话锁（正常退出时清除 lock 文件）
-	ReleaseSessionLock()
+	rc.releaseHeldSessionLock()
 
 	// 关闭 LSP 管理器
 	rc.ShutdownLSPManager(rc.lspManager)

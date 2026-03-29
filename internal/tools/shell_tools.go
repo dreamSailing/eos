@@ -3,9 +3,9 @@ package tools
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 	"log/slog"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
 func validateBashCommand(cmd string) error {
@@ -34,7 +34,7 @@ func (m *Manager) bashStructured(ctx context.Context, params map[string]interfac
 	if err := validateBashCommand(cmd); err != nil {
 		return ToolResult{Type: "tool_result", Tool: "bash", Status: "error", Error: err.Error()}
 	}
-	out, err := m.shell.ExecuteCtx(ctx, cmd)
+	out, err := m.shell.ExecuteWithWorkingDirCtx(ctx, cmd, WorkspaceRootFromContext(ctx))
 	if err != nil {
 		slog.Error("bash.error", "component", utils.ComponentTool, "cmd", cmd, "err", err.Error())
 		return ToolResult{Type: "tool_result", Tool: "bash", Status: "error", Error: fmt.Sprintf("%v", err), Data: map[string]interface{}{"stdout": out}}
@@ -57,7 +57,7 @@ func (m *Manager) bashSessionStructured(ctx context.Context, params map[string]i
 
 	switch mode {
 	case "start":
-		return m.bashSessionStart(params)
+		return m.bashSessionStart(ctx, params)
 	case "output":
 		return m.bashSessionOutput(params)
 	case "kill":
@@ -74,12 +74,12 @@ func (m *Manager) bashSessionStructured(ctx context.Context, params map[string]i
 }
 
 // bashSessionStart 启动后台 shell 会话
-func (m *Manager) bashSessionStart(params map[string]interface{}) ToolResult {
+func (m *Manager) bashSessionStart(ctx context.Context, params map[string]interface{}) ToolResult {
 	cmd, _ := params["command"].(string)
 	if err := validateBashCommand(cmd); err != nil {
 		return ToolResult{Type: "tool_result", Tool: "bash_session", Status: "error", Error: err.Error(), Display: "Error: " + err.Error()}
 	}
-	id, err := m.shell.StartAsync(cmd)
+	id, err := m.shell.StartAsyncWithWorkingDir(cmd, WorkspaceRootFromContext(ctx))
 	if err != nil {
 		slog.Error("bash_session.start.error", "component", utils.ComponentTool, "cmd", cmd, "err", err.Error())
 		return ToolResult{Type: "tool_result", Tool: "bash_session", Status: "error", Error: fmt.Sprintf("%v", err), Display: fmt.Sprintf("Error: %v", err)}

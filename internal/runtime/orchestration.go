@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	ai "github.com/dreamSailing/vb-coding/internal/ai"
+	"github.com/dreamSailing/vb-coding/internal/session"
+	"github.com/dreamSailing/vb-coding/internal/tools"
 	"log/slog"
 	"regexp"
 	"strings"
 	"time"
-	ai "github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/session"
-	"github.com/dreamSailing/vb-coding/internal/tools"
 
 	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 
@@ -219,7 +219,7 @@ func (rt *EinoRuntime) GraphInvokeWithImages(ctx context.Context, query string, 
 	if strings.TrimSpace(query) != "" || len(imagePaths) > 0 {
 		extra = append(extra, ai.Message{Role: "user", Content: query, ImagePaths: imagePaths})
 	}
-	history := buildHistoryMessages(rt.ctxm, extra)
+	history := buildHistoryMessages(rt.ctxm, extra, tools.WorkspaceRootFromContext(ctx))
 	in := map[string]any{
 		"history":   history,
 		"query":     query,
@@ -483,7 +483,7 @@ func buildDispatchSystemPrompt(ctx context.Context, rt *EinoRuntime, mcpTools []
 	prompt = strings.Replace(prompt, "{available_tools}", toolsDesc, -1)
 
 	// 替换工作目录
-	envInfo := utils.GetEnvInfo()
+	envInfo := envInfoForContext(ctx)
 	prompt = strings.Replace(prompt, "{cwd}", envInfo.CWD, -1)
 
 	prompt += "\n\n" + utils.FormatEnvInfo(envInfo)

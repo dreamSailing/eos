@@ -2,18 +2,18 @@ package bridge
 
 import (
 	"context"
+	codectx "github.com/dreamSailing/vb-coding/internal/context"
+	"github.com/dreamSailing/vb-coding/internal/pkg/workspace"
+	"github.com/dreamSailing/vb-coding/internal/session"
+	"github.com/dreamSailing/vb-coding/internal/tools"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
-	"github.com/dreamSailing/vb-coding/internal/pkg/workspace"
-	"github.com/dreamSailing/vb-coding/internal/session"
-	"github.com/dreamSailing/vb-coding/internal/tools"
 
-	"github.com/google/uuid"
 	"github.com/cloudwego/eino/schema"
+	"github.com/google/uuid"
 )
 
 // Reload 重新加载运行时环境（如模型配置变更）
@@ -40,6 +40,7 @@ func (rc *RuntimeCore) GraphInvokePlanWithImages(ctx context.Context, query, exe
 		traceID = uuid.NewString()[:8]
 		ctx = tools.WithTraceID(ctx, traceID)
 	}
+	ctx = rc.withWorkspaceRoot(ctx)
 	rc.StartRequest(traceID)
 	ch := make(chan graphInvokeRes, 1)
 	rc.reqCh <- graphInvokeReq{ctx: ctx, query: query, executionMode: executionMode, imagePaths: imagePaths, resCh: ch}
@@ -60,6 +61,7 @@ func (rc *RuntimeCore) GraphInvokePlanWithImages(ctx context.Context, query, exe
 
 // ToolsNode 工具节点
 func (rc *RuntimeCore) ToolsNode(ctx context.Context, payload string) ([]string, bool, bool) {
+	ctx = rc.withWorkspaceRoot(ctx)
 	ch := make(chan toolsNodeRes, 1)
 	rc.reqCh <- toolsNodeReq{ctx: ctx, text: payload, resCh: ch}
 	res := <-ch
@@ -68,6 +70,7 @@ func (rc *RuntimeCore) ToolsNode(ctx context.Context, payload string) ([]string,
 
 // Summarize 摘要
 func (rc *RuntimeCore) Summarize(ctx context.Context, text string) (string, error) {
+	ctx = rc.withWorkspaceRoot(ctx)
 	ch := make(chan summarizeRes, 1)
 	rc.reqCh <- summarizeReq{ctx: ctx, text: text, resCh: ch}
 	res := <-ch
@@ -137,6 +140,7 @@ func (rc *RuntimeCore) ModelBase() string {
 
 // ExecuteBash 执行 Bash 命令
 func (rc *RuntimeCore) ExecuteBash(ctx context.Context, cmd string) (string, error) {
+	ctx = rc.withWorkspaceRoot(ctx)
 	cat, _, sum, dang := tools.ClassifyBashDanger(cmd)
 	if dang && (rc.hooks.SessionAllowed == nil || !rc.hooks.SessionAllowed(cat)) {
 		dec := rc.hooks.Prompt(ctx, cat, sum)
@@ -206,7 +210,7 @@ func (rc *RuntimeCore) ProcessContextHints(text string, autoContext bool, maxInj
 
 	limitFiles := clampInt(hardLimitBytes/4096, 2, 12)
 	sugg := rc.ctxEngine.Suggest(text, limitFiles*3)
-	candidates := buildInjectCandidates(text, sugg, limitFiles)
+	candidates := buildInjectCandidates(rc, text, sugg, limitFiles)
 	if len(candidates) == 0 {
 		return
 	}
@@ -221,7 +225,7 @@ func (rc *RuntimeCore) ProcessContextHints(text string, autoContext bool, maxInj
 	// 注入文件内容
 	rc.injectContextFiles(text, candidates, hardLimitBytes)
 
-	if git := buildGitContextHint(); strings.TrimSpace(git) != "" {
+	if git := buildGitContextHint(rc.workingRoot()); strings.TrimSpace(git) != "" {
 		rc.cm.AddEphemeral(git)
 	}
 }
@@ -279,8 +283,7 @@ func (rc *RuntimeCore) injectContextFiles(query string, sugg []codectx.Suggestio
 
 // readContextFile 读取上下文文件内容，限制大小
 func (rc *RuntimeCore) readContextFile(query string, sugg codectx.Suggestion, maxBytes int) (string, error) {
-	wd, _ := os.Getwd()
-	ap := filepath.Join(wd, filepath.FromSlash(sugg.Path))
+	ap := rc.resolveWithinRoot(sugg.Path)
 	bs, err := os.ReadFile(ap)
 	if err != nil {
 		return "", err
@@ -309,10 +312,9 @@ func (rc *RuntimeCore) ProcessAttachments(attachments []Attachment) string {
 		b.WriteString("{id=")
 		b.WriteString(strconv.Itoa(a.ID))
 		b.WriteString(",path=")
-		wd, _ := os.Getwd()
 		rel := a.Path
 		if filepath.IsAbs(rel) {
-			if r, e := filepath.Rel(wd, rel); e == nil {
+			if r, e := filepath.Rel(rc.workingRoot(), rel); e == nil && !strings.HasPrefix(r, "..") {
 				rel = filepath.ToSlash(r)
 			}
 		}

@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-func buildGitContextHint() string {
-	root := findGitRoot()
+func buildGitContextHint(startRoot string) string {
+	root := findGitRoot(startRoot)
 	if strings.TrimSpace(root) == "" {
 		return ""
 	}
@@ -63,12 +63,11 @@ func buildGitContextHint() string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func findGitRoot() string {
-	wd, err := os.Getwd()
-	if err != nil || wd == "" {
+func findGitRoot(startRoot string) string {
+	cur := strings.TrimSpace(startRoot)
+	if cur == "" {
 		return ""
 	}
-	cur := wd
 	for {
 		if fi, err := os.Stat(filepath.Join(cur, ".git")); err == nil && fi.IsDir() {
 			return cur

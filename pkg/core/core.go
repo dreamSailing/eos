@@ -52,6 +52,25 @@ type Workspace struct {
 	Active  bool
 }
 
+type SessionMeta struct {
+	ID      string
+	SavedAt time.Time
+	Model   string
+	Summary string
+	Preview string
+	Title   string
+	Rounds  int
+	Tokens  int
+}
+
+type SessionMessage struct {
+	Role       string
+	Type       string
+	Content    string
+	Time       time.Time
+	ImagePaths []string
+}
+
 type MCPServer struct {
 	Name    string
 	Type    string
@@ -344,6 +363,95 @@ func (r *Runtime) TrustWorkspace(path string) error {
 	return config.Save(cfg, cfgPath)
 }
 
+func (r *Runtime) ListSessions() []SessionMeta {
+	items, err := r.core.ListSessions()
+	if err != nil {
+		return nil
+	}
+	out := make([]SessionMeta, 0, len(items))
+	for _, it := range items {
+		out = append(out, SessionMeta{
+			ID:      it.ID,
+			SavedAt: time.Unix(it.SavedAt, 0),
+			Model:   it.Model,
+			Summary: it.Summary,
+			Preview: it.Preview,
+			Title:   it.Title,
+			Rounds:  it.Rounds,
+			Tokens:  it.Tokens,
+		})
+	}
+	return out
+}
+
+func (r *Runtime) SaveSession(id string) (string, error) {
+	return r.core.SaveSession(context.Background(), strings.TrimSpace(id))
+}
+
+func (r *Runtime) SaveSessionMessages(id string, messages []SessionMessage) (string, error) {
+	items := make([]bridge.SessionTranscriptMessage, 0, len(messages))
+	for _, msg := range messages {
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		ts := int64(0)
+		if !msg.Time.IsZero() {
+			ts = msg.Time.Unix()
+		}
+		items = append(items, bridge.SessionTranscriptMessage{
+			Role:       strings.TrimSpace(msg.Role),
+			Type:       strings.TrimSpace(msg.Type),
+			Content:    content,
+			Timestamp:  ts,
+			ImagePaths: append([]string{}, msg.ImagePaths...),
+		})
+	}
+	return r.core.SaveSessionMessages(context.Background(), strings.TrimSpace(id), items)
+}
+
+func (r *Runtime) LoadSessionMessages(id string) ([]SessionMessage, error) {
+	items, err := r.core.LoadSessionMessages(strings.TrimSpace(id))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SessionMessage, 0, len(items))
+	for _, item := range items {
+		var ts time.Time
+		if item.Timestamp > 0 {
+			ts = time.Unix(item.Timestamp, 0)
+		}
+		out = append(out, SessionMessage{
+			Role:       item.Role,
+			Type:       item.Type,
+			Content:    item.Content,
+			Time:       ts,
+			ImagePaths: append([]string{}, item.ImagePaths...),
+		})
+	}
+	return out, nil
+}
+
+func (r *Runtime) CurrentSessionID() (string, error) {
+	return r.core.CurrentSessionID()
+}
+
+func (r *Runtime) SetCurrentSession(id string) error {
+	return r.core.SetCurrentSession(strings.TrimSpace(id))
+}
+
+func (r *Runtime) UpdateSessionTitle(id, title string) error {
+	return r.core.UpdateSessionTitle(strings.TrimSpace(id), strings.TrimSpace(title))
+}
+
+func (r *Runtime) ResumeSession(id string) error {
+	return r.core.ResumeSession(context.Background(), strings.TrimSpace(id))
+}
+
+func (r *Runtime) DeleteSession(id string) error {
+	return r.core.DeleteSession(strings.TrimSpace(id))
+}
+
 func (r *Runtime) ListMCP() []MCPServer {
 	items := r.core.ListMCPServers()
 	out := make([]MCPServer, 0, len(items))
@@ -475,10 +583,10 @@ func (r *Runtime) ListVersions() []VersionItem {
 	if err != nil || len(files) == 0 {
 		return nil
 	}
-	wd, _ := os.Getwd()
+	root := r.workingRoot()
 	out := make([]VersionItem, 0)
 	for _, f := range files {
-		abs := filepath.Join(wd, filepath.FromSlash(f.PathRel))
+		abs := filepath.Join(root, filepath.FromSlash(f.PathRel))
 		versions, verErr := r.core.ListVersionsForPath(abs)
 		if verErr != nil {
 			continue
@@ -695,8 +803,7 @@ func (r *Runtime) ExportContext(path string) error {
 	}
 	abs := path
 	if !filepath.IsAbs(abs) {
-		wd, _ := os.Getwd()
-		abs = filepath.Join(wd, path)
+		abs = filepath.Join(r.workingRoot(), path)
 	}
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		return err
@@ -736,16 +843,22 @@ func (r *Runtime) CostItems() []CostItem {
 }
 
 func (r *Runtime) projectRulesPath() string {
-	root := strings.TrimSpace(r.core.GetActiveRoot())
-	if root == "" {
-		if wd, err := os.Getwd(); err == nil {
-			root = wd
-		}
-	}
+	root := r.workingRoot()
 	if strings.TrimSpace(root) == "" {
 		return filepath.Join(".vb", "Rules.md")
 	}
 	return filepath.Join(root, ".vb", "Rules.md")
+}
+
+func (r *Runtime) workingRoot() string {
+	root := strings.TrimSpace(r.core.GetActiveRoot())
+	if root != "" {
+		return root
+	}
+	if wd, err := os.Getwd(); err == nil {
+		return wd
+	}
+	return ""
 }
 
 func (r *Runtime) settingsPath() string {

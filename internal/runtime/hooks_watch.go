@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dreamSailing/vb-coding/internal/tools"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -16,7 +17,13 @@ func startHooksWatcher(ctx context.Context, dt *DispatchTools) {
 	}
 
 	home, _ := os.UserHomeDir()
-	wd, _ := os.Getwd()
+	dt.mu.RLock()
+	currentCtx := dt.currentCtx
+	dt.mu.RUnlock()
+	wd := strings.TrimSpace(tools.WorkspaceRootFromContext(currentCtx))
+	if wd == "" {
+		wd, _ = os.Getwd()
+	}
 	if wd == "" {
 		return
 	}
@@ -95,7 +102,7 @@ func startHooksWatcher(ctx context.Context, dt *DispatchTools) {
 				if strings.TrimSpace(ev.Name) == "" {
 					continue
 				}
-				if (ev.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename)) == 0 {
+				if (ev.Op & (fsnotify.Write | fsnotify.Create | fsnotify.Rename)) == 0 {
 					continue
 				}
 
@@ -164,7 +171,10 @@ func startHooksWatcher(ctx context.Context, dt *DispatchTools) {
 							}
 						}
 					default:
-						_ = dt.hookMgr.LoadFromDefaultLocations()
+						dt.mu.RLock()
+						currentCtx := dt.currentCtx
+						dt.mu.RUnlock()
+						_ = dt.hookMgr.LoadFromDefaultLocations(currentCtx)
 					}
 				}
 			case <-w.Errors:
