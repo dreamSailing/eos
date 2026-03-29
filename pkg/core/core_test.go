@@ -1,6 +1,10 @@
 package core
 
-import "testing"
+import (
+	"path/filepath"
+	"reflect"
+	"testing"
+)
 
 func TestToRuntimeMode(t *testing.T) {
 	if got := toRuntimeMode("手动确认"); got != "manual" {
@@ -29,5 +33,32 @@ func TestFromRuntimeMode(t *testing.T) {
 	}
 	if got := fromRuntimeMode("unknown"); got != "自动无人值守" {
 		t.Fatalf("unexpected mode: %s", got)
+	}
+}
+
+func TestFilterTrustedWorkspaces(t *testing.T) {
+	target := filepath.Join("C:", "Users", "tester", "demo")
+	trusted := []string{
+		target,
+		filepath.Join("C:", "Users", "tester", "keep"),
+	}
+	filtered, changed := filterTrustedWorkspaces(trusted, filepath.Join("C:", "Users", "tester", "demo", "."))
+	if !changed {
+		t.Fatal("expected target workspace to be removed from trusted list")
+	}
+	want := []string{filepath.Join("C:", "Users", "tester", "keep")}
+	if !reflect.DeepEqual(filtered, want) {
+		t.Fatalf("filtered=%v, want %v", filtered, want)
+	}
+}
+
+func TestFilterTrustedWorkspacesNoMatch(t *testing.T) {
+	trusted := []string{filepath.Join("C:", "Users", "tester", "keep")}
+	filtered, changed := filterTrustedWorkspaces(trusted, filepath.Join("C:", "Users", "tester", "demo"))
+	if changed {
+		t.Fatal("expected no trusted workspace removal")
+	}
+	if !reflect.DeepEqual(filtered, trusted) {
+		t.Fatalf("filtered=%v, want %v", filtered, trusted)
 	}
 }

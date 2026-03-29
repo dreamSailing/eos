@@ -329,6 +329,9 @@ func (r *Runtime) RemoveWorkspace(path string) error {
 	if err != nil {
 		return err
 	}
+	if err := removeTrustedWorkspace(p); err != nil {
+		return err
+	}
 	r.core.RemoveWorkspaceRoot(p)
 	return nil
 }
@@ -950,6 +953,36 @@ func trustedWorkspaceSet() map[string]struct{} {
 		out[np] = struct{}{}
 	}
 	return out
+}
+
+func removeTrustedWorkspace(path string) error {
+	cfg, cfgPath := config.Load()
+	if strings.TrimSpace(cfgPath) == "" {
+		return errors.New("config path empty")
+	}
+	filtered, changed := filterTrustedWorkspaces(cfg.TrustedWorkspaces, path)
+	if !changed {
+		return nil
+	}
+	cfg.TrustedWorkspaces = filtered
+	return config.Save(cfg, cfgPath)
+}
+
+func filterTrustedWorkspaces(trusted []string, target string) ([]string, bool) {
+	want := normalizeWorkspacePath(target)
+	if want == "" {
+		return append([]string(nil), trusted...), false
+	}
+	filtered := make([]string, 0, len(trusted))
+	changed := false
+	for _, cur := range trusted {
+		if pathsEqual(normalizeWorkspacePath(cur), want) {
+			changed = true
+			continue
+		}
+		filtered = append(filtered, cur)
+	}
+	return filtered, changed
 }
 
 func mapBridgeEvent(ev bridge.Event) (Event, bool) {
