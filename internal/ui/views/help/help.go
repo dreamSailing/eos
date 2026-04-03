@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/dreamSailing/vb-coding/internal/i18n"
+	"github.com/dreamSailing/vb-coding/internal/ui/features/slash"
 	"github.com/dreamSailing/vb-coding/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -123,24 +124,13 @@ func (h *HelpView) View() string {
 	b.WriteString("\n")
 
 	// 斜杠命令
-	b.WriteString(h.styles.TextInfo.Render(i18n.T("help.slash_commands", lang) + "\n"))
-	b.WriteString(h.renderCmd("/help", i18n.T("help.cmd.help", lang)) + "\n")
-	b.WriteString(h.renderCmd("/clear", i18n.T("help.cmd.clear", lang)) + "\n")
-	b.WriteString(h.renderCmd("/exit", i18n.T("help.cmd.exit", lang)) + "\n")
-	b.WriteString(h.renderCmd("/history", i18n.T("help.cmd.history", lang)) + "\n")
-	b.WriteString(h.renderCmd("/models", i18n.T("help.cmd.models", lang)) + "\n")
-	b.WriteString(h.renderCmd("/mcp", i18n.T("help.cmd.mcp", lang)) + "\n")
-	b.WriteString(h.renderCmd("/ctx", i18n.T("help.cmd.ctx", lang)) + "\n")
-	b.WriteString(h.renderCmd("/cost", i18n.T("help.cmd.cost", lang)) + "\n")
-	b.WriteString(h.renderCmd("/tasks", i18n.T("help.cmd.tasks", lang)) + "\n")
-	b.WriteString(h.renderCmd("/lsp", i18n.T("help.cmd.lsp", lang)) + "\n")
-	b.WriteString(h.renderCmd("/rules", i18n.T("help.cmd.rules", lang)) + "\n")
-	b.WriteString(h.renderCmd("/workspace", i18n.T("help.cmd.workspace", lang)) + "\n")
-	b.WriteString(h.renderCmd("/git", i18n.T("help.cmd.git", lang)) + "\n")
-	b.WriteString(h.renderCmd("/lang zh|en", i18n.T("help.cmd.lang", lang)) + "\n")
-	b.WriteString(h.renderCmd("/compact", i18n.T("help.cmd.compact", lang)) + "\n")
-	b.WriteString(h.renderCmd("/settings", i18n.T("help.cmd.settings", lang)) + "\n")
-	b.WriteString("\n")
+	for _, group := range slash.GroupedVisibleCommands(lang) {
+		b.WriteString(h.styles.TextInfo.Render(group.Label + "\n"))
+		for _, cmd := range group.Commands {
+			b.WriteString(h.renderCmd(cmd.DisplayText(), cmd.Description(lang)) + "\n")
+		}
+		b.WriteString("\n")
+	}
 
 	b.WriteString(h.styles.TextMuted.Render(i18n.T("footer.close_help", lang)))
 

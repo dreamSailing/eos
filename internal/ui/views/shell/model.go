@@ -13,6 +13,7 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/ui/components/content"
 	"github.com/dreamSailing/vb-coding/internal/ui/components/hints"
 	"github.com/dreamSailing/vb-coding/internal/ui/components/input"
+	"github.com/dreamSailing/vb-coding/internal/ui/features/slash"
 	"github.com/dreamSailing/vb-coding/internal/ui/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -440,36 +441,12 @@ func (m *Model) SetLanguage(lang string) {
 
 // ShowSlashHints 显示斜杠命令提示（支持查询过滤）
 func (m *Model) ShowSlashHints(query string) {
-	lang := m.language
-	allCommands := []hints.Hint{
-		{Key: "/help", Desc: i18n.T("hint.cmd.help", lang)},
-		{Key: "/init", Desc: i18n.T("hint.cmd.init", lang)},
-		{Key: "/clear", Desc: i18n.T("hint.cmd.clear", lang)},
-		{Key: "/exit", Desc: i18n.T("hint.cmd.exit", lang)},
-		{Key: "/history", Desc: i18n.T("hint.cmd.history", lang)},
-		{Key: "/models", Desc: i18n.T("hint.cmd.models", lang)},
-		{Key: "/mcp", Desc: i18n.T("hint.cmd.mcp", lang)},
-		{Key: "/ctx", Desc: i18n.T("hint.cmd.ctx", lang)},
-		{Key: "/cost", Desc: i18n.T("hint.cmd.cost", lang)},
-		{Key: "/tasks", Desc: i18n.T("hint.cmd.tasks", lang)},
-		{Key: "/workspace", Desc: i18n.T("hint.cmd.workspace", lang)},
-		{Key: "/lsp", Desc: i18n.T("hint.cmd.lsp", lang)},
-		{Key: "/rules", Desc: i18n.T("hint.cmd.rules", lang)},
-		{Key: "/settings", Desc: i18n.T("hint.cmd.settings", lang)},
-	}
-
-	// 过滤匹配命令
 	var slashHints []hints.Hint
-	if query == "" {
-		slashHints = allCommands
-	} else {
-		lq := strings.ToLower(query)
-		for _, cmd := range allCommands {
-			name := strings.ToLower(cmd.Key)
-			if strings.HasPrefix(name, lq) || strings.Contains(name, lq) {
-				slashHints = append(slashHints, cmd)
-			}
-		}
+	for _, cmd := range slash.GetSuggestions(query) {
+		slashHints = append(slashHints, hints.Hint{
+			Key:  cmd.DisplayText(),
+			Desc: cmd.Description(m.language),
+		})
 	}
 
 	if len(slashHints) == 0 {
@@ -765,6 +742,9 @@ func (m Model) renderStatusBar() string {
 	if m.bgTaskCount > 0 {
 		rightParts = append(rightParts, m.styles.TextMuted.Render(i18n.T("status.tasks", m.language)+fmt.Sprintf("%d", m.bgTaskCount)))
 	}
+	if m.mode == ModeAI {
+		rightParts = append(rightParts, m.styles.TextMuted.Render(i18n.T("status.exec", m.language)+executionModeLabel(m.language, m.executionMode)))
+	}
 
 	var ctxPart string
 	if m.mode == ModeAI && m.ctxVisible && m.ctxRatio > 0 {
@@ -838,6 +818,19 @@ func (m Model) renderStatusBar() string {
 		gap = 1
 	}
 	return left + strings.Repeat(" ", gap) + rightPart
+}
+
+func executionModeLabel(lang, mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "manual":
+		return i18n.T("exec_mode.manual", lang)
+	case "plan":
+		return i18n.T("exec_mode.plan", lang)
+	case "bypass":
+		return i18n.T("exec_mode.bypass", lang)
+	default:
+		return i18n.T("exec_mode.auto", lang)
+	}
 }
 
 func (m *Model) StatusTick() tea.Cmd {

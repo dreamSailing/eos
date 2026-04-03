@@ -65,6 +65,10 @@ func (rc *RuntimeCore) sessionsDir() string {
 	return filepath.Join(root, ".vb", "sessions")
 }
 
+func (rc *RuntimeCore) SessionsDir() string {
+	return rc.sessionsDir()
+}
+
 func (rc *RuntimeCore) sessionStatePath() string {
 	root := rc.workingRoot()
 	if strings.TrimSpace(root) == "" {

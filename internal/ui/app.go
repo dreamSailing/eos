@@ -1034,9 +1034,8 @@ func (m *AppModel) shouldSendMessage() (bool, tea.Cmd) {
 
 	// 检查是否是斜杠命令（必须是有效命令）
 	if cmd, args, isCmd := slash.ParseCommand(value); isCmd {
-		// 验证是否是有效命令
-		if slash.FindCommand(cmd) != nil {
-			exitCmd := m.handleSlashCommand(cmd, args)
+		if normalized := slash.NormalizeCommand(cmd); normalized != "" {
+			exitCmd := m.handleSlashCommand(normalized, args)
 			m.shell.ClearInput()
 			if exitCmd != nil {
 				return false, exitCmd
@@ -1061,6 +1060,9 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 	switch cmd {
 	case "/help":
 		m.activeView = "help"
+		if m.helpView != nil {
+			m.helpView.ResetScroll()
+		}
 	case "/clear":
 		m.shell.ClearContent()
 		m.shell.ClearInput()
@@ -1071,34 +1073,20 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 	case "/init":
 		m.shell.ClearInput()
 		return m.initVBMD()
-	case "/history", "/versions":
+	case "/history":
 		m.activeView = "panel"
 		m.activePanel = "versions"
 		m.shell.ClearInput()
 		m.refreshVersionsPanel()
-	case "/models":
-		m.activeView = "panel"
-		m.activePanel = "models"
-		m.shell.ClearInput()
-		// 刷新模型列表
-		if modelsPanel, ok := m.panels["models"].(*panels.ModelsPanel); ok {
-			modelsPanel.Refresh()
-			modelName, _ := m.adapter.GetModelInfo()
-			modelsPanel.SetCurrentModel(modelName)
-		}
+	case "/model":
+		return m.handleModelSlash(args)
 	case "/mcp":
 		m.activeView = "panel"
 		m.activePanel = "mcp"
 		m.shell.ClearInput()
 		m.refreshMCPPanel()
-	case "/ctx", "/context":
-		m.activeView = "panel"
-		m.activePanel = "context"
-		m.shell.ClearInput()
-		if panel, ok := m.panels["context"].(*panels.ContextPanel); ok && panel != nil {
-			panel.ResetView()
-		}
-		m.refreshContextPanel()
+	case "/memory":
+		m.openContextPanel()
 	case "/cost":
 		m.activeView = "panel"
 		m.activePanel = "cost"
@@ -1114,57 +1102,9 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 			return panel.Init()
 		}
 	case "/workspace":
-		if len(args) == 0 || strings.EqualFold(args[0], "list") {
-			m.activeView = "panel"
-			m.activePanel = "workspace"
-			m.shell.ClearInput()
-			m.refreshWorkspacePanel()
-			return nil
-		}
-
-		sub := strings.ToLower(args[0])
-		if len(args) < 2 && (sub == "add" || sub == "remove" || sub == "use") {
-			m.appendSystem("用法: /workspace add|remove|use <path>", "warning")
-			return nil
-		}
-
-		rawPath := strings.TrimSpace(args[1])
-		path, err := resolveWorkspaceInputPath(rawPath)
-		if err != nil {
-			m.appendSystem(err.Error(), "error")
-			return nil
-		}
-
-		switch sub {
-		case "add":
-			fi, err := os.Stat(path)
-			if err != nil || !fi.IsDir() {
-				m.appendSystem("路径不是目录: "+path, "warning")
-				return nil
-			}
-			m.adapter.GetCore().AddWorkspaceRoot(path)
-			m.refreshWorkspacePanel()
-			m.appendSystem("已添加工作区: "+path, "success")
-			return nil
-		case "remove":
-			m.adapter.GetCore().RemoveWorkspaceRoot(path)
-			m.refreshWorkspacePanel()
-			m.appendSystem("已移除工作区: "+path, "success")
-			return nil
-		case "use":
-			return m.handleWorkspaceUse(path)
-		default:
-			m.appendSystem("用法: /workspace add|remove|use <path> 或 /workspace list", "warning")
-			return nil
-		}
-	case "/settings":
-		m.activeView = "panel"
-		m.activePanel = "settings"
-		m.shell.ClearInput()
-		// 刷新设置面板
-		if settingsPanel, ok := m.panels["settings"].(*panels.SettingsPanel); ok {
-			settingsPanel.LoadSettings()
-		}
+		return m.handleWorkspaceSlash(args)
+	case "/config":
+		m.openSettingsPanel()
 	case "/lsp":
 		m.activeView = "panel"
 		m.activePanel = "lsp"
@@ -1193,6 +1133,26 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 	case "/compact":
 		m.adapter.GetCore().CompactContext()
 		m.appendSystem(i18n.T("context.compacted", m.state.Language), "success")
+	case "/session":
+		return m.handleSessionSlash(args)
+	case "/resume":
+		return m.handleResumeSlash(args)
+	case "/permissions":
+		return m.handlePermissionsSlash(args)
+	case "/skills":
+		return m.handleSkillsSlash(args)
+	case "/plugin":
+		return m.handlePluginSlash()
+	case "/doctor":
+		return m.handleDoctorSlash()
+	case "/diff":
+		return m.handleDiffSlash(args)
+	case "/review":
+		return m.handleReviewSlash(args)
+	case "/plan":
+		return m.handlePlanSlash(args)
+	case "/git":
+		return m.handleGitSlash(args)
 	default:
 		m.appendSystem(fmt.Sprintf("Unknown command: %s", cmd), "warning")
 	}

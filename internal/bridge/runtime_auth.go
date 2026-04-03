@@ -48,3 +48,10 @@ func (rc *RuntimeCore) ExecutionMode() string {
 	}
 	return rc.securityMgr.ExecutionMode()
 }
+
+func (rc *RuntimeCore) PermissionSnapshot() PermissionSnapshot {
+	if rc == nil || rc.securityMgr == nil {
+		return PermissionSnapshot{}
+	}
+	return rc.securityMgr.Snapshot()
+}

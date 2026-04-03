@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"github.com/dreamSailing/vb-coding/internal/runtime"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -14,6 +15,14 @@ type SecurityManager struct {
 	executionMode     string
 	permMu            sync.RWMutex
 	hooks             runtime.SafetyGate
+}
+
+type PermissionSnapshot struct {
+	ExecutionMode     string
+	AllowAll          bool
+	AllowedCategories []string
+	HasPendingDiff    bool
+	PendingDiffPath   string
 }
 
 // NewSecurityManager 创建新的安全管理器
@@ -121,4 +130,27 @@ func (s *SecurityManager) SetPendingDiff(diff string) {
 	s.permMu.Lock()
 	defer s.permMu.Unlock()
 	s.pendingDiff = diff
+}
+
+func (s *SecurityManager) Snapshot() PermissionSnapshot {
+	s.permMu.RLock()
+	defer s.permMu.RUnlock()
+
+	snap := PermissionSnapshot{
+		ExecutionMode:   s.executionMode,
+		HasPendingDiff:  strings.TrimSpace(s.pendingDiff) != "",
+		PendingDiffPath: strings.TrimSpace(s.pendingDiffPath),
+	}
+	for category, allowed := range s.permsAllowSession {
+		if !allowed {
+			continue
+		}
+		if category == "auto_all" {
+			snap.AllowAll = true
+			continue
+		}
+		snap.AllowedCategories = append(snap.AllowedCategories, category)
+	}
+	sort.Strings(snap.AllowedCategories)
+	return snap
 }
