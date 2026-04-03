@@ -1,14 +1,29 @@
 package core
 
 import (
+	"context"
+	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/dreamSailing/vb-coding/internal/bridge"
+	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
 	"github.com/dreamSailing/vb-coding/pkg/protocol"
 )
+
+type coreTestPlugin struct {
+	name string
+	desc string
+}
+
+func (p *coreTestPlugin) Name() string { return p.name }
+
+func (p *coreTestPlugin) Description() string { return p.desc }
+
+func (p *coreTestPlugin) Execute(context.Context, map[string]any) (any, error) { return "ok", nil }
 
 func TestToRuntimeMode(t *testing.T) {
 	if got := toRuntimeMode("手动确认"); got != "manual" {
@@ -265,5 +280,79 @@ func TestBridgeEventToProtocolMapsAgentCancelled(t *testing.T) {
 	}
 	if got := ev.Payload["reason"]; got != "cancelled" {
 		t.Fatalf("payload[reason]=%v, want cancelled", got)
+	}
+}
+
+func TestRuntimeListsSkills(t *testing.T) {
+	rt := NewRuntime()
+	root := t.TempDir()
+	skillDir := filepath.Join(root, "review")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	skillDoc := strings.Join([]string{
+		"---",
+		"name: review",
+		"description: Review the current workspace",
+		"argument-hint: target path",
+		"allowed-tools: read,grep",
+		"user-invocable: true",
+		"---",
+		"Review instructions",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillDoc), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	loader := rt.core.GetSkillsLoader()
+	loader.SetSkillsDirs([]string{root})
+	if err := loader.Scan(); err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+
+	items := rt.ListSkills()
+	if len(items) != 1 {
+		t.Fatalf("len(ListSkills())=%d, want 1", len(items))
+	}
+	if items[0].Name != "review" {
+		t.Fatalf("skill name=%q, want review", items[0].Name)
+	}
+	if items[0].BaseDir != skillDir {
+		t.Fatalf("skill base dir=%q, want %q", items[0].BaseDir, skillDir)
+	}
+	if !items[0].UserInvocableDefined || !items[0].UserInvocable {
+		t.Fatalf("user-invocable flags=%+v, want defined true", items[0])
+	}
+	if len(items[0].AllowedTools) != 2 || items[0].AllowedTools[0] != "read" || items[0].AllowedTools[1] != "grep" {
+		t.Fatalf("allowed tools=%v, want [read grep]", items[0].AllowedTools)
+	}
+}
+
+func TestRuntimeListsPlugins(t *testing.T) {
+	pluginpkg.DefaultRegistry().Reset()
+	t.Cleanup(func() { pluginpkg.DefaultRegistry().Reset() })
+	pluginpkg.DefaultRegistry().Register(&coreTestPlugin{name: "echo_plugin", desc: "Echo input"})
+
+	rt := NewRuntime()
+	items := rt.ListPlugins()
+	if len(items) != 1 {
+		t.Fatalf("len(ListPlugins())=%d, want 1", len(items))
+	}
+	if items[0].Name != "echo_plugin" {
+		t.Fatalf("plugin name=%q, want echo_plugin", items[0].Name)
+	}
+	if items[0].Description != "Echo input" {
+		t.Fatalf("plugin description=%q, want Echo input", items[0].Description)
+	}
+}
+
+func TestRuntimePermissionSnapshotDefaults(t *testing.T) {
+	rt := NewRuntime()
+	snap := rt.PermissionSnapshot()
+	if snap.ExecutionMode != "auto" {
+		t.Fatalf("ExecutionMode=%q, want auto", snap.ExecutionMode)
+	}
+	if snap.HasPendingDiff {
+		t.Fatal("HasPendingDiff should default to false")
 	}
 }

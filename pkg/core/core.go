@@ -12,8 +12,10 @@ import (
 
 	"github.com/dreamSailing/vb-coding/internal/bridge"
 	"github.com/dreamSailing/vb-coding/internal/config"
+	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
 	sharedruntime "github.com/dreamSailing/vb-coding/internal/runtime"
 	"github.com/dreamSailing/vb-coding/internal/session"
+	skillspkg "github.com/dreamSailing/vb-coding/internal/skills"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 	"github.com/dreamSailing/vb-coding/internal/tools/bg"
 	"github.com/dreamSailing/vb-coding/pkg/protocol"
@@ -96,6 +98,38 @@ type LSPServer struct {
 	Language string
 	Status   string
 	Command  string
+}
+
+type PermissionSnapshot struct {
+	ExecutionMode     string
+	AllowAll          bool
+	AllowedCategories []string
+	HasPendingDiff    bool
+	PendingDiffPath   string
+}
+
+type PendingReview struct {
+	Path    string
+	Diff    string
+	HasDiff bool
+}
+
+type SkillInfo struct {
+	Name                   string
+	Description            string
+	ArgumentHint           string
+	Location               string
+	BaseDir                string
+	AllowedTools           []string
+	Active                 bool
+	DisableModelInvocation bool
+	UserInvocable          bool
+	UserInvocableDefined   bool
+}
+
+type PluginInfo struct {
+	Name        string
+	Description string
 }
 
 type CostItem struct {
@@ -870,6 +904,101 @@ func (r *Runtime) LSPDiagnostics() []string {
 		}
 		out = append(out, line)
 	}
+	return out
+}
+
+func (r *Runtime) PermissionSnapshot() PermissionSnapshot {
+	snap := r.core.PermissionSnapshot()
+	return PermissionSnapshot{
+		ExecutionMode:     strings.TrimSpace(snap.ExecutionMode),
+		AllowAll:          snap.AllowAll,
+		AllowedCategories: append([]string(nil), snap.AllowedCategories...),
+		HasPendingDiff:    snap.HasPendingDiff,
+		PendingDiffPath:   strings.TrimSpace(snap.PendingDiffPath),
+	}
+}
+
+func (r *Runtime) PendingReview() PendingReview {
+	diff := strings.TrimSpace(r.core.GetPendingDiff())
+	path := strings.TrimSpace(r.core.GetPendingDiffPath())
+	return PendingReview{
+		Path:    path,
+		Diff:    diff,
+		HasDiff: diff != "",
+	}
+}
+
+func (r *Runtime) ClearPendingReview() {
+	r.core.ClearPendingDiff()
+}
+
+func (r *Runtime) ListSkills() []SkillInfo {
+	var raw []*skillspkg.Skill
+	if loader := r.core.GetSkillsLoader(); loader != nil {
+		raw = loader.List()
+	}
+	sm := r.core.GetSkillManager()
+	if len(raw) == 0 && sm != nil {
+		raw = sm.List()
+	}
+	active := map[string]bool{}
+	if sm != nil {
+		for name := range sm.GetActive() {
+			active[strings.TrimSpace(name)] = true
+		}
+	}
+	out := make([]SkillInfo, 0, len(raw))
+	for _, skill := range raw {
+		if skill == nil {
+			continue
+		}
+		item := SkillInfo{
+			Name:                   strings.TrimSpace(skill.Name),
+			Description:            strings.TrimSpace(skill.Description),
+			ArgumentHint:           strings.TrimSpace(skill.ArgumentHint),
+			Location:               strings.TrimSpace(skill.Location),
+			BaseDir:                strings.TrimSpace(skill.BaseDir),
+			AllowedTools:           append([]string(nil), skillspkg.ParseAllowedTools(skill.AllowedTools)...),
+			Active:                 active[strings.TrimSpace(skill.Name)],
+			DisableModelInvocation: skill.DisableModelInvocation,
+		}
+		if skill.UserInvocable != nil {
+			item.UserInvocableDefined = true
+			item.UserInvocable = *skill.UserInvocable
+		}
+		out = append(out, item)
+	}
+	slices.SortFunc(out, func(a, b SkillInfo) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+	return out
+}
+
+func (r *Runtime) ReloadSkills() error {
+	if sm := r.core.GetSkillManager(); sm != nil {
+		return sm.ReloadPreserveActive()
+	}
+	if loader := r.core.GetSkillsLoader(); loader != nil {
+		return loader.Reload()
+	}
+	return nil
+}
+
+func (r *Runtime) ListPlugins() []PluginInfo {
+	items := pluginpkg.DefaultRegistry().List()
+	out := make([]PluginInfo, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, PluginInfo{
+			Name:        strings.TrimSpace(item.Name()),
+			Description: strings.TrimSpace(item.Description()),
+		})
+	}
+	slices.SortFunc(out, func(a, b PluginInfo) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
 	return out
 }
 
