@@ -200,3 +200,70 @@ func TestMapBridgeEventSupportsProtocolTextDelta(t *testing.T) {
 		t.Fatalf("Message=%q, want hello", ev.Message)
 	}
 }
+
+func TestBridgeEventToProtocolMapsAgentStarted(t *testing.T) {
+	ev, ok := bridgeEventToProtocol(bridge.Event{
+		Type: "agent.started",
+		RID:  "agent-1",
+		Data: map[string]any{
+			"agent_id":   "agent-1",
+			"agent_name": "planner",
+			"task":       "设计实施计划",
+			"message":    "设计实施计划",
+		},
+	}, "session-a", "thread-a", "req-1", time.Unix(1710000002, 0))
+	if !ok {
+		t.Fatalf("bridgeEventToProtocol should map agent.started")
+	}
+	if ev.EventType != protocol.EventTypeAgentStarted {
+		t.Fatalf("EventType=%q, want %q", ev.EventType, protocol.EventTypeAgentStarted)
+	}
+	if got := ev.Payload["agent_name"]; got != "planner" {
+		t.Fatalf("payload[agent_name]=%v, want planner", got)
+	}
+	if got := ev.Payload["task"]; got != "设计实施计划" {
+		t.Fatalf("payload[task]=%v, want task", got)
+	}
+}
+
+func TestBridgeEventToProtocolMapsAgentFailed(t *testing.T) {
+	ev, ok := bridgeEventToProtocol(bridge.Event{
+		Type: "agent.failed",
+		RID:  "agent-2",
+		Data: map[string]any{
+			"agent_id":   "agent-2",
+			"agent_name": "reviewer",
+			"error":      "subagent crashed",
+		},
+	}, "session-a", "thread-a", "req-2", time.Unix(1710000003, 0))
+	if !ok {
+		t.Fatalf("bridgeEventToProtocol should map agent.failed")
+	}
+	if ev.EventType != protocol.EventTypeAgentFailed {
+		t.Fatalf("EventType=%q, want %q", ev.EventType, protocol.EventTypeAgentFailed)
+	}
+	if got := ev.Payload["error"]; got != "subagent crashed" {
+		t.Fatalf("payload[error]=%v, want subagent crashed", got)
+	}
+}
+
+func TestBridgeEventToProtocolMapsAgentCancelled(t *testing.T) {
+	ev, ok := bridgeEventToProtocol(bridge.Event{
+		Type: "agent.cancelled",
+		RID:  "agent-3",
+		Data: map[string]any{
+			"agent_id":   "agent-3",
+			"agent_name": "tester",
+			"reason":     "cancelled",
+		},
+	}, "session-a", "thread-a", "req-3", time.Unix(1710000004, 0))
+	if !ok {
+		t.Fatalf("bridgeEventToProtocol should map agent.cancelled")
+	}
+	if ev.EventType != protocol.EventTypeAgentCancelled {
+		t.Fatalf("EventType=%q, want %q", ev.EventType, protocol.EventTypeAgentCancelled)
+	}
+	if got := ev.Payload["reason"]; got != "cancelled" {
+		t.Fatalf("payload[reason]=%v, want cancelled", got)
+	}
+}

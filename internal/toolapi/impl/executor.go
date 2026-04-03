@@ -15,6 +15,7 @@ type executor struct {
 func newExecutor(workspaceRoot string) toolapi.Executor {
 	m := tools.NewManager()
 	m.SetWorkspaceRoot(workspaceRoot)
+	configureManagerExtensions(context.Background(), m, workspaceRoot)
 	return &executor{mgr: m}
 }
 
@@ -49,4 +50,3 @@ func (e *executor) Execute(ctx context.Context, sess toolapi.ExecSession, calls 
 	}
 	return res, nil
 }
-

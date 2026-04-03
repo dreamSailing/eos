@@ -129,6 +129,13 @@ type toolDefinitionDTO struct {
 	RiskLevel   string                      `json:"riskLevel"`
 	Params      map[string]parameterInfoDTO `json:"params,omitempty"`
 	Examples    []map[string]any            `json:"examples,omitempty"`
+	Source      string                      `json:"source,omitempty"`
+	Category    string                      `json:"category,omitempty"`
+	VisibleIn   []string                    `json:"visibleIn,omitempty"`
+	ReadOnly    bool                        `json:"readOnly,omitempty"`
+	Invocable   bool                        `json:"invocable"`
+	Tags        []string                    `json:"tags,omitempty"`
+	Metadata    map[string]any              `json:"metadata,omitempty"`
 }
 
 type parameterInfoDTO struct {

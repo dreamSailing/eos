@@ -46,6 +46,7 @@ const (
 	EventTypeAgentProgress  EventType = "agent.progress"
 	EventTypeAgentDone      EventType = "agent.completed"
 	EventTypeAgentFailed    EventType = "agent.failed"
+	EventTypeAgentCancelled EventType = "agent.cancelled"
 	EventTypeTaskStarted    EventType = "task.started"
 	EventTypeTaskUpdated    EventType = "task.updated"
 	EventTypeTaskDone       EventType = "task.completed"

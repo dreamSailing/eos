@@ -275,7 +275,7 @@ func (p *StreamParser) Process(delta string) {
 						taskContent = ""
 					}
 				}
-				p.eventsCh <- bridgeAgentProgressEvent(name, strings.TrimSpace(taskContent))
+				p.eventsCh <- bridgeAgentProgressEvent("", name, strings.TrimSpace(taskContent), nil)
 
 				p.mode = "final"
 				p.buffer.Reset()
@@ -294,7 +294,7 @@ func (p *StreamParser) Process(delta string) {
 				// 提取 name 和 content
 				name := p.agentName
 				finalContent := content
-				p.eventsCh <- bridgeAgentCompletedEvent(name, strings.TrimSpace(finalContent))
+				p.eventsCh <- bridgeAgentCompletedEvent("", name, strings.TrimSpace(finalContent), nil)
 
 				p.mode = "task"
 				p.buffer.Reset()
@@ -333,7 +333,7 @@ func (p *StreamParser) Flush() {
 				taskContent = ""
 			}
 		}
-		p.eventsCh <- bridgeAgentProgressEvent(name, strings.TrimSpace(taskContent))
+		p.eventsCh <- bridgeAgentProgressEvent("", name, strings.TrimSpace(taskContent), nil)
 	case "final":
 		// final 结束
 		// 尝试提取 name (agent.final:name content)
@@ -346,7 +346,7 @@ func (p *StreamParser) Flush() {
 		// 我们假设 agent.final 后面直接是内容，或者 name space content
 		// 如果 name 已经设置，且 content 看起来不像以 name 开头...
 
-		p.eventsCh <- bridgeAgentCompletedEvent(name, strings.TrimSpace(finalContent))
+		p.eventsCh <- bridgeAgentCompletedEvent("", name, strings.TrimSpace(finalContent), nil)
 	default:
 		// normal
 		p.eventsCh <- bridgeTextDeltaEvent(content)

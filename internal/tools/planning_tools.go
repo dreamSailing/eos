@@ -220,22 +220,17 @@ func (m *Manager) planStepsStructured(ctx context.Context, params map[string]int
 }
 
 func (m *Manager) todoReadStructured(ctx context.Context, params map[string]interface{}) ToolResult {
-	m.todoMu.Lock()
-	defer m.todoMu.Unlock()
-	items := make([]map[string]interface{}, 0, len(m.todos))
-	for _, it := range m.todos {
+	items0 := DefaultTodoStore().List()
+	items := make([]map[string]interface{}, 0, len(items0))
+	for _, it := range items0 {
 		item := map[string]interface{}{}
-		if v, ok := it["id"]; ok {
-			item["id"] = v
+		if strings.TrimSpace(it.ID) != "" {
+			item["id"] = it.ID
 		}
-		if v, ok := it["content"]; ok {
-			item["content"] = v
-		}
-		if v, ok := it["status"]; ok {
-			item["status"] = v
-		}
-		if v, ok := it["priority"]; ok {
-			item["priority"] = v
+		item["content"] = it.Content
+		item["status"] = it.Status
+		if it.Priority != nil {
+			item["priority"] = it.Priority
 		}
 		items = append(items, item)
 	}
@@ -278,7 +273,7 @@ func (m *Manager) todoWriteStructured(ctx context.Context, params map[string]int
 		return strings.Join(ks, ",")
 	}
 
-	items := make([]map[string]interface{}, 0, len(arr))
+	items := make([]TodoItem, 0, len(arr))
 	for i, obj := range arr {
 		content, _ := obj["content"].(string)
 		if strings.TrimSpace(content) == "" {
@@ -299,21 +294,19 @@ func (m *Manager) todoWriteStructured(ctx context.Context, params map[string]int
 		if status != "pending" && status != "in_progress" && status != "completed" {
 			return ToolResult{Type: "tool_result", Tool: "todo_write", Status: "error", Error: fmt.Sprintf("items[%d].status must be pending, in_progress, or completed", i)}
 		}
-		item := map[string]interface{}{
-			"content": content,
-			"status":  status,
+		item := TodoItem{
+			Content: content,
+			Status:  status,
 		}
-		if id, ok := obj["id"]; ok {
-			item["id"] = id
+		if id, ok := obj["id"].(string); ok {
+			item.ID = strings.TrimSpace(id)
 		}
 		if pr, ok := obj["priority"]; ok {
-			item["priority"] = pr
+			item.Priority = pr
 		}
 		items = append(items, item)
 	}
-	m.todoMu.Lock()
-	m.todos = items
-	m.todoMu.Unlock()
+	DefaultTodoStore().Replace(items)
 	data := map[string]interface{}{"count": len(items)}
 	disp := fmt.Sprintf("Updated %d todo item(s)", len(items))
 	return ToolResult{Type: "tool_result", Tool: "todo_write", Status: "success", Data: data, Display: disp}

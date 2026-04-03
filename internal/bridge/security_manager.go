@@ -29,12 +29,12 @@ func (s *SecurityManager) SetExecutionMode(mode string) {
 	if mode == "" {
 		mode = "auto"
 	}
-	if mode != "manual" && mode != "plan" && mode != "auto" {
+	if mode != "manual" && mode != "plan" && mode != "auto" && mode != "bypass" {
 		mode = "auto"
 	}
 	s.permMu.Lock()
 	s.executionMode = mode
-	if mode == "auto" {
+	if mode == "auto" || mode == "bypass" {
 		s.permsAllowSession["auto_all"] = true
 	} else {
 		delete(s.permsAllowSession, "auto_all")

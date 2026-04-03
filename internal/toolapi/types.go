@@ -10,10 +10,24 @@ const (
 	RiskHigh   RiskLevel = "high"
 )
 
+type CapabilitySource string
+
+const (
+	SourceBuiltin CapabilitySource = "builtin"
+	SourceRuntime CapabilitySource = "runtime"
+	SourceAgent   CapabilitySource = "agent"
+	SourceSkill   CapabilitySource = "skill"
+	SourcePlugin  CapabilitySource = "plugin"
+	SourceMCP     CapabilitySource = "mcp"
+	SourceLSP     CapabilitySource = "lsp"
+)
+
 type ExecSession struct {
-	WorkspaceRoot string
-	AllowedTools  map[string]bool
-	TraceID       string
+	WorkspaceRoot         string
+	AllowedTools          map[string]bool
+	TraceID               string
+	ExecutionMode         string
+	RequireApprovalDigest bool
 }
 
 type ToolCall struct {
@@ -50,13 +64,26 @@ type ToolDefinition struct {
 	RiskLevel   RiskLevel
 	Params      map[string]ParameterInfo
 	Examples    []ToolExample
+	Source      CapabilitySource
+	Category    string
+	VisibleIn   []string
+	ReadOnly    bool
+	Invocable   bool
+	Tags        []string
+	Metadata    map[string]any
 }
 
 type TaskInfo struct {
 	ID        string
+	Kind      string
 	Status    string
 	StartedAt time.Time
+	UpdatedAt time.Time
+	EndedAt   time.Time
 	Label     string
+	Summary   string
 	CanKill   bool
+	CanResume bool
+	CanClose  bool
+	Metadata  map[string]any
 }
-

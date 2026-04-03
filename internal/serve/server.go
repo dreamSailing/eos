@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dreamSailing/vb-coding/internal/toolapi"
+	"github.com/dreamSailing/vb-coding/internal/tools"
 	"github.com/dreamSailing/vb-coding/pkg/protocol"
 	"github.com/google/uuid"
 )
@@ -29,7 +30,7 @@ type Server struct {
 	writeMu     sync.Mutex
 	initialized bool
 	sessions    map[string]*session
-	defs        []toolDefinitionDTO
+	toolDefs    []toolapi.ToolDefinition
 	policy      *Policy
 	tools       toolapi.Services
 	catalog     toolapi.Catalog
@@ -103,7 +104,7 @@ func NewServer(opts Options, in io.Reader, out io.Writer, errw io.Writer, toolsS
 		tools:    toolsSvc,
 		catalog:  toolsSvc.Catalog(),
 	}
-	s.defs = buildToolDefinitions(s.catalog)
+	s.toolDefs, _ = s.catalog.List(context.Background())
 	return s, nil
 }
 
@@ -170,6 +171,8 @@ func (s *Server) handleRequest(ctx context.Context, req rpcRequest) {
 		s.handleRequestCancel(req)
 	case "tool.list":
 		s.handleToolList(req)
+	case "capability.list":
+		s.handleCapabilityList(req)
 	case "tool.preflight":
 		s.handleToolPreflight(req)
 	case "approval.resolve":
@@ -253,7 +256,7 @@ func (s *Server) handleSessionCreate(req rpcRequest) {
 	if p.Options != nil {
 		if v, ok := p.Options["executionMode"].(string); ok {
 			mv := strings.ToLower(strings.TrimSpace(v))
-			if mv == "manual" || mv == "plan" || mv == "auto" {
+			if mv == "manual" || mv == "plan" || mv == "auto" || mv == "bypass" {
 				executionMode = mv
 			}
 		}
@@ -473,11 +476,36 @@ func (s *Server) handleToolList(req rpcRequest) {
 		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
 		return
 	}
-	if s.getSession(strings.TrimSpace(p.SessionID)) == nil {
+	sess := s.getSession(strings.TrimSpace(p.SessionID))
+	if sess == nil {
 		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
 		return
 	}
-	s.reply(req.ID, map[string]any{"tools": s.defs}, nil)
+	defs := s.currentExecutableDefinitions(sess)
+	s.reply(req.ID, map[string]any{
+		"tools": defsToDTOs(defs),
+		"mode":  toolapi.NormalizeExecutionMode(sess.executionMode),
+	}, nil)
+}
+
+func (s *Server) handleCapabilityList(req rpcRequest) {
+	var p toolListParams
+	if err := decodeParams(req.Params, &p); err != nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+	sess := s.getSession(strings.TrimSpace(p.SessionID))
+	if sess == nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
+		return
+	}
+	defs := s.currentVisibleCapabilities(sess)
+	items := defsToDTOs(defs)
+	s.reply(req.ID, map[string]any{
+		"capabilities": items,
+		"tools":        items,
+		"mode":         toolapi.NormalizeExecutionMode(sess.executionMode),
+	}, nil)
 }
 
 func (s *Server) handleToolPreflight(req rpcRequest) {
@@ -503,12 +531,24 @@ func (s *Server) handleToolPreflight(req rpcRequest) {
 		s.reply(req.ID, nil, errToRPC(err))
 		return
 	}
-	if !sess.allowedTools[strings.ToLower(call.Tool)] {
+	defs := s.currentToolDefinitions(sess.workspaceAbs)
+	def, ok := toolapi.FindToolDefinition(defs, call.Tool)
+	if !ok {
+		s.reply(req.ID, nil, &rpcError{Code: -32003, Message: "ToolNotAllowed"})
+		return
+	}
+	access := toolapi.EvaluateToolAccess(def, toolapi.ExecSession{
+		AllowedTools:          sess.allowedTools,
+		ExecutionMode:         sess.executionMode,
+		RequireApprovalDigest: sess.requireApprovalDigest,
+		WorkspaceRoot:         sess.workspaceAbs,
+	})
+	if !access.Visible || !access.Executable {
 		s.reply(req.ID, nil, &rpcError{Code: -32003, Message: "ToolNotAllowed"})
 		return
 	}
 
-	risk := string(s.catalog.RiskLevel(call.Tool))
+	risk := string(def.RiskLevel)
 	preview, err := s.buildPreview(sess, call)
 	if err != nil {
 		s.reply(req.ID, nil, errToRPC(err))
@@ -540,7 +580,7 @@ func (s *Server) handleToolPreflight(req rpcRequest) {
 		"ttlSeconds":     ttl,
 	}
 
-	if sess.requireApprovalDigest && risk != "low" {
+	if access.NeedsApproval {
 		requestID := "r_" + uuid.New().String()[:12]
 		a := &approval{
 			requestID:  requestID,
@@ -680,12 +720,6 @@ func (s *Server) handleCallExecute(ctx context.Context, req rpcRequest, sessionI
 		s.reply(req.ID, nil, errToRPC(err))
 		return
 	}
-	toolName := strings.ToLower(call.Tool)
-	if !sess.allowedTools[toolName] {
-		s.reply(req.ID, nil, &rpcError{Code: -32003, Message: "ToolNotAllowed"})
-		return
-	}
-
 	s.mu.Lock()
 	if r, ok := sess.results[call.ID]; ok {
 		s.mu.Unlock()
@@ -759,14 +793,25 @@ func (s *Server) handleCallExecute(ctx context.Context, req rpcRequest, sessionI
 }
 
 func (s *Server) executeTool(ctx context.Context, sess *session, call toolCallDTO) (any, *rpcError) {
-	risk := string(s.catalog.RiskLevel(call.Tool))
-	mode := strings.ToLower(strings.TrimSpace(sess.executionMode))
-	if mode == "" {
-		mode = "auto"
+	defs := s.currentToolDefinitions(sess.workspaceAbs)
+	def, ok := toolapi.FindToolDefinition(defs, call.Tool)
+	if !ok {
+		return nil, &rpcError{Code: -32003, Message: "ToolNotAllowed"}
 	}
-	if mode == "plan" && risk != "low" {
-		return nil, &rpcError{Code: -32003, Message: "ToolNotAllowed", Data: map[string]any{"reason": "executionMode", "mode": "plan", "riskLevel": risk}}
+	access := toolapi.EvaluateToolAccess(def, toolapi.ExecSession{
+		AllowedTools:          sess.allowedTools,
+		ExecutionMode:         sess.executionMode,
+		RequireApprovalDigest: sess.requireApprovalDigest,
+		WorkspaceRoot:         sess.workspaceAbs,
+	})
+	if !access.Visible || !access.Executable {
+		return nil, &rpcError{Code: -32003, Message: "ToolNotAllowed", Data: map[string]any{
+			"reason":    access.Reason,
+			"mode":      access.Mode,
+			"riskLevel": access.RiskLevel,
+		}}
 	}
+	risk := string(access.RiskLevel)
 	preview, err := s.buildPreview(sess, call)
 	if err != nil {
 		return nil, errToRPC(err)
@@ -784,8 +829,7 @@ func (s *Server) executeTool(ctx context.Context, sess *session, call toolCallDT
 		return nil, &rpcError{Code: -32012, Message: "Internal"}
 	}
 
-	requireDigest := (mode == "manual") || (sess.requireApprovalDigest && risk != "low")
-	if requireDigest {
+	if access.NeedsApproval {
 		if !s.isApproved(sess, call, digest) {
 			requestID := s.ensurePendingApproval(sess, call, preview, digest, risk)
 			return nil, &rpcError{Code: -32006, Message: "ConfirmationRequired", Data: map[string]any{"requestID": requestID}}
@@ -816,9 +860,11 @@ func (s *Server) executeTool(ctx context.Context, sess *session, call toolCallDT
 
 	s.notifyProtocol(s.newToolCallEvent(sess, call))
 	res, err := sess.exec.Execute(ctx, toolapi.ExecSession{
-		WorkspaceRoot: sess.workspaceAbs,
-		AllowedTools:  sess.allowedTools,
-		TraceID:       call.ID,
+		WorkspaceRoot:         sess.workspaceAbs,
+		AllowedTools:          sess.allowedTools,
+		TraceID:               call.ID,
+		ExecutionMode:         sess.executionMode,
+		RequireApprovalDigest: sess.requireApprovalDigest,
 	}, []toolapi.ToolCall{{
 		ID:     call.ID,
 		Name:   call.Tool,
@@ -1000,13 +1046,27 @@ func (s *Server) handleTaskList(req rpcRequest) {
 	for _, it := range items {
 		out = append(out, map[string]any{
 			"id":        it.ID,
+			"kind":      it.Kind,
 			"status":    it.Status,
-			"startedAt": it.StartedAt.Unix(),
+			"startedAt": unixOrZero(it.StartedAt),
+			"updatedAt": unixOrZero(it.UpdatedAt),
+			"endedAt":   unixOrZero(it.EndedAt),
 			"label":     it.Label,
+			"summary":   it.Summary,
 			"canKill":   it.CanKill,
+			"canResume": it.CanResume,
+			"canClose":  it.CanClose,
+			"metadata":  it.Metadata,
 		})
 	}
 	s.reply(req.ID, map[string]any{"tasks": out}, nil)
+}
+
+func unixOrZero(ts time.Time) int64 {
+	if ts.IsZero() {
+		return 0
+	}
+	return ts.Unix()
 }
 
 func (s *Server) handleTaskCancel(req rpcRequest) {
@@ -1040,6 +1100,55 @@ func (s *Server) getSession(id string) *session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.sessions[id]
+}
+
+func (s *Server) currentToolDefinitions(workspaceRoot string) []toolapi.ToolDefinition {
+	if s == nil {
+		return nil
+	}
+	if s.catalog == nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return append([]toolapi.ToolDefinition(nil), s.toolDefs...)
+	}
+	ctx := context.Background()
+	if strings.TrimSpace(workspaceRoot) != "" {
+		ctx = tools.WithWorkspaceRoot(ctx, workspaceRoot)
+	}
+	defs, err := s.catalog.List(ctx)
+	if err != nil || len(defs) == 0 {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return append([]toolapi.ToolDefinition(nil), s.toolDefs...)
+	}
+	s.mu.Lock()
+	s.toolDefs = append([]toolapi.ToolDefinition(nil), defs...)
+	s.mu.Unlock()
+	return defs
+}
+
+func (s *Server) currentExecutableDefinitions(sess *session) []toolapi.ToolDefinition {
+	if sess == nil {
+		return nil
+	}
+	return toolapi.FilterVisibleTools(s.currentToolDefinitions(sess.workspaceAbs), toolapi.ExecSession{
+		AllowedTools:          sess.allowedTools,
+		ExecutionMode:         sess.executionMode,
+		RequireApprovalDigest: sess.requireApprovalDigest,
+		WorkspaceRoot:         sess.workspaceAbs,
+	})
+}
+
+func (s *Server) currentVisibleCapabilities(sess *session) []toolapi.ToolDefinition {
+	if sess == nil {
+		return nil
+	}
+	return toolapi.FilterVisibleCapabilities(s.currentToolDefinitions(sess.workspaceAbs), toolapi.ExecSession{
+		AllowedTools:          sess.allowedTools,
+		ExecutionMode:         sess.executionMode,
+		RequireApprovalDigest: sess.requireApprovalDigest,
+		WorkspaceRoot:         sess.workspaceAbs,
+	})
 }
 
 func (s *Server) reply(id json.RawMessage, result any, err *rpcError) {
@@ -1556,11 +1665,10 @@ func (s *Server) confirmSummary(call toolCallDTO, preview map[string]interface{}
 	return "即将执行工具：" + strings.TrimSpace(call.Tool)
 }
 
-func buildToolDefinitions(catalog toolapi.Catalog) []toolDefinitionDTO {
-	if catalog == nil {
+func buildToolDefinitions(defs []toolapi.ToolDefinition) []toolDefinitionDTO {
+	if len(defs) == 0 {
 		return nil
 	}
-	defs, _ := catalog.List(context.Background())
 	out := make([]toolDefinitionDTO, 0, len(defs))
 	for _, d := range defs {
 		params := map[string]parameterInfoDTO{}
@@ -1584,7 +1692,18 @@ func buildToolDefinitions(catalog toolapi.Catalog) []toolDefinitionDTO {
 			RiskLevel:   string(d.RiskLevel),
 			Params:      params,
 			Examples:    examples,
+			Source:      string(d.Source),
+			Category:    d.Category,
+			VisibleIn:   append([]string(nil), d.VisibleIn...),
+			ReadOnly:    d.ReadOnly,
+			Invocable:   d.Invocable,
+			Tags:        append([]string(nil), d.Tags...),
+			Metadata:    cloneMap(d.Metadata),
 		})
 	}
 	return out
+}
+
+func defsToDTOs(defs []toolapi.ToolDefinition) []toolDefinitionDTO {
+	return buildToolDefinitions(defs)
 }

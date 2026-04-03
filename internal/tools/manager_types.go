@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/dreamSailing/vb-coding/internal/mcp"
+	"github.com/dreamSailing/vb-coding/internal/pkg/plugins"
 	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
 	"github.com/dreamSailing/vb-coding/internal/tools/shell"
@@ -82,6 +83,7 @@ func NewManager() *Manager {
 		ToolSkillsList:       m.skillsListStructured,
 		ToolAskUserQuestion:  m.askUserQuestionStructured,
 	}
+	m.LoadPluginsFromRegistry(plugins.DefaultRegistry())
 	return m
 }
 

@@ -123,8 +123,11 @@ func (rc *RuntimeCore) waitPrompt(ctx context.Context, req PromptRequest) (Promp
 		}
 	}
 	shouldNotify := desktopEnabled
-	if shouldNotify && rc.securityMgr != nil && rc.securityMgr.ExecutionMode() == "auto" {
-		shouldNotify = promptNeedsSafetyConfirmation(req.Kind, req.Category, req.Summary)
+	if shouldNotify && rc.securityMgr != nil {
+		mode := rc.securityMgr.ExecutionMode()
+		if mode == "auto" || mode == "bypass" {
+			shouldNotify = promptNeedsSafetyConfirmation(req.Kind, req.Category, req.Summary)
+		}
 	}
 	if shouldNotify {
 		switch req.Kind {
@@ -157,9 +160,12 @@ func (rc *RuntimeCore) waitPrompt(ctx context.Context, req PromptRequest) (Promp
 }
 
 func (rc *RuntimeCore) promptPermission(ctx context.Context, category, summary string) string {
-	if rc != nil && rc.securityMgr != nil && rc.securityMgr.ExecutionMode() == "auto" && !promptNeedsSafetyConfirmation(PromptKindPermission, category, summary) {
-		rc.ClearPendingDiff()
-		return "allow"
+	if rc != nil && rc.securityMgr != nil {
+		mode := rc.securityMgr.ExecutionMode()
+		if (mode == "auto" || mode == "bypass") && !promptNeedsSafetyConfirmation(PromptKindPermission, category, summary) {
+			rc.ClearPendingDiff()
+			return "allow"
+		}
 	}
 	req := PromptRequest{
 		Kind:     PromptKindPermission,
@@ -187,14 +193,17 @@ func (rc *RuntimeCore) promptPermission(ctx context.Context, category, summary s
 }
 
 func (rc *RuntimeCore) userConfirmPrompt(ctx context.Context, req tools.UserConfirmRequest) (tools.UserConfirmResponse, error) {
-	if rc != nil && rc.securityMgr != nil && rc.securityMgr.ExecutionMode() == "auto" {
-		opt := ""
-		optIdx := -1
-		if len(req.Options) > 0 {
-			opt = strings.TrimSpace(req.Options[0])
-			optIdx = 0
+	if rc != nil && rc.securityMgr != nil {
+		mode := rc.securityMgr.ExecutionMode()
+		if mode == "auto" || mode == "bypass" {
+			opt := ""
+			optIdx := -1
+			if len(req.Options) > 0 {
+				opt = strings.TrimSpace(req.Options[0])
+				optIdx = 0
+			}
+			return tools.UserConfirmResponse{Confirmed: true, Option: opt, OptionIndex: optIdx}, nil
 		}
-		return tools.UserConfirmResponse{Confirmed: true, Option: opt, OptionIndex: optIdx}, nil
 	}
 	title := strings.TrimSpace(req.Title)
 	question := strings.TrimSpace(req.Question)

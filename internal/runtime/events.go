@@ -15,10 +15,15 @@ const (
 	EventAssistantFinal = "assistant.final"
 
 	// Agent 相关事件
-	EventAgentCall  = "agent.call"
-	EventAgentTask  = "agent.task"
-	EventAgentSkill = "agent.skill"
-	EventAgentFinal = "agent.final" // 子 Agent 的最终输出（使用白色圆点）
+	EventAgentCall      = "agent.call"
+	EventAgentTask      = "agent.task"
+	EventAgentSkill     = "agent.skill"
+	EventAgentStarted   = "agent.started"
+	EventAgentProgress  = "agent.progress"
+	EventAgentCompleted = "agent.completed"
+	EventAgentFailed    = "agent.failed"
+	EventAgentCancelled = "agent.cancelled"
+	EventAgentFinal     = "agent.final" // 兼容旧事件名
 
 	// 流程相关事件
 	EventPhaseNote         = "phase.note"

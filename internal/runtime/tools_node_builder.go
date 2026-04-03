@@ -2,9 +2,9 @@ package runtime
 
 import (
 	"context"
+	"github.com/dreamSailing/vb-coding/internal/tools"
 	"strings"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/tools"
 
 	duckduckgo "github.com/cloudwego/eino-ext/components/tool/duckduckgo/v2"
 	httpdelete "github.com/cloudwego/eino-ext/components/tool/httprequest/delete"
@@ -45,14 +45,14 @@ func buildWikipediaSearchTool(ctx context.Context) tool.BaseTool {
 		ctx = context.Background()
 	}
 	t, err := wikipedia.NewTool(ctx, &wikipedia.Config{
-		ToolName:   "wikipedia_search",
-		ToolDesc:   "通过 Wikipedia 查询百科信息",
-		Language:   "zh",
-		TopK:       3,
-		Timeout:    15 * time.Second,
+		ToolName:    "wikipedia_search",
+		ToolDesc:    "通过 Wikipedia 查询百科信息",
+		Language:    "zh",
+		TopK:        3,
+		Timeout:     15 * time.Second,
 		MaxRedirect: 3,
 		DocMaxChars: 2000,
-		UserAgent:  "vb-coding (https://github.com/cloudwego/eino)",
+		UserAgent:   "vb-coding (https://github.com/cloudwego/eino)",
 	})
 	if err != nil {
 		LogError("runtime.tools_node.wikipedia.init_failed", "err", err)
@@ -256,6 +256,22 @@ func BuildDispatchTools(ctx context.Context, dt *DispatchTools) []tool.BaseTool 
 			handler: handler,
 		}
 	}
+	toStrings := func(v any) []string {
+		switch x := v.(type) {
+		case []string:
+			return append([]string(nil), x...)
+		case []any:
+			out := make([]string, 0, len(x))
+			for _, item := range x {
+				if s, ok := item.(string); ok {
+					out = append(out, s)
+				}
+			}
+			return out
+		default:
+			return nil
+		}
+	}
 
 	return []tool.BaseTool{
 		wrap("invoke_planner", func(args map[string]any) (DispatchResult, error) {
@@ -273,6 +289,43 @@ func BuildDispatchTools(ctx context.Context, dt *DispatchTools) []tool.BaseTool 
 		wrap("invoke_reviewer", func(args map[string]any) (DispatchResult, error) {
 			task, _ := args["task"].(string)
 			return dt.InvokeReviewer(DispatchTask{Task: task}), nil
+		}),
+		wrap("spawn_agent", func(args map[string]any) (DispatchResult, error) {
+			agentName, _ := args["agent"].(string)
+			task, _ := args["task"].(string)
+			forkContext, ok := args["fork_context"].(bool)
+			if !ok {
+				forkContext = true
+			}
+			strategy, _ := args["context_strategy"].(string)
+			return dt.SpawnAgent(agentName, task, forkContext, strategy, toStrings(args["allowed_tools"]))
+		}),
+		wrap("send_input", func(args map[string]any) (DispatchResult, error) {
+			agentID, _ := args["agent_id"].(string)
+			input, _ := args["input"].(string)
+			return dt.SendInput(agentID, input)
+		}),
+		wrap("wait_agent", func(args map[string]any) (DispatchResult, error) {
+			agentID, _ := args["agent_id"].(string)
+			timeoutMS := 0.0
+			switch v := args["timeout_ms"].(type) {
+			case float64:
+				timeoutMS = v
+			case int:
+				timeoutMS = float64(v)
+			case int64:
+				timeoutMS = float64(v)
+			}
+			return dt.WaitAgent(agentID, time.Duration(timeoutMS)*time.Millisecond)
+		}),
+		wrap("resume_agent", func(args map[string]any) (DispatchResult, error) {
+			agentID, _ := args["agent_id"].(string)
+			task, _ := args["task"].(string)
+			return dt.ResumeAgent(agentID, task)
+		}),
+		wrap("close_agent", func(args map[string]any) (DispatchResult, error) {
+			agentID, _ := args["agent_id"].(string)
+			return dt.CloseAgent(agentID)
 		}),
 	}
 }

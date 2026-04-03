@@ -65,26 +65,65 @@ func bridgeToolResultEvent(id, toolName, status, display, errMsg string, data ma
 	}
 }
 
-func bridgeAgentProgressEvent(agentName, task string) Event {
+func bridgeAgentStartedEvent(agentID, agentName, task string, data map[string]any) Event {
 	task = strings.TrimSpace(task)
-	payload := map[string]any{
-		"agent_name": strings.TrimSpace(agentName),
-		"task":       task,
-		"message":    task,
+	payload := cloneBridgePayload(data)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	if strings.TrimSpace(agentID) != "" {
+		payload["agent_id"] = strings.TrimSpace(agentID)
+	}
+	if strings.TrimSpace(agentName) != "" {
+		payload["agent_name"] = strings.TrimSpace(agentName)
+	}
+	if task != "" {
+		payload["task"] = task
+		payload["message"] = task
 	}
 	return Event{
-		Type:    string(protocol.EventTypeAgentProgress),
-		RID:     strings.TrimSpace(agentName),
+		Type:    string(protocol.EventTypeAgentStarted),
+		RID:     firstBridgeNonEmpty(strings.TrimSpace(agentID), strings.TrimSpace(agentName)),
 		Content: task,
 		Data:    payload,
 	}
 }
 
-func bridgeAgentCompletedEvent(agentName, content string) Event {
-	content = strings.TrimSpace(content)
-	payload := protocol.TextPayloadMap(protocol.TextPayload{Text: content})
+func bridgeAgentProgressEvent(agentID, agentName, task string, data map[string]any) Event {
+	task = strings.TrimSpace(task)
+	payload := cloneBridgePayload(data)
 	if payload == nil {
 		payload = map[string]any{}
+	}
+	if strings.TrimSpace(agentID) != "" {
+		payload["agent_id"] = strings.TrimSpace(agentID)
+	}
+	if strings.TrimSpace(agentName) != "" {
+		payload["agent_name"] = strings.TrimSpace(agentName)
+	}
+	if task != "" {
+		payload["task"] = task
+		payload["message"] = task
+	}
+	return Event{
+		Type:    string(protocol.EventTypeAgentProgress),
+		RID:     firstBridgeNonEmpty(strings.TrimSpace(agentID), strings.TrimSpace(agentName)),
+		Content: task,
+		Data:    payload,
+	}
+}
+
+func bridgeAgentCompletedEvent(agentID, agentName, content string, data map[string]any) Event {
+	content = strings.TrimSpace(content)
+	payload := cloneBridgePayload(data)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	if content != "" {
+		payload["text"] = content
+	}
+	if strings.TrimSpace(agentID) != "" {
+		payload["agent_id"] = strings.TrimSpace(agentID)
 	}
 	if strings.TrimSpace(agentName) != "" {
 		payload["agent_name"] = strings.TrimSpace(agentName)
@@ -94,8 +133,56 @@ func bridgeAgentCompletedEvent(agentName, content string) Event {
 	}
 	return Event{
 		Type:    string(protocol.EventTypeAgentDone),
-		RID:     strings.TrimSpace(agentName),
+		RID:     firstBridgeNonEmpty(strings.TrimSpace(agentID), strings.TrimSpace(agentName)),
 		Content: content,
+		Data:    payload,
+	}
+}
+
+func bridgeAgentFailedEvent(agentID, agentName, errMsg string, data map[string]any) Event {
+	errMsg = strings.TrimSpace(errMsg)
+	payload := cloneBridgePayload(data)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	if strings.TrimSpace(agentID) != "" {
+		payload["agent_id"] = strings.TrimSpace(agentID)
+	}
+	if strings.TrimSpace(agentName) != "" {
+		payload["agent_name"] = strings.TrimSpace(agentName)
+	}
+	if errMsg != "" {
+		payload["error"] = errMsg
+		payload["message"] = errMsg
+	}
+	return Event{
+		Type:    string(protocol.EventTypeAgentFailed),
+		RID:     firstBridgeNonEmpty(strings.TrimSpace(agentID), strings.TrimSpace(agentName)),
+		Content: errMsg,
+		Data:    payload,
+	}
+}
+
+func bridgeAgentCancelledEvent(agentID, agentName, reason string, data map[string]any) Event {
+	reason = strings.TrimSpace(reason)
+	payload := cloneBridgePayload(data)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	if strings.TrimSpace(agentID) != "" {
+		payload["agent_id"] = strings.TrimSpace(agentID)
+	}
+	if strings.TrimSpace(agentName) != "" {
+		payload["agent_name"] = strings.TrimSpace(agentName)
+	}
+	if reason != "" {
+		payload["reason"] = reason
+		payload["message"] = reason
+	}
+	return Event{
+		Type:    string(protocol.EventTypeAgentCancelled),
+		RID:     firstBridgeNonEmpty(strings.TrimSpace(agentID), strings.TrimSpace(agentName)),
+		Content: reason,
 		Data:    payload,
 	}
 }

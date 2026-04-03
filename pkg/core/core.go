@@ -1246,7 +1246,26 @@ func bridgeEventToProtocol(ev bridge.Event, sessionID, threadID, fallbackRequest
 			Source:        protocol.SourceCore,
 			Payload:       payload,
 		}), true
-	case "agent.task", string(protocol.EventTypeAgentProgress), string(protocol.EventTypeAgentStarted):
+	case string(protocol.EventTypeAgentStarted):
+		if _, ok := payload["agent_name"]; !ok && requestID != "" {
+			payload["agent_name"] = requestID
+		}
+		if _, ok := payload["task"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["task"] = ev.Content
+		}
+		if _, ok := payload["message"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["message"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeAgentStarted, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "agent_id", "agent_name"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "agent.task", string(protocol.EventTypeAgentProgress):
 		if _, ok := payload["agent_name"]; !ok && requestID != "" {
 			payload["agent_name"] = requestID
 		}
@@ -1260,7 +1279,7 @@ func bridgeEventToProtocol(ev bridge.Event, sessionID, threadID, fallbackRequest
 			SessionID:     sessionID,
 			ThreadID:      threadID,
 			RequestID:     requestID,
-			CorrelationID: requestID,
+			CorrelationID: firstCoreString(payload, "agent_id", "agent_name"),
 			Timestamp:     ts,
 			Source:        protocol.SourceCore,
 			Payload:       payload,
@@ -1279,12 +1298,50 @@ func bridgeEventToProtocol(ev bridge.Event, sessionID, threadID, fallbackRequest
 			SessionID:     sessionID,
 			ThreadID:      threadID,
 			RequestID:     requestID,
-			CorrelationID: requestID,
+			CorrelationID: firstCoreString(payload, "agent_id", "agent_name"),
 			Timestamp:     ts,
 			Source:        protocol.SourceCore,
 			Payload:       payload,
 		}), true
-	case "error", string(protocol.EventTypeRequestFailed), string(protocol.EventTypeAgentFailed), string(protocol.EventTypeTaskFailed):
+	case string(protocol.EventTypeAgentFailed):
+		if _, ok := payload["agent_name"]; !ok && requestID != "" {
+			payload["agent_name"] = requestID
+		}
+		if _, ok := payload["error"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["error"] = ev.Content
+		}
+		if _, ok := payload["message"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["message"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeAgentFailed, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "agent_id", "agent_name"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case string(protocol.EventTypeAgentCancelled):
+		if _, ok := payload["agent_name"]; !ok && requestID != "" {
+			payload["agent_name"] = requestID
+		}
+		if _, ok := payload["reason"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["reason"] = ev.Content
+		}
+		if _, ok := payload["message"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["message"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeAgentCancelled, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "agent_id", "agent_name"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "error", string(protocol.EventTypeRequestFailed), string(protocol.EventTypeTaskFailed):
 		if _, ok := payload["error"]; !ok && strings.TrimSpace(ev.Content) != "" {
 			payload["error"] = ev.Content
 		}
@@ -1392,7 +1449,7 @@ func mapBridgeEvent(ev bridge.Event) (Event, bool) {
 			return Event{Type: "TextFinal", RequestID: ev.RID, Message: strings.TrimSpace(v), Data: ev.Data}, true
 		}
 		return Event{Type: "TextFinal", RequestID: ev.RID, Message: ev.Content}, true
-	case "error", string(protocol.EventTypeRequestFailed), string(protocol.EventTypeAgentFailed), string(protocol.EventTypeTaskFailed):
+	case "error", string(protocol.EventTypeRequestFailed), string(protocol.EventTypeAgentFailed), string(protocol.EventTypeAgentCancelled), string(protocol.EventTypeTaskFailed):
 		if v, ok := ev.Data["error"].(string); ok && strings.TrimSpace(v) != "" {
 			return Event{Type: "Error", RequestID: ev.RID, Message: strings.TrimSpace(v), Data: ev.Data}, true
 		}
@@ -1458,6 +1515,8 @@ func toRuntimeMode(mode string) string {
 		return "manual"
 	case "计划优先", "plan":
 		return "plan"
+	case "内部绕过", "bypass":
+		return "bypass"
 	case "自动无人值守", "auto":
 		return "auto"
 	default:
@@ -1471,6 +1530,8 @@ func fromRuntimeMode(mode string) string {
 		return "手动确认"
 	case "plan":
 		return "计划优先"
+	case "bypass":
+		return "内部绕过"
 	case "auto":
 		return "自动无人值守"
 	default:

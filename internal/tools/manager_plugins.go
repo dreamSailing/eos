@@ -7,6 +7,7 @@ import (
 
 // RegisterPlugin 将插件注册到工具管理器中
 func (m *Manager) RegisterPlugin(p plugins.ToolPlugin) {
+	plugins.DefaultRegistry().Register(p)
 	m.structured[p.Name()] = func(ctx context.Context, params map[string]any) ToolResult {
 		res, err := p.Execute(ctx, params)
 		if err != nil {

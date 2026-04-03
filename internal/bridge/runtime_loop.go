@@ -10,12 +10,11 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 	einoruntime "github.com/dreamSailing/vb-coding/internal/runtime"
 	"github.com/dreamSailing/vb-coding/internal/session"
+	"github.com/dreamSailing/vb-coding/internal/skills"
 	"github.com/dreamSailing/vb-coding/internal/state"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
 	"log/slog"
-	"os"
-	"path/filepath"
 	stdruntime "runtime"
 	"sort"
 	"strconv"
@@ -85,39 +84,7 @@ func (rc *RuntimeCore) loop() {
 		slog.Debug("bridge.init_runtime.load_mcp_success", "component", utils.ComponentSystem, "tools_count", len(mcpTools))
 
 		slog.Debug("bridge.init_runtime.load_skills_start", "component", utils.ComponentSystem)
-		skillsDirs := make([]string, 0, 8)
-
-		addDir := func(dir string) {
-			if dir == "" {
-				return
-			}
-			if abs, err := filepath.Abs(dir); err == nil {
-				dir = abs
-			}
-			dir = filepath.Clean(dir)
-			for _, existing := range skillsDirs {
-				if strings.EqualFold(existing, dir) {
-					return
-				}
-			}
-			skillsDirs = append(skillsDirs, dir)
-		}
-
-		if home, err := os.UserHomeDir(); err == nil {
-			addDir(filepath.Join(home, ".vb", "skills"))
-			addDir(filepath.Join(home, ".claude", "skills"))
-			addDir(filepath.Join(home, ".trae", "skills"))
-		}
-
-		if workspaceRoot := strings.TrimSpace(rc.workingRoot()); workspaceRoot != "" {
-			addDir(filepath.Join(workspaceRoot, ".vb", "skills"))
-			addDir(filepath.Join(workspaceRoot, ".claude", "skills"))
-			addDir(filepath.Join(workspaceRoot, ".trae", "skills"))
-		}
-
-		for _, dir := range config.GetEnabledSkillsDirs(&cfg) {
-			addDir(dir)
-		}
+		skillsDirs := skills.ResolveScanDirs(rc.workingRoot(), &cfg)
 
 		if len(skillsDirs) > 0 {
 			rc.skillsLoader.SetSkillsDirs(skillsDirs)
@@ -193,6 +160,72 @@ func (rc *RuntimeCore) loop() {
 							note, _ := m["content"].(string)
 							rc.eventsCh <- bridgeReasoningEvent(note)
 							return
+						case einoruntime.EventAgentStarted:
+							id, _ := m["id"].(string)
+							content, _ := m["content"].(string)
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							agentName, _ := data["agent_name"].(string)
+							task := strings.TrimSpace(content)
+							if task == "" {
+								task, _ = data["task"].(string)
+							}
+							rc.eventsCh <- bridgeAgentStartedEvent(id, agentName, task, data)
+							return
+						case einoruntime.EventAgentProgress:
+							id, _ := m["id"].(string)
+							content, _ := m["content"].(string)
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							agentName, _ := data["agent_name"].(string)
+							task := strings.TrimSpace(content)
+							if task == "" {
+								task, _ = data["task"].(string)
+							}
+							rc.eventsCh <- bridgeAgentProgressEvent(id, agentName, task, data)
+							return
+						case einoruntime.EventAgentCompleted:
+							id, _ := m["id"].(string)
+							content, _ := m["content"].(string)
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							agentName, _ := data["agent_name"].(string)
+							rc.eventsCh <- bridgeAgentCompletedEvent(id, agentName, content, data)
+							return
+						case einoruntime.EventAgentFailed:
+							id, _ := m["id"].(string)
+							content, _ := m["content"].(string)
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							agentName, _ := data["agent_name"].(string)
+							errMsg := strings.TrimSpace(content)
+							if errMsg == "" {
+								errMsg, _ = data["error"].(string)
+							}
+							rc.eventsCh <- bridgeAgentFailedEvent(id, agentName, errMsg, data)
+							return
+						case einoruntime.EventAgentCancelled:
+							id, _ := m["id"].(string)
+							content, _ := m["content"].(string)
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							agentName, _ := data["agent_name"].(string)
+							reason := strings.TrimSpace(content)
+							if reason == "" {
+								reason, _ = data["reason"].(string)
+							}
+							rc.eventsCh <- bridgeAgentCancelledEvent(id, agentName, reason, data)
+							return
 						}
 					}
 				}
@@ -212,7 +245,7 @@ func (rc *RuntimeCore) loop() {
 				agentMu.Lock()
 				lastAgentName = name
 				agentMu.Unlock()
-				rc.eventsCh <- bridgeAgentProgressEvent(name, task)
+				rc.eventsCh <- bridgeAgentProgressEvent("", name, task, nil)
 				return
 			}
 
@@ -221,7 +254,7 @@ func (rc *RuntimeCore) loop() {
 				agentMu.Lock()
 				name := lastAgentName
 				agentMu.Unlock()
-				rc.eventsCh <- bridgeAgentCompletedEvent(name, content)
+				rc.eventsCh <- bridgeAgentCompletedEvent("", name, content, nil)
 				return
 			}
 
