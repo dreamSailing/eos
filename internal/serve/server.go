@@ -9,11 +9,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/dreamSailing/vb-coding/internal/toolapi"
+	"github.com/dreamSailing/vb-coding/pkg/protocol"
 	"github.com/google/uuid"
 )
 
@@ -34,35 +36,37 @@ type Server struct {
 }
 
 type session struct {
-	id                   string
-	workspaceAbs         string
-	allowedTools         map[string]bool
-	executionMode        string
-	trustedWorkspace     bool
+	id                     string
+	workspaceAbs           string
+	allowedTools           map[string]bool
+	executionMode          string
+	trustedWorkspace       bool
 	maxConcurrentToolCalls int
-	requireApprovalDigest bool
-	confirmPolicyID      string
-	approvals            map[string]*approval
-	allowSession         map[string]time.Time
-	results              map[string]any
-	runningCancels       map[string]context.CancelFunc
-	exec                 toolapi.Executor
+	requireApprovalDigest  bool
+	confirmPolicyID        string
+	approvals              map[string]*approval
+	allowSession           map[string]time.Time
+	results                map[string]any
+	runningCancels         map[string]context.CancelFunc
+	updatedAt              time.Time
+	exec                   toolapi.Executor
 }
 
 type approval struct {
-	requestID   string
-	callID      string
-	tool        string
-	parameters  map[string]interface{}
-	preview     map[string]interface{}
-	digest      string
-	expiresAt   time.Time
-	decision    string
-	used        bool
-	policyID    string
-	reason      string
-	option      string
-	text        string
+	requestID  string
+	kind       string
+	callID     string
+	tool       string
+	parameters map[string]interface{}
+	preview    map[string]interface{}
+	digest     string
+	expiresAt  time.Time
+	decision   string
+	used       bool
+	policyID   string
+	reason     string
+	option     string
+	text       string
 }
 
 func NewServer(opts Options, in io.Reader, out io.Writer, errw io.Writer, toolsSvc toolapi.Services) (*Server, error) {
@@ -150,12 +154,28 @@ func (s *Server) handleRequest(ctx context.Context, req rpcRequest) {
 		s.handleInitialize(req)
 	case "session.create":
 		s.handleSessionCreate(req)
+	case "session.get":
+		s.handleSessionGet(req)
+	case "session.list":
+		s.handleSessionList(req)
+	case "session.resume":
+		s.handleSessionResume(req)
 	case "session.close":
 		s.handleSessionClose(req)
+	case "session.delete":
+		s.handleSessionDelete(req)
+	case "request.start":
+		s.handleRequestStart(ctx, req)
+	case "request.cancel":
+		s.handleRequestCancel(req)
 	case "tool.list":
 		s.handleToolList(req)
 	case "tool.preflight":
 		s.handleToolPreflight(req)
+	case "approval.resolve":
+		s.handleApprovalResolve(req)
+	case "inquiry.resolve":
+		s.handleInquiryResolve(req)
 	case "prompt.resolve":
 		s.handlePromptResolve(req)
 	case "tool.execute":
@@ -164,6 +184,8 @@ func (s *Server) handleRequest(ctx context.Context, req rpcRequest) {
 		s.handleToolCancel(req)
 	case "task.list":
 		s.handleTaskList(req)
+	case "task.cancel":
+		s.handleTaskCancel(req)
 	case "task.kill":
 		s.handleTaskKill(req)
 	default:
@@ -277,25 +299,27 @@ func (s *Server) handleSessionCreate(req rpcRequest) {
 	id := "s_" + uuid.New().String()[:12]
 	exec := s.tools.NewExecutor(abs)
 	sess := &session{
-		id:                    id,
-		workspaceAbs:          abs,
-		allowedTools:          allowed,
-		executionMode:         executionMode,
-		trustedWorkspace:      trustedWorkspace,
+		id:                     id,
+		workspaceAbs:           abs,
+		allowedTools:           allowed,
+		executionMode:          executionMode,
+		trustedWorkspace:       trustedWorkspace,
 		maxConcurrentToolCalls: maxConcurrent,
-		requireApprovalDigest: requireDigest,
-		confirmPolicyID:       confirmPolicyID,
-		approvals:             map[string]*approval{},
-		allowSession:          map[string]time.Time{},
-		results:               map[string]any{},
-		runningCancels:        map[string]context.CancelFunc{},
-		exec:                  exec,
+		requireApprovalDigest:  requireDigest,
+		confirmPolicyID:        confirmPolicyID,
+		approvals:              map[string]*approval{},
+		allowSession:           map[string]time.Time{},
+		results:                map[string]any{},
+		runningCancels:         map[string]context.CancelFunc{},
+		updatedAt:              time.Now(),
+		exec:                   exec,
 	}
 
 	s.mu.Lock()
 	s.sessions[id] = sess
 	s.mu.Unlock()
 
+	s.notifySessionUpdated(sess)
 	s.reply(req.ID, map[string]any{"sessionID": id}, nil)
 }
 
@@ -331,6 +355,116 @@ func (s *Server) handleSessionClose(req rpcRequest) {
 		return
 	}
 	s.reply(req.ID, map[string]any{"ok": true}, nil)
+}
+
+func (s *Server) handleSessionGet(req rpcRequest) {
+	var p sessionGetParams
+	if err := decodeParams(req.Params, &p); err != nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+	sessionID := strings.TrimSpace(p.SessionID)
+	if sessionID == "" {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+
+	s.mu.Lock()
+	sess := s.sessions[sessionID]
+	if sess == nil {
+		s.mu.Unlock()
+		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
+		return
+	}
+	info := s.sessionInfoLocked(sess)
+	s.mu.Unlock()
+
+	s.reply(req.ID, map[string]any{"session": info}, nil)
+}
+
+func (s *Server) handleSessionList(req rpcRequest) {
+	s.mu.Lock()
+	items := make([]protocol.SessionInfo, 0, len(s.sessions))
+	for _, sess := range s.sessions {
+		items = append(items, s.sessionInfoLocked(sess))
+	}
+	s.mu.Unlock()
+
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
+			return strings.Compare(items[i].SessionID, items[j].SessionID) < 0
+		}
+		return items[i].UpdatedAt.After(items[j].UpdatedAt)
+	})
+
+	s.reply(req.ID, map[string]any{"sessions": items}, nil)
+}
+
+func (s *Server) handleSessionResume(req rpcRequest) {
+	var p sessionResumeParams
+	if err := decodeParams(req.Params, &p); err != nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+	sessionID := strings.TrimSpace(p.SessionID)
+	if sessionID == "" {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+
+	s.mu.Lock()
+	sess := s.sessions[sessionID]
+	if sess == nil {
+		s.mu.Unlock()
+		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
+		return
+	}
+	sess.updatedAt = time.Now()
+	info := s.sessionInfoLocked(sess)
+	s.mu.Unlock()
+
+	s.notifySessionUpdated(sess)
+	s.reply(req.ID, map[string]any{"session": info}, nil)
+}
+
+func (s *Server) handleSessionDelete(req rpcRequest) {
+	var p sessionDeleteParams
+	if err := decodeParams(req.Params, &p); err != nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+	s.mu.Lock()
+	sess := s.sessions[strings.TrimSpace(p.SessionID)]
+	if sess != nil {
+		for _, cancel := range sess.runningCancels {
+			cancel()
+		}
+		delete(s.sessions, sess.id)
+	}
+	s.mu.Unlock()
+	if sess == nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
+		return
+	}
+	s.reply(req.ID, map[string]any{"ok": true}, nil)
+}
+
+func (s *Server) handleRequestStart(ctx context.Context, req rpcRequest) {
+	var p requestStartParams
+	if err := decodeParams(req.Params, &p); err != nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+	s.handleCallExecute(ctx, req, p.SessionID, p.Call)
+}
+
+func (s *Server) handleRequestCancel(req rpcRequest) {
+	var p requestCancelParams
+	if err := decodeParams(req.Params, &p); err != nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+	s.handleCallCancel(req, p.SessionID, p.RequestID)
 }
 
 func (s *Server) handleToolList(req rpcRequest) {
@@ -410,6 +544,7 @@ func (s *Server) handleToolPreflight(req rpcRequest) {
 		requestID := "r_" + uuid.New().String()[:12]
 		a := &approval{
 			requestID:  requestID,
+			kind:       "approval",
 			callID:     call.ID,
 			tool:       call.Tool,
 			parameters: cloneMap(call.Parameters),
@@ -419,25 +554,13 @@ func (s *Server) handleToolPreflight(req rpcRequest) {
 		}
 		s.mu.Lock()
 		sess.approvals[requestID] = a
+		sess.updatedAt = time.Now()
 		s.mu.Unlock()
 
 		out["requestID"] = requestID
 
-		s.notify(eventDTO{
-			Type:      "ConfirmationRequest",
-			Ts:        time.Now().Unix(),
-			SessionID: sess.id,
-			Request: map[string]any{
-				"requestID":      requestID,
-				"riskLevel":      risk,
-				"summary":        s.confirmSummary(call, preview),
-				"relatedCallID":  call.ID,
-				"call":           call,
-				"preview":        preview,
-				"approvalDigest": digest,
-				"ttlSeconds":     ttl,
-			},
-		})
+		s.notifyProtocol(s.newApprovalRequiredEvent(sess, requestID, call, preview, risk, digest, ttl))
+		s.notifySessionUpdated(sess)
 	}
 
 	s.reply(req.ID, out, nil)
@@ -449,12 +572,37 @@ func (s *Server) handlePromptResolve(req rpcRequest) {
 		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
 		return
 	}
+	s.resolvePrompt(req, p, "")
+}
+
+func (s *Server) handleApprovalResolve(req rpcRequest) {
+	var p promptResolveParams
+	if err := decodeParams(req.Params, &p); err != nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+	s.resolvePrompt(req, p, "approval")
+}
+
+func (s *Server) handleInquiryResolve(req rpcRequest) {
+	var p promptResolveParams
+	if err := decodeParams(req.Params, &p); err != nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+	if strings.TrimSpace(p.Decision) == "" {
+		p.Decision = "resolve"
+	}
+	s.resolvePrompt(req, p, "inquiry")
+}
+
+func (s *Server) resolvePrompt(req rpcRequest, p promptResolveParams, expectedKind string) {
 	sess := s.getSession(strings.TrimSpace(p.SessionID))
 	if sess == nil {
 		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
 		return
 	}
-	requestID := strings.TrimSpace(p.RequestID)
+	requestID := strings.TrimSpace(firstNonEmpty(p.RequestID, p.ApprovalID, p.InquiryID))
 	if requestID == "" {
 		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
 		return
@@ -467,11 +615,16 @@ func (s *Server) handlePromptResolve(req rpcRequest) {
 		s.reply(req.ID, nil, &rpcError{Code: -32006, Message: "ConfirmationRequired", Data: map[string]any{"requestID": requestID}})
 		return
 	}
+	if expectedKind != "" && !strings.EqualFold(strings.TrimSpace(a.kind), expectedKind) {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams", Data: map[string]any{"requestID": requestID}})
+		return
+	}
 	if time.Now().After(a.expiresAt) {
 		s.reply(req.ID, nil, &rpcError{Code: -32007, Message: "ConfirmationExpired", Data: map[string]any{"requestID": requestID}})
 		return
 	}
-	if strings.TrimSpace(p.ApprovalDigest) == "" || strings.TrimSpace(p.ApprovalDigest) != a.digest {
+	requireDigest := !strings.EqualFold(strings.TrimSpace(a.kind), "inquiry")
+	if requireDigest && (strings.TrimSpace(p.ApprovalDigest) == "" || strings.TrimSpace(p.ApprovalDigest) != a.digest) {
 		s.reply(req.ID, nil, &rpcError{Code: -32008, Message: "ConfirmationDigestMismatch", Data: map[string]any{"requestID": requestID}})
 		return
 	}
@@ -491,8 +644,12 @@ func (s *Server) handlePromptResolve(req rpcRequest) {
 	if decision == "allow_session" {
 		sess.allowSession[a.digest] = time.Now().Add(10 * time.Minute)
 	}
+	aCopy := *a
+	sess.updatedAt = time.Now()
 	s.mu.Unlock()
 
+	s.notifyProtocol(s.newPromptResolvedEvent(sess, aCopy))
+	s.notifySessionUpdated(sess)
 	s.reply(req.ID, map[string]any{"ok": true}, nil)
 }
 
@@ -502,13 +659,16 @@ func (s *Server) handleToolExecute(ctx context.Context, req rpcRequest) {
 		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
 		return
 	}
-	sess := s.getSession(strings.TrimSpace(p.SessionID))
+	s.handleCallExecute(ctx, req, p.SessionID, p.Call)
+}
+
+func (s *Server) handleCallExecute(ctx context.Context, req rpcRequest, sessionID string, call toolCallDTO) {
+	sess := s.getSession(strings.TrimSpace(sessionID))
 	if sess == nil {
 		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
 		return
 	}
 
-	call := p.Call
 	call.Tool = strings.TrimSpace(call.Tool)
 	if call.ID == "" || call.Tool == "" {
 		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
@@ -546,7 +706,13 @@ func (s *Server) handleToolExecute(ctx context.Context, req rpcRequest) {
 	}
 	execCtx, cancel := context.WithCancel(ctx)
 	sess.runningCancels[call.ID] = cancel
+	sess.updatedAt = time.Now()
 	s.mu.Unlock()
+
+	s.notifyProtocol(s.newRequestEvent(sess, protocol.EventTypeRequestStarted, call.ID, call, map[string]any{
+		"status": "running",
+	}))
+	s.notifySessionUpdated(sess)
 
 	respID := append(json.RawMessage(nil), req.ID...)
 	callCopy := call
@@ -558,11 +724,36 @@ func (s *Server) handleToolExecute(ctx context.Context, req rpcRequest) {
 		if rpcErr == nil {
 			sess.results[call.ID] = result
 		}
+		sess.updatedAt = time.Now()
 		s.mu.Unlock()
 		if rpcErr != nil {
+			s.enrichRequestError(sess, rpcErr)
+			if rpcErr.Code != -32006 && rpcErr.Code != -32009 {
+				s.notifyProtocol(s.newRequestEvent(sess, protocol.EventTypeRequestFailed, call.ID, callCopy, map[string]any{
+					"status": "failed",
+					"error":  rpcErr.Message,
+					"code":   rpcErr.Code,
+				}))
+			}
+			s.notifySessionUpdated(sess)
 			s.reply(respID, nil, rpcErr)
 			return
 		}
+		if errText, failed := requestFailureFromResult(result); failed {
+			s.notifyProtocol(s.newRequestEvent(sess, protocol.EventTypeRequestFailed, call.ID, callCopy, map[string]any{
+				"status": "failed",
+				"error":  errText,
+				"result": result,
+			}))
+			s.notifySessionUpdated(sess)
+			s.reply(respID, result, nil)
+			return
+		}
+		s.notifyProtocol(s.newRequestEvent(sess, protocol.EventTypeRequestDone, call.ID, callCopy, map[string]any{
+			"status": "success",
+			"result": result,
+		}))
+		s.notifySessionUpdated(sess)
 		s.reply(respID, result, nil)
 	}()
 }
@@ -603,12 +794,7 @@ func (s *Server) executeTool(ctx context.Context, sess *session, call toolCallDT
 
 	if call.Tool == "ask_user_question" {
 		if a, ok := s.getResolvedInquiry(sess, call, digest); ok {
-			s.notify(eventDTO{
-				Type:      "ToolCall",
-				Ts:        time.Now().Unix(),
-				SessionID: sess.id,
-				Call:      call,
-			})
+			s.notifyProtocol(s.newToolCallEvent(sess, call))
 			res := toolapi.ToolResult{
 				ID:     call.ID,
 				Type:   "tool_result",
@@ -621,24 +807,14 @@ func (s *Server) executeTool(ctx context.Context, sess *session, call toolCallDT
 				Display: "User answered",
 				Ts:      time.Now().Unix(),
 			}
-			s.notify(eventDTO{
-				Type:      "ToolResult",
-				Ts:        time.Now().Unix(),
-				SessionID: sess.id,
-				Result:    res,
-			})
+			s.notifyProtocol(s.newToolResultEvent(sess, call.ID, res))
 			return res, nil
 		}
 		requestID := s.ensurePendingInquiry(sess, call, digest)
 		return nil, &rpcError{Code: -32009, Message: "InquiryRequired", Data: map[string]any{"requestID": requestID}}
 	}
 
-	s.notify(eventDTO{
-		Type:      "ToolCall",
-		Ts:        time.Now().Unix(),
-		SessionID: sess.id,
-		Call:      call,
-	})
+	s.notifyProtocol(s.newToolCallEvent(sess, call))
 	res, err := sess.exec.Execute(ctx, toolapi.ExecSession{
 		WorkspaceRoot: sess.workspaceAbs,
 		AllowedTools:  sess.allowedTools,
@@ -655,13 +831,7 @@ func (s *Server) executeTool(ctx context.Context, sess *session, call toolCallDT
 		return nil, &rpcError{Code: -32012, Message: "Internal"}
 	}
 
-
-	s.notify(eventDTO{
-		Type:      "ToolResult",
-		Ts:        time.Now().Unix(),
-		SessionID: sess.id,
-		Result:    res[0],
-	})
+	s.notifyProtocol(s.newToolResultEvent(sess, call.ID, res[0]))
 
 	return res[0], nil
 }
@@ -695,7 +865,6 @@ func (s *Server) isApproved(sess *session, call toolCallDTO, digest string) bool
 }
 
 func (s *Server) ensurePendingApproval(sess *session, call toolCallDTO, preview map[string]interface{}, digest string, risk string) string {
-	now := time.Now().Unix()
 	ttl := int64(60)
 	if risk == "high" {
 		ttl = 30
@@ -706,6 +875,7 @@ func (s *Server) ensurePendingApproval(sess *session, call toolCallDTO, preview 
 	s.mu.Lock()
 	sess.approvals[requestID] = &approval{
 		requestID:  requestID,
+		kind:       "approval",
 		callID:     call.ID,
 		tool:       call.Tool,
 		parameters: cloneMap(call.Parameters),
@@ -713,23 +883,11 @@ func (s *Server) ensurePendingApproval(sess *session, call toolCallDTO, preview 
 		digest:     digest,
 		expiresAt:  expiresAt,
 	}
+	sess.updatedAt = time.Now()
 	s.mu.Unlock()
 
-	s.notify(eventDTO{
-		Type:      "ConfirmationRequest",
-		Ts:        now,
-		SessionID: sess.id,
-		Request: map[string]any{
-			"requestID":      requestID,
-			"riskLevel":      risk,
-			"summary":        s.confirmSummary(call, preview),
-			"relatedCallID":  call.ID,
-			"call":           call,
-			"preview":        preview,
-			"approvalDigest": digest,
-			"ttlSeconds":     ttl,
-		},
-	})
+	s.notifyProtocol(s.newApprovalRequiredEvent(sess, requestID, call, preview, risk, digest, ttl))
+	s.notifySessionUpdated(sess)
 	return requestID
 }
 
@@ -756,7 +914,6 @@ func (s *Server) getResolvedInquiry(sess *session, call toolCallDTO, digest stri
 }
 
 func (s *Server) ensurePendingInquiry(sess *session, call toolCallDTO, digest string) string {
-	now := time.Now().Unix()
 	ttl := int64(3600) // 1 hour
 	expiresAt := time.Now().Add(time.Duration(ttl) * time.Second)
 	requestID := "i_" + uuid.New().String()[:12]
@@ -764,12 +921,14 @@ func (s *Server) ensurePendingInquiry(sess *session, call toolCallDTO, digest st
 	s.mu.Lock()
 	sess.approvals[requestID] = &approval{
 		requestID:  requestID,
+		kind:       "inquiry",
 		callID:     call.ID,
 		tool:       call.Tool,
 		parameters: cloneMap(call.Parameters),
 		digest:     digest,
 		expiresAt:  expiresAt,
 	}
+	sess.updatedAt = time.Now()
 	s.mu.Unlock()
 
 	var question string
@@ -788,19 +947,8 @@ func (s *Server) ensurePendingInquiry(sess *session, call toolCallDTO, digest st
 		options = opts
 	}
 
-	s.notify(eventDTO{
-		Type:      "PromptRequest",
-		Ts:        now,
-		SessionID: sess.id,
-		Request: map[string]any{
-			"requestID":      requestID,
-			"kind":           "inquiry",
-			"question":       question,
-			"options":        options,
-			"approvalDigest": digest,
-			"ttlSeconds":     ttl,
-		},
-	})
+	s.notifyProtocol(s.newInquiryRequiredEvent(sess, requestID, call, question, options, digest, ttl))
+	s.notifySessionUpdated(sess)
 	return requestID
 }
 
@@ -810,12 +958,16 @@ func (s *Server) handleToolCancel(req rpcRequest) {
 		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
 		return
 	}
-	sess := s.getSession(strings.TrimSpace(p.SessionID))
+	s.handleCallCancel(req, p.SessionID, p.CallID)
+}
+
+func (s *Server) handleCallCancel(req rpcRequest, sessionID, callID string) {
+	sess := s.getSession(strings.TrimSpace(sessionID))
 	if sess == nil {
 		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
 		return
 	}
-	callID := strings.TrimSpace(p.CallID)
+	callID = strings.TrimSpace(callID)
 	if callID == "" {
 		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
 		return
@@ -855,6 +1007,10 @@ func (s *Server) handleTaskList(req rpcRequest) {
 		})
 	}
 	s.reply(req.ID, map[string]any{"tasks": out}, nil)
+}
+
+func (s *Server) handleTaskCancel(req rpcRequest) {
+	s.handleTaskKill(req)
 }
 
 func (s *Server) handleTaskKill(req rpcRequest) {
@@ -897,12 +1053,312 @@ func (s *Server) reply(id json.RawMessage, result any, err *rpcError) {
 	_, _ = s.out.Write(append(b, '\n'))
 }
 
-func (s *Server) notify(ev eventDTO) {
+func (s *Server) notifyProtocol(ev protocol.Envelope) {
 	nt := rpcNotification{JSONRPC: "2.0", Method: "event", Params: ev}
 	b, _ := json.Marshal(nt)
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	_, _ = s.out.Write(append(b, '\n'))
+}
+
+func requestFailureFromResult(result any) (string, bool) {
+	switch v := result.(type) {
+	case toolapi.ToolResult:
+		status := strings.ToLower(strings.TrimSpace(v.Status))
+		if status == "" || status == "success" {
+			return "", false
+		}
+		if text := strings.TrimSpace(v.Error); text != "" {
+			return text, true
+		}
+		if text := strings.TrimSpace(v.Display); text != "" {
+			return text, true
+		}
+		return v.Status, true
+	case map[string]any:
+		status := strings.ToLower(strings.TrimSpace(anyString(v["status"])))
+		if status == "" || status == "success" {
+			return "", false
+		}
+		if text := strings.TrimSpace(anyString(v["error"])); text != "" {
+			return text, true
+		}
+		if text := strings.TrimSpace(anyString(v["display"])); text != "" {
+			return text, true
+		}
+		return status, true
+	default:
+		return "", false
+	}
+}
+
+func anyString(v any) string {
+	text, _ := v.(string)
+	return text
+}
+
+func (s *Server) newRequestEvent(sess *session, eventType protocol.EventType, requestID string, call toolCallDTO, extra map[string]any) protocol.Envelope {
+	payload := map[string]any{
+		"request_id": strings.TrimSpace(requestID),
+		"tool":       strings.TrimSpace(call.Tool),
+		"call": map[string]any{
+			"id":         strings.TrimSpace(call.ID),
+			"tool":       strings.TrimSpace(call.Tool),
+			"parameters": cloneMap(call.Parameters),
+		},
+	}
+	for k, v := range extra {
+		payload[k] = v
+	}
+	return protocol.NewEvent(eventType, protocol.EventOptions{
+		SessionID:     sessionIDOf(sess),
+		ThreadID:      sessionIDOf(sess),
+		RequestID:     strings.TrimSpace(requestID),
+		CorrelationID: strings.TrimSpace(call.ID),
+		Source:        protocol.SourceServe,
+		Payload:       payload,
+	})
+}
+
+func (s *Server) newToolCallEvent(sess *session, call toolCallDTO) protocol.Envelope {
+	payload := protocol.ToolCallPayload(protocol.ToolCall{
+		ToolName:  call.Tool,
+		Arguments: cloneMap(call.Parameters),
+	})
+	payload["id"] = call.ID
+	return protocol.NewEvent(protocol.EventTypeToolCall, protocol.EventOptions{
+		SessionID:     sessionIDOf(sess),
+		ThreadID:      sessionIDOf(sess),
+		RequestID:     strings.TrimSpace(call.ID),
+		CorrelationID: strings.TrimSpace(call.ID),
+		Source:        protocol.SourceServe,
+		Payload:       payload,
+	})
+}
+
+func (s *Server) newToolResultEvent(sess *session, correlationID string, res toolapi.ToolResult) protocol.Envelope {
+	payload := protocol.ToolResultPayload(protocol.ToolResult{
+		ToolName: res.Tool,
+		Status:   res.Status,
+		Display:  res.Display,
+		Data:     cloneMap(res.Data),
+	})
+	payload["id"] = res.ID
+	if res.Type != "" {
+		payload["result_type"] = res.Type
+	}
+	if res.Error != "" {
+		payload["error"] = res.Error
+	}
+	if res.Ts != 0 {
+		payload["ts"] = res.Ts
+	}
+	return protocol.NewEvent(protocol.EventTypeToolResult, protocol.EventOptions{
+		SessionID:     sessionIDOf(sess),
+		ThreadID:      sessionIDOf(sess),
+		RequestID:     strings.TrimSpace(res.ID),
+		CorrelationID: strings.TrimSpace(correlationID),
+		Source:        protocol.SourceServe,
+		Payload:       payload,
+	})
+}
+
+func (s *Server) newApprovalRequiredEvent(sess *session, requestID string, call toolCallDTO, preview map[string]interface{}, risk, digest string, ttl int64) protocol.Envelope {
+	payload := protocol.ApprovalRequestPayload(protocol.ApprovalRequest{
+		ApprovalID: strings.TrimSpace(requestID),
+		Title:      "Execution confirmation",
+		Message:    s.confirmSummary(call, preview),
+		RiskLevel:  strings.TrimSpace(risk),
+		Options:    []string{"allow_once", "allow_session", "deny"},
+	})
+	payload["related_call_id"] = call.ID
+	payload["approval_digest"] = digest
+	payload["ttl_seconds"] = ttl
+	payload["call"] = call
+	payload["preview"] = cloneMap(preview)
+	return protocol.NewEvent(protocol.EventTypeApprovalReq, protocol.EventOptions{
+		SessionID:     sessionIDOf(sess),
+		ThreadID:      sessionIDOf(sess),
+		RequestID:     strings.TrimSpace(requestID),
+		CorrelationID: strings.TrimSpace(call.ID),
+		Source:        protocol.SourceServe,
+		Payload:       payload,
+	})
+}
+
+func (s *Server) newInquiryRequiredEvent(sess *session, requestID string, call toolCallDTO, question string, options []string, digest string, ttl int64) protocol.Envelope {
+	payload := protocol.InquiryRequestPayload(protocol.InquiryRequest{
+		InquiryID: strings.TrimSpace(requestID),
+		Question:  strings.TrimSpace(question),
+		Options:   append([]string(nil), options...),
+		AllowText: true,
+	})
+	payload["related_call_id"] = call.ID
+	payload["approval_digest"] = digest
+	payload["ttl_seconds"] = ttl
+	payload["call"] = call
+	return protocol.NewEvent(protocol.EventTypeInquiryReq, protocol.EventOptions{
+		SessionID:     sessionIDOf(sess),
+		ThreadID:      sessionIDOf(sess),
+		RequestID:     strings.TrimSpace(requestID),
+		CorrelationID: strings.TrimSpace(call.ID),
+		Source:        protocol.SourceServe,
+		Payload:       payload,
+	})
+}
+
+func (s *Server) newPromptResolvedEvent(sess *session, item approval) protocol.Envelope {
+	if strings.EqualFold(strings.TrimSpace(item.kind), "inquiry") {
+		payload := protocol.InquiryResolutionPayload(protocol.InquiryResolution{
+			InquiryID: strings.TrimSpace(item.requestID),
+			Option:    strings.TrimSpace(item.option),
+			Text:      strings.TrimSpace(item.text),
+		})
+		if strings.TrimSpace(item.callID) != "" {
+			payload["related_call_id"] = strings.TrimSpace(item.callID)
+		}
+		return protocol.NewEvent(protocol.EventTypeInquiryDone, protocol.EventOptions{
+			SessionID:     sessionIDOf(sess),
+			ThreadID:      sessionIDOf(sess),
+			RequestID:     strings.TrimSpace(item.requestID),
+			CorrelationID: strings.TrimSpace(item.callID),
+			Source:        protocol.SourceServe,
+			Payload:       payload,
+		})
+	}
+
+	payload := protocol.ApprovalResolutionPayload(protocol.ApprovalResolution{
+		ApprovalID: strings.TrimSpace(item.requestID),
+		Decision:   strings.TrimSpace(item.decision),
+		Reason:     strings.TrimSpace(item.reason),
+	})
+	if strings.TrimSpace(item.callID) != "" {
+		payload["related_call_id"] = strings.TrimSpace(item.callID)
+	}
+	if strings.TrimSpace(item.policyID) != "" {
+		payload["policy_id"] = strings.TrimSpace(item.policyID)
+	}
+	return protocol.NewEvent(protocol.EventTypeApprovalDone, protocol.EventOptions{
+		SessionID:     sessionIDOf(sess),
+		ThreadID:      sessionIDOf(sess),
+		RequestID:     strings.TrimSpace(item.requestID),
+		CorrelationID: strings.TrimSpace(item.callID),
+		Source:        protocol.SourceServe,
+		Payload:       payload,
+	})
+}
+
+func (s *Server) notifySessionUpdated(sess *session) {
+	if sess == nil {
+		return
+	}
+	s.notifyProtocol(s.newSessionUpdatedEvent(sess))
+}
+
+func (s *Server) newSessionUpdatedEvent(sess *session) protocol.Envelope {
+	info := s.sessionInfo(sess)
+	return protocol.NewEvent(protocol.EventTypeSessionUpdated, protocol.EventOptions{
+		SessionID:     info.SessionID,
+		ThreadID:      info.ThreadID,
+		CorrelationID: info.CurrentRequestID,
+		Timestamp:     info.UpdatedAt,
+		Source:        protocol.SourceServe,
+		Payload:       protocol.SessionPayload(info),
+	})
+}
+
+func (s *Server) sessionInfo(sess *session) protocol.SessionInfo {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sessionInfoLocked(sess)
+}
+
+func (s *Server) sessionInfoLocked(sess *session) protocol.SessionInfo {
+	if sess == nil {
+		return protocol.SessionInfo{}
+	}
+
+	now := time.Now()
+	pendingApprovals := make([]string, 0, len(sess.approvals))
+	pendingInquiries := make([]string, 0, len(sess.approvals))
+	for id, item := range sess.approvals {
+		if item == nil || now.After(item.expiresAt) || strings.TrimSpace(item.decision) != "" {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(item.kind), "inquiry") {
+			pendingInquiries = append(pendingInquiries, id)
+			continue
+		}
+		pendingApprovals = append(pendingApprovals, id)
+	}
+	sort.Strings(pendingApprovals)
+	sort.Strings(pendingInquiries)
+
+	runningTasks := make([]string, 0, len(sess.runningCancels))
+	for id := range sess.runningCancels {
+		runningTasks = append(runningTasks, id)
+	}
+	sort.Strings(runningTasks)
+
+	status := "idle"
+	currentRequestID := ""
+	switch {
+	case len(runningTasks) > 0:
+		status = "running"
+		currentRequestID = runningTasks[0]
+	case len(pendingApprovals) > 0:
+		status = "waiting_input"
+		currentRequestID = pendingApprovals[0]
+	case len(pendingInquiries) > 0:
+		status = "waiting_input"
+		currentRequestID = pendingInquiries[0]
+	}
+
+	title := filepath.Base(strings.TrimSpace(sess.workspaceAbs))
+	if title == "." {
+		title = ""
+	}
+
+	updatedAt := sess.updatedAt
+	if updatedAt.IsZero() {
+		updatedAt = now
+	}
+
+	return protocol.SessionInfo{
+		SessionID:        strings.TrimSpace(sess.id),
+		ThreadID:         strings.TrimSpace(sess.id),
+		Workspace:        strings.TrimSpace(sess.workspaceAbs),
+		Title:            title,
+		Mode:             strings.TrimSpace(sess.executionMode),
+		Status:           status,
+		CurrentRequestID: currentRequestID,
+		PendingApprovals: pendingApprovals,
+		PendingInquiries: pendingInquiries,
+		RunningTasks:     runningTasks,
+		UpdatedAt:        updatedAt,
+		Metadata: map[string]any{
+			"trusted_workspace":         sess.trustedWorkspace,
+			"require_approval_digest":   sess.requireApprovalDigest,
+			"max_concurrent_tool_calls": sess.maxConcurrentToolCalls,
+		},
+	}
+}
+
+func sessionIDOf(sess *session) string {
+	if sess == nil {
+		return ""
+	}
+	return strings.TrimSpace(sess.id)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (s *Server) writeStderr(msg string) {
@@ -913,6 +1369,34 @@ func (s *Server) writeStderr(msg string) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	_, _ = fmt.Fprintln(s.err, msg)
+}
+
+func (s *Server) enrichRequestError(sess *session, rpcErr *rpcError) {
+	if rpcErr == nil || rpcErr.Code != -32006 {
+		return
+	}
+	data, ok := rpcErr.Data.(map[string]any)
+	if !ok {
+		return
+	}
+	requestID, _ := data["requestID"].(string)
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return
+	}
+
+	s.mu.Lock()
+	a := sess.approvals[requestID]
+	s.mu.Unlock()
+	if a == nil {
+		return
+	}
+	if _, exists := data["approvalDigest"]; !exists && strings.TrimSpace(a.digest) != "" {
+		data["approvalDigest"] = strings.TrimSpace(a.digest)
+	}
+	if _, exists := data["decisionOptions"]; !exists {
+		data["decisionOptions"] = []string{"allow_once", "allow_session", "deny"}
+	}
 }
 
 func errToRPC(err error) *rpcError {

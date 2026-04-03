@@ -212,7 +212,7 @@ func (p *StreamParser) Process(delta string) {
 			if idx >= 0 {
 				// 发送标记前的内容
 				if idx > 0 {
-					p.eventsCh <- Event{Type: "delta", Content: fullText[:idx]}
+					p.eventsCh <- bridgeTextDeltaEvent(fullText[:idx])
 				}
 				// 切换模式
 				p.mode = nextMode
@@ -241,7 +241,7 @@ func (p *StreamParser) Process(delta string) {
 				// 发送安全部分
 				safeLen := l - matchLen
 				if safeLen > 0 {
-					p.eventsCh <- Event{Type: "delta", Content: fullText[:safeLen]}
+					p.eventsCh <- bridgeTextDeltaEvent(fullText[:safeLen])
 					p.buffer.Reset()
 					p.buffer.WriteString(fullText[safeLen:])
 				}
@@ -249,7 +249,7 @@ func (p *StreamParser) Process(delta string) {
 				return
 			} else {
 				// 没有匹配，全部发送
-				p.eventsCh <- Event{Type: "delta", Content: fullText}
+				p.eventsCh <- bridgeTextDeltaEvent(fullText)
 				p.buffer.Reset()
 				return
 			}
@@ -275,7 +275,7 @@ func (p *StreamParser) Process(delta string) {
 						taskContent = ""
 					}
 				}
-				p.eventsCh <- Event{Type: "agent.task", RID: name, Content: strings.TrimSpace(taskContent)}
+				p.eventsCh <- bridgeAgentProgressEvent(name, strings.TrimSpace(taskContent))
 
 				p.mode = "final"
 				p.buffer.Reset()
@@ -294,7 +294,7 @@ func (p *StreamParser) Process(delta string) {
 				// 提取 name 和 content
 				name := p.agentName
 				finalContent := content
-				p.eventsCh <- Event{Type: "agent.final", RID: name, Content: strings.TrimSpace(finalContent)}
+				p.eventsCh <- bridgeAgentCompletedEvent(name, strings.TrimSpace(finalContent))
 
 				p.mode = "task"
 				p.buffer.Reset()
@@ -333,7 +333,7 @@ func (p *StreamParser) Flush() {
 				taskContent = ""
 			}
 		}
-		p.eventsCh <- Event{Type: "agent.task", RID: name, Content: strings.TrimSpace(taskContent)}
+		p.eventsCh <- bridgeAgentProgressEvent(name, strings.TrimSpace(taskContent))
 	case "final":
 		// final 结束
 		// 尝试提取 name (agent.final:name content)
@@ -346,10 +346,10 @@ func (p *StreamParser) Flush() {
 		// 我们假设 agent.final 后面直接是内容，或者 name space content
 		// 如果 name 已经设置，且 content 看起来不像以 name 开头...
 
-		p.eventsCh <- Event{Type: "agent.final", RID: name, Content: strings.TrimSpace(finalContent)}
+		p.eventsCh <- bridgeAgentCompletedEvent(name, strings.TrimSpace(finalContent))
 	default:
 		// normal
-		p.eventsCh <- Event{Type: "delta", Content: content}
+		p.eventsCh <- bridgeTextDeltaEvent(content)
 	}
 
 	p.buffer.Reset()

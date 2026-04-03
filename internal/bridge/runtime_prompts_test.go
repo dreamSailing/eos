@@ -38,8 +38,11 @@ func TestPromptPermissionAutoStillPromptsHighRisk(t *testing.T) {
 
 	select {
 	case ev := <-rc.eventsCh:
-		if ev.Type != "prompt.request" || ev.RID == "" {
+		if ev.Type != "approval.required" || ev.RID == "" {
 			t.Fatalf("unexpected event: %#v", ev)
+		}
+		if got, _ := ev.Data["approval_id"].(string); got != ev.RID {
+			t.Fatalf("approval_id=%q, want %q", got, ev.RID)
 		}
 		if ok := rc.SubmitPromptResponse(ev.RID, PromptResponse{Decision: "allow_once"}); !ok {
 			t.Fatalf("failed to submit prompt response")

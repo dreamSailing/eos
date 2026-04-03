@@ -141,24 +141,12 @@ func (rc *RuntimeCore) waitPrompt(ctx context.Context, req PromptRequest) (Promp
 		}
 	}
 
-	rc.eventsCh <- Event{
-		Type:    "prompt.request",
-		RID:     req.ID,
-		Content: req.Question,
-		Data: map[string]any{
-			"kind":       string(req.Kind),
-			"title":      req.Title,
-			"question":   req.Question,
-			"options":    req.Options,
-			"category":   req.Category,
-			"summary":    req.Summary,
-			"diff":       req.Diff,
-			"diff_path":  req.DiffPath,
-			"allow_text": req.AllowText,
-			"text_hint":  req.TextHint,
-			"ts":         time.Now().Unix(),
-		},
+	ev := bridgePromptEvent(req)
+	if ev.Data == nil {
+		ev.Data = map[string]any{}
 	}
+	ev.Data["ts"] = time.Now().Unix()
+	rc.eventsCh <- ev
 
 	select {
 	case r := <-ch:

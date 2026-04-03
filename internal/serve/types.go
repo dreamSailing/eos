@@ -52,6 +52,28 @@ type sessionCloseParams struct {
 	SessionID string `json:"sessionID"`
 }
 
+type sessionGetParams struct {
+	SessionID string `json:"sessionID"`
+}
+
+type sessionResumeParams struct {
+	SessionID string `json:"sessionID"`
+}
+
+type sessionDeleteParams struct {
+	SessionID string `json:"sessionID"`
+}
+
+type requestStartParams struct {
+	SessionID string      `json:"sessionID"`
+	Call      toolCallDTO `json:"call"`
+}
+
+type requestCancelParams struct {
+	SessionID string `json:"sessionID"`
+	RequestID string `json:"requestID"`
+}
+
 type toolListParams struct {
 	SessionID string `json:"sessionID"`
 }
@@ -69,6 +91,8 @@ type toolPreflightParams struct {
 type promptResolveParams struct {
 	SessionID       string `json:"sessionID"`
 	RequestID       string `json:"requestID"`
+	ApprovalID      string `json:"approvalID,omitempty"`
+	InquiryID       string `json:"inquiryID,omitempty"`
 	Decision        string `json:"decision"`
 	ApprovalDigest  string `json:"approvalDigest"`
 	Reason          string `json:"reason,omitempty"`
@@ -99,24 +123,12 @@ type toolCallDTO struct {
 	Parameters map[string]interface{} `json:"parameters,omitempty"`
 }
 
-type eventDTO struct {
-	Type          string `json:"type"`
-	Ts            int64  `json:"ts"`
-	SessionID     string `json:"sessionID,omitempty"`
-	CorrelationID string `json:"correlationID,omitempty"`
-	Message       string `json:"message,omitempty"`
-	Call          any    `json:"call,omitempty"`
-	Result        any    `json:"result,omitempty"`
-	Request       any    `json:"request,omitempty"`
-	Task          any    `json:"task,omitempty"`
-}
-
 type toolDefinitionDTO struct {
-	Name        string                        `json:"name"`
-	Description string                        `json:"description"`
-	RiskLevel   string                        `json:"riskLevel"`
-	Params      map[string]parameterInfoDTO   `json:"params,omitempty"`
-	Examples    []map[string]any              `json:"examples,omitempty"`
+	Name        string                      `json:"name"`
+	Description string                      `json:"description"`
+	RiskLevel   string                      `json:"riskLevel"`
+	Params      map[string]parameterInfoDTO `json:"params,omitempty"`
+	Examples    []map[string]any            `json:"examples,omitempty"`
 }
 
 type parameterInfoDTO struct {

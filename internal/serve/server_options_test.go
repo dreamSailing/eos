@@ -100,8 +100,8 @@ func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {
 		"params": map[string]any{
 			"workspacePath": workspace,
 			"options": map[string]any{
-				"executionMode":        "plan",
-				"allowedTools":         []any{"bash"},
+				"executionMode":         "plan",
+				"allowedTools":          []any{"bash"},
 				"requireApprovalDigest": false,
 			},
 		},
@@ -216,6 +216,16 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 		}
 	}
 
+	readNotification := func(timeout time.Duration) map[string]any {
+		for {
+			m := readLine(timeout)
+			if m["method"] != "event" {
+				continue
+			}
+			return m
+		}
+	}
+
 	write(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"}})
 	_ = readResponse(1, 2*time.Second)
 
@@ -226,12 +236,12 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 		"params": map[string]any{
 			"workspacePath": workspace,
 			"options": map[string]any{
-				"allowedTools":            []any{"bash", "read"},
-				"requireApprovalDigest":   false,
-				"maxConcurrentToolCalls":  1,
-				"executionMode":           "auto",
-				"trustedWorkspace":        true,
-				"confirmPolicyID":         "",
+				"allowedTools":           []any{"bash", "read"},
+				"requireApprovalDigest":  false,
+				"maxConcurrentToolCalls": 1,
+				"executionMode":          "auto",
+				"trustedWorkspace":       true,
+				"confirmPolicyID":        "",
 			},
 		},
 	})
@@ -255,6 +265,9 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 			},
 		},
 	})
+	for i := 0; i < 3; i++ {
+		_ = readNotification(2 * time.Second)
+	}
 
 	write(map[string]any{
 		"jsonrpc": "2.0",

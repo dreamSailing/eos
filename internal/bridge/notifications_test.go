@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 	"time"
+
 	"github.com/dreamSailing/vb-coding/internal/notify"
 	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
 	"github.com/dreamSailing/vb-coding/internal/session"
@@ -40,8 +41,11 @@ func TestWaitPrompt_SendsDesktopNotification(t *testing.T) {
 	}()
 
 	ev := <-rc.eventsCh
-	if ev.Type != "prompt.request" || ev.RID == "" {
+	if ev.Type != "approval.required" || ev.RID == "" {
 		t.Fatalf("unexpected event: %#v", ev)
+	}
+	if got, _ := ev.Data["approval_id"].(string); got != ev.RID {
+		t.Fatalf("approval_id=%q, want %q", got, ev.RID)
 	}
 
 	select {
@@ -71,7 +75,7 @@ func TestFinalizeTask_SendsDesktopNotificationInAuto(t *testing.T) {
 	defer notify.ResetSender()
 
 	rc := &RuntimeCore{
-		cm:         session.NewContextManager(),
+		cm:          session.NewContextManager(),
 		securityMgr: NewSecurityManager(),
 	}
 	rc.securityMgr.SetExecutionMode("auto")

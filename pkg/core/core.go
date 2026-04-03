@@ -16,6 +16,7 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/session"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 	"github.com/dreamSailing/vb-coding/internal/tools/bg"
+	"github.com/dreamSailing/vb-coding/pkg/protocol"
 )
 
 type Event struct {
@@ -152,6 +153,112 @@ func (r *Runtime) RunBash(ctx context.Context, input string) (<-chan Event, erro
 			return
 		}
 		out <- Event{Type: "TextFinal", Message: result}
+	}()
+	return out, nil
+}
+
+func (r *Runtime) InvokeProtocol(ctx context.Context, input string) (<-chan protocol.Envelope, error) {
+	sessionID, _ := r.CurrentSessionID()
+	sessionID = strings.TrimSpace(sessionID)
+	threadID := sessionID
+	requestID := newCoreRequestID("req")
+	input = strings.TrimSpace(input)
+	out := make(chan protocol.Envelope, 64)
+	go func() {
+		defer close(out)
+		out <- newCoreRequestEvent(protocol.EventTypeRequestStarted, sessionID, threadID, requestID, map[string]any{
+			"input": input,
+			"mode":  r.ExecutionMode(),
+		})
+		done := make(chan error, 1)
+		go func() {
+			_, err := r.core.GraphInvokePlanWithImages(ctx, input, r.core.ExecutionMode(), nil)
+			done <- err
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
+					"error": ctx.Err().Error(),
+					"input": input,
+					"mode":  r.ExecutionMode(),
+				})
+				return
+			case ev := <-r.core.Events():
+				if mapped, ok := bridgeEventToProtocol(ev, sessionID, threadID, requestID, time.Now()); ok {
+					out <- mapped
+				}
+			case err := <-done:
+				if err != nil {
+					out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
+						"error": err.Error(),
+						"input": input,
+						"mode":  r.ExecutionMode(),
+					})
+				} else {
+					out <- newCoreRequestEvent(protocol.EventTypeRequestDone, sessionID, threadID, requestID, map[string]any{
+						"input":   input,
+						"mode":    r.ExecutionMode(),
+						"message": "request completed",
+						"status":  "success",
+					})
+				}
+				return
+			}
+		}
+	}()
+	return out, nil
+}
+
+func (r *Runtime) RunBashProtocol(ctx context.Context, input string) (<-chan protocol.Envelope, error) {
+	sessionID, _ := r.CurrentSessionID()
+	sessionID = strings.TrimSpace(sessionID)
+	threadID := sessionID
+	requestID := newCoreRequestID("bash")
+	input = strings.TrimSpace(input)
+
+	out := make(chan protocol.Envelope, 8)
+	go func() {
+		defer close(out)
+		out <- newCoreRequestEvent(protocol.EventTypeRequestStarted, sessionID, threadID, requestID, map[string]any{
+			"input": input,
+			"mode":  "bash",
+		})
+		out <- protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     time.Now(),
+			Source:        protocol.SourceCore,
+			Payload:       protocol.TextPayloadMap(protocol.TextPayload{Text: "执行命令: " + input}),
+		})
+
+		result, err := r.core.ExecuteBash(ctx, input)
+		if err != nil {
+			out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
+				"error": err.Error(),
+				"input": input,
+				"mode":  "bash",
+			})
+			return
+		}
+
+		out <- protocol.NewEvent(protocol.EventTypeTextFinal, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     time.Now(),
+			Source:        protocol.SourceCore,
+			Payload:       protocol.TextPayloadMap(protocol.TextPayload{Text: result}),
+		})
+		out <- newCoreRequestEvent(protocol.EventTypeRequestDone, sessionID, threadID, requestID, map[string]any{
+			"input":   input,
+			"mode":    "bash",
+			"message": "request completed",
+			"status":  "success",
+		})
 	}()
 	return out, nil
 }
@@ -985,31 +1092,364 @@ func filterTrustedWorkspaces(trusted []string, target string) ([]string, bool) {
 	return filtered, changed
 }
 
+func (r *Runtime) wrapLegacyStream(in <-chan Event) <-chan protocol.Envelope {
+	sessionID, _ := r.CurrentSessionID()
+	sessionID = strings.TrimSpace(sessionID)
+	threadID := sessionID
+	out := make(chan protocol.Envelope, 64)
+	go func() {
+		defer close(out)
+		for ev := range in {
+			out <- legacyEventToProtocol(ev, sessionID, threadID, time.Now())
+		}
+	}()
+	return out
+}
+
+func newCoreRequestID(prefix string) string {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		prefix = "req"
+	}
+	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
+}
+
+func newCoreRequestEvent(eventType protocol.EventType, sessionID, threadID, requestID string, payload map[string]any) protocol.Envelope {
+	return protocol.NewEvent(eventType, protocol.EventOptions{
+		SessionID:     strings.TrimSpace(sessionID),
+		ThreadID:      strings.TrimSpace(threadID),
+		RequestID:     strings.TrimSpace(requestID),
+		CorrelationID: strings.TrimSpace(requestID),
+		Timestamp:     time.Now(),
+		Source:        protocol.SourceCore,
+		Payload:       payload,
+	})
+}
+
+func bridgeEventToProtocol(ev bridge.Event, sessionID, threadID, fallbackRequestID string, ts time.Time) (protocol.Envelope, bool) {
+	eventType := strings.TrimSpace(ev.Type)
+	requestID := strings.TrimSpace(ev.RID)
+	if requestID == "" {
+		requestID = strings.TrimSpace(fallbackRequestID)
+	}
+	payload := protocol.ClonePayload(ev.Data)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+
+	switch eventType {
+	case "meta", "delta", string(protocol.EventTypeTextDelta):
+		if _, ok := payload["text"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["text"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "final", string(protocol.EventTypeTextFinal):
+		if _, ok := payload["text"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["text"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeTextFinal, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "reasoning", "phase.note", string(protocol.EventTypeTextReasoning):
+		if _, ok := payload["text"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["text"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeTextReasoning, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "tool_call", string(protocol.EventTypeToolCall):
+		if _, ok := payload["tool_name"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["tool_name"] = ev.Content
+		}
+		if _, ok := payload["id"]; !ok && requestID != "" {
+			payload["id"] = requestID
+		}
+		return protocol.NewEvent(protocol.EventTypeToolCall, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "related_call_id", "id", "tool_call_id"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "tool_result", string(protocol.EventTypeToolResult):
+		if _, ok := payload["display"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["display"] = ev.Content
+		}
+		if _, ok := payload["id"]; !ok && requestID != "" {
+			payload["id"] = requestID
+		}
+		return protocol.NewEvent(protocol.EventTypeToolResult, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "related_call_id", "id", "tool_call_id"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "prompt.request", string(protocol.EventTypeApprovalReq), string(protocol.EventTypeInquiryReq):
+		kind := strings.ToLower(strings.TrimSpace(firstCoreString(payload, "kind")))
+		if eventType == string(protocol.EventTypeInquiryReq) || kind == "inquiry" {
+			if _, ok := payload["inquiry_id"]; !ok && requestID != "" {
+				payload["inquiry_id"] = requestID
+			}
+			if _, ok := payload["question"]; !ok && strings.TrimSpace(ev.Content) != "" {
+				payload["question"] = ev.Content
+			}
+			return protocol.NewEvent(protocol.EventTypeInquiryReq, protocol.EventOptions{
+				SessionID:     sessionID,
+				ThreadID:      threadID,
+				RequestID:     requestID,
+				CorrelationID: firstCoreString(payload, "related_call_id"),
+				Timestamp:     ts,
+				Source:        protocol.SourceCore,
+				Payload:       payload,
+			}), true
+		}
+		if _, ok := payload["approval_id"]; !ok && requestID != "" {
+			payload["approval_id"] = requestID
+		}
+		if _, ok := payload["message"]; !ok {
+			payload["message"] = firstCoreString(payload, "summary", "question")
+			if strings.TrimSpace(firstCoreString(payload, "message")) == "" && strings.TrimSpace(ev.Content) != "" {
+				payload["message"] = ev.Content
+			}
+		}
+		return protocol.NewEvent(protocol.EventTypeApprovalReq, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "related_call_id"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "agent.task", string(protocol.EventTypeAgentProgress), string(protocol.EventTypeAgentStarted):
+		if _, ok := payload["agent_name"]; !ok && requestID != "" {
+			payload["agent_name"] = requestID
+		}
+		if _, ok := payload["task"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["task"] = ev.Content
+		}
+		if _, ok := payload["message"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["message"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeAgentProgress, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "agent.final", string(protocol.EventTypeAgentDone):
+		if _, ok := payload["agent_name"]; !ok && requestID != "" {
+			payload["agent_name"] = requestID
+		}
+		if _, ok := payload["text"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["text"] = ev.Content
+		}
+		if _, ok := payload["message"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["message"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeAgentDone, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "error", string(protocol.EventTypeRequestFailed), string(protocol.EventTypeAgentFailed), string(protocol.EventTypeTaskFailed):
+		if _, ok := payload["error"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["error"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeRequestFailed, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	default:
+		if strings.TrimSpace(ev.Content) == "" && len(payload) == 0 {
+			return protocol.Envelope{}, false
+		}
+		if _, ok := payload["text"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["text"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	}
+}
+
+func legacyEventToProtocol(ev Event, sessionID, threadID string, ts time.Time) protocol.Envelope {
+	requestID := strings.TrimSpace(ev.RequestID)
+	correlationID := requestID
+	payload := protocol.ClonePayload(ev.Data)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+
+	eventType := protocol.EventTypeTextDelta
+	switch strings.TrimSpace(ev.Type) {
+	case "TextDelta":
+		eventType = protocol.EventTypeTextDelta
+		payload["text"] = ev.Message
+	case "TextFinal":
+		eventType = protocol.EventTypeTextFinal
+		payload["text"] = ev.Message
+	case "ToolStep":
+		eventType = protocol.EventTypeToolStep
+		payload["message"] = ev.Message
+	case "ConfirmRequired":
+		eventType = protocol.EventTypeApprovalReq
+		payload["approval_id"] = requestID
+		if _, ok := payload["message"]; !ok {
+			payload["message"] = ev.Message
+		}
+	case "Inquiry":
+		eventType = protocol.EventTypeInquiryReq
+		payload["inquiry_id"] = requestID
+		if _, ok := payload["question"]; !ok {
+			payload["question"] = ev.Message
+		}
+	case "Error":
+		eventType = protocol.EventTypeRequestFailed
+		payload["error"] = ev.Message
+	default:
+		if strings.TrimSpace(ev.Message) != "" {
+			payload["text"] = ev.Message
+		}
+	}
+
+	return protocol.NewEvent(eventType, protocol.EventOptions{
+		SessionID:     sessionID,
+		ThreadID:      threadID,
+		RequestID:     requestID,
+		CorrelationID: correlationID,
+		Timestamp:     ts,
+		Source:        protocol.SourceCore,
+		Payload:       payload,
+	})
+}
+
 func mapBridgeEvent(ev bridge.Event) (Event, bool) {
 	switch ev.Type {
-	case "prompt.request":
+	case "prompt.request", string(protocol.EventTypeApprovalReq), string(protocol.EventTypeInquiryReq):
 		msg := strings.TrimSpace(ev.Content)
 		if v, ok := ev.Data["question"].(string); ok && strings.TrimSpace(v) != "" {
 			msg = strings.TrimSpace(v)
 		}
+		if ev.Type == string(protocol.EventTypeInquiryReq) {
+			if v, ok := ev.Data["question"].(string); ok && strings.TrimSpace(v) != "" {
+				msg = strings.TrimSpace(v)
+			}
+			return Event{Type: "Inquiry", RequestID: ev.RID, Message: msg, Data: ev.Data}, true
+		}
 		if kind, ok := ev.Data["kind"].(string); ok && kind == "inquiry" {
 			return Event{Type: "Inquiry", RequestID: ev.RID, Message: msg, Data: ev.Data}, true
 		}
+		if v, ok := ev.Data["message"].(string); ok && strings.TrimSpace(v) != "" {
+			msg = strings.TrimSpace(v)
+		}
 		return Event{Type: "ConfirmRequired", RequestID: ev.RID, Message: msg, Data: ev.Data}, true
-	case "final":
+	case "final", string(protocol.EventTypeTextFinal):
+		if v, ok := ev.Data["text"].(string); ok && strings.TrimSpace(v) != "" {
+			return Event{Type: "TextFinal", RequestID: ev.RID, Message: strings.TrimSpace(v), Data: ev.Data}, true
+		}
 		return Event{Type: "TextFinal", RequestID: ev.RID, Message: ev.Content}, true
-	case "error":
+	case "error", string(protocol.EventTypeRequestFailed), string(protocol.EventTypeAgentFailed), string(protocol.EventTypeTaskFailed):
+		if v, ok := ev.Data["error"].(string); ok && strings.TrimSpace(v) != "" {
+			return Event{Type: "Error", RequestID: ev.RID, Message: strings.TrimSpace(v), Data: ev.Data}, true
+		}
 		return Event{Type: "Error", RequestID: ev.RID, Message: ev.Content}, true
-	case "delta":
+	case "meta", "delta", string(protocol.EventTypeTextDelta):
+		if v, ok := ev.Data["text"].(string); ok && strings.TrimSpace(v) != "" {
+			return Event{Type: "TextDelta", RequestID: ev.RID, Message: strings.TrimSpace(v), Data: ev.Data}, true
+		}
 		return Event{Type: "TextDelta", RequestID: ev.RID, Message: ev.Content}, true
-	case "tool_call", "tool_result", "reasoning":
-		return Event{Type: "ToolStep", RequestID: ev.RID, Message: ev.Content}, true
+	case "tool_call", "tool_result", "reasoning", "phase.note",
+		string(protocol.EventTypeToolCall), string(protocol.EventTypeToolResult), string(protocol.EventTypeTextReasoning),
+		string(protocol.EventTypeAgentStarted), string(protocol.EventTypeAgentProgress), string(protocol.EventTypeAgentDone),
+		string(protocol.EventTypeTaskStarted), string(protocol.EventTypeTaskUpdated), string(protocol.EventTypeTaskDone):
+		msg := strings.TrimSpace(ev.Content)
+		if msg == "" {
+			msg = firstCoreString(ev.Data, "message", "display", "tool_name", "task", "text", "label")
+		}
+		if msg == "" {
+			msg = firstCoreString(ev.Data, "tool_name")
+		}
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: msg, Data: ev.Data}, true
+	case "agent.task":
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: strings.TrimSpace(ev.Content), Data: ev.Data}, true
+	case "agent.final":
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: strings.TrimSpace(ev.Content), Data: ev.Data}, true
+	case string(protocol.EventTypeRequestDone):
+		return Event{Type: "TextFinal", RequestID: ev.RID, Message: firstCoreString(ev.Data, "text", "message"), Data: ev.Data}, true
+	case string(protocol.EventTypeRequestStarted):
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: firstCoreString(ev.Data, "message", "text"), Data: ev.Data}, true
+	case string(protocol.EventTypeSessionUpdated):
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: firstCoreString(ev.Data, "message", "title", "preview"), Data: ev.Data}, true
+	case string(protocol.EventTypeApprovalDone), string(protocol.EventTypeInquiryDone):
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: firstCoreString(ev.Data, "message", "decision", "option", "text"), Data: ev.Data}, true
+	case string(protocol.EventTypeToolStep):
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: firstCoreString(ev.Data, "message", "text", "display", "tool_name"), Data: ev.Data}, true
 	default:
 		if strings.TrimSpace(ev.Content) == "" {
 			return Event{}, false
 		}
 		return Event{Type: "TextDelta", RequestID: ev.RID, Message: ev.Content}, true
 	}
+}
+
+func firstCoreString(payload map[string]any, keys ...string) string {
+	for _, key := range keys {
+		raw, ok := payload[key]
+		if !ok {
+			continue
+		}
+		if text, ok := raw.(string); ok {
+			text = strings.TrimSpace(text)
+			if text != "" {
+				return text
+			}
+		}
+	}
+	return ""
 }
 
 func toRuntimeMode(mode string) string {

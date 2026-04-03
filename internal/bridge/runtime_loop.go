@@ -167,26 +167,31 @@ func (rc *RuntimeCore) loop() {
 							if d, ok := m["data"].(map[string]any); ok {
 								params = d
 							}
-							rc.eventsCh <- Event{Type: "tool_call", RID: id, Content: name, Data: params}
+							rc.eventsCh <- bridgeToolCallEvent(id, name, params)
 							return
 						case einoruntime.EventToolResult:
 							id, _ := m["id"].(string)
 							status, _ := m["status"].(string)
 							display, _ := m["display"].(string)
 							errMsg, _ := m["error"].(string)
+							toolName, _ := m["tool"].(string)
 							out := strings.TrimSpace(display)
 							if out == "" {
 								out = strings.TrimSpace(errMsg)
 							}
-							rc.eventsCh <- Event{Type: "tool_result", RID: id, Content: out, Data: map[string]any{"status": status}}
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							rc.eventsCh <- bridgeToolResultEvent(id, toolName, status, out, errMsg, data)
 							return
 						case einoruntime.EventAssistantDelta:
 							content, _ := m["content"].(string)
-							rc.eventsCh <- Event{Type: "delta", Content: content}
+							rc.eventsCh <- bridgeTextDeltaEvent(content)
 							return
 						case einoruntime.EventPhaseNote:
 							note, _ := m["content"].(string)
-							rc.eventsCh <- Event{Type: "phase.note", Content: note}
+							rc.eventsCh <- bridgeReasoningEvent(note)
 							return
 						}
 					}
@@ -207,7 +212,7 @@ func (rc *RuntimeCore) loop() {
 				agentMu.Lock()
 				lastAgentName = name
 				agentMu.Unlock()
-				rc.eventsCh <- Event{Type: "agent.task", RID: name, Content: task}
+				rc.eventsCh <- bridgeAgentProgressEvent(name, task)
 				return
 			}
 
@@ -216,7 +221,7 @@ func (rc *RuntimeCore) loop() {
 				agentMu.Lock()
 				name := lastAgentName
 				agentMu.Unlock()
-				rc.eventsCh <- Event{Type: "agent.final", RID: name, Content: content}
+				rc.eventsCh <- bridgeAgentCompletedEvent(name, content)
 				return
 			}
 
@@ -227,9 +232,9 @@ func (rc *RuntimeCore) loop() {
 				}
 				parts := strings.SplitN(raw, ":", 2)
 				if len(parts) == 2 {
-					rc.eventsCh <- Event{Type: "tool_call", RID: strings.TrimSpace(parts[0]), Content: strings.TrimSpace(parts[1])}
+					rc.eventsCh <- bridgeToolCallEvent(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil)
 				} else {
-					rc.eventsCh <- Event{Type: "tool_call", RID: "", Content: strings.TrimSpace(parts[0])}
+					rc.eventsCh <- bridgeToolCallEvent("", strings.TrimSpace(parts[0]), nil)
 				}
 				return
 			}
@@ -241,9 +246,9 @@ func (rc *RuntimeCore) loop() {
 				}
 				parts := strings.SplitN(raw, ":", 2)
 				if len(parts) == 2 {
-					rc.eventsCh <- Event{Type: "tool_result", RID: strings.TrimSpace(parts[0]), Content: strings.TrimSpace(parts[1]), Data: map[string]any{"status": "success"}}
+					rc.eventsCh <- bridgeToolResultEvent(strings.TrimSpace(parts[0]), "", "success", strings.TrimSpace(parts[1]), "", nil)
 				} else {
-					rc.eventsCh <- Event{Type: "tool_result", RID: "", Content: strings.TrimSpace(parts[0]), Data: map[string]any{"status": "success"}}
+					rc.eventsCh <- bridgeToolResultEvent("", "", "success", strings.TrimSpace(parts[0]), "", nil)
 				}
 				return
 			}
@@ -251,7 +256,7 @@ func (rc *RuntimeCore) loop() {
 			if strings.HasPrefix(line, einoruntime.EventAssistantDelta+":") {
 				raw := strings.TrimSpace(strings.TrimPrefix(line, einoruntime.EventAssistantDelta+":"))
 				if raw != "" {
-					rc.eventsCh <- Event{Type: "delta", Content: raw}
+					rc.eventsCh <- bridgeTextDeltaEvent(raw)
 				}
 				return
 			}
@@ -259,7 +264,7 @@ func (rc *RuntimeCore) loop() {
 			if strings.HasPrefix(line, einoruntime.EventPhaseNote+":") {
 				raw := strings.TrimSpace(strings.TrimPrefix(line, einoruntime.EventPhaseNote+":"))
 				if raw != "" {
-					rc.eventsCh <- Event{Type: "phase.note", Content: raw}
+					rc.eventsCh <- bridgeReasoningEvent(raw)
 				}
 				return
 			}
@@ -279,10 +284,7 @@ func (rc *RuntimeCore) loop() {
 				cbReasoning(reasoning)
 			}
 			// 发送事件到 eventsCh
-			rc.eventsCh <- Event{
-				Type:    "reasoning",
-				Content: reasoning,
-			}
+			rc.eventsCh <- bridgeReasoningEvent(reasoning)
 		})
 
 		nrt = nrt.WithSafety(rc.hooks)
