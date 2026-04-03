@@ -3,9 +3,9 @@ package tools
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 	"log/slog"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
 func (m *Manager) skillStructured(ctx context.Context, params map[string]any) ToolResult {
@@ -33,6 +33,9 @@ func (m *Manager) skillStructured(ctx context.Context, params map[string]any) To
 	if !ok || s == nil {
 		available := m.skillManager.FormatSkillsForPrompt()
 		errorMsg := fmt.Sprintf("skill not found: %s\n\nAvailable skills:\n%s", command, available)
+		if m.skillManager.IsDisabled(command) {
+			errorMsg = fmt.Sprintf("skill disabled: %s\n\nAvailable skills:\n%s", command, available)
+		}
 
 		suggestion := m.suggestSkill(command)
 		if suggestion != "" {
@@ -93,6 +96,9 @@ func (m *Manager) skillStructured(ctx context.Context, params map[string]any) To
 
 		available := m.skillManager.FormatSkillsForPrompt()
 		errorMsg := fmt.Sprintf("skill not found: %s\n\nAvailable skills:\n%s", command, available)
+		if m.skillManager.IsDisabled(command) || strings.Contains(strings.ToLower(err.Error()), "skill disabled") {
+			errorMsg = fmt.Sprintf("skill disabled: %s\n\nAvailable skills:\n%s", command, available)
+		}
 
 		suggestion := m.suggestSkill(command)
 		if suggestion != "" {

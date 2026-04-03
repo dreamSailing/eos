@@ -268,19 +268,31 @@ func pluginCapabilityDefinitions() []toolapi.ToolDefinition {
 		if plugin == nil {
 			continue
 		}
+		name := strings.TrimSpace(plugin.Name())
 		level := toolapi.RiskHigh
+		meta := pluginpkg.MetadataOf(plugin)
+		enabled := pluginpkg.DefaultRegistry().IsEnabled(name)
+		tags := inferTags(name, level, enabled, false)
+		tags = append(tags, boolTag("enabled", enabled))
+		if meta.Source != "" {
+			tags = append(tags, "source:"+strings.ToLower(strings.TrimSpace(meta.Source)))
+		}
 		out = append(out, toolapi.ToolDefinition{
-			Name:        strings.TrimSpace(plugin.Name()),
+			Name:        name,
 			Description: strings.TrimSpace(plugin.Description()),
 			RiskLevel:   level,
 			Source:      toolapi.SourcePlugin,
 			Category:    "extension",
 			VisibleIn:   inferVisibleModes(level),
 			ReadOnly:    false,
-			Invocable:   true,
-			Tags:        inferTags(plugin.Name(), level, true, false),
+			Invocable:   enabled,
+			Tags:        uniqueStrings(tags),
 			Metadata: map[string]any{
-				"origin": "plugin_registry",
+				"origin":  "plugin_registry",
+				"enabled": enabled,
+				"source":  strings.TrimSpace(meta.Source),
+				"command": strings.TrimSpace(meta.Command),
+				"kind":    strings.TrimSpace(meta.Kind),
 			},
 		})
 	}
@@ -306,12 +318,14 @@ func skillCapabilityDefinitions(workspaceRoot string, cfg *config.Config) []tool
 		if skill == nil {
 			continue
 		}
+		enabled := !config.IsSkillDisabled(cfg, strings.TrimSpace(skill.Name))
 		metadata := map[string]any{
 			"skill_name":    skill.Name,
 			"location":      skill.Location,
 			"base_dir":      skill.BaseDir,
 			"argument_hint": skill.ArgumentHint,
 			"allowed_tools": skills.ParseAllowedTools(skill.AllowedTools),
+			"enabled":       enabled,
 		}
 		if skill.UserInvocable != nil {
 			metadata["user_invocable"] = *skill.UserInvocable
@@ -327,6 +341,7 @@ func skillCapabilityDefinitions(workspaceRoot string, cfg *config.Config) []tool
 			Tags: append([]string{
 				"skill",
 				"location:" + strings.TrimSpace(strings.ToLower(skill.Location)),
+				boolTag("enabled", enabled),
 			}, "activated_via:skill"),
 			Metadata: metadata,
 		}))

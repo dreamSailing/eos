@@ -7,6 +7,7 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/ai"
 	"github.com/dreamSailing/vb-coding/internal/config"
 	"github.com/dreamSailing/vb-coding/internal/notify"
+	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
 	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 	einoruntime "github.com/dreamSailing/vb-coding/internal/runtime"
 	"github.com/dreamSailing/vb-coding/internal/session"
@@ -95,6 +96,18 @@ func (rc *RuntimeCore) loop() {
 					"skills_dirs", skillsDirs,
 					"skills_count", len(rc.skillsLoader.List()))
 			}
+		}
+		if sm := rc.tm.GetSkillManager(); sm != nil {
+			sm.SetDisabledSkills(cfg.DisabledSkills)
+		}
+		for _, plugin := range pluginpkg.DefaultRegistry().List() {
+			if plugin == nil {
+				continue
+			}
+			pluginpkg.DefaultRegistry().SetEnabled(plugin.Name(), true)
+		}
+		for _, entry := range cfg.Plugins {
+			pluginpkg.DefaultRegistry().SetEnabled(entry.Name, entry.Enabled)
 		}
 
 		slog.Debug("bridge.init_runtime.create_runtime_start", "component", utils.ComponentSystem)

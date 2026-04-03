@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dreamSailing/vb-coding/internal/bridge"
+	"github.com/dreamSailing/vb-coding/internal/config"
 	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
 	"github.com/dreamSailing/vb-coding/pkg/protocol"
 )
@@ -317,6 +318,12 @@ func TestRuntimeListsSkills(t *testing.T) {
 	if items[0].Name != "review" {
 		t.Fatalf("skill name=%q, want review", items[0].Name)
 	}
+	if !items[0].Enabled {
+		t.Fatal("skill should be enabled by default")
+	}
+	if items[0].Source != "project" {
+		t.Fatalf("skill source=%q, want project", items[0].Source)
+	}
 	if items[0].BaseDir != skillDir {
 		t.Fatalf("skill base dir=%q, want %q", items[0].BaseDir, skillDir)
 	}
@@ -325,6 +332,60 @@ func TestRuntimeListsSkills(t *testing.T) {
 	}
 	if len(items[0].AllowedTools) != 2 || items[0].AllowedTools[0] != "read" || items[0].AllowedTools[1] != "grep" {
 		t.Fatalf("allowed tools=%v, want [read grep]", items[0].AllowedTools)
+	}
+}
+
+func TestRuntimeSetSkillEnabledPersistsState(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	rt := NewRuntime()
+	root := t.TempDir()
+	skillDir := filepath.Join(root, "review")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	skillDoc := strings.Join([]string{
+		"---",
+		"name: review",
+		"description: Review the current workspace",
+		"---",
+		"Review instructions",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillDoc), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	loader := rt.core.GetSkillsLoader()
+	loader.SetSkillsDirs([]string{root})
+	if err := loader.Scan(); err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+
+	if err := rt.SetSkillEnabled("review", false); err != nil {
+		t.Fatalf("SetSkillEnabled(false) error = %v", err)
+	}
+	items := rt.ListSkills()
+	if len(items) != 1 || items[0].Enabled {
+		t.Fatalf("ListSkills()=%+v, want disabled skill", items)
+	}
+
+	cfg, _ := config.Load()
+	if !config.IsSkillDisabled(&cfg, "review") {
+		t.Fatal("disabled skill should be persisted in config")
+	}
+
+	if err := rt.SetSkillEnabled("review", true); err != nil {
+		t.Fatalf("SetSkillEnabled(true) error = %v", err)
+	}
+	items = rt.ListSkills()
+	if len(items) != 1 || !items[0].Enabled {
+		t.Fatalf("ListSkills()=%+v, want enabled skill", items)
+	}
+	cfg, _ = config.Load()
+	if config.IsSkillDisabled(&cfg, "review") {
+		t.Fatal("skill should be removed from disabled config after enabling")
 	}
 }
 
@@ -343,6 +404,63 @@ func TestRuntimeListsPlugins(t *testing.T) {
 	}
 	if items[0].Description != "Echo input" {
 		t.Fatalf("plugin description=%q, want Echo input", items[0].Description)
+	}
+	if items[0].Source != "registry" {
+		t.Fatalf("plugin source=%q, want registry", items[0].Source)
+	}
+	if !items[0].Enabled {
+		t.Fatal("plugin should be enabled by default")
+	}
+}
+
+func TestRuntimeSetPluginEnabledPersistsState(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	pluginpkg.DefaultRegistry().Reset()
+	t.Cleanup(func() { pluginpkg.DefaultRegistry().Reset() })
+	pluginpkg.DefaultRegistry().Register(&pluginpkg.ExternalToolPlugin{
+		ToolName:        "git_summary",
+		ToolDescription: "Summarize git status",
+		Command:         "git",
+		Args:            []string{"status", "--short"},
+	})
+
+	rt := NewRuntime()
+	items := rt.ListPlugins()
+	if len(items) != 1 {
+		t.Fatalf("len(ListPlugins())=%d, want 1", len(items))
+	}
+	if items[0].Source != "external" {
+		t.Fatalf("plugin source=%q, want external", items[0].Source)
+	}
+	if items[0].Command != "git status --short" {
+		t.Fatalf("plugin command=%q, want %q", items[0].Command, "git status --short")
+	}
+
+	if err := rt.SetPluginEnabled("git_summary", false); err != nil {
+		t.Fatalf("SetPluginEnabled(false) error = %v", err)
+	}
+	items = rt.ListPlugins()
+	if len(items) != 1 || items[0].Enabled {
+		t.Fatalf("ListPlugins()=%+v, want disabled plugin", items)
+	}
+	cfg, _ := config.Load()
+	if enabled, ok := config.PluginEnabled(&cfg, "git_summary"); !ok || enabled {
+		t.Fatalf("config.PluginEnabled()=(%v,%v), want (false,true)", enabled, ok)
+	}
+
+	if err := rt.SetPluginEnabled("git_summary", true); err != nil {
+		t.Fatalf("SetPluginEnabled(true) error = %v", err)
+	}
+	items = rt.ListPlugins()
+	if len(items) != 1 || !items[0].Enabled {
+		t.Fatalf("ListPlugins()=%+v, want enabled plugin", items)
+	}
+	cfg, _ = config.Load()
+	if _, ok := config.PluginEnabled(&cfg, "git_summary"); ok {
+		t.Fatal("enabled plugin should not keep explicit disabled override in config")
 	}
 }
 

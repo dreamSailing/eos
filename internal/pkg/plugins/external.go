@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 // ExternalToolPlugin 执行外部命令的插件
@@ -21,6 +22,18 @@ func (p *ExternalToolPlugin) Name() string {
 
 func (p *ExternalToolPlugin) Description() string {
 	return p.ToolDescription
+}
+
+func (p *ExternalToolPlugin) PluginMetadata() Metadata {
+	commandLine := strings.TrimSpace(p.Command)
+	if len(p.Args) > 0 {
+		commandLine = strings.TrimSpace(commandLine + " " + strings.Join(p.Args, " "))
+	}
+	return Metadata{
+		Source:  "external",
+		Kind:    "command",
+		Command: commandLine,
+	}
 }
 
 func (p *ExternalToolPlugin) Execute(ctx context.Context, params map[string]any) (any, error) {

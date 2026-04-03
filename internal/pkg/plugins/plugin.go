@@ -12,9 +12,22 @@ type ToolPlugin interface {
 	Execute(ctx context.Context, params map[string]any) (any, error)
 }
 
+// Metadata 描述插件来源与附加信息。
+type Metadata struct {
+	Source  string
+	Kind    string
+	Command string
+}
+
+// MetadataProvider 可选地暴露插件元数据。
+type MetadataProvider interface {
+	PluginMetadata() Metadata
+}
+
 // Registry 插件注册表
 type Registry struct {
 	plugins map[string]ToolPlugin
+	enabled map[string]bool
 	mu      sync.RWMutex
 }
 
@@ -24,6 +37,7 @@ var defaultRegistry = NewRegistry()
 func NewRegistry() *Registry {
 	return &Registry{
 		plugins: make(map[string]ToolPlugin),
+		enabled: make(map[string]bool),
 	}
 }
 
@@ -38,7 +52,11 @@ func (r *Registry) Register(p ToolPlugin) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.plugins[p.Name()] = p
+	name := p.Name()
+	r.plugins[name] = p
+	if _, ok := r.enabled[name]; !ok {
+		r.enabled[name] = true
+	}
 }
 
 // Get 获取插件
@@ -66,6 +84,45 @@ func (r *Registry) List() []ToolPlugin {
 	return list
 }
 
+// SetEnabled 设置插件启用状态。即使插件尚未注册，也会保留该覆盖值。
+func (r *Registry) SetEnabled(name string, enabled bool) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.enabled[name] = enabled
+}
+
+// IsEnabled 返回插件启用状态，未显式配置时默认为启用。
+func (r *Registry) IsEnabled(name string) bool {
+	if r == nil {
+		return true
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	enabled, ok := r.enabled[name]
+	if !ok {
+		return true
+	}
+	return enabled
+}
+
+// MetadataOf 返回插件元数据，未提供时给出默认来源。
+func MetadataOf(p ToolPlugin) Metadata {
+	if p == nil {
+		return Metadata{}
+	}
+	if provider, ok := p.(MetadataProvider); ok {
+		meta := provider.PluginMetadata()
+		if meta.Source == "" {
+			meta.Source = "registry"
+		}
+		return meta
+	}
+	return Metadata{Source: "registry"}
+}
+
 func (r *Registry) Reset() {
 	if r == nil {
 		return
@@ -73,4 +130,5 @@ func (r *Registry) Reset() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.plugins = make(map[string]ToolPlugin)
+	r.enabled = make(map[string]bool)
 }

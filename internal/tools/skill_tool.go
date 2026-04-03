@@ -20,15 +20,17 @@ type SkillManager struct {
 	manager    *Manager
 	mu         sync.RWMutex
 	active     map[string]*skills.Skill // 当前激活的 skills
+	disabled   map[string]bool          // 被禁用的 skills
 	onActivate func(*skills.Skill)      // skill 激活回调
 }
 
 // NewSkillManager 创建 Skill 管理器
 func NewSkillManager(loader *skills.Loader, mgr *Manager) *SkillManager {
 	return &SkillManager{
-		loader: loader,
-		manager: mgr,
-		active: make(map[string]*skills.Skill),
+		loader:   loader,
+		manager:  mgr,
+		active:   make(map[string]*skills.Skill),
+		disabled: make(map[string]bool),
 	}
 }
 
@@ -57,6 +59,9 @@ func (sm *SkillManager) Get(name string) (*skills.Skill, bool) {
 	if sm.loader == nil {
 		return nil, false
 	}
+	if sm.IsDisabled(name) {
+		return nil, false
+	}
 	return sm.loader.Get(name)
 }
 
@@ -72,8 +77,11 @@ func (sm *SkillManager) InjectSkillWithArguments(ctx context.Context, skillName 
 	}
 
 	// 加载 skill
-	skill, ok := sm.loader.Get(skillName)
+	skill, ok := sm.Get(skillName)
 	if !ok {
+		if sm.IsDisabled(skillName) {
+			return nil, nil, fmt.Errorf("skill disabled: %s", skillName)
+		}
 		return nil, nil, fmt.Errorf("skill not found: %s", skillName)
 	}
 
@@ -243,6 +251,70 @@ func (sm *SkillManager) IsActive(skillName string) bool {
 	return ok
 }
 
+// SetDisabled 设置 skill 禁用状态。被禁用后会自动取消激活。
+func (sm *SkillManager) SetDisabled(skillName string, disabled bool) {
+	key := skillStateKey(skillName)
+	if key == "" {
+		return
+	}
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if disabled {
+		sm.disabled[key] = true
+		for name := range sm.active {
+			if skillStateKey(name) == key {
+				delete(sm.active, name)
+			}
+		}
+		return
+	}
+	delete(sm.disabled, key)
+}
+
+// SetDisabledSkills 使用新的禁用列表覆盖当前状态。
+func (sm *SkillManager) SetDisabledSkills(skillNames []string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	disabled := make(map[string]bool, len(skillNames))
+	for _, name := range skillNames {
+		key := skillStateKey(name)
+		if key == "" {
+			continue
+		}
+		disabled[key] = true
+	}
+	sm.disabled = disabled
+	for name := range sm.active {
+		if disabled[skillStateKey(name)] {
+			delete(sm.active, name)
+		}
+	}
+}
+
+// IsDisabled 检查 skill 是否被禁用。
+func (sm *SkillManager) IsDisabled(skillName string) bool {
+	key := skillStateKey(skillName)
+	if key == "" {
+		return false
+	}
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.disabled[key]
+}
+
+// GetDisabled 返回当前禁用的 skill 名称集合。
+func (sm *SkillManager) GetDisabled() []string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	names := make([]string, 0, len(sm.disabled))
+	for name := range sm.disabled {
+		names = append(names, name)
+	}
+	return names
+}
+
 // FormatSkillsForPrompt 格式化 skills 列表用于提示词
 // 这用于在 Skill tool 的描述中展示可用 skills
 func (sm *SkillManager) FormatSkillsForPrompt() string {
@@ -271,6 +343,9 @@ func (sm *SkillManager) FormatSkillsForPrompt() string {
 			continue
 		}
 		if s.DisableModelInvocation {
+			continue
+		}
+		if sm.IsDisabled(s.Name) {
 			continue
 		}
 		name := strings.TrimSpace(s.Name)
@@ -319,7 +394,6 @@ func (sm *SkillManager) FormatSkillsForPrompt() string {
 	return b.String()
 }
 
-
 // Reload 重新加载 skills
 func (sm *SkillManager) Reload() error {
 	if sm.loader == nil {
@@ -354,6 +428,10 @@ func (sm *SkillManager) ReloadPreserveActive() error {
 	}
 
 	for _, name := range activeNames {
+		if sm.disabled[skillStateKey(name)] {
+			delete(sm.active, name)
+			continue
+		}
 		if s, ok := sm.loader.Get(name); ok && s != nil {
 			sm.active[name] = s
 		} else {
@@ -369,10 +447,18 @@ func (sm *SkillManager) GetStats() map[string]any {
 	defer sm.mu.RUnlock()
 
 	stats := map[string]any{
-		"active_count": len(sm.active),
+		"active_count":   len(sm.active),
+		"disabled_count": len(sm.disabled),
 		"active_names": func() []string {
 			names := make([]string, 0, len(sm.active))
 			for name := range sm.active {
+				names = append(names, name)
+			}
+			return names
+		}(),
+		"disabled_names": func() []string {
+			names := make([]string, 0, len(sm.disabled))
+			for name := range sm.disabled {
 				names = append(names, name)
 			}
 			return names
@@ -387,4 +473,8 @@ func (sm *SkillManager) GetStats() map[string]any {
 	}
 
 	return stats
+}
+
+func skillStateKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
 }

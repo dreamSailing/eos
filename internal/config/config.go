@@ -42,6 +42,12 @@ type SkillsDirEntry struct {
 	Enabled bool   `json:"enabled"` // 是否启用
 }
 
+// PluginEntry 插件配置条目
+type PluginEntry struct {
+	Name    string `json:"name"`    // 插件名称
+	Enabled bool   `json:"enabled"` // 是否启用
+}
+
 // MCPClientType MCP客户端类型
 type MCPClientType string
 
@@ -65,9 +71,9 @@ type MCPEntry struct {
 type LSPConfig struct {
 	Enabled    *bool           `json:"enabled,omitempty"`     // 是否启用 LSP（默认 true）
 	AutoDetect *bool           `json:"auto_detect,omitempty"` // 自动检测语言服务器（默认 true）
-	Go         LSPServerConfig `json:"go,omitempty"`         // Go 语言配置
-	Python     LSPServerConfig `json:"python,omitempty"`     // Python 语言配置
-	TypeScript LSPServerConfig `json:"typescript,omitempty"` // TypeScript 语言配置
+	Go         LSPServerConfig `json:"go,omitempty"`          // Go 语言配置
+	Python     LSPServerConfig `json:"python,omitempty"`      // Python 语言配置
+	TypeScript LSPServerConfig `json:"typescript,omitempty"`  // TypeScript 语言配置
 }
 
 func (c LSPConfig) EnabledValue() bool {
@@ -92,15 +98,17 @@ type LSPServerConfig struct {
 }
 
 type Config struct {
-	Models   []ModelEntry     `json:"models,omitempty"`
-	Active   string           `json:"active_model,omitempty"`
-	Thinking ThinkingConfig   `json:"thinking,omitempty"` // 思考模式配置
-	Agent    AgentConfig      `json:"agent,omitempty"`
-	MCP      []MCPEntry       `json:"mcp,omitempty"`      // MCP服务配置
-	Skills   []SkillsDirEntry `json:"skills,omitempty"`   // Skills 目录配置
-	LSP      LSPConfig        `json:"lsp,omitempty"`      // LSP 配置
-	TrustedWorkspaces []string `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
-	Language string           `json:"language,omitempty"` // 语言设置 (zh, en)
+	Models            []ModelEntry     `json:"models,omitempty"`
+	Active            string           `json:"active_model,omitempty"`
+	Thinking          ThinkingConfig   `json:"thinking,omitempty"` // 思考模式配置
+	Agent             AgentConfig      `json:"agent,omitempty"`
+	MCP               []MCPEntry       `json:"mcp,omitempty"`                // MCP服务配置
+	Skills            []SkillsDirEntry `json:"skills,omitempty"`             // Skills 目录配置
+	DisabledSkills    []string         `json:"disabled_skills,omitempty"`    // 被禁用的 skill 名称
+	Plugins           []PluginEntry    `json:"plugins,omitempty"`            // 插件启停覆盖配置
+	LSP               LSPConfig        `json:"lsp,omitempty"`                // LSP 配置
+	TrustedWorkspaces []string         `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
+	Language          string           `json:"language,omitempty"`           // 语言设置 (zh, en)
 }
 
 func Path() string {
@@ -510,4 +518,102 @@ func ToggleSkillsDir(cfg *Config, path string) bool {
 		}
 	}
 	return false
+}
+
+// IsSkillDisabled 检查 skill 是否被禁用
+func IsSkillDisabled(cfg *Config, name string) bool {
+	if cfg == nil {
+		return false
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	for _, skillName := range cfg.DisabledSkills {
+		if strings.EqualFold(strings.TrimSpace(skillName), name) {
+			return true
+		}
+	}
+	return false
+}
+
+// SetSkillDisabled 设置 skill 禁用状态
+func SetSkillDisabled(cfg *Config, name string, disabled bool) bool {
+	if cfg == nil {
+		return false
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	idx := -1
+	for i, skillName := range cfg.DisabledSkills {
+		if strings.EqualFold(strings.TrimSpace(skillName), name) {
+			idx = i
+			break
+		}
+	}
+	if disabled {
+		if idx >= 0 {
+			return false
+		}
+		cfg.DisabledSkills = append(cfg.DisabledSkills, name)
+		return true
+	}
+	if idx < 0 {
+		return false
+	}
+	cfg.DisabledSkills = append(cfg.DisabledSkills[:idx], cfg.DisabledSkills[idx+1:]...)
+	return true
+}
+
+// PluginEnabled 获取插件启用状态，未配置时默认启用。
+func PluginEnabled(cfg *Config, name string) (bool, bool) {
+	if cfg == nil {
+		return true, false
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return true, false
+	}
+	for _, plugin := range cfg.Plugins {
+		if strings.EqualFold(strings.TrimSpace(plugin.Name), name) {
+			return plugin.Enabled, true
+		}
+	}
+	return true, false
+}
+
+// SetPluginEnabled 设置插件启用状态。默认状态为启用，因此启用时会清理显式覆盖。
+func SetPluginEnabled(cfg *Config, name string, enabled bool) bool {
+	if cfg == nil {
+		return false
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	idx := -1
+	for i, plugin := range cfg.Plugins {
+		if strings.EqualFold(strings.TrimSpace(plugin.Name), name) {
+			idx = i
+			break
+		}
+	}
+	if enabled {
+		if idx < 0 {
+			return false
+		}
+		cfg.Plugins = append(cfg.Plugins[:idx], cfg.Plugins[idx+1:]...)
+		return true
+	}
+	if idx >= 0 {
+		if !cfg.Plugins[idx].Enabled {
+			return false
+		}
+		cfg.Plugins[idx].Enabled = false
+		return true
+	}
+	cfg.Plugins = append(cfg.Plugins, PluginEntry{Name: name, Enabled: false})
+	return true
 }

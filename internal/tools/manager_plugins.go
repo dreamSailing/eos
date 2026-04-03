@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"github.com/dreamSailing/vb-coding/internal/pkg/plugins"
 )
 
@@ -9,6 +10,13 @@ import (
 func (m *Manager) RegisterPlugin(p plugins.ToolPlugin) {
 	plugins.DefaultRegistry().Register(p)
 	m.structured[p.Name()] = func(ctx context.Context, params map[string]any) ToolResult {
+		if !plugins.DefaultRegistry().IsEnabled(p.Name()) {
+			return ToolResult{
+				Tool:   p.Name(),
+				Status: ToolStatusError,
+				Error:  fmt.Sprintf("plugin disabled: %s", p.Name()),
+			}
+		}
 		res, err := p.Execute(ctx, params)
 		if err != nil {
 			return ToolResult{

@@ -117,10 +117,12 @@ type PendingReview struct {
 type SkillInfo struct {
 	Name                   string
 	Description            string
+	Source                 string
 	ArgumentHint           string
 	Location               string
 	BaseDir                string
 	AllowedTools           []string
+	Enabled                bool
 	Active                 bool
 	DisableModelInvocation bool
 	UserInvocable          bool
@@ -130,6 +132,9 @@ type SkillInfo struct {
 type PluginInfo struct {
 	Name        string
 	Description string
+	Source      string
+	Command     string
+	Enabled     bool
 }
 
 type CostItem struct {
@@ -947,19 +952,29 @@ func (r *Runtime) ListSkills() []SkillInfo {
 			active[strings.TrimSpace(name)] = true
 		}
 	}
+	cfg, _ := config.Load()
 	out := make([]SkillInfo, 0, len(raw))
 	for _, skill := range raw {
 		if skill == nil {
 			continue
 		}
+		name := strings.TrimSpace(skill.Name)
+		enabled := true
+		if sm != nil {
+			enabled = !sm.IsDisabled(name)
+		} else {
+			enabled = !config.IsSkillDisabled(&cfg, name)
+		}
 		item := SkillInfo{
-			Name:                   strings.TrimSpace(skill.Name),
+			Name:                   name,
 			Description:            strings.TrimSpace(skill.Description),
+			Source:                 skillInfoSource(skill),
 			ArgumentHint:           strings.TrimSpace(skill.ArgumentHint),
 			Location:               strings.TrimSpace(skill.Location),
 			BaseDir:                strings.TrimSpace(skill.BaseDir),
 			AllowedTools:           append([]string(nil), skillspkg.ParseAllowedTools(skill.AllowedTools)...),
-			Active:                 active[strings.TrimSpace(skill.Name)],
+			Enabled:                enabled,
+			Active:                 enabled && active[name],
 			DisableModelInvocation: skill.DisableModelInvocation,
 		}
 		if skill.UserInvocable != nil {
@@ -984,22 +999,106 @@ func (r *Runtime) ReloadSkills() error {
 	return nil
 }
 
+func (r *Runtime) SetSkillEnabled(name string, enabled bool) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("name required")
+	}
+	found := false
+	currentEnabled := true
+	for _, item := range r.ListSkills() {
+		if !strings.EqualFold(strings.TrimSpace(item.Name), name) {
+			continue
+		}
+		found = true
+		name = item.Name
+		currentEnabled = item.Enabled
+		break
+	}
+	if !found {
+		return errors.New("skill not found")
+	}
+	if currentEnabled == enabled {
+		if sm := r.core.GetSkillManager(); sm != nil {
+			sm.SetDisabled(name, !enabled)
+		}
+		return nil
+	}
+	cfg, cfgPath := config.Load()
+	if strings.TrimSpace(cfgPath) == "" {
+		return errors.New("config path empty")
+	}
+	config.SetSkillDisabled(&cfg, name, !enabled)
+	if err := config.Save(cfg, cfgPath); err != nil {
+		return err
+	}
+	if sm := r.core.GetSkillManager(); sm != nil {
+		sm.SetDisabled(name, !enabled)
+	}
+	return nil
+}
+
 func (r *Runtime) ListPlugins() []PluginInfo {
 	items := pluginpkg.DefaultRegistry().List()
 	out := make([]PluginInfo, 0, len(items))
+	cfg, _ := config.Load()
 	for _, item := range items {
 		if item == nil {
 			continue
 		}
+		name := strings.TrimSpace(item.Name())
+		enabled := pluginpkg.DefaultRegistry().IsEnabled(name)
+		if cfgEnabled, ok := config.PluginEnabled(&cfg, name); ok {
+			enabled = cfgEnabled
+		}
+		meta := pluginpkg.MetadataOf(item)
 		out = append(out, PluginInfo{
-			Name:        strings.TrimSpace(item.Name()),
+			Name:        name,
 			Description: strings.TrimSpace(item.Description()),
+			Source:      strings.TrimSpace(meta.Source),
+			Command:     strings.TrimSpace(meta.Command),
+			Enabled:     enabled,
 		})
 	}
 	slices.SortFunc(out, func(a, b PluginInfo) int {
 		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
 	return out
+}
+
+func (r *Runtime) SetPluginEnabled(name string, enabled bool) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("name required")
+	}
+	found := false
+	currentEnabled := true
+	for _, item := range r.ListPlugins() {
+		if !strings.EqualFold(strings.TrimSpace(item.Name), name) {
+			continue
+		}
+		found = true
+		name = item.Name
+		currentEnabled = item.Enabled
+		break
+	}
+	if !found {
+		return errors.New("plugin not found")
+	}
+	if currentEnabled == enabled {
+		pluginpkg.DefaultRegistry().SetEnabled(name, enabled)
+		return nil
+	}
+	cfg, cfgPath := config.Load()
+	if strings.TrimSpace(cfgPath) == "" {
+		return errors.New("config path empty")
+	}
+	config.SetPluginEnabled(&cfg, name, enabled)
+	if err := config.Save(cfg, cfgPath); err != nil {
+		return err
+	}
+	pluginpkg.DefaultRegistry().SetEnabled(name, enabled)
+	return nil
 }
 
 func (r *Runtime) ContextPreview() []string {
@@ -1176,6 +1275,20 @@ func pathsEqual(a, b string) bool {
 		return strings.EqualFold(a, b)
 	}
 	return a == b
+}
+
+func skillInfoSource(skill *skillspkg.Skill) string {
+	if skill == nil {
+		return ""
+	}
+	source := strings.TrimSpace(skill.Location)
+	if source != "" {
+		return source
+	}
+	if strings.TrimSpace(skill.BaseDir) != "" {
+		return "scanner"
+	}
+	return ""
 }
 
 func trustedWorkspaceSet() map[string]struct{} {
