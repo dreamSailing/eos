@@ -6,6 +6,7 @@
 
 - 传输方式：仅支持 `stdio`
 - 协议：JSON-RPC 2.0（按行传输，一行一个 JSON）
+- IDE / Remote 宿主建议先生成桥接清单：`vb-coding bridge manifest --workspace "/abs/workspace"`
 - 服务启动命令：
 
 ```bash
@@ -73,6 +74,23 @@ vb-coding serve --transport stdio --workspace "/abs/workspace" --allowed-tools "
 }
 ```
 
+### 2.5 桥接清单（推荐给 IDE / 外部宿主）
+
+为了避免宿主硬编码启动参数、方法名和能力声明，建议先执行：
+
+```bash
+vb-coding bridge manifest --workspace "/abs/workspace" --allowed-tools "read,bash"
+```
+
+返回 JSON 清单会包含：
+
+- `launch.command` / `launch.args`：如何启动 `vb-coding serve`
+- `protocolVersion`：当前 JSON-RPC 协议版本
+- `sessionDefaults`：推荐的初始会话参数
+- `serverCapabilities`：握手能力声明
+- `methods`：当前支持的方法列表
+- 可选 `tools` / `capabilities`：默认工作区下的工具与能力目录
+
 ## 3. 调用顺序（推荐）
 
 1. `initialize`
@@ -96,7 +114,15 @@ vb-coding serve --transport stdio --workspace "/abs/workspace" --allowed-tools "
   - `server.name`
   - `server.version`
   - `protocolVersion`（当前 `1.0`）
-  - `capabilities`（`events/tools/confirmations` 等）
+  - `capabilities`
+    - `events`
+    - `invoke`
+    - `tools`
+    - `confirmations`
+    - `sessions`
+    - `requests`
+    - `tasks`
+    - `capabilityCatalog`
 
 请求示例：
 
@@ -309,3 +335,4 @@ vb-coding serve --transport stdio --workspace "/abs/workspace" --allowed-tools "
 
 - 当前仅支持 `stdio`，不支持 HTTP 路由调用
 - 工具列表与参数定义以 `tool.list` 的实时返回为准
+- IDE / Remote 宿主建议优先消费 `vb-coding bridge manifest`，而不是自行拼接 `serve` 启动参数

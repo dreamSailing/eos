@@ -104,6 +104,7 @@ export VB_MODEL="gpt-4o-mini"
 ## 服务模式 API
 
 - CLI 对外 API（`vb-coding serve`）：[internal/docs/serve/API.md](./internal/docs/serve/API.md)
+- IDE bridge 最小接入：先生成桥接清单 `vb-coding bridge manifest --workspace "/abs/workspace"`，详见 [internal/docs/serve/IDE_BRIDGE.md](./internal/docs/serve/IDE_BRIDGE.md)
 
 ## 项目结构（简版）
 

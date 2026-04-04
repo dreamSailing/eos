@@ -19,6 +19,7 @@ func newServeCmd() *cobra.Command {
 	var workspace string
 	var allowedTools string
 	var policyPath string
+	var sessionStorePath string
 	var requireApprovalDigest bool
 
 	cmd := &cobra.Command{
@@ -44,6 +45,7 @@ func newServeCmd() *cobra.Command {
 				DefaultWorkspacePath:  workspace,
 				DefaultAllowedTools:   splitCommaList(allowedTools),
 				PolicyPath:            policyPath,
+				SessionStorePath:      sessionStorePath,
 				RequireApprovalDigest: requireApprovalDigest,
 			}, os.Stdin, os.Stdout, os.Stderr, toolapiimpl.NewServices())
 			if err != nil {
@@ -57,6 +59,7 @@ func newServeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace path (required)")
 	cmd.Flags().StringVar(&allowedTools, "allowed-tools", "", "comma-separated allowed tools (optional)")
 	cmd.Flags().StringVar(&policyPath, "policy", "", "policy json file path (optional)")
+	cmd.Flags().StringVar(&sessionStorePath, "session-store", "", "session store file path (optional)")
 	cmd.Flags().BoolVar(&requireApprovalDigest, "require-approval-digest", true, "require approvalDigest for medium/high risk tools")
 
 	_ = cmd.MarkFlagRequired("workspace")

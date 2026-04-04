@@ -7,6 +7,7 @@ type Options struct {
 	DefaultWorkspacePath  string
 	DefaultAllowedTools   []string
 	PolicyPath            string
+	SessionStorePath      string
 	RequireApprovalDigest bool
 }
 

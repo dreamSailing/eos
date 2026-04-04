@@ -26,19 +26,22 @@ type Server struct {
 	out  io.Writer
 	err  io.Writer
 
-	mu          sync.Mutex
-	writeMu     sync.Mutex
-	initialized bool
-	sessions    map[string]*session
-	toolDefs    []toolapi.ToolDefinition
-	policy      *Policy
-	tools       toolapi.Services
-	catalog     toolapi.Catalog
+	mu               sync.Mutex
+	writeMu          sync.Mutex
+	initialized      bool
+	sessionStorePath string
+	sessions         map[string]*session
+	toolDefs         []toolapi.ToolDefinition
+	policy           *Policy
+	tools            toolapi.Services
+	catalog          toolapi.Catalog
 }
 
 type session struct {
 	id                     string
 	workspaceAbs           string
+	title                  string
+	preview                string
 	allowedTools           map[string]bool
 	executionMode          string
 	trustedWorkspace       bool
@@ -95,16 +98,20 @@ func NewServer(opts Options, in io.Reader, out io.Writer, errw io.Writer, toolsS
 	}
 
 	s := &Server{
-		opts:     opts,
-		in:       in,
-		out:      out,
-		err:      errw,
-		sessions: map[string]*session{},
-		policy:   p,
-		tools:    toolsSvc,
-		catalog:  toolsSvc.Catalog(),
+		opts:             opts,
+		in:               in,
+		out:              out,
+		err:              errw,
+		sessionStorePath: resolveSessionStorePath(opts),
+		sessions:         map[string]*session{},
+		policy:           p,
+		tools:            toolsSvc,
+		catalog:          toolsSvc.Catalog(),
 	}
 	s.toolDefs, _ = s.catalog.List(context.Background())
+	if err := s.loadPersistedSessions(); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -211,13 +218,8 @@ func (s *Server) handleInitialize(req rpcRequest) {
 			"name":    "vb-coding",
 			"version": "dev",
 		},
-		"protocolVersion": "1.0",
-		"capabilities": map[string]any{
-			"events":        true,
-			"invoke":        false,
-			"tools":         true,
-			"confirmations": true,
-		},
+		"protocolVersion": serveProtocolVersion,
+		"capabilities":    serverCapabilitiesPayload(),
 	}, nil)
 }
 
@@ -253,7 +255,13 @@ func (s *Server) handleSessionCreate(req rpcRequest) {
 	executionMode := "auto"
 	trustedWorkspace := false
 	maxConcurrent := 1
+	title := defaultSessionTitle(abs)
 	if p.Options != nil {
+		if v, ok := p.Options["title"].(string); ok {
+			if normalized := normalizeSessionPreview(v); normalized != "" {
+				title = normalized
+			}
+		}
 		if v, ok := p.Options["executionMode"].(string); ok {
 			mv := strings.ToLower(strings.TrimSpace(v))
 			if mv == "manual" || mv == "plan" || mv == "auto" || mv == "bypass" {
@@ -304,6 +312,7 @@ func (s *Server) handleSessionCreate(req rpcRequest) {
 	sess := &session{
 		id:                     id,
 		workspaceAbs:           abs,
+		title:                  title,
 		allowedTools:           allowed,
 		executionMode:          executionMode,
 		trustedWorkspace:       trustedWorkspace,
@@ -356,6 +365,9 @@ func (s *Server) handleSessionClose(req rpcRequest) {
 	if sess == nil {
 		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
 		return
+	}
+	if err := s.persistSessions(); err != nil {
+		s.writeStderr("persist sessions: " + err.Error())
 	}
 	s.reply(req.ID, map[string]any{"ok": true}, nil)
 }
@@ -448,6 +460,9 @@ func (s *Server) handleSessionDelete(req rpcRequest) {
 	if sess == nil {
 		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
 		return
+	}
+	if err := s.persistSessions(); err != nil {
+		s.writeStderr("persist sessions: " + err.Error())
 	}
 	s.reply(req.ID, map[string]any{"ok": true}, nil)
 }
@@ -684,6 +699,9 @@ func (s *Server) resolvePrompt(req rpcRequest, p promptResolveParams, expectedKi
 	if decision == "allow_session" {
 		sess.allowSession[a.digest] = time.Now().Add(10 * time.Minute)
 	}
+	if preview := sessionPreviewFromResolution(*a); preview != "" {
+		sess.preview = preview
+	}
 	aCopy := *a
 	sess.updatedAt = time.Now()
 	s.mu.Unlock()
@@ -740,6 +758,9 @@ func (s *Server) handleCallExecute(ctx context.Context, req rpcRequest, sessionI
 	}
 	execCtx, cancel := context.WithCancel(ctx)
 	sess.runningCancels[call.ID] = cancel
+	if preview := sessionPreviewForCall(call); preview != "" {
+		sess.preview = preview
+	}
 	sess.updatedAt = time.Now()
 	s.mu.Unlock()
 
@@ -757,6 +778,13 @@ func (s *Server) handleCallExecute(ctx context.Context, req rpcRequest, sessionI
 		delete(sess.runningCancels, call.ID)
 		if rpcErr == nil {
 			sess.results[call.ID] = result
+			if preview := sessionPreviewFromResult(result); preview != "" {
+				sess.preview = preview
+			}
+		} else if rpcErr.Code != -32006 && rpcErr.Code != -32009 {
+			if preview := normalizeSessionPreview(rpcErr.Message); preview != "" {
+				sess.preview = preview
+			}
 		}
 		sess.updatedAt = time.Now()
 		s.mu.Unlock()
@@ -764,9 +792,10 @@ func (s *Server) handleCallExecute(ctx context.Context, req rpcRequest, sessionI
 			s.enrichRequestError(sess, rpcErr)
 			if rpcErr.Code != -32006 && rpcErr.Code != -32009 {
 				s.notifyProtocol(s.newRequestEvent(sess, protocol.EventTypeRequestFailed, call.ID, callCopy, map[string]any{
-					"status": "failed",
-					"error":  rpcErr.Message,
-					"code":   rpcErr.Code,
+					"status":  "failed",
+					"error":   rpcErr.Message,
+					"code":    rpcErr.Code,
+					"summary": normalizeSessionPreview(rpcErr.Message),
 				}))
 			}
 			s.notifySessionUpdated(sess)
@@ -774,18 +803,26 @@ func (s *Server) handleCallExecute(ctx context.Context, req rpcRequest, sessionI
 			return
 		}
 		if errText, failed := requestFailureFromResult(result); failed {
+			s.mu.Lock()
+			if preview := normalizeSessionPreview(errText); preview != "" {
+				sess.preview = preview
+			}
+			sess.updatedAt = time.Now()
+			s.mu.Unlock()
 			s.notifyProtocol(s.newRequestEvent(sess, protocol.EventTypeRequestFailed, call.ID, callCopy, map[string]any{
-				"status": "failed",
-				"error":  errText,
-				"result": result,
+				"status":  "failed",
+				"error":   errText,
+				"result":  result,
+				"summary": normalizeSessionPreview(errText),
 			}))
 			s.notifySessionUpdated(sess)
 			s.reply(respID, result, nil)
 			return
 		}
 		s.notifyProtocol(s.newRequestEvent(sess, protocol.EventTypeRequestDone, call.ID, callCopy, map[string]any{
-			"status": "success",
-			"result": result,
+			"status":  "success",
+			"result":  result,
+			"summary": sessionPreviewFromResult(result),
 		}))
 		s.notifySessionUpdated(sess)
 		s.reply(respID, result, nil)
@@ -929,6 +966,9 @@ func (s *Server) ensurePendingApproval(sess *session, call toolCallDTO, preview 
 		digest:     digest,
 		expiresAt:  expiresAt,
 	}
+	if previewText := normalizeSessionPreview(s.confirmSummary(call, preview)); previewText != "" {
+		sess.preview = previewText
+	}
 	sess.updatedAt = time.Now()
 	s.mu.Unlock()
 
@@ -964,6 +1004,11 @@ func (s *Server) ensurePendingInquiry(sess *session, call toolCallDTO, digest st
 	expiresAt := time.Now().Add(time.Duration(ttl) * time.Second)
 	requestID := "i_" + uuid.New().String()[:12]
 
+	var question string
+	if q, ok := call.Parameters["question"].(string); ok {
+		question = q
+	}
+
 	s.mu.Lock()
 	sess.approvals[requestID] = &approval{
 		requestID:  requestID,
@@ -974,13 +1019,11 @@ func (s *Server) ensurePendingInquiry(sess *session, call toolCallDTO, digest st
 		digest:     digest,
 		expiresAt:  expiresAt,
 	}
+	if previewText := normalizeSessionPreview(question); previewText != "" {
+		sess.preview = previewText
+	}
 	sess.updatedAt = time.Now()
 	s.mu.Unlock()
-
-	var question string
-	if q, ok := call.Parameters["question"].(string); ok {
-		question = q
-	}
 
 	var options []string
 	if opts, ok := call.Parameters["options"].([]interface{}); ok {
@@ -1210,6 +1253,8 @@ func (s *Server) newRequestEvent(sess *session, eventType protocol.EventType, re
 	payload := map[string]any{
 		"request_id": strings.TrimSpace(requestID),
 		"tool":       strings.TrimSpace(call.Tool),
+		"mode":       toolapi.NormalizeExecutionMode(sess.executionMode),
+		"input_kind": "tool",
 		"call": map[string]any{
 			"id":         strings.TrimSpace(call.ID),
 			"tool":       strings.TrimSpace(call.Tool),
@@ -1362,6 +1407,9 @@ func (s *Server) notifySessionUpdated(sess *session) {
 		return
 	}
 	s.notifyProtocol(s.newSessionUpdatedEvent(sess))
+	if err := s.persistSessions(); err != nil {
+		s.writeStderr("persist sessions: " + err.Error())
+	}
 }
 
 func (s *Server) newSessionUpdatedEvent(sess *session) protocol.Envelope {
@@ -1423,21 +1471,38 @@ func (s *Server) sessionInfoLocked(sess *session) protocol.SessionInfo {
 		currentRequestID = pendingInquiries[0]
 	}
 
-	title := filepath.Base(strings.TrimSpace(sess.workspaceAbs))
-	if title == "." {
-		title = ""
-	}
-
 	updatedAt := sess.updatedAt
 	if updatedAt.IsZero() {
 		updatedAt = now
+	}
+	preview := normalizeSessionPreview(sess.preview)
+	if preview == "" {
+		for _, id := range pendingApprovals {
+			if item := sess.approvals[id]; item != nil {
+				preview = sessionPreviewFromApproval(item)
+				if preview != "" {
+					break
+				}
+			}
+		}
+	}
+	if preview == "" {
+		for _, id := range pendingInquiries {
+			if item := sess.approvals[id]; item != nil {
+				preview = sessionPreviewFromApproval(item)
+				if preview != "" {
+					break
+				}
+			}
+		}
 	}
 
 	return protocol.SessionInfo{
 		SessionID:        strings.TrimSpace(sess.id),
 		ThreadID:         strings.TrimSpace(sess.id),
 		Workspace:        strings.TrimSpace(sess.workspaceAbs),
-		Title:            title,
+		Title:            strings.TrimSpace(sess.title),
+		Preview:          preview,
 		Mode:             strings.TrimSpace(sess.executionMode),
 		Status:           status,
 		CurrentRequestID: currentRequestID,
@@ -1468,6 +1533,135 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func defaultSessionTitle(workspaceAbs string) string {
+	title := filepath.Base(strings.TrimSpace(workspaceAbs))
+	if title == "." {
+		return ""
+	}
+	return normalizeSessionPreview(title)
+}
+
+func sessionPreviewForCall(call toolCallDTO) string {
+	toolName := strings.TrimSpace(call.Tool)
+	switch strings.ToLower(toolName) {
+	case "bash":
+		if command := normalizeSessionPreview(anyString(call.Parameters["command"])); command != "" {
+			return "bash: " + command
+		}
+	case "ask_user_question":
+		if question := normalizeSessionPreview(anyString(call.Parameters["question"])); question != "" {
+			return question
+		}
+	}
+	for _, key := range []string{"path", "file", "source", "destination"} {
+		if value := normalizeSessionPreview(anyString(call.Parameters[key])); value != "" {
+			if toolName == "" {
+				return value
+			}
+			return toolName + ": " + value
+		}
+	}
+	if toolName == "" {
+		return ""
+	}
+	return "调用工具: " + toolName
+}
+
+func sessionPreviewFromResult(result any) string {
+	switch v := result.(type) {
+	case toolapi.ToolResult:
+		if text := normalizeSessionPreview(firstNonEmpty(v.Display, v.Error, anyString(v.Data["text"]), anyString(v.Data["option"]))); text != "" {
+			return text
+		}
+		if toolName := strings.TrimSpace(v.Tool); toolName != "" {
+			return "完成工具: " + toolName
+		}
+	case map[string]any:
+		if text := normalizeSessionPreview(firstNonEmpty(anyString(v["display"]), anyString(v["error"]), anyString(v["text"]), anyString(v["message"]))); text != "" {
+			return text
+		}
+		if toolName := strings.TrimSpace(anyString(v["tool"])); toolName != "" {
+			return "完成工具: " + toolName
+		}
+	}
+	return ""
+}
+
+func sessionPreviewFromResolution(item approval) string {
+	toolName := strings.TrimSpace(item.tool)
+	switch strings.ToLower(strings.TrimSpace(item.kind)) {
+	case "inquiry":
+		if answer := normalizeSessionPreview(firstNonEmpty(item.option, item.text)); answer != "" {
+			return "已回答: " + answer
+		}
+		if toolName != "" {
+			return "已回答: " + toolName
+		}
+	default:
+		switch strings.ToLower(strings.TrimSpace(item.decision)) {
+		case "allow_once":
+			if toolName != "" {
+				return "已确认执行: " + toolName
+			}
+			return "已确认执行"
+		case "allow_session":
+			if toolName != "" {
+				return "本会话已放行: " + toolName
+			}
+			return "本会话已放行"
+		case "deny":
+			if toolName != "" {
+				return "已拒绝: " + toolName
+			}
+			return "已拒绝执行"
+		}
+	}
+	return ""
+}
+
+func sessionPreviewFromApproval(item *approval) string {
+	if item == nil {
+		return ""
+	}
+	if preview := sessionPreviewFromResolution(*item); preview != "" {
+		return preview
+	}
+	if strings.EqualFold(strings.TrimSpace(item.kind), "inquiry") {
+		if question := normalizeSessionPreview(anyString(item.parameters["question"])); question != "" {
+			return question
+		}
+	}
+	if command := normalizeSessionPreview(anyString(item.preview["command"])); command != "" {
+		return "bash: " + command
+	}
+	if command := normalizeSessionPreview(anyString(item.parameters["command"])); command != "" {
+		return "bash: " + command
+	}
+	if path := normalizeSessionPreview(firstNonEmpty(anyString(item.parameters["path"]), anyString(item.parameters["file"]), anyString(item.parameters["source"]), anyString(item.parameters["destination"]))); path != "" {
+		if toolName := strings.TrimSpace(item.tool); toolName != "" {
+			return toolName + ": " + path
+		}
+		return path
+	}
+	if toolName := strings.TrimSpace(item.tool); toolName != "" {
+		return "调用工具: " + toolName
+	}
+	return ""
+}
+
+func normalizeSessionPreview(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	text = strings.Join(strings.Fields(text), " ")
+	runes := []rune(text)
+	if len(runes) <= 96 {
+		return text
+	}
+	return string(runes[:96]) + "..."
 }
 
 func (s *Server) writeStderr(msg string) {

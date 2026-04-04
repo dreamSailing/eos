@@ -59,6 +59,7 @@ func init() {
 	// 全局 flags
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.vb-coding.yaml)")
 
+	rootCmd.AddCommand(newBridgeCmd())
 	rootCmd.AddCommand(newServeCmd())
 }
 

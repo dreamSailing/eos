@@ -206,8 +206,9 @@ func (r *Runtime) InvokeProtocol(ctx context.Context, input string) (<-chan prot
 	go func() {
 		defer close(out)
 		out <- newCoreRequestEvent(protocol.EventTypeRequestStarted, sessionID, threadID, requestID, map[string]any{
-			"input": input,
-			"mode":  r.ExecutionMode(),
+			"input":      input,
+			"mode":       r.ExecutionMode(),
+			"input_kind": "prompt",
 		})
 		done := make(chan error, 1)
 		go func() {
@@ -218,9 +219,11 @@ func (r *Runtime) InvokeProtocol(ctx context.Context, input string) (<-chan prot
 			select {
 			case <-ctx.Done():
 				out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
-					"error": ctx.Err().Error(),
-					"input": input,
-					"mode":  r.ExecutionMode(),
+					"error":      ctx.Err().Error(),
+					"input":      input,
+					"mode":       r.ExecutionMode(),
+					"input_kind": "prompt",
+					"summary":    ctx.Err().Error(),
 				})
 				return
 			case ev := <-r.core.Events():
@@ -230,16 +233,20 @@ func (r *Runtime) InvokeProtocol(ctx context.Context, input string) (<-chan prot
 			case err := <-done:
 				if err != nil {
 					out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
-						"error": err.Error(),
-						"input": input,
-						"mode":  r.ExecutionMode(),
+						"error":      err.Error(),
+						"input":      input,
+						"mode":       r.ExecutionMode(),
+						"input_kind": "prompt",
+						"summary":    err.Error(),
 					})
 				} else {
 					out <- newCoreRequestEvent(protocol.EventTypeRequestDone, sessionID, threadID, requestID, map[string]any{
-						"input":   input,
-						"mode":    r.ExecutionMode(),
-						"message": "request completed",
-						"status":  "success",
+						"input":      input,
+						"mode":       r.ExecutionMode(),
+						"input_kind": "prompt",
+						"message":    "request completed",
+						"status":     "success",
+						"summary":    "request completed",
 					})
 				}
 				return
@@ -260,8 +267,9 @@ func (r *Runtime) RunBashProtocol(ctx context.Context, input string) (<-chan pro
 	go func() {
 		defer close(out)
 		out <- newCoreRequestEvent(protocol.EventTypeRequestStarted, sessionID, threadID, requestID, map[string]any{
-			"input": input,
-			"mode":  "bash",
+			"input":      input,
+			"mode":       "bash",
+			"input_kind": "bash",
 		})
 		out <- protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
 			SessionID:     sessionID,
@@ -276,9 +284,11 @@ func (r *Runtime) RunBashProtocol(ctx context.Context, input string) (<-chan pro
 		result, err := r.core.ExecuteBash(ctx, input)
 		if err != nil {
 			out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
-				"error": err.Error(),
-				"input": input,
-				"mode":  "bash",
+				"error":      err.Error(),
+				"input":      input,
+				"mode":       "bash",
+				"input_kind": "bash",
+				"summary":    err.Error(),
 			})
 			return
 		}
@@ -293,10 +303,12 @@ func (r *Runtime) RunBashProtocol(ctx context.Context, input string) (<-chan pro
 			Payload:       protocol.TextPayloadMap(protocol.TextPayload{Text: result}),
 		})
 		out <- newCoreRequestEvent(protocol.EventTypeRequestDone, sessionID, threadID, requestID, map[string]any{
-			"input":   input,
-			"mode":    "bash",
-			"message": "request completed",
-			"status":  "success",
+			"input":      input,
+			"mode":       "bash",
+			"input_kind": "bash",
+			"message":    "request completed",
+			"status":     "success",
+			"summary":    "request completed",
 		})
 	}()
 	return out, nil

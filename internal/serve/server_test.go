@@ -220,6 +220,9 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 	if got, _ := sessionObj["status"].(string); got != "idle" {
 		t.Fatalf("expected idle session status, got: %v", sessionObj)
 	}
+	if got, _ := sessionObj["title"].(string); got != filepath.Base(workspace) {
+		t.Fatalf("expected session title %q, got: %v", filepath.Base(workspace), sessionObj)
+	}
 
 	write(map[string]any{
 		"jsonrpc": "2.0",
@@ -321,6 +324,9 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 	if got, _ := sessionObj["status"].(string); got != "waiting_input" {
 		t.Fatalf("expected waiting_input status after preflight, got: %v", sessionObj)
 	}
+	if got, _ := sessionObj["preview"].(string); !strings.Contains(got, "echo hi") {
+		t.Fatalf("expected session preview to mention pending command, got: %v", sessionObj)
+	}
 	pendingApprovals, ok := sessionObj["pending_approvals"].([]any)
 	if !ok || len(pendingApprovals) == 0 {
 		t.Fatalf("expected pending approvals after preflight, got: %v", sessionObj)
@@ -389,6 +395,28 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 	display, _ := resObj["display"].(string)
 	if !strings.Contains(display, "hi") {
 		t.Fatalf("expected output contains hi, got: %v", resp)
+	}
+
+	write(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      71,
+		"method":  "session.get",
+		"params":  map[string]any{"sessionID": sessionID},
+	})
+	resp = readResponse(71, 2*time.Second)
+	result, ok = resp["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected session.get result object after request, got: %v", resp)
+	}
+	sessionObj, ok = result["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected session object after request, got: %v", resp)
+	}
+	if got, _ := sessionObj["status"].(string); got != "idle" {
+		t.Fatalf("expected idle session status after request, got: %v", sessionObj)
+	}
+	if got, _ := sessionObj["preview"].(string); !strings.Contains(got, "hi") {
+		t.Fatalf("expected session preview to include latest result, got: %v", sessionObj)
 	}
 
 	f := filepath.Join(workspace, "x.txt")
