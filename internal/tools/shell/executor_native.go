@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"strings"
 
-	"mvdan.cc/sh/v3/interp"
 	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"mvdan.cc/sh/v3/interp"
 )
 
 type NativeExecutor struct{}
@@ -36,6 +36,7 @@ func (e *NativeExecutor) Execute(ctx context.Context, command string, workingDir
 	if workingDir != "" {
 		cmd.Dir = workingDir
 	}
+	cmd.Env = envFromContext(ctx)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf

@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"github.com/dreamSailing/vb-coding/internal/runtime"
+	"github.com/dreamSailing/vb-coding/internal/toolapi"
 	"sort"
 	"strings"
 	"sync"
@@ -29,21 +30,15 @@ type PermissionSnapshot struct {
 func NewSecurityManager() *SecurityManager {
 	return &SecurityManager{
 		permsAllowSession: make(map[string]bool),
-		executionMode:     "auto",
+		executionMode:     "default",
 	}
 }
 
 func (s *SecurityManager) SetExecutionMode(mode string) {
-	mode = strings.ToLower(strings.TrimSpace(mode))
-	if mode == "" {
-		mode = "auto"
-	}
-	if mode != "manual" && mode != "plan" && mode != "auto" && mode != "bypass" {
-		mode = "auto"
-	}
+	mode = toolapi.NormalizeExecutionMode(mode)
 	s.permMu.Lock()
 	s.executionMode = mode
-	if mode == "auto" || mode == "bypass" {
+	if mode == "bypassPermissions" {
 		s.permsAllowSession["auto_all"] = true
 	} else {
 		delete(s.permsAllowSession, "auto_all")

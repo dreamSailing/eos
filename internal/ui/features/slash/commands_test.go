@@ -41,3 +41,9 @@ func TestGroupedVisibleCommandsPreservesExpectedGroups(t *testing.T) {
 		t.Fatalf("expected second group to be project, got %q", groups[1].Group)
 	}
 }
+
+func TestVisibleCommandsIncludesReloadPlugins(t *testing.T) {
+	if NormalizeCommand("/reload-plugins") != "/reload-plugins" {
+		t.Fatalf("expected /reload-plugins to be a visible slash command")
+	}
+}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/dreamSailing/vb-coding/internal/i18n"
 	"github.com/dreamSailing/vb-coding/internal/state"
+	"github.com/dreamSailing/vb-coding/internal/toolapi"
 	"github.com/dreamSailing/vb-coding/internal/ui/components/content"
 	"github.com/dreamSailing/vb-coding/internal/ui/components/hints"
 	"github.com/dreamSailing/vb-coding/internal/ui/components/input"
@@ -112,7 +113,7 @@ func New(width, height int, s *styles.Styles, lang string) Model {
 		styles:           s,
 		language:         lang,
 		contentH:         contentHeight,
-		executionMode:    "auto",
+		executionMode:    "default",
 		thinkingExpanded: false,
 	}
 }
@@ -344,10 +345,7 @@ func (m *Model) SetContextUsage(tokens int, ratio float64) {
 }
 
 func (m *Model) SetExecutionMode(mode string) {
-	m.executionMode = strings.ToLower(strings.TrimSpace(mode))
-	if m.executionMode == "" {
-		m.executionMode = "auto"
-	}
+	m.executionMode = toolapi.NormalizeExecutionMode(mode)
 }
 
 func (m *Model) SetThinkingExpanded(v bool) {
@@ -821,13 +819,17 @@ func (m Model) renderStatusBar() string {
 }
 
 func executionModeLabel(lang, mode string) string {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "manual":
-		return i18n.T("exec_mode.manual", lang)
+	switch toolapi.NormalizeExecutionMode(mode) {
+	case "default":
+		return i18n.T("exec_mode.default", lang)
+	case "acceptEdits":
+		return i18n.T("exec_mode.accept_edits", lang)
 	case "plan":
 		return i18n.T("exec_mode.plan", lang)
-	case "bypass":
-		return i18n.T("exec_mode.bypass", lang)
+	case "dontAsk":
+		return i18n.T("exec_mode.dont_ask", lang)
+	case "bypassPermissions":
+		return i18n.T("exec_mode.bypass_permissions", lang)
 	default:
 		return i18n.T("exec_mode.auto", lang)
 	}

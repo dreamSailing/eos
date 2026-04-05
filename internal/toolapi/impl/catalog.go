@@ -29,9 +29,9 @@ func (c *catalog) List(ctx context.Context) ([]toolapi.ToolDefinition, error) {
 	defs = append(defs, builtinToolDefinitions()...)
 	defs = append(defs, runtimeCapabilityDefinitions()...)
 	defs = append(defs, agentCapabilityDefinitions()...)
-	defs = append(defs, pluginCapabilityDefinitions()...)
+	defs = append(defs, pluginCapabilityDefinitions(workspaceRoot, &cfg)...)
 	defs = append(defs, skillCapabilityDefinitions(workspaceRoot, &cfg)...)
-	defs = append(defs, mcpCapabilityDefinitions(&cfg)...)
+	defs = append(defs, mcpCapabilityDefinitions(workspaceRoot, &cfg)...)
 	defs = append(defs, lspCapabilityDefinitions(workspaceRoot, &cfg)...)
 	defs = dedupeDefinitions(defs)
 
@@ -258,20 +258,28 @@ func agentCapabilityDefinitions() []toolapi.ToolDefinition {
 	return out
 }
 
-func pluginCapabilityDefinitions() []toolapi.ToolDefinition {
+func pluginCapabilityDefinitions(workspaceRoot string, cfg *config.Config) []toolapi.ToolDefinition {
 	plugins := pluginpkg.DefaultRegistry().List()
 	sort.Slice(plugins, func(i, j int) bool {
 		return strings.ToLower(plugins[i].Name()) < strings.ToLower(plugins[j].Name())
 	})
 	out := make([]toolapi.ToolDefinition, 0, len(plugins))
+	seen := map[string]struct{}{}
 	for _, plugin := range plugins {
 		if plugin == nil {
 			continue
 		}
 		name := strings.TrimSpace(plugin.Name())
+		if name == "" {
+			continue
+		}
+		seen[strings.ToLower(name)] = struct{}{}
 		level := toolapi.RiskHigh
 		meta := pluginpkg.MetadataOf(plugin)
 		enabled := pluginpkg.DefaultRegistry().IsEnabled(name)
+		if cfgEnabled, ok := config.PluginEnabled(cfg, name); ok {
+			enabled = cfgEnabled
+		}
 		tags := inferTags(name, level, enabled, false)
 		tags = append(tags, boolTag("enabled", enabled))
 		if meta.Source != "" {
@@ -296,6 +304,47 @@ func pluginCapabilityDefinitions() []toolapi.ToolDefinition {
 			},
 		})
 	}
+	discovered, _ := pluginpkg.Discover(workspaceRoot)
+	for _, plugin := range discovered {
+		name := strings.TrimSpace(plugin.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[strings.ToLower(name)]; ok {
+			continue
+		}
+		enabled := true
+		if cfgEnabled, ok := config.PluginEnabled(cfg, name); ok {
+			enabled = cfgEnabled
+		}
+		tags := []string{
+			"plugin",
+			"manifest",
+			"location:" + strings.ToLower(strings.TrimSpace(plugin.Location)),
+			boolTag("enabled", enabled),
+		}
+		for _, component := range plugin.Components() {
+			tags = append(tags, "component:"+strings.ToLower(strings.TrimSpace(component)))
+		}
+		out = append(out, capabilityDefinition(toolapi.ToolDefinition{
+			Name:        name,
+			Description: strings.TrimSpace(plugin.Description),
+			RiskLevel:   toolapi.RiskLow,
+			Source:      toolapi.SourcePlugin,
+			Category:    "extension",
+			VisibleIn:   allModes(),
+			ReadOnly:    true,
+			Tags:        uniqueStrings(tags),
+			Metadata: map[string]any{
+				"origin":        "plugin_manifest",
+				"enabled":       enabled,
+				"location":      strings.TrimSpace(plugin.Location),
+				"root_dir":      strings.TrimSpace(plugin.RootDir),
+				"manifest_path": strings.TrimSpace(plugin.ManifestPath),
+				"components":    plugin.Components(),
+			},
+		}))
+	}
 	return out
 }
 
@@ -319,13 +368,29 @@ func skillCapabilityDefinitions(workspaceRoot string, cfg *config.Config) []tool
 			continue
 		}
 		enabled := !config.IsSkillDisabled(cfg, strings.TrimSpace(skill.Name))
+		kind := strings.TrimSpace(skill.Kind)
+		if kind == "" {
+			kind = "skill"
+		}
 		metadata := map[string]any{
 			"skill_name":    skill.Name,
 			"location":      skill.Location,
 			"base_dir":      skill.BaseDir,
 			"argument_hint": skill.ArgumentHint,
-			"allowed_tools": skills.ParseAllowedTools(skill.AllowedTools),
+			"allowed_tools": skill.AllowedTools.Values(),
 			"enabled":       enabled,
+			"kind":          kind,
+		}
+		tags := []string{
+			"skill",
+			"location:" + strings.TrimSpace(strings.ToLower(skill.Location)),
+			boolTag("enabled", enabled),
+			"kind:" + strings.TrimSpace(strings.ToLower(kind)),
+		}
+		if strings.TrimSpace(skill.PluginName) != "" {
+			metadata["plugin_name"] = strings.TrimSpace(skill.PluginName)
+			metadata["plugin_root"] = strings.TrimSpace(skill.PluginRoot)
+			tags = append(tags, "plugin:"+strings.ToLower(strings.TrimSpace(skill.PluginName)))
 		}
 		if skill.UserInvocable != nil {
 			metadata["user_invocable"] = *skill.UserInvocable
@@ -338,22 +403,22 @@ func skillCapabilityDefinitions(workspaceRoot string, cfg *config.Config) []tool
 			Category:    "extension",
 			VisibleIn:   allModes(),
 			ReadOnly:    true,
-			Tags: append([]string{
-				"skill",
-				"location:" + strings.TrimSpace(strings.ToLower(skill.Location)),
-				boolTag("enabled", enabled),
-			}, "activated_via:skill"),
-			Metadata: metadata,
+			Tags:        append(tags, "activated_via:skill"),
+			Metadata:    metadata,
 		}))
 	}
 	return out
 }
 
-func mcpCapabilityDefinitions(cfg *config.Config) []toolapi.ToolDefinition {
-	if cfg == nil || len(cfg.MCP) == 0 {
+func mcpCapabilityDefinitions(workspaceRoot string, cfg *config.Config) []toolapi.ToolDefinition {
+	if cfg == nil {
 		return nil
 	}
-	entries := append([]config.MCPEntry(nil), cfg.MCP...)
+	entries := pluginpkg.MergeMCPEntries(cfg, workspaceRoot)
+	if len(entries) == 0 {
+		return nil
+	}
+	entries = append([]config.MCPEntry(nil), entries...)
 	sort.Slice(entries, func(i, j int) bool {
 		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
 	})
@@ -529,7 +594,7 @@ func inferVisibleModes(level toolapi.RiskLevel) []string {
 	case toolapi.RiskLow:
 		return allModes()
 	default:
-		return []string{"manual", "auto", "bypass"}
+		return []string{"default", "acceptEdits", "auto", "dontAsk", "bypassPermissions"}
 	}
 }
 
@@ -555,7 +620,7 @@ func ensureCapabilityTags(name string, level toolapi.RiskLevel, readOnly bool, t
 }
 
 func allModes() []string {
-	return []string{"manual", "plan", "auto", "bypass"}
+	return []string{"default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"}
 }
 
 func uniqueStrings(values []string) []string {

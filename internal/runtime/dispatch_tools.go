@@ -109,7 +109,17 @@ func NewDispatchTools(
 		subAgentMgr:    NewSubAgentManager(),
 		hookMgr:        hm,
 	}
-	dt.registryID = DefaultAgentRegistry().RegisterManager(dt.subAgentMgr)
+	dt.registryID = DefaultAgentRegistry().RegisterController(
+		dt.subAgentMgr,
+		func(id string, task string) error {
+			_, err := dt.ResumeAgent(id, task)
+			return err
+		},
+		func(id string) error {
+			_, err := dt.CloseAgent(id)
+			return err
+		},
+	)
 	hm.SetOnMeta(onMetaWrapped)
 	go startHooksWatcher(context.Background(), dt)
 	return dt

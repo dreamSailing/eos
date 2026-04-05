@@ -6,9 +6,15 @@ import (
 )
 
 type AgentRegistry struct {
-	mu       sync.RWMutex
-	managers map[string]*SubAgentManager
-	nextID   int
+	mu      sync.RWMutex
+	entries map[string]agentRegistryEntry
+	nextID  int
+}
+
+type agentRegistryEntry struct {
+	manager *SubAgentManager
+	resume  func(id string, task string) error
+	close   func(id string) error
 }
 
 var (
@@ -19,13 +25,17 @@ var (
 func DefaultAgentRegistry() *AgentRegistry {
 	defaultAgentRegistryOnce.Do(func() {
 		defaultAgentRegistry = &AgentRegistry{
-			managers: map[string]*SubAgentManager{},
+			entries: map[string]agentRegistryEntry{},
 		}
 	})
 	return defaultAgentRegistry
 }
 
 func (r *AgentRegistry) RegisterManager(mgr *SubAgentManager) string {
+	return r.RegisterController(mgr, nil, nil)
+}
+
+func (r *AgentRegistry) RegisterController(mgr *SubAgentManager, resume func(id string, task string) error, close func(id string) error) string {
 	if r == nil || mgr == nil {
 		return ""
 	}
@@ -33,7 +43,11 @@ func (r *AgentRegistry) RegisterManager(mgr *SubAgentManager) string {
 	defer r.mu.Unlock()
 	r.nextID++
 	id := fmt.Sprintf("agent_registry_%d", r.nextID)
-	r.managers[id] = mgr
+	r.entries[id] = agentRegistryEntry{
+		manager: mgr,
+		resume:  resume,
+		close:   close,
+	}
 	return id
 }
 
@@ -43,7 +57,7 @@ func (r *AgentRegistry) UnregisterManager(id string) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.managers, id)
+	delete(r.entries, id)
 }
 
 func (r *AgentRegistry) ListSnapshots() []AgentSnapshot {
@@ -51,15 +65,15 @@ func (r *AgentRegistry) ListSnapshots() []AgentSnapshot {
 		return nil
 	}
 	r.mu.RLock()
-	managers := make([]*SubAgentManager, 0, len(r.managers))
-	for _, mgr := range r.managers {
-		managers = append(managers, mgr)
+	entries := make([]agentRegistryEntry, 0, len(r.entries))
+	for _, entry := range r.entries {
+		entries = append(entries, entry)
 	}
 	r.mu.RUnlock()
 
 	snaps := make([]AgentSnapshot, 0)
-	for _, mgr := range managers {
-		snaps = append(snaps, mgr.ListSnapshots()...)
+	for _, entry := range entries {
+		snaps = append(snaps, entry.manager.ListSnapshots()...)
 	}
 	return snaps
 }
@@ -69,15 +83,15 @@ func (r *AgentRegistry) RequestCancel(id string) bool {
 		return false
 	}
 	r.mu.RLock()
-	managers := make([]*SubAgentManager, 0, len(r.managers))
-	for _, mgr := range r.managers {
-		managers = append(managers, mgr)
+	entries := make([]agentRegistryEntry, 0, len(r.entries))
+	for _, entry := range r.entries {
+		entries = append(entries, entry)
 	}
 	r.mu.RUnlock()
 
-	for _, mgr := range managers {
-		if _, ok := mgr.GetContext(id); ok {
-			return mgr.RequestCancel(id) == nil
+	for _, entry := range entries {
+		if _, ok := entry.manager.GetContext(id); ok {
+			return entry.manager.RequestCancel(id) == nil
 		}
 	}
 	return false
@@ -88,16 +102,62 @@ func (r *AgentRegistry) Remove(id string) bool {
 		return false
 	}
 	r.mu.RLock()
-	managers := make([]*SubAgentManager, 0, len(r.managers))
-	for _, mgr := range r.managers {
-		managers = append(managers, mgr)
+	entries := make([]agentRegistryEntry, 0, len(r.entries))
+	for _, entry := range r.entries {
+		entries = append(entries, entry)
 	}
 	r.mu.RUnlock()
 
-	for _, mgr := range managers {
-		if mgr.Remove(id) {
+	for _, entry := range entries {
+		if entry.manager.Remove(id) {
 			return true
 		}
+	}
+	return false
+}
+
+func (r *AgentRegistry) Resume(id string, task string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.RLock()
+	entries := make([]agentRegistryEntry, 0, len(r.entries))
+	for _, entry := range r.entries {
+		entries = append(entries, entry)
+	}
+	r.mu.RUnlock()
+
+	for _, entry := range entries {
+		if _, ok := entry.manager.GetContext(id); !ok {
+			continue
+		}
+		if entry.resume == nil {
+			return false
+		}
+		return entry.resume(id, task) == nil
+	}
+	return false
+}
+
+func (r *AgentRegistry) Close(id string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.RLock()
+	entries := make([]agentRegistryEntry, 0, len(r.entries))
+	for _, entry := range r.entries {
+		entries = append(entries, entry)
+	}
+	r.mu.RUnlock()
+
+	for _, entry := range entries {
+		if _, ok := entry.manager.GetContext(id); !ok {
+			continue
+		}
+		if entry.close != nil {
+			return entry.close(id) == nil
+		}
+		return entry.manager.Remove(id)
 	}
 	return false
 }

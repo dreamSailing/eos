@@ -194,10 +194,14 @@ func (s *Server) handleRequest(ctx context.Context, req rpcRequest) {
 		s.handleToolCancel(req)
 	case "task.list":
 		s.handleTaskList(req)
+	case "task.resume":
+		s.handleTaskResume(req)
 	case "task.cancel":
 		s.handleTaskCancel(req)
 	case "task.kill":
 		s.handleTaskKill(req)
+	case "task.close":
+		s.handleTaskClose(req)
 	default:
 		s.reply(req.ID, nil, &rpcError{Code: -32004, Message: "MethodNotFound"})
 	}
@@ -252,7 +256,7 @@ func (s *Server) handleSessionCreate(req rpcRequest) {
 	}
 	requireDigest := s.opts.RequireApprovalDigest
 	confirmPolicyID := ""
-	executionMode := "auto"
+	executionMode := "default"
 	trustedWorkspace := false
 	maxConcurrent := 1
 	title := defaultSessionTitle(abs)
@@ -263,10 +267,7 @@ func (s *Server) handleSessionCreate(req rpcRequest) {
 			}
 		}
 		if v, ok := p.Options["executionMode"].(string); ok {
-			mv := strings.ToLower(strings.TrimSpace(v))
-			if mv == "manual" || mv == "plan" || mv == "auto" || mv == "bypass" {
-				executionMode = mv
-			}
+			executionMode = toolapi.NormalizeExecutionMode(v)
 		}
 		if v, ok := p.Options["trustedWorkspace"].(bool); ok {
 			trustedWorkspace = v
@@ -496,10 +497,17 @@ func (s *Server) handleToolList(req rpcRequest) {
 		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
 		return
 	}
-	defs := s.currentExecutableDefinitions(sess)
+	execSess := sessionExecSession(sess)
+	allDefs := s.currentToolDefinitions(sess.workspaceAbs)
+	defs := toolapi.FilterVisibleTools(allDefs, execSess)
+	catalog := defsToDTOsForSession(allDefs, execSess)
 	s.reply(req.ID, map[string]any{
-		"tools": defsToDTOs(defs),
-		"mode":  toolapi.NormalizeExecutionMode(sess.executionMode),
+		"tools":          defsToDTOsForSession(defs, execSess),
+		"catalog":        catalog,
+		"mode":           execSess.ExecutionMode,
+		"modeProfile":    modeDTO(execSess.ExecutionMode),
+		"executionModes": modeDTOs(toolapi.SupportedExecutionModes()),
+		"summary":        buildCatalogSummary(catalog),
 	}, nil)
 }
 
@@ -514,12 +522,19 @@ func (s *Server) handleCapabilityList(req rpcRequest) {
 		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
 		return
 	}
-	defs := s.currentVisibleCapabilities(sess)
-	items := defsToDTOs(defs)
+	execSess := sessionExecSession(sess)
+	allDefs := s.currentToolDefinitions(sess.workspaceAbs)
+	defs := toolapi.FilterVisibleCapabilities(allDefs, execSess)
+	items := defsToDTOsForSession(defs, execSess)
+	catalog := defsToDTOsForSession(allDefs, execSess)
 	s.reply(req.ID, map[string]any{
-		"capabilities": items,
-		"tools":        items,
-		"mode":         toolapi.NormalizeExecutionMode(sess.executionMode),
+		"capabilities":   items,
+		"tools":          items,
+		"catalog":        catalog,
+		"mode":           execSess.ExecutionMode,
+		"modeProfile":    modeDTO(execSess.ExecutionMode),
+		"executionModes": modeDTOs(toolapi.SupportedExecutionModes()),
+		"summary":        buildCatalogSummary(catalog),
 	}, nil)
 }
 
@@ -1116,6 +1131,28 @@ func (s *Server) handleTaskCancel(req rpcRequest) {
 	s.handleTaskKill(req)
 }
 
+func (s *Server) handleTaskResume(req rpcRequest) {
+	var p taskResumeParams
+	if err := decodeParams(req.Params, &p); err != nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+	if s.getSession(strings.TrimSpace(p.SessionID)) == nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
+		return
+	}
+	taskID := strings.TrimSpace(p.TaskID)
+	if taskID == "" {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+	if err := s.tools.Tasks().Resume(context.Background(), taskID); err != nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32012, Message: "Internal", Data: map[string]any{"taskID": taskID}})
+		return
+	}
+	s.reply(req.ID, map[string]any{"ok": true}, nil)
+}
+
 func (s *Server) handleTaskKill(req rpcRequest) {
 	var p taskKillParams
 	if err := decodeParams(req.Params, &p); err != nil {
@@ -1134,6 +1171,28 @@ func (s *Server) handleTaskKill(req rpcRequest) {
 	err := s.tools.Tasks().Kill(context.Background(), taskID)
 	if err != nil {
 		s.reply(req.ID, nil, &rpcError{Code: -32012, Message: "Internal"})
+		return
+	}
+	s.reply(req.ID, map[string]any{"ok": true}, nil)
+}
+
+func (s *Server) handleTaskClose(req rpcRequest) {
+	var p taskCloseParams
+	if err := decodeParams(req.Params, &p); err != nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+	if s.getSession(strings.TrimSpace(p.SessionID)) == nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
+		return
+	}
+	taskID := strings.TrimSpace(p.TaskID)
+	if taskID == "" {
+		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
+		return
+	}
+	if err := s.tools.Tasks().Close(context.Background(), taskID); err != nil {
+		s.reply(req.ID, nil, &rpcError{Code: -32012, Message: "Internal", Data: map[string]any{"taskID": taskID}})
 		return
 	}
 	s.reply(req.ID, map[string]any{"ok": true}, nil)
@@ -1859,7 +1918,7 @@ func (s *Server) confirmSummary(call toolCallDTO, preview map[string]interface{}
 	return "即将执行工具：" + strings.TrimSpace(call.Tool)
 }
 
-func buildToolDefinitions(defs []toolapi.ToolDefinition) []toolDefinitionDTO {
+func buildToolDefinitions(defs []toolapi.ToolDefinition, sess *toolapi.ExecSession) []toolDefinitionDTO {
 	if len(defs) == 0 {
 		return nil
 	}
@@ -1880,7 +1939,7 @@ func buildToolDefinitions(defs []toolapi.ToolDefinition) []toolDefinitionDTO {
 				"input":       ex.Input,
 			})
 		}
-		out = append(out, toolDefinitionDTO{
+		item := toolDefinitionDTO{
 			Name:        d.Name,
 			Description: d.Description,
 			RiskLevel:   string(d.RiskLevel),
@@ -1893,11 +1952,102 @@ func buildToolDefinitions(defs []toolapi.ToolDefinition) []toolDefinitionDTO {
 			Invocable:   d.Invocable,
 			Tags:        append([]string(nil), d.Tags...),
 			Metadata:    cloneMap(d.Metadata),
-		})
+		}
+		if sess != nil {
+			access := toolapi.EvaluateToolAccess(d, *sess)
+			item.Access = &toolAccessDTO{
+				Mode:          access.Mode,
+				Visible:       access.Visible,
+				Executable:    access.Executable,
+				NeedsApproval: access.NeedsApproval,
+				Reason:        access.Reason,
+			}
+		}
+		out = append(out, item)
 	}
 	return out
 }
 
 func defsToDTOs(defs []toolapi.ToolDefinition) []toolDefinitionDTO {
-	return buildToolDefinitions(defs)
+	return buildToolDefinitions(defs, nil)
+}
+
+func defsToDTOsForSession(defs []toolapi.ToolDefinition, sess toolapi.ExecSession) []toolDefinitionDTO {
+	return buildToolDefinitions(defs, &sess)
+}
+
+func sessionExecSession(sess *session) toolapi.ExecSession {
+	if sess == nil {
+		return toolapi.ExecSession{ExecutionMode: toolapi.NormalizeExecutionMode("")}
+	}
+	return toolapi.ExecSession{
+		AllowedTools:          sess.allowedTools,
+		ExecutionMode:         toolapi.NormalizeExecutionMode(sess.executionMode),
+		RequireApprovalDigest: sess.requireApprovalDigest,
+		WorkspaceRoot:         sess.workspaceAbs,
+	}
+}
+
+func buildCatalogSummary(items []toolDefinitionDTO) map[string]any {
+	summary := map[string]any{
+		"total":            len(items),
+		"visible":          0,
+		"executable":       0,
+		"needsApproval":    0,
+		"hidden":           0,
+		"capabilityOnly":   0,
+		"blockedByMode":    0,
+		"blockedByAllow":   0,
+		"blockedByDontAsk": 0,
+	}
+	for _, item := range items {
+		if item.Access == nil {
+			continue
+		}
+		if item.Access.Visible {
+			summary["visible"] = summary["visible"].(int) + 1
+		} else {
+			summary["hidden"] = summary["hidden"].(int) + 1
+		}
+		if item.Access.Executable {
+			summary["executable"] = summary["executable"].(int) + 1
+		}
+		if item.Access.NeedsApproval {
+			summary["needsApproval"] = summary["needsApproval"].(int) + 1
+		}
+		switch item.Access.Reason {
+		case "non_invocable":
+			summary["capabilityOnly"] = summary["capabilityOnly"].(int) + 1
+		case "execution_mode":
+			summary["blockedByMode"] = summary["blockedByMode"].(int) + 1
+		case "allowed_tools":
+			summary["blockedByAllow"] = summary["blockedByAllow"].(int) + 1
+		case "dont_ask":
+			summary["blockedByDontAsk"] = summary["blockedByDontAsk"].(int) + 1
+		}
+	}
+	return summary
+}
+
+func modeDTO(mode string) executionModeDTO {
+	desc := toolapi.ExecutionModeDescriptorFor(mode)
+	return executionModeDTO{
+		Name:             desc.Name,
+		Aliases:          append([]string(nil), desc.Aliases...),
+		Description:      desc.Description,
+		ApprovalBehavior: desc.ApprovalBehavior,
+	}
+}
+
+func modeDTOs(items []toolapi.ExecutionModeDescriptor) []executionModeDTO {
+	out := make([]executionModeDTO, 0, len(items))
+	for _, item := range items {
+		out = append(out, executionModeDTO{
+			Name:             item.Name,
+			Aliases:          append([]string(nil), item.Aliases...),
+			Description:      item.Description,
+			ApprovalBehavior: item.ApprovalBehavior,
+		})
+	}
+	return out
 }

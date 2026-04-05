@@ -76,14 +76,19 @@ func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
 	if !manifest.SessionDefaults.RequireApprovalDigest {
 		t.Fatal("RequireApprovalDigest should be true")
 	}
-	if manifest.SessionDefaults.ExecutionMode != "auto" {
-		t.Fatalf("ExecutionMode=%q, want auto", manifest.SessionDefaults.ExecutionMode)
+	if manifest.SessionDefaults.ExecutionMode != "default" {
+		t.Fatalf("ExecutionMode=%q, want default", manifest.SessionDefaults.ExecutionMode)
+	}
+	if len(manifest.ExecutionModes) == 0 {
+		t.Fatalf("ExecutionModes should not be empty")
 	}
 	if !manifest.ServerCapabilities.CapabilityCatalog || !manifest.ServerCapabilities.Tasks || !manifest.ServerCapabilities.Sessions {
 		t.Fatalf("ServerCapabilities=%+v, want tasks/sessions/capabilityCatalog enabled", manifest.ServerCapabilities)
 	}
-	if !slicesContain(manifest.Methods, "capability.list") || !slicesContain(manifest.Methods, "session.resume") {
-		t.Fatalf("Methods=%v, want capability.list and session.resume", manifest.Methods)
+	for _, method := range []string{"capability.list", "session.resume", "task.resume", "task.close"} {
+		if !slicesContain(manifest.Methods, method) {
+			t.Fatalf("Methods=%v, want %q", manifest.Methods, method)
+		}
 	}
 
 	argsJoined := strings.Join(manifest.Launch.Args, " ")
@@ -102,6 +107,9 @@ func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
 	if findToolDefinition(manifest.Tools, "skill:review") != nil {
 		t.Fatalf("skill capability should not appear in executable tools: %+v", manifest.Tools)
 	}
+	if entry := findToolDefinition(manifest.Tools, "read"); entry == nil || entry.Access == nil || !entry.Access.Executable {
+		t.Fatalf("manifest read tool should include executable access metadata: %+v", entry)
+	}
 	if findToolDefinition(manifest.Capabilities, "skill:review") == nil {
 		t.Fatalf("manifest capabilities missing skill:review: %+v", manifest.Capabilities)
 	}
@@ -110,6 +118,8 @@ func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
 	}
 	if findToolDefinition(manifest.Capabilities, "spawn_agent") == nil {
 		t.Fatalf("manifest capabilities missing spawn_agent: %+v", manifest.Capabilities)
+	} else if entry := findToolDefinition(manifest.Capabilities, "spawn_agent"); entry.Access == nil || entry.Access.Reason != "non_invocable" {
+		t.Fatalf("spawn_agent should include non_invocable access metadata: %+v", entry)
 	}
 }
 

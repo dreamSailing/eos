@@ -60,6 +60,7 @@ func (s *Shell) ExecuteCtx(ctx context.Context, command string) (string, error) 
 func (s *Shell) StartAsyncWithWorkingDir(command, workingDir string) (string, error) {
 	sid := fmt.Sprintf("%d", time.Now().UnixNano())
 	ctx, cancel := context.WithCancel(context.Background())
+	ctx = withPluginEnv(ctx, workingDir)
 
 	sess := &asyncSession{
 		id:       sid,
@@ -106,6 +107,7 @@ func (s *Shell) ExecuteWithWorkingDir(command, workingDir string) (string, error
 }
 
 func (s *Shell) ExecuteWithWorkingDirCtx(ctx context.Context, command, workingDir string) (string, error) {
+	ctx = withPluginEnv(ctx, workingDir)
 	stdout, stderr, err := s.executor.Execute(ctx, command, workingDir)
 	if err != nil {
 		if stderr != "" {

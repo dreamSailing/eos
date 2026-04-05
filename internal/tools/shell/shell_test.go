@@ -2,6 +2,8 @@ package shell
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -219,5 +221,43 @@ func TestShell_StartAsyncWithWorkingDir(t *testing.T) {
 
 	if !strings.Contains(strings.ReplaceAll(stdout, "\\", "/"), strings.ReplaceAll(dir, "\\", "/")) {
 		t.Fatalf("expected output %q to contain working dir %q", stdout, dir)
+	}
+}
+
+func TestShell_ExecuteWithWorkingDirIncludesPluginBinInPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	workspace := t.TempDir()
+	pluginRoot := filepath.Join(workspace, ".claude", "plugins", "formatter")
+	if err := os.MkdirAll(filepath.Join(pluginRoot, ".claude-plugin"), 0o755); err != nil {
+		t.Fatalf("mkdir manifest: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(pluginRoot, "bin"), 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginRoot, ".claude-plugin", "plugin.json"), []byte(`{"name":"formatter","description":"Format files"}`), 0o644); err != nil {
+		t.Fatalf("write plugin manifest: %v", err)
+	}
+
+	commandName := "plugin-echo"
+	commandPath := filepath.Join(pluginRoot, "bin", commandName)
+	commandBody := "#!/bin/sh\necho plugin-bin-ok\n"
+	if runtime.GOOS == "windows" {
+		commandPath += ".cmd"
+		commandBody = "@echo off\r\necho plugin-bin-ok\r\n"
+	}
+	if err := os.WriteFile(commandPath, []byte(commandBody), 0o755); err != nil {
+		t.Fatalf("write plugin command: %v", err)
+	}
+
+	shell := NewShell()
+	out, err := shell.ExecuteWithWorkingDir(commandName, workspace)
+	if err != nil {
+		t.Fatalf("ExecuteWithWorkingDir error: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(out), "plugin-bin-ok") {
+		t.Fatalf("output=%q, want plugin-bin-ok", out)
 	}
 }

@@ -14,6 +14,8 @@ type Catalog interface {
 type Tasks interface {
 	List(ctx context.Context) ([]TaskInfo, error)
 	Kill(ctx context.Context, id string) error
+	Resume(ctx context.Context, id string) error
+	Close(ctx context.Context, id string) error
 }
 
 type Services interface {
@@ -21,4 +23,3 @@ type Services interface {
 	Catalog() Catalog
 	Tasks() Tasks
 }
-

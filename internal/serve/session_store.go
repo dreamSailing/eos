@@ -125,7 +125,7 @@ func (s *Server) loadPersistedSessions() error {
 			sess.maxConcurrentToolCalls = 1
 		}
 		if strings.TrimSpace(sess.executionMode) == "" {
-			sess.executionMode = "auto"
+			sess.executionMode = "default"
 		}
 		if sess.updatedAt.IsZero() {
 			sess.updatedAt = now

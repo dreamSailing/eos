@@ -160,6 +160,21 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 	capResp := readResponse(3, 10*time.Second)
 	capResult, _ := capResp["result"].(map[string]any)
 	capabilities, _ := capResult["capabilities"].([]any)
+	if got, _ := capResult["mode"].(string); got != "default" {
+		t.Fatalf("mode=%v, want default", capResult["mode"])
+	}
+	modeProfile, _ := capResult["modeProfile"].(map[string]any)
+	if got, _ := modeProfile["approvalBehavior"].(string); got != "prompt_mutations" {
+		t.Fatalf("approvalBehavior=%v, want prompt_mutations", modeProfile["approvalBehavior"])
+	}
+	summary, _ := capResult["summary"].(map[string]any)
+	if _, ok := summary["blockedByAllow"]; !ok {
+		t.Fatalf("summary missing blockedByAllow: %v", summary)
+	}
+	catalog, _ := capResult["catalog"].([]any)
+	if len(catalog) < len(capabilities) {
+		t.Fatalf("catalog should include full capability decisions, got %d entries vs %d visible", len(catalog), len(capabilities))
+	}
 	for _, name := range []string{"read", "duckduckgo_search", "spawn_agent", "skill:review", "echo_plugin", "mcp:demo", "lsp"} {
 		if findByName(capabilities, name) == nil {
 			t.Fatalf("missing capability %q in %v", name, capabilities)
@@ -167,18 +182,30 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 	}
 	if entry := findByName(capabilities, "spawn_agent"); entry == nil || entry["invocable"] != false {
 		t.Fatalf("spawn_agent should be capability-only: %v", entry)
+	} else {
+		access, _ := entry["access"].(map[string]any)
+		if got, _ := access["reason"].(string); got != "non_invocable" {
+			t.Fatalf("spawn_agent access.reason=%q, want non_invocable", got)
+		}
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 4, "method": "tool.list", "params": map[string]any{"sessionID": sessionID}})
 	toolResp := readResponse(4, 10*time.Second)
 	toolResult, _ := toolResp["result"].(map[string]any)
 	toolsAny, _ := toolResult["tools"].([]any)
+	toolCatalog, _ := toolResult["catalog"].([]any)
 	if findByName(toolsAny, "read") == nil || findByName(toolsAny, "echo_plugin") == nil {
 		t.Fatalf("expected executable tools in %v", toolsAny)
 	}
 	for _, name := range []string{"duckduckgo_search", "spawn_agent", "skill:review", "mcp:demo", "lsp"} {
 		if findByName(toolsAny, name) != nil {
 			t.Fatalf("%q should not appear in tool.list: %v", name, toolsAny)
+		}
+	}
+	if entry := findByName(toolCatalog, "bash"); entry != nil {
+		access, _ := entry["access"].(map[string]any)
+		if got, _ := access["reason"].(string); got != "allowed_tools" {
+			t.Fatalf("bash access.reason=%q, want allowed_tools", got)
 		}
 	}
 }

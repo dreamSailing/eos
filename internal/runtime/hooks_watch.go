@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 	"github.com/fsnotify/fsnotify"
 )
@@ -50,6 +51,7 @@ func startHooksWatcher(ctx context.Context, dt *DispatchTools) {
 		filepath.Join(wd, ".claude", "skills"),
 		filepath.Join(wd, ".trae", "skills"),
 	}
+	pluginDirs := pluginpkg.ResolveScanDirs(wd)
 
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -64,14 +66,31 @@ func startHooksWatcher(ctx context.Context, dt *DispatchTools) {
 	}
 
 	for _, wf := range watchFiles {
+		addPath(filepath.Dir(wf.path))
 		addPath(wf.path)
 	}
 	for _, sd := range skillsDirs {
+		addPath(filepath.Dir(sd))
 		addPath(sd)
+	}
+	for _, pd := range pluginDirs {
+		addPath(filepath.Dir(pd))
+		addPath(pd)
 	}
 
 	for _, sd := range skillsDirs {
 		_ = filepath.WalkDir(sd, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				_ = w.Add(path)
+			}
+			return nil
+		})
+	}
+	for _, pd := range pluginDirs {
+		_ = filepath.WalkDir(pd, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
@@ -118,16 +137,13 @@ func startHooksWatcher(ctx context.Context, dt *DispatchTools) {
 					}
 				}
 				if src == "" {
-					lp := strings.ToLower(filepath.ToSlash(p))
-					for _, sd := range skillsDirs {
-						if strings.TrimSpace(sd) == "" {
-							continue
-						}
-						root := strings.ToLower(filepath.ToSlash(filepath.Clean(sd)))
-						if lp == root || strings.HasPrefix(lp, root+"/") {
-							src = "skills"
-							break
-						}
+					if pathUnderHookRoots(p, skillsDirs) {
+						src = "skills"
+					}
+				}
+				if src == "" {
+					if pathUnderHookRoots(p, pluginDirs) {
+						src = "plugins"
 					}
 				}
 				if src == "" {
@@ -181,4 +197,18 @@ func startHooksWatcher(ctx context.Context, dt *DispatchTools) {
 			}
 		}
 	}()
+}
+
+func pathUnderHookRoots(path string, roots []string) bool {
+	lp := strings.ToLower(filepath.ToSlash(filepath.Clean(path)))
+	for _, root := range roots {
+		if strings.TrimSpace(root) == "" {
+			continue
+		}
+		normRoot := strings.ToLower(filepath.ToSlash(filepath.Clean(root)))
+		if lp == normRoot || strings.HasPrefix(lp, normRoot+"/") {
+			return true
+		}
+	}
+	return false
 }

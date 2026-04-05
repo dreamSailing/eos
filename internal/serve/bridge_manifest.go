@@ -26,6 +26,7 @@ type BridgeManifest struct {
 	Transport          string                   `json:"transport"`
 	Launch             BridgeLaunchSpec         `json:"launch"`
 	SessionDefaults    BridgeSessionDefaults    `json:"sessionDefaults"`
+	ExecutionModes     []executionModeDTO       `json:"executionModes,omitempty"`
 	ServerCapabilities BridgeServerCapabilities `json:"serverCapabilities"`
 	Methods            []string                 `json:"methods"`
 	Tools              []toolDefinitionDTO      `json:"tools,omitempty"`
@@ -122,10 +123,11 @@ func BuildBridgeManifest(opts Options, manifestOpts BridgeManifestOptions) (Brid
 		SessionDefaults: BridgeSessionDefaults{
 			WorkspacePath:          workspaceAbs,
 			AllowedTools:           append([]string(nil), allowedTools...),
-			ExecutionMode:          "auto",
+			ExecutionMode:          "default",
 			RequireApprovalDigest:  opts.RequireApprovalDigest,
 			MaxConcurrentToolCalls: 1,
 		},
+		ExecutionModes:     modeDTOs(toolapi.SupportedExecutionModes()),
 		ServerCapabilities: serverCapabilitiesSummary(),
 		Methods:            supportedRPCMethods(),
 	}
@@ -147,10 +149,10 @@ func BuildBridgeManifest(opts Options, manifestOpts BridgeManifestOptions) (Brid
 		RequireApprovalDigest: manifest.SessionDefaults.RequireApprovalDigest,
 	}
 	if manifestOpts.IncludeTools {
-		manifest.Tools = defsToDTOs(toolapi.FilterVisibleTools(defs, sess))
+		manifest.Tools = defsToDTOsForSession(toolapi.FilterVisibleTools(defs, sess), sess)
 	}
 	if manifestOpts.IncludeCapabilities {
-		manifest.Capabilities = defsToDTOs(toolapi.FilterVisibleCapabilities(defs, sess))
+		manifest.Capabilities = defsToDTOsForSession(toolapi.FilterVisibleCapabilities(defs, sess), sess)
 	}
 	return manifest, nil
 }
@@ -202,8 +204,10 @@ func supportedRPCMethods() []string {
 		"tool.execute",
 		"tool.cancel",
 		"task.list",
+		"task.resume",
 		"task.cancel",
 		"task.kill",
+		"task.close",
 	}
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/dreamSailing/vb-coding/internal/tools"
 )
 
 func TestPromptPermissionAutoAllowsMediumRisk(t *testing.T) {
@@ -58,5 +60,86 @@ func TestPromptPermissionAutoStillPromptsHighRisk(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatalf("promptPermission did not return")
+	}
+}
+
+func TestPromptPermissionAcceptEditsAutoAllowsFilesystemWrites(t *testing.T) {
+	rc := &RuntimeCore{
+		securityMgr: NewSecurityManager(),
+		eventsCh:    make(chan Event, 1),
+	}
+	rc.securityMgr.SetExecutionMode("acceptEdits")
+
+	if got := rc.promptPermission(context.Background(), "file_write", "fs write ./README.md"); got != "allow" {
+		t.Fatalf("promptPermission() = %q, want allow", got)
+	}
+
+	select {
+	case ev := <-rc.eventsCh:
+		t.Fatalf("did not expect prompt event, got %#v", ev)
+	default:
+	}
+}
+
+func TestPromptPermissionDontAskDeniesInsteadOfPrompting(t *testing.T) {
+	rc := &RuntimeCore{
+		securityMgr: NewSecurityManager(),
+		eventsCh:    make(chan Event, 1),
+	}
+	rc.securityMgr.SetExecutionMode("dontAsk")
+
+	if got := rc.promptPermission(context.Background(), "git-push", "git push"); got != "deny" {
+		t.Fatalf("promptPermission() = %q, want deny", got)
+	}
+
+	select {
+	case ev := <-rc.eventsCh:
+		t.Fatalf("did not expect prompt event, got %#v", ev)
+	default:
+	}
+}
+
+func TestUserConfirmPromptStillAsksUserInAutoMode(t *testing.T) {
+	rc := &RuntimeCore{
+		securityMgr: NewSecurityManager(),
+		eventsCh:    make(chan Event, 2),
+	}
+	rc.securityMgr.SetExecutionMode("auto")
+
+	done := make(chan tools.UserConfirmResponse, 1)
+	go func() {
+		res, err := rc.userConfirmPrompt(context.Background(), tools.UserConfirmRequest{
+			Question: "请选择执行策略",
+			Options:  []string{"方案A", "方案B"},
+		})
+		if err != nil {
+			t.Errorf("userConfirmPrompt() error = %v", err)
+			return
+		}
+		done <- res
+	}()
+
+	select {
+	case ev := <-rc.eventsCh:
+		if ev.Type != "approval.required" && ev.Type != "inquiry.required" && ev.Type != "user_confirm.required" {
+			// The prompt bridge currently reuses approval-like events for confirm flows.
+		}
+		if ev.RID == "" {
+			t.Fatalf("prompt event missing request id: %#v", ev)
+		}
+		if ok := rc.SubmitPromptResponse(ev.RID, PromptResponse{Decision: "confirm", Option: "方案B", OptionIndex: 1}); !ok {
+			t.Fatalf("failed to submit prompt response")
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("expected user confirm prompt event")
+	}
+
+	select {
+	case res := <-done:
+		if !res.Confirmed || res.Option != "方案B" || res.OptionIndex != 1 {
+			t.Fatalf("unexpected response: %+v", res)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("userConfirmPrompt did not return")
 	}
 }

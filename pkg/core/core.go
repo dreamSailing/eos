@@ -16,6 +16,7 @@ import (
 	sharedruntime "github.com/dreamSailing/vb-coding/internal/runtime"
 	"github.com/dreamSailing/vb-coding/internal/session"
 	skillspkg "github.com/dreamSailing/vb-coding/internal/skills"
+	"github.com/dreamSailing/vb-coding/internal/toolapi"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 	"github.com/dreamSailing/vb-coding/internal/tools/bg"
 	"github.com/dreamSailing/vb-coding/pkg/protocol"
@@ -502,7 +503,7 @@ func (r *Runtime) UseWorkspace(path string) error {
 	if r.core.SetActiveWorkspaceRoot(p) == nil {
 		return errors.New("workspace not found")
 	}
-	return nil
+	return r.ReloadSkills()
 }
 
 func (r *Runtime) TrustWorkspace(path string) error {
@@ -984,7 +985,7 @@ func (r *Runtime) ListSkills() []SkillInfo {
 			ArgumentHint:           strings.TrimSpace(skill.ArgumentHint),
 			Location:               strings.TrimSpace(skill.Location),
 			BaseDir:                strings.TrimSpace(skill.BaseDir),
-			AllowedTools:           append([]string(nil), skillspkg.ParseAllowedTools(skill.AllowedTools)...),
+			AllowedTools:           skill.AllowedTools.Values(),
 			Enabled:                enabled,
 			Active:                 enabled && active[name],
 			DisableModelInvocation: skill.DisableModelInvocation,
@@ -1002,10 +1003,17 @@ func (r *Runtime) ListSkills() []SkillInfo {
 }
 
 func (r *Runtime) ReloadSkills() error {
+	cfg, _ := config.Load()
+	skillDirs := skillspkg.ResolveScanDirs(runtimePluginWorkspaceRoot(r), &cfg)
 	if sm := r.core.GetSkillManager(); sm != nil {
+		if loader := sm.GetLoader(); loader != nil {
+			loader.SetSkillsDirs(skillDirs)
+		}
+		sm.SetDisabledSkills(cfg.DisabledSkills)
 		return sm.ReloadPreserveActive()
 	}
 	if loader := r.core.GetSkillsLoader(); loader != nil {
+		loader.SetSkillsDirs(skillDirs)
 		return loader.Reload()
 	}
 	return nil
@@ -1054,11 +1062,16 @@ func (r *Runtime) ListPlugins() []PluginInfo {
 	items := pluginpkg.DefaultRegistry().List()
 	out := make([]PluginInfo, 0, len(items))
 	cfg, _ := config.Load()
+	seen := map[string]struct{}{}
 	for _, item := range items {
 		if item == nil {
 			continue
 		}
 		name := strings.TrimSpace(item.Name())
+		if name == "" {
+			continue
+		}
+		seen[strings.ToLower(name)] = struct{}{}
 		enabled := pluginpkg.DefaultRegistry().IsEnabled(name)
 		if cfgEnabled, ok := config.PluginEnabled(&cfg, name); ok {
 			enabled = cfgEnabled
@@ -1069,6 +1082,27 @@ func (r *Runtime) ListPlugins() []PluginInfo {
 			Description: strings.TrimSpace(item.Description()),
 			Source:      strings.TrimSpace(meta.Source),
 			Command:     strings.TrimSpace(meta.Command),
+			Enabled:     enabled,
+		})
+	}
+	workspaceRoot := runtimePluginWorkspaceRoot(r)
+	discovered, _ := pluginpkg.Discover(workspaceRoot)
+	for _, item := range discovered {
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[strings.ToLower(name)]; ok {
+			continue
+		}
+		enabled := true
+		if cfgEnabled, ok := config.PluginEnabled(&cfg, name); ok {
+			enabled = cfgEnabled
+		}
+		out = append(out, PluginInfo{
+			Name:        name,
+			Description: strings.TrimSpace(item.Description),
+			Source:      "directory:" + strings.TrimSpace(item.Location),
 			Enabled:     enabled,
 		})
 	}
@@ -1110,7 +1144,7 @@ func (r *Runtime) SetPluginEnabled(name string, enabled bool) error {
 		return err
 	}
 	pluginpkg.DefaultRegistry().SetEnabled(name, enabled)
-	return nil
+	return r.ReloadSkills()
 }
 
 func (r *Runtime) ContextPreview() []string {
@@ -1293,12 +1327,36 @@ func skillInfoSource(skill *skillspkg.Skill) string {
 	if skill == nil {
 		return ""
 	}
+	if strings.TrimSpace(skill.PluginName) != "" {
+		return "plugin:" + strings.TrimSpace(skill.PluginName)
+	}
 	source := strings.TrimSpace(skill.Location)
 	if source != "" {
 		return source
 	}
 	if strings.TrimSpace(skill.BaseDir) != "" {
 		return "scanner"
+	}
+	return ""
+}
+
+func runtimePluginWorkspaceRoot(r *Runtime) string {
+	if r == nil || r.core == nil {
+		if wd, err := os.Getwd(); err == nil {
+			return normalizeWorkspacePath(wd)
+		}
+		return ""
+	}
+	if root := normalizeWorkspacePath(r.core.GetActiveRoot()); root != "" {
+		return root
+	}
+	for _, root := range r.core.GetWorkspaceRoots() {
+		if normalized := normalizeWorkspacePath(root); normalized != "" {
+			return normalized
+		}
+	}
+	if wd, err := os.Getwd(); err == nil {
+		return normalizeWorkspacePath(wd)
 	}
 	return ""
 }
@@ -1765,30 +1823,38 @@ func firstCoreString(payload map[string]any, keys ...string) string {
 
 func toRuntimeMode(mode string) string {
 	switch strings.TrimSpace(mode) {
-	case "手动确认", "manual":
-		return "manual"
+	case "默认只读", "手动确认", "default", "manual":
+		return "default"
+	case "接受编辑", "acceptEdits", "accept_edits", "accept-edits":
+		return "acceptEdits"
 	case "计划优先", "plan":
 		return "plan"
-	case "内部绕过", "bypass":
-		return "bypass"
+	case "拒绝询问", "dontAsk", "dont_ask", "dont-ask":
+		return "dontAsk"
+	case "内部绕过", "绕过审批", "bypass", "bypassPermissions", "bypass_permissions", "bypass-permissions":
+		return "bypassPermissions"
 	case "自动无人值守", "auto":
 		return "auto"
 	default:
-		return "auto"
+		return toolapi.NormalizeExecutionMode(mode)
 	}
 }
 
 func fromRuntimeMode(mode string) string {
-	switch strings.TrimSpace(strings.ToLower(mode)) {
-	case "manual":
+	switch toolapi.NormalizeExecutionMode(mode) {
+	case "default":
 		return "手动确认"
+	case "acceptEdits":
+		return "接受编辑"
 	case "plan":
 		return "计划优先"
-	case "bypass":
-		return "内部绕过"
+	case "dontAsk":
+		return "拒绝询问"
+	case "bypassPermissions":
+		return "绕过审批"
 	case "auto":
 		return "自动无人值守"
 	default:
-		return "自动无人值守"
+		return "手动确认"
 	}
 }

@@ -248,9 +248,9 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 		modelBase = "(none)"
 	}
 	shellModel.SetWelcomeInfo(modelName, modelBase, "")
-	shellModel.SetExecutionMode("auto")
+	shellModel.SetExecutionMode("default")
 	shellModel.SetThinkingExpanded(false)
-	adapter.GetCore().SetExecutionMode("auto")
+	adapter.GetCore().SetExecutionMode("default")
 
 	// 创建面板
 	panelMap := make(map[string]panels.Panel)
@@ -300,7 +300,7 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 			Mode:          "ai",
 			Language:      lang,
 			Theme:         "dark",
-			ExecutionMode: "auto",
+			ExecutionMode: "default",
 		},
 		adapter:      adapter,
 		styles:       styles,
@@ -1143,6 +1143,8 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 		return m.handleSkillsSlash(args)
 	case "/plugin":
 		return m.handlePluginSlash()
+	case "/reload-plugins":
+		return m.handleReloadPluginsSlash()
 	case "/doctor":
 		return m.handleDoctorSlash()
 	case "/diff":

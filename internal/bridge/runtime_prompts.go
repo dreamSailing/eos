@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dreamSailing/vb-coding/internal/notify"
+	"github.com/dreamSailing/vb-coding/internal/toolapi"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 
 	"github.com/google/uuid"
@@ -27,6 +28,18 @@ var autoModePromptCategories = map[string]bool{
 	"bash-session-kill": true,
 }
 
+var acceptEditsAutoApproveCategories = map[string]bool{
+	"file_write":         true,
+	"overwrite_file":     true,
+	"tool-delete":        true,
+	"delete_file":        true,
+	"move-overwrite":     true,
+	"move-dir":           true,
+	"move-dir-overwrite": true,
+	"copy-overwrite":     true,
+	"copy-dir":           true,
+}
+
 func promptNeedsSafetyConfirmation(kind PromptKind, category, summary string) bool {
 	if kind != PromptKindPermission {
 		return false
@@ -37,6 +50,15 @@ func promptNeedsSafetyConfirmation(kind PromptKind, category, summary string) bo
 		return true
 	}
 	return strings.Contains(summary, "restore checkpoint") || strings.Contains(summary, "恢复检查点")
+}
+
+func acceptEditsPermissionAutoApproved(category, summary string) bool {
+	category = strings.ToLower(strings.TrimSpace(category))
+	summary = strings.ToLower(strings.TrimSpace(summary))
+	if strings.HasPrefix(summary, "history ") || strings.Contains(summary, "restore checkpoint") || strings.Contains(summary, "恢复检查点") {
+		return false
+	}
+	return acceptEditsAutoApproveCategories[category]
 }
 
 type PromptKind string
@@ -125,7 +147,7 @@ func (rc *RuntimeCore) waitPrompt(ctx context.Context, req PromptRequest) (Promp
 	shouldNotify := desktopEnabled
 	if shouldNotify && rc.securityMgr != nil {
 		mode := rc.securityMgr.ExecutionMode()
-		if mode == "auto" || mode == "bypass" {
+		if mode == "auto" || mode == "bypassPermissions" {
 			shouldNotify = promptNeedsSafetyConfirmation(req.Kind, req.Category, req.Summary)
 		}
 	}
@@ -161,10 +183,24 @@ func (rc *RuntimeCore) waitPrompt(ctx context.Context, req PromptRequest) (Promp
 
 func (rc *RuntimeCore) promptPermission(ctx context.Context, category, summary string) string {
 	if rc != nil && rc.securityMgr != nil {
-		mode := rc.securityMgr.ExecutionMode()
-		if (mode == "auto" || mode == "bypass") && !promptNeedsSafetyConfirmation(PromptKindPermission, category, summary) {
+		mode := toolapi.NormalizeExecutionMode(rc.securityMgr.ExecutionMode())
+		switch mode {
+		case "bypassPermissions":
 			rc.ClearPendingDiff()
 			return "allow"
+		case "dontAsk", "plan":
+			rc.ClearPendingDiff()
+			return "deny"
+		case "auto":
+			if !promptNeedsSafetyConfirmation(PromptKindPermission, category, summary) {
+				rc.ClearPendingDiff()
+				return "allow"
+			}
+		case "acceptEdits":
+			if acceptEditsPermissionAutoApproved(category, summary) {
+				rc.ClearPendingDiff()
+				return "allow"
+			}
 		}
 	}
 	req := PromptRequest{
@@ -193,18 +229,6 @@ func (rc *RuntimeCore) promptPermission(ctx context.Context, category, summary s
 }
 
 func (rc *RuntimeCore) userConfirmPrompt(ctx context.Context, req tools.UserConfirmRequest) (tools.UserConfirmResponse, error) {
-	if rc != nil && rc.securityMgr != nil {
-		mode := rc.securityMgr.ExecutionMode()
-		if mode == "auto" || mode == "bypass" {
-			opt := ""
-			optIdx := -1
-			if len(req.Options) > 0 {
-				opt = strings.TrimSpace(req.Options[0])
-				optIdx = 0
-			}
-			return tools.UserConfirmResponse{Confirmed: true, Option: opt, OptionIndex: optIdx}, nil
-		}
-	}
 	title := strings.TrimSpace(req.Title)
 	question := strings.TrimSpace(req.Question)
 	if question == "" {

@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/dreamSailing/vb-coding/internal/bridge"
+	"github.com/dreamSailing/vb-coding/internal/config"
 	plugpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
 	"github.com/dreamSailing/vb-coding/internal/runtime"
+	"github.com/dreamSailing/vb-coding/internal/toolapi"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 	"github.com/dreamSailing/vb-coding/internal/tools/bg"
 	gitops "github.com/dreamSailing/vb-coding/internal/tools/git"
@@ -38,6 +40,26 @@ func (m *AppModel) currentWorkspaceRoot() string {
 		return ""
 	}
 	return wd
+}
+
+func isSupportedExecutionModeInput(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return false
+	}
+	normalized := toolapi.NormalizeExecutionMode(raw)
+	for _, item := range toolapi.SupportedExecutionModes() {
+		if item.Name == normalized {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *AppModel) executionModeUsage() string {
+	return m.localize(
+		"用法: /permissions [default|acceptEdits|plan|auto|dontAsk|bypassPermissions]（兼容 manual / bypass）",
+		"Usage: /permissions [default|acceptEdits|plan|auto|dontAsk|bypassPermissions] (legacy manual / bypass aliases still work)",
+	)
 }
 
 func (m *AppModel) gitOps() *gitops.Ops {
@@ -265,15 +287,15 @@ func (m *AppModel) handleResumeSlash(args []string) tea.Cmd {
 func (m *AppModel) handlePermissionsSlash(args []string) tea.Cmd {
 	core := m.adapter.GetCore()
 	if len(args) > 0 {
-		mode := strings.ToLower(strings.TrimSpace(args[0]))
-		switch mode {
-		case "auto", "manual", "plan", "bypass":
+		raw := strings.TrimSpace(args[0])
+		if isSupportedExecutionModeInput(raw) {
+			mode := toolapi.NormalizeExecutionMode(raw)
 			core.SetExecutionMode(mode)
 			m.state.ExecutionMode = mode
 			m.shell.SetExecutionMode(mode)
 			m.appendSystem(fmt.Sprintf("%s %s", m.localize("执行模式已切换为", "Execution mode switched to"), m.executionModeLabel(mode)), "success")
-		default:
-			m.appendSystem(m.localize("用法: /permissions [auto|manual|plan|bypass]", "Usage: /permissions [auto|manual|plan|bypass]"), "warning")
+		} else {
+			m.appendSystem(m.executionModeUsage(), "warning")
 			return nil
 		}
 	}
@@ -303,11 +325,8 @@ func (m *AppModel) handlePermissionsSlash(args []string) tea.Cmd {
 }
 
 func (m *AppModel) handlePlanSlash(args []string) tea.Cmd {
-	if len(args) > 0 {
-		switch strings.ToLower(strings.TrimSpace(args[0])) {
-		case "auto", "manual", "plan", "bypass":
-			return m.handlePermissionsSlash(args)
-		}
+	if len(args) > 0 && isSupportedExecutionModeInput(args[0]) {
+		return m.handlePermissionsSlash(args)
 	}
 
 	items := tools.DefaultTodoStore().List()
@@ -326,7 +345,7 @@ func (m *AppModel) handlePlanSlash(args []string) tea.Cmd {
 			lines = append(lines, line)
 		}
 	}
-	lines = append(lines, m.localize("使用 /plan auto|manual|plan|bypass 可直接切换执行模式。", "Use /plan auto|manual|plan|bypass to switch execution mode."))
+	lines = append(lines, m.localize("使用 /plan default|acceptEdits|plan|auto|dontAsk|bypassPermissions 可直接切换执行模式，旧别名 manual / bypass 也兼容。", "Use /plan default|acceptEdits|plan|auto|dontAsk|bypassPermissions to switch execution mode directly; legacy manual / bypass aliases still work."))
 	m.appendSystem(strings.Join(lines, "\n"), "info")
 	return nil
 }
@@ -362,7 +381,15 @@ func (m *AppModel) handleSkillsSlash(args []string) tea.Cmd {
 			if desc == "" {
 				desc = m.localize("(无描述)", "(no description)")
 			}
-			lines = append(lines, fmt.Sprintf("%s %s [%s] - %s", prefix, skill.Name, skill.Location, desc))
+			origin := strings.TrimSpace(skill.Location)
+			if strings.TrimSpace(skill.PluginName) != "" {
+				if origin != "" {
+					origin = "plugin:" + strings.TrimSpace(skill.PluginName) + "/" + origin
+				} else {
+					origin = "plugin:" + strings.TrimSpace(skill.PluginName)
+				}
+			}
+			lines = append(lines, fmt.Sprintf("%s %s [%s] - %s", prefix, skill.Name, blankFallback(origin, m.localize("unknown", "unknown")), desc))
 		}
 	}
 	lines = append(lines, m.localize("使用 /skills reload 重新扫描并保留当前激活状态。", "Use /skills reload to rescan while preserving active skills."))
@@ -371,17 +398,89 @@ func (m *AppModel) handleSkillsSlash(args []string) tea.Cmd {
 }
 
 func (m *AppModel) handlePluginSlash() tea.Cmd {
-	plugins := plugpkg.DefaultRegistry().List()
-	sort.Slice(plugins, func(i, j int) bool { return strings.ToLower(plugins[i].Name()) < strings.ToLower(plugins[j].Name()) })
-	lines := []string{fmt.Sprintf("%s: %d", m.localize("插件", "Plugins"), len(plugins))}
-	if len(plugins) == 0 {
-		lines = append(lines, m.localize("暂无已注册插件。", "No plugins registered."))
+	type pluginRow struct {
+		name        string
+		description string
+		source      string
+		enabled     bool
+	}
+	rows := make([]pluginRow, 0)
+	seen := map[string]struct{}{}
+	cfg, _ := config.Load()
+	for _, plugin := range plugpkg.DefaultRegistry().List() {
+		if plugin == nil {
+			continue
+		}
+		name := strings.TrimSpace(plugin.Name())
+		if name == "" {
+			continue
+		}
+		seen[strings.ToLower(name)] = struct{}{}
+		enabled := plugpkg.DefaultRegistry().IsEnabled(name)
+		if cfgEnabled, ok := config.PluginEnabled(&cfg, name); ok {
+			enabled = cfgEnabled
+		}
+		rows = append(rows, pluginRow{
+			name:        name,
+			description: strings.TrimSpace(plugin.Description()),
+			source:      strings.TrimSpace(plugpkg.MetadataOf(plugin).Source),
+			enabled:     enabled,
+		})
+	}
+	if discovered, err := plugpkg.Discover(m.currentWorkspaceRoot()); err == nil {
+		for _, item := range discovered {
+			name := strings.TrimSpace(item.Name)
+			if name == "" {
+				continue
+			}
+			if _, ok := seen[strings.ToLower(name)]; ok {
+				continue
+			}
+			enabled := true
+			if cfgEnabled, ok := config.PluginEnabled(&cfg, name); ok {
+				enabled = cfgEnabled
+			}
+			rows = append(rows, pluginRow{
+				name:        name,
+				description: strings.TrimSpace(item.Description),
+				source:      "directory:" + strings.TrimSpace(item.Location),
+				enabled:     enabled,
+			})
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return strings.ToLower(rows[i].name) < strings.ToLower(rows[j].name) })
+	lines := []string{fmt.Sprintf("%s: %d", m.localize("插件", "Plugins"), len(rows))}
+	if len(rows) == 0 {
+		lines = append(lines, m.localize("暂无可用插件。", "No plugins available."))
 	} else {
-		for _, plugin := range plugins {
-			lines = append(lines, fmt.Sprintf("- %s: %s", plugin.Name(), strings.TrimSpace(plugin.Description())))
+		for _, plugin := range rows {
+			status := m.localize("enabled", "enabled")
+			if !plugin.enabled {
+				status = m.localize("disabled", "disabled")
+			}
+			desc := strings.TrimSpace(plugin.description)
+			if desc == "" {
+				desc = m.localize("(无描述)", "(no description)")
+			}
+			lines = append(lines, fmt.Sprintf("- %s [%s, %s]: %s", plugin.name, blankFallback(plugin.source, "plugin"), status, desc))
 		}
 	}
 	m.appendSystem(strings.Join(lines, "\n"), "info")
+	return nil
+}
+
+func (m *AppModel) handleReloadPluginsSlash() tea.Cmd {
+	if err := m.adapter.Reload(); err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("插件重载失败", "Plugin reload failed"), err), "error")
+		return nil
+	}
+	m.refreshContextPanel()
+	m.refreshMCPPanel()
+	m.refreshLSPPanel()
+	m.appendSystem(
+		m.localize("已重载插件扩展与目录发现。", "Reloaded plugin extensions and discovery."),
+		"success",
+	)
 	return nil
 }
 
@@ -410,6 +509,21 @@ func (m *AppModel) handleDoctorSlash() tea.Cmd {
 		skillsCount = len(sm.List())
 	}
 	pluginsCount := len(plugpkg.DefaultRegistry().List())
+	if discovered, err := plugpkg.Discover(m.currentWorkspaceRoot()); err == nil {
+		seen := map[string]struct{}{}
+		for _, item := range plugpkg.DefaultRegistry().List() {
+			if item == nil {
+				continue
+			}
+			seen[strings.ToLower(strings.TrimSpace(item.Name()))] = struct{}{}
+		}
+		for _, item := range discovered {
+			if _, ok := seen[strings.ToLower(strings.TrimSpace(item.Name))]; ok {
+				continue
+			}
+			pluginsCount++
+		}
+	}
 
 	lines := []string{
 		m.localize("Doctor 摘要", "Doctor summary"),
@@ -712,13 +826,17 @@ func (m *AppModel) restoreSessionHistory(id string) {
 }
 
 func (m *AppModel) executionModeLabel(mode string) string {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "manual":
-		return m.localize("手动确认", "manual confirm")
+	switch toolapi.NormalizeExecutionMode(mode) {
+	case "default":
+		return m.localize("默认只读", "default")
+	case "acceptEdits":
+		return m.localize("接受编辑", "accept edits")
 	case "plan":
 		return m.localize("先出计划", "plan first")
-	case "bypass":
-		return m.localize("绕过审批", "bypass approvals")
+	case "dontAsk":
+		return m.localize("拒绝询问", "don't ask")
+	case "bypassPermissions":
+		return m.localize("绕过审批", "bypass permissions")
 	default:
 		return m.localize("自动", "auto")
 	}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/dreamSailing/vb-coding/internal/config"
 	"github.com/dreamSailing/vb-coding/internal/mcp"
+	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
 	"github.com/dreamSailing/vb-coding/internal/skills"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 )
@@ -31,6 +32,8 @@ func configureManagerExtensions(ctx context.Context, mgr *tools.Manager, workspa
 	mcpMgr := mcp.NewManager()
 	loadCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_ = mcpMgr.LoadFromConfig(loadCtx, &cfg)
+	mcpCfg := cfg
+	mcpCfg.MCP = pluginpkg.MergeMCPEntries(&cfg, workspaceRoot)
+	_ = mcpMgr.LoadFromConfig(loadCtx, &mcpCfg)
 	mgr.SetMCPManager(mcpMgr)
 }

@@ -118,6 +118,17 @@ type taskKillParams struct {
 	TaskID    string `json:"taskID"`
 }
 
+type taskResumeParams struct {
+	SessionID string `json:"sessionID"`
+	TaskID    string `json:"taskID"`
+	Task      string `json:"task,omitempty"`
+}
+
+type taskCloseParams struct {
+	SessionID string `json:"sessionID"`
+	TaskID    string `json:"taskID"`
+}
+
 type toolCallDTO struct {
 	ID         string                 `json:"id"`
 	Tool       string                 `json:"tool"`
@@ -137,10 +148,26 @@ type toolDefinitionDTO struct {
 	Invocable   bool                        `json:"invocable"`
 	Tags        []string                    `json:"tags,omitempty"`
 	Metadata    map[string]any              `json:"metadata,omitempty"`
+	Access      *toolAccessDTO              `json:"access,omitempty"`
 }
 
 type parameterInfoDTO struct {
 	Type     string `json:"type,omitempty"`
 	Required bool   `json:"required,omitempty"`
 	Desc     string `json:"desc,omitempty"`
+}
+
+type toolAccessDTO struct {
+	Mode          string `json:"mode"`
+	Visible       bool   `json:"visible"`
+	Executable    bool   `json:"executable"`
+	NeedsApproval bool   `json:"needsApproval"`
+	Reason        string `json:"reason,omitempty"`
+}
+
+type executionModeDTO struct {
+	Name             string   `json:"name"`
+	Aliases          []string `json:"aliases,omitempty"`
+	Description      string   `json:"description,omitempty"`
+	ApprovalBehavior string   `json:"approvalBehavior,omitempty"`
 }

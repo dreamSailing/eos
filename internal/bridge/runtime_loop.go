@@ -78,7 +78,9 @@ func (rc *RuntimeCore) loop() {
 		slog.Debug("bridge.init_runtime.create_model_success", "component", utils.ComponentSystem)
 
 		slog.Debug("bridge.init_runtime.load_mcp_start", "component", utils.ComponentSystem)
-		if err := rc.mcpMgr.Reload(ctx, &cfg); err != nil {
+		mcpCfg := cfg
+		mcpCfg.MCP = pluginpkg.MergeMCPEntries(&cfg, rc.workingRoot())
+		if err := rc.mcpMgr.Reload(ctx, &mcpCfg); err != nil {
 			slog.Warn("bridge.init_runtime.load_mcp_failed", "component", utils.ComponentSystem, "error", err.Error())
 		}
 		mcpTools := rc.mcpMgr.GetAllTools()

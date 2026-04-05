@@ -13,6 +13,10 @@ import (
 )
 
 func ExecuteWithStdin(ctx context.Context, command string, workingDir string, stdin string) (stdout, stderr string, exitCode int, err error) {
+	return ExecuteWithStdinEnv(ctx, command, workingDir, stdin, nil)
+}
+
+func ExecuteWithStdinEnv(ctx context.Context, command string, workingDir string, stdin string, env []string) (stdout, stderr string, exitCode int, err error) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		psCmd := "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; $ErrorActionPreference='SilentlyContinue'; " + command
@@ -22,6 +26,9 @@ func ExecuteWithStdin(ctx context.Context, command string, workingDir string, st
 	}
 	if workingDir != "" {
 		cmd.Dir = workingDir
+	}
+	if len(env) > 0 {
+		cmd.Env = env
 	}
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)

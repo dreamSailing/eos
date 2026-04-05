@@ -820,7 +820,8 @@ func TestStdioFlow_RequestCancelEmitsRequestFailed(t *testing.T) {
 		"params": map[string]any{
 			"workspacePath": workspace,
 			"options": map[string]any{
-				"allowedTools": []any{"bash"},
+				"allowedTools":  []any{"bash"},
+				"executionMode": "bypass",
 			},
 		},
 	})

@@ -8,6 +8,7 @@ import (
 	ai "github.com/dreamSailing/vb-coding/internal/ai"
 	"github.com/dreamSailing/vb-coding/internal/config"
 	"github.com/dreamSailing/vb-coding/internal/hooks"
+	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 	"github.com/dreamSailing/vb-coding/internal/tools/shell"
 	"os"
@@ -206,6 +207,7 @@ func (hm *HookManager) runWithExtra(ctx context.Context, event string, toolName 
 			"project_settings": true,
 			"local_settings":   true,
 			"skills":           true,
+			"plugins":          true,
 		}
 	}
 
@@ -227,6 +229,8 @@ func (hm *HookManager) runWithExtra(ctx context.Context, event string, toolName 
 					if allowHookSource(enabledSources, "skills") {
 						for i := range hs {
 							hs[i].Source = "skills"
+							hs[i].BaseDir = strings.TrimSpace(s.BaseDir)
+							hs[i].SourcePath = strings.TrimSpace(s.SkillMdPath)
 							groups = append(groups, hs[i])
 						}
 					}
@@ -236,10 +240,12 @@ func (hm *HookManager) runWithExtra(ctx context.Context, event string, toolName 
 	}
 
 	type workItem struct {
-		idx int
-		key string
-		typ string
-		h   hooks.Handler
+		idx     int
+		key     string
+		typ     string
+		source  string
+		baseDir string
+		h       hooks.Handler
 	}
 	items := make([]workItem, 0, 8)
 	seen := map[string]bool{}
@@ -265,7 +271,14 @@ func (hm *HookManager) runWithExtra(ctx context.Context, event string, toolName 
 				continue
 			}
 			seen[key] = true
-			items = append(items, workItem{idx: idx, key: key, typ: ht, h: h})
+			items = append(items, workItem{
+				idx:     idx,
+				key:     key,
+				typ:     ht,
+				source:  strings.TrimSpace(g.Source),
+				baseDir: strings.TrimSpace(g.BaseDir),
+				h:       h,
+			})
 			idx++
 		}
 	}
@@ -296,18 +309,18 @@ func (hm *HookManager) runWithExtra(ctx context.Context, event string, toolName 
 				to = 600
 			}
 			if h.Async {
-				go func(cmd string, timeout int) {
+				go func(cmd string, source string, baseDir string, timeout int) {
 					c2, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 					defer cancel()
-					_, _ = runHookCommand(c2, event, cmd, toolName, toolInput, toolResult, extra, time.Duration(timeout)*time.Second)
-				}(cmd, to)
+					_, _ = runHookCommand(c2, event, cmd, toolName, toolInput, toolResult, extra, source, baseDir, time.Duration(timeout)*time.Second)
+				}(cmd, it.source, it.baseDir, to)
 				continue
 			}
 			pending++
-			go func(i int, cmd string, timeout int) {
-				dec, err := runHookCommand(ctx, event, cmd, toolName, toolInput, toolResult, extra, time.Duration(timeout)*time.Second)
+			go func(i int, cmd string, source string, baseDir string, timeout int) {
+				dec, err := runHookCommand(ctx, event, cmd, toolName, toolInput, toolResult, extra, source, baseDir, time.Duration(timeout)*time.Second)
 				ch <- res{idx: i, dec: dec, err: err}
-			}(it.idx, cmd, to)
+			}(it.idx, cmd, it.source, it.baseDir, to)
 		case "prompt":
 			p := strings.TrimSpace(h.Prompt)
 			if p == "" {
@@ -547,7 +560,7 @@ func hookMatcherMatch(matcher string, toolName string) bool {
 	return re.MatchString(toolName)
 }
 
-func runHookCommand(ctx context.Context, event string, command string, toolName string, toolInput map[string]any, toolResult map[string]any, extra map[string]any, timeout time.Duration) (hooks.Decision, error) {
+func runHookCommand(ctx context.Context, event string, command string, toolName string, toolInput map[string]any, toolResult map[string]any, extra map[string]any, source string, baseDir string, timeout time.Duration) (hooks.Decision, error) {
 	call := tools.ToolCall{Tool: "bash", Parameters: map[string]any{"command": command}}
 	if tools.SafetyGateClassify != nil {
 		category, _, summary, dangerous := tools.SafetyGateClassify(call)
@@ -592,7 +605,9 @@ func runHookCommand(ctx context.Context, event string, command string, toolName 
 		defer cancel()
 	}
 
-	stdout, stderr, exitCode, err := shell.ExecuteWithStdin(ctx, command, "", string(in))
+	workingDir := currentHookWorkingDir(ctx)
+	env := hookCommandEnv(source, baseDir, workingDir)
+	stdout, stderr, exitCode, err := shell.ExecuteWithStdinEnv(ctx, command, workingDir, string(in), env)
 	if exitCode == 2 {
 		msg := strings.TrimSpace(stderr)
 		if msg == "" && err != nil {
@@ -894,6 +909,7 @@ func asMapStringAny(v any) map[string]any {
 func loadHookConfig(workspaceRoot string) (hooks.Config, error) {
 	var cfg hooks.Config
 	cfg.Hooks = map[string][]hooks.MatcherGroup{}
+	workspaceRoot = resolveHookWorkspaceRoot(workspaceRoot)
 
 	home, _ := os.UserHomeDir()
 	type p2 struct {
@@ -965,23 +981,75 @@ func loadHookConfig(workspaceRoot string) (hooks.Config, error) {
 		if e := json.Unmarshal(b, &raw); e != nil {
 			continue
 		}
-		if raw.DisableAllHooks {
-			cfg.DisableAllHooks = true
+		mergeHookConfig(&cfg, raw, it.source, it.path, workspaceRoot, true)
+	}
+
+	appCfg, _ := config.Load()
+	plugins, _ := pluginpkg.Discover(workspaceRoot)
+	for _, plugin := range plugins {
+		if !plugin.HasHooks {
+			continue
 		}
-		if raw.ManagedHooksOnly {
-			cfg.ManagedHooksOnly = true
+		enabled := true
+		if cfgEnabled, ok := config.PluginEnabled(&appCfg, plugin.Name); ok {
+			enabled = cfgEnabled
 		}
-		if len(raw.EnabledHookSources) > 0 {
-			cfg.EnabledHookSources = append(cfg.EnabledHookSources, raw.EnabledHookSources...)
+		if !enabled {
+			continue
 		}
-		for ev, groups := range raw.Hooks {
-			for i := range groups {
-				groups[i].Source = it.source
-			}
-			cfg.Hooks[ev] = append(cfg.Hooks[ev], groups...)
+		b, err := os.ReadFile(plugin.HookConfigPath())
+		if err != nil {
+			continue
 		}
+		var raw struct {
+			Description string                          `json:"description"`
+			Hooks       map[string][]hooks.MatcherGroup `json:"hooks"`
+		}
+		if err := json.Unmarshal(b, &raw); err != nil {
+			continue
+		}
+		mergeHookConfig(&cfg, hooks.Config{Hooks: raw.Hooks}, "plugin:"+strings.TrimSpace(plugin.Name), plugin.HookConfigPath(), plugin.RootDir, false)
 	}
 	return cfg, nil
+}
+
+func mergeHookConfig(dst *hooks.Config, raw hooks.Config, source string, sourcePath string, baseDir string, includeFlags bool) {
+	if dst == nil {
+		return
+	}
+	if dst.Hooks == nil {
+		dst.Hooks = map[string][]hooks.MatcherGroup{}
+	}
+	if includeFlags {
+		if raw.DisableAllHooks {
+			dst.DisableAllHooks = true
+		}
+		if raw.ManagedHooksOnly {
+			dst.ManagedHooksOnly = true
+		}
+		if len(raw.EnabledHookSources) > 0 {
+			dst.EnabledHookSources = append(dst.EnabledHookSources, raw.EnabledHookSources...)
+		}
+	}
+	for ev, groups := range raw.Hooks {
+		for i := range groups {
+			groups[i].Source = source
+			groups[i].BaseDir = strings.TrimSpace(baseDir)
+			groups[i].SourcePath = strings.TrimSpace(sourcePath)
+		}
+		dst.Hooks[ev] = append(dst.Hooks[ev], groups...)
+	}
+}
+
+func resolveHookWorkspaceRoot(workspaceRoot string) string {
+	workspaceRoot = strings.TrimSpace(workspaceRoot)
+	if workspaceRoot != "" {
+		return workspaceRoot
+	}
+	if wd, err := os.Getwd(); err == nil {
+		return strings.TrimSpace(wd)
+	}
+	return ""
 }
 
 func normalizeSources(in []string) map[string]bool {
@@ -1006,5 +1074,76 @@ func allowHookSource(enabled map[string]bool, src string) bool {
 	if s == "" {
 		s = "unknown"
 	}
-	return enabled[s]
+	if enabled[s] {
+		return true
+	}
+	base := hookSourceCategory(s)
+	if enabled[base] {
+		return true
+	}
+	if base == "plugin" && enabled["plugins"] {
+		return true
+	}
+	return false
+}
+
+func hookSourceCategory(src string) string {
+	src = strings.ToLower(strings.TrimSpace(src))
+	if src == "" {
+		return "unknown"
+	}
+	if idx := strings.Index(src, ":"); idx > 0 {
+		return src[:idx]
+	}
+	return src
+}
+
+func currentHookWorkingDir(ctx context.Context) string {
+	if wd := strings.TrimSpace(tools.WorkspaceRootFromContext(ctx)); wd != "" {
+		return wd
+	}
+	if wd, err := os.Getwd(); err == nil {
+		return strings.TrimSpace(wd)
+	}
+	return ""
+}
+
+func hookCommandEnv(source string, baseDir string, projectDir string) []string {
+	env := append([]string{}, os.Environ()...)
+	if strings.TrimSpace(projectDir) != "" {
+		env = setHookEnv(env, "CLAUDE_PROJECT_DIR", projectDir)
+	}
+	if hookSourceCategory(source) == "plugin" && strings.TrimSpace(baseDir) != "" {
+		env = setHookEnv(env, "CLAUDE_PLUGIN_ROOT", baseDir)
+		pluginName := ""
+		if plugin, ok := pluginpkg.FindOwningManifest(baseDir); ok {
+			pluginName = strings.TrimSpace(plugin.Name)
+		}
+		if pluginName == "" {
+			parts := strings.SplitN(strings.TrimSpace(source), ":", 2)
+			if len(parts) == 2 {
+				pluginName = strings.TrimSpace(parts[1])
+			}
+		}
+		if dataDir := pluginpkg.PersistentDataDir(pluginName); strings.TrimSpace(dataDir) != "" {
+			env = setHookEnv(env, "CLAUDE_PLUGIN_DATA", dataDir)
+		}
+	}
+	return env
+}
+
+func setHookEnv(env []string, key string, value string) []string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return env
+	}
+	entry := key + "=" + strings.TrimSpace(value)
+	prefix := key + "="
+	for i := range env {
+		if strings.HasPrefix(strings.ToUpper(env[i]), strings.ToUpper(prefix)) {
+			env[i] = entry
+			return env
+		}
+	}
+	return append(env, entry)
 }

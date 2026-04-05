@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"strings"
 
+	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
 type MvdanExecutor struct {
@@ -28,7 +27,7 @@ func NewMvdanExecutor() Executor {
 func (e *MvdanExecutor) Execute(ctx context.Context, command string, workingDir string) (stdout, stderr string, err error) {
 	var stdoutBuf, stderrBuf bytes.Buffer
 
-	runner, err := e.createRunner(&stdoutBuf, &stderrBuf, workingDir)
+	runner, err := e.createRunner(ctx, &stdoutBuf, &stderrBuf, workingDir)
 	if err != nil {
 		slog.Error("shell.mvdan.create_runner.error", "component", utils.ComponentTool,
 			"command", command,
@@ -83,10 +82,10 @@ func (e *MvdanExecutor) Execute(ctx context.Context, command string, workingDir 
 	return stdoutStr, stderrStr, nil
 }
 
-func (e *MvdanExecutor) createRunner(stdout, stderr io.Writer, workingDir string) (*interp.Runner, error) {
+func (e *MvdanExecutor) createRunner(ctx context.Context, stdout, stderr io.Writer, workingDir string) (*interp.Runner, error) {
 	opts := []interp.RunnerOption{
 		interp.StdIO(nil, stdout, stderr),
-		interp.Env(expand.ListEnviron(os.Environ()...)),
+		interp.Env(expand.ListEnviron(envFromContext(ctx)...)),
 		interp.ExecHandlers(e.execHandler()),
 		interp.OpenHandler(e.openHandler()),
 	}
@@ -117,7 +116,7 @@ func (e *MvdanExecutor) execHandler() func(next interp.ExecHandlerFunc) interp.E
 				)
 			}
 
-			return interp.DefaultExecHandler(2 * 60 * 1e9)(ctx, args)
+			return interp.DefaultExecHandler(2*60*1e9)(ctx, args)
 		}
 	}
 }

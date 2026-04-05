@@ -45,8 +45,8 @@ var Commands = []Command{
 
 	{Name: "/memory", Aliases: []string{"/ctx", "/context"}, Group: GroupRuntime, DescriptionZH: "打开上下文与记忆面板", DescriptionEN: "Open the context and memory panel"},
 	{Name: "/tasks", Group: GroupRuntime, DescriptionZH: "打开任务面板", DescriptionEN: "Open the tasks panel"},
-	{Name: "/plan", Group: GroupRuntime, Usage: "/plan [auto|manual|plan|bypass]", DescriptionZH: "查看当前计划/待办，或切换计划执行模式", DescriptionEN: "Inspect plan/todos or switch planning mode"},
-	{Name: "/permissions", Group: GroupRuntime, Usage: "/permissions [auto|manual|plan|bypass]", DescriptionZH: "查看或切换权限/审批模式", DescriptionEN: "Inspect or change permission/approval mode"},
+	{Name: "/plan", Group: GroupRuntime, Usage: "/plan [default|acceptEdits|plan|auto|dontAsk|bypassPermissions]", DescriptionZH: "查看当前计划/待办，或切换计划执行模式", DescriptionEN: "Inspect plan/todos or switch planning mode"},
+	{Name: "/permissions", Group: GroupRuntime, Usage: "/permissions [default|acceptEdits|plan|auto|dontAsk|bypassPermissions]", DescriptionZH: "查看或切换权限/审批模式", DescriptionEN: "Inspect or change permission/approval mode"},
 	{Name: "/doctor", Group: GroupRuntime, DescriptionZH: "输出运行时、工具和诊断摘要", DescriptionEN: "Print a runtime, tools, and diagnostics summary"},
 
 	{Name: "/model", Aliases: []string{"/models"}, Group: GroupConfig, Usage: "/model [use <name>]", DescriptionZH: "查看模型面板或切换当前模型", DescriptionEN: "Open model management or switch the active model"},
@@ -56,6 +56,7 @@ var Commands = []Command{
 	{Name: "/rules", Group: GroupConfig, DescriptionZH: "打开规则面板", DescriptionEN: "Open the rules panel"},
 	{Name: "/skills", Group: GroupConfig, Usage: "/skills [reload]", DescriptionZH: "列出或重载可用 skills", DescriptionEN: "List or reload available skills"},
 	{Name: "/plugin", Group: GroupConfig, DescriptionZH: "列出已注册插件", DescriptionEN: "List registered plugins"},
+	{Name: "/reload-plugins", Group: GroupConfig, DescriptionZH: "重载插件扩展与目录发现", DescriptionEN: "Reload plugin extensions and discovery"},
 	{Name: "/cost", Group: GroupConfig, DescriptionZH: "打开成本统计面板", DescriptionEN: "Open the cost panel"},
 }
 

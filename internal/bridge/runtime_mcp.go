@@ -4,14 +4,16 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+
 	"github.com/dreamSailing/vb-coding/internal/config"
+	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
 	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
 // ListMCPServers 列出所有 MCP 服务器
 func (rc *RuntimeCore) ListMCPServers() []config.MCPEntry {
 	cfg, _ := config.Load()
-	return cfg.MCP
+	return pluginpkg.MergeMCPEntries(&cfg, rc.workingRoot())
 }
 
 // UpdateMCPServer 更新 MCP 服务器

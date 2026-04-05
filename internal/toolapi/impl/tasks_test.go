@@ -75,3 +75,45 @@ func TestTasksKillCancelsAgentTask(t *testing.T) {
 		t.Fatalf("expected cancel func to be called")
 	}
 }
+
+func TestTasksResumeAndCloseDelegateToAgentRegistryController(t *testing.T) {
+	mgr := runtime.NewSubAgentManager()
+	subCtx := mgr.CreateContext(runtime.SubAgentTypeReviewer, context.Background(), nil)
+
+	resumed := false
+	closed := false
+	registryID := runtime.DefaultAgentRegistry().RegisterController(
+		mgr,
+		func(id string, task string) error {
+			if id != subCtx.ID() {
+				t.Fatalf("resume id=%q, want %q", id, subCtx.ID())
+			}
+			resumed = true
+			return nil
+		},
+		func(id string) error {
+			if id != subCtx.ID() {
+				t.Fatalf("close id=%q, want %q", id, subCtx.ID())
+			}
+			closed = true
+			return nil
+		},
+	)
+	t.Cleanup(func() {
+		runtime.DefaultAgentRegistry().UnregisterManager(registryID)
+	})
+
+	taskSvc := newTasks()
+	if err := taskSvc.Resume(context.Background(), subCtx.ID()); err != nil {
+		t.Fatalf("Resume() error = %v", err)
+	}
+	if !resumed {
+		t.Fatalf("expected registry resume callback to be used")
+	}
+	if err := taskSvc.Close(context.Background(), subCtx.ID()); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if !closed {
+		t.Fatalf("expected registry close callback to be used")
+	}
+}

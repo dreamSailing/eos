@@ -27,22 +27,37 @@ func (p *coreTestPlugin) Description() string { return p.desc }
 func (p *coreTestPlugin) Execute(context.Context, map[string]any) (any, error) { return "ok", nil }
 
 func TestToRuntimeMode(t *testing.T) {
-	if got := toRuntimeMode("手动确认"); got != "manual" {
+	if got := toRuntimeMode("手动确认"); got != "default" {
+		t.Fatalf("unexpected mode: %s", got)
+	}
+	if got := toRuntimeMode("default"); got != "default" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
 	if got := toRuntimeMode("计划优先"); got != "plan" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
+	if got := toRuntimeMode("acceptEdits"); got != "acceptEdits" {
+		t.Fatalf("unexpected mode: %s", got)
+	}
 	if got := toRuntimeMode("自动无人值守"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := toRuntimeMode("unknown"); got != "auto" {
+	if got := toRuntimeMode("dontAsk"); got != "dontAsk" {
+		t.Fatalf("unexpected mode: %s", got)
+	}
+	if got := toRuntimeMode("bypassPermissions"); got != "bypassPermissions" {
+		t.Fatalf("unexpected mode: %s", got)
+	}
+	if got := toRuntimeMode("unknown"); got != "default" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
 }
 
 func TestFromRuntimeMode(t *testing.T) {
-	if got := fromRuntimeMode("manual"); got != "手动确认" {
+	if got := fromRuntimeMode("default"); got != "手动确认" {
+		t.Fatalf("unexpected mode: %s", got)
+	}
+	if got := fromRuntimeMode("acceptEdits"); got != "接受编辑" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
 	if got := fromRuntimeMode("plan"); got != "计划优先" {
@@ -51,7 +66,13 @@ func TestFromRuntimeMode(t *testing.T) {
 	if got := fromRuntimeMode("auto"); got != "自动无人值守" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := fromRuntimeMode("unknown"); got != "自动无人值守" {
+	if got := fromRuntimeMode("dontAsk"); got != "拒绝询问" {
+		t.Fatalf("unexpected mode: %s", got)
+	}
+	if got := fromRuntimeMode("bypassPermissions"); got != "绕过审批" {
+		t.Fatalf("unexpected mode: %s", got)
+	}
+	if got := fromRuntimeMode("unknown"); got != "手动确认" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
 }
@@ -389,6 +410,56 @@ func TestRuntimeSetSkillEnabledPersistsState(t *testing.T) {
 	}
 }
 
+func TestRuntimeListsPluginSkills(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	rt := NewRuntime()
+	workspace := t.TempDir()
+	pluginSkillDir := filepath.Join(workspace, ".claude", "plugins", "formatter", "skills", "review")
+	if err := os.MkdirAll(filepath.Join(workspace, ".claude", "plugins", "formatter", ".claude-plugin"), 0o755); err != nil {
+		t.Fatalf("mkdir manifest: %v", err)
+	}
+	if err := os.MkdirAll(pluginSkillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, ".claude", "plugins", "formatter", ".claude-plugin", "plugin.json"), []byte(`{"name":"formatter","description":"Format files"}`), 0o644); err != nil {
+		t.Fatalf("write plugin manifest: %v", err)
+	}
+	skillDoc := strings.Join([]string{
+		"---",
+		"description: Review files from plugin",
+		"user-invocable: true",
+		"---",
+		"Plugin review instructions",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(pluginSkillDir, "SKILL.md"), []byte(skillDoc), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	if err := rt.AddWorkspace(workspace); err != nil {
+		t.Fatalf("AddWorkspace error: %v", err)
+	}
+	if err := rt.UseWorkspace(workspace); err != nil {
+		t.Fatalf("UseWorkspace error: %v", err)
+	}
+
+	items := rt.ListSkills()
+	if len(items) != 1 {
+		t.Fatalf("len(ListSkills())=%d, want 1", len(items))
+	}
+	if items[0].Name != "formatter:review" {
+		t.Fatalf("skill name=%q, want formatter:review", items[0].Name)
+	}
+	if items[0].Source != "plugin:formatter" {
+		t.Fatalf("skill source=%q, want plugin:formatter", items[0].Source)
+	}
+	if items[0].Location != "project" {
+		t.Fatalf("skill location=%q, want project", items[0].Location)
+	}
+}
+
 func TestRuntimeListsPlugins(t *testing.T) {
 	pluginpkg.DefaultRegistry().Reset()
 	t.Cleanup(func() { pluginpkg.DefaultRegistry().Reset() })
@@ -464,11 +535,89 @@ func TestRuntimeSetPluginEnabledPersistsState(t *testing.T) {
 	}
 }
 
+func TestRuntimeListsManifestPlugins(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	pluginpkg.DefaultRegistry().Reset()
+	t.Cleanup(func() { pluginpkg.DefaultRegistry().Reset() })
+
+	workspace := t.TempDir()
+	pluginRoot := filepath.Join(workspace, ".claude", "plugins", "formatter")
+	if err := os.MkdirAll(filepath.Join(pluginRoot, ".claude-plugin"), 0o755); err != nil {
+		t.Fatalf("mkdir manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginRoot, ".claude-plugin", "plugin.json"), []byte(`{"name":"formatter","description":"Format project files"}`), 0o644); err != nil {
+		t.Fatalf("write plugin manifest: %v", err)
+	}
+
+	rt := NewRuntime()
+	if err := rt.AddWorkspace(workspace); err != nil {
+		t.Fatalf("AddWorkspace error: %v", err)
+	}
+	if err := rt.UseWorkspace(workspace); err != nil {
+		t.Fatalf("UseWorkspace error: %v", err)
+	}
+
+	items := rt.ListPlugins()
+	if len(items) != 1 {
+		t.Fatalf("len(ListPlugins())=%d, want 1", len(items))
+	}
+	if items[0].Name != "formatter" {
+		t.Fatalf("plugin name=%q, want formatter", items[0].Name)
+	}
+	if items[0].Source != "directory:project" {
+		t.Fatalf("plugin source=%q, want directory:project", items[0].Source)
+	}
+	if !items[0].Enabled {
+		t.Fatal("manifest plugin should be enabled by default")
+	}
+}
+
+func TestRuntimeSetManifestPluginEnabledPersistsState(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	pluginpkg.DefaultRegistry().Reset()
+	t.Cleanup(func() { pluginpkg.DefaultRegistry().Reset() })
+
+	workspace := t.TempDir()
+	pluginRoot := filepath.Join(workspace, ".claude", "plugins", "formatter")
+	if err := os.MkdirAll(filepath.Join(pluginRoot, ".claude-plugin"), 0o755); err != nil {
+		t.Fatalf("mkdir manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginRoot, ".claude-plugin", "plugin.json"), []byte(`{"name":"formatter","description":"Format project files"}`), 0o644); err != nil {
+		t.Fatalf("write plugin manifest: %v", err)
+	}
+
+	rt := NewRuntime()
+	if err := rt.AddWorkspace(workspace); err != nil {
+		t.Fatalf("AddWorkspace error: %v", err)
+	}
+	if err := rt.UseWorkspace(workspace); err != nil {
+		t.Fatalf("UseWorkspace error: %v", err)
+	}
+	if err := rt.SetPluginEnabled("formatter", false); err != nil {
+		t.Fatalf("SetPluginEnabled(false) error = %v", err)
+	}
+
+	items := rt.ListPlugins()
+	if len(items) != 1 || items[0].Enabled {
+		t.Fatalf("ListPlugins()=%+v, want disabled manifest plugin", items)
+	}
+	cfg, _ := config.Load()
+	if enabled, ok := config.PluginEnabled(&cfg, "formatter"); !ok || enabled {
+		t.Fatalf("config.PluginEnabled()=(%v,%v), want (false,true)", enabled, ok)
+	}
+}
+
 func TestRuntimePermissionSnapshotDefaults(t *testing.T) {
 	rt := NewRuntime()
 	snap := rt.PermissionSnapshot()
-	if snap.ExecutionMode != "auto" {
-		t.Fatalf("ExecutionMode=%q, want auto", snap.ExecutionMode)
+	if snap.ExecutionMode != "default" {
+		t.Fatalf("ExecutionMode=%q, want default", snap.ExecutionMode)
 	}
 	if snap.HasPendingDiff {
 		t.Fatal("HasPendingDiff should default to false")

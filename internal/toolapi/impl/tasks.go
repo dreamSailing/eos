@@ -88,6 +88,20 @@ func (t *tasks) Kill(_ context.Context, id string) error {
 	return fmt.Errorf("task not found: %s", id)
 }
 
+func (t *tasks) Resume(_ context.Context, id string) error {
+	if runtime.DefaultAgentRegistry().Resume(id, "") {
+		return nil
+	}
+	return fmt.Errorf("task not resumable: %s", id)
+}
+
+func (t *tasks) Close(_ context.Context, id string) error {
+	if runtime.DefaultAgentRegistry().Close(id) {
+		return nil
+	}
+	return fmt.Errorf("task not closeable: %s", id)
+}
+
 func maxTaskTime(times ...time.Time) time.Time {
 	var out time.Time
 	for _, ts := range times {

@@ -6,10 +6,11 @@ import (
 	"strings"
 
 	"github.com/dreamSailing/vb-coding/internal/config"
+	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
 )
 
 func ResolveScanDirs(workspaceRoot string, cfg *config.Config) []string {
-	dirs := make([]string, 0, 8)
+	dirs := make([]string, 0, 12)
 	seen := map[string]struct{}{}
 
 	addDir := func(dir string) {
@@ -33,6 +34,9 @@ func ResolveScanDirs(workspaceRoot string, cfg *config.Config) []string {
 		addDir(filepath.Join(home, ".vb", "skills"))
 		addDir(filepath.Join(home, ".claude", "skills"))
 		addDir(filepath.Join(home, ".trae", "skills"))
+		addDir(filepath.Join(home, ".vb", "commands"))
+		addDir(filepath.Join(home, ".claude", "commands"))
+		addDir(filepath.Join(home, ".trae", "commands"))
 	}
 
 	workspaceRoot = strings.TrimSpace(workspaceRoot)
@@ -40,6 +44,9 @@ func ResolveScanDirs(workspaceRoot string, cfg *config.Config) []string {
 		addDir(filepath.Join(workspaceRoot, ".vb", "skills"))
 		addDir(filepath.Join(workspaceRoot, ".claude", "skills"))
 		addDir(filepath.Join(workspaceRoot, ".trae", "skills"))
+		addDir(filepath.Join(workspaceRoot, ".vb", "commands"))
+		addDir(filepath.Join(workspaceRoot, ".claude", "commands"))
+		addDir(filepath.Join(workspaceRoot, ".trae", "commands"))
 	}
 
 	if cfg != nil {
@@ -48,5 +55,42 @@ func ResolveScanDirs(workspaceRoot string, cfg *config.Config) []string {
 		}
 	}
 
+	for _, dir := range pluginSkillDirs(workspaceRoot, cfg) {
+		addDir(dir)
+	}
+	for _, dir := range pluginCommandDirs(workspaceRoot, cfg) {
+		addDir(dir)
+	}
+
 	return dirs
+}
+
+func pluginSkillDirs(workspaceRoot string, cfg *config.Config) []string {
+	return pluginComponentDirs(workspaceRoot, cfg, func(item pluginpkg.Manifest) bool { return item.HasSkills }, "skills")
+}
+
+func pluginCommandDirs(workspaceRoot string, cfg *config.Config) []string {
+	return pluginComponentDirs(workspaceRoot, cfg, func(item pluginpkg.Manifest) bool { return item.HasCommands }, "commands")
+}
+
+func pluginComponentDirs(workspaceRoot string, cfg *config.Config, include func(pluginpkg.Manifest) bool, component string) []string {
+	items, err := pluginpkg.Discover(workspaceRoot)
+	if err != nil || len(items) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if !include(item) {
+			continue
+		}
+		enabled := true
+		if cfgEnabled, ok := config.PluginEnabled(cfg, item.Name); ok {
+			enabled = cfgEnabled
+		}
+		if !enabled {
+			continue
+		}
+		out = append(out, filepath.Join(item.RootDir, component))
+	}
+	return out
 }
