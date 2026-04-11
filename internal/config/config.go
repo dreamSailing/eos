@@ -107,6 +107,8 @@ type Config struct {
 	DisabledSkills    []string         `json:"disabled_skills,omitempty"`    // 被禁用的 skill 名称
 	Plugins           []PluginEntry    `json:"plugins,omitempty"`            // 插件启停覆盖配置
 	LSP               LSPConfig        `json:"lsp,omitempty"`                // LSP 配置
+	KnownWorkspaces   []string         `json:"known_workspaces,omitempty"`   // 已知工作区（绝对路径）
+	LastWorkspace     string           `json:"last_workspace,omitempty"`     // 上次前台工作区（绝对路径）
 	TrustedWorkspaces []string         `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
 	Language          string           `json:"language,omitempty"`           // 语言设置 (zh, en)
 }
@@ -136,6 +138,11 @@ func Load() (Config, string) {
 			"path", p,
 			"data_size", len(b),
 			"error", err)
+	}
+	if NormalizeWorkspaceState(&cfg) {
+		if err := Save(cfg, p); err != nil {
+			slog.Warn("config.load.normalize_workspace_state.save.error", "path", p, "error", err.Error())
+		}
 	}
 
 	if len(cfg.MCP) == 0 {
@@ -275,6 +282,12 @@ func Save(cfg Config, p string) error {
 			"path", p,
 			"models_count", len(cfg.Models),
 			"active_model", cfg.Active,
+			"error", err)
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		slog.Error("config.save.mkdir_all.error",
+			"path", p,
 			"error", err)
 		return err
 	}

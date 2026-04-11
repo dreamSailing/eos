@@ -324,6 +324,7 @@ func (m *AppModel) Init() tea.Cmd {
 
 	if p, _ := os.Getwd(); p != "" {
 		abs := normalizeWorkspacePath(p)
+		rememberKnownWorkspace(abs, true)
 		if m.isWorkspaceTrusted(abs) {
 			m.adapter.GetCore().StartContextEngine(abs)
 			settingsPath := filepath.Join(abs, ".vb", "settings.json")
@@ -707,6 +708,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch action {
 			case "init":
+				rememberKnownWorkspace(path, true)
 				m.adapter.GetCore().StartContextEngine(path)
 				settingsPath := filepath.Join(path, ".vb", "settings.json")
 				m.adapter.GetSettings().SetPath(settingsPath)
@@ -752,6 +754,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.adapter.GetCore().AddWorkspaceRoot(p)
+			rememberKnownWorkspace(p, false)
 			m.refreshWorkspacePanel()
 			m.appendSystem("已添加工作区: "+p, "success")
 			m.confirmView = nil
@@ -1364,6 +1367,7 @@ func (m *AppModel) handleWorkspaceRemove(path string) {
 		return
 	}
 	m.adapter.GetCore().RemoveWorkspaceRoot(path)
+	forgetKnownWorkspace(path)
 	m.refreshWorkspacePanel()
 	m.appendSystem("已移除工作区: "+path, "success")
 }
@@ -1397,6 +1401,7 @@ func (m *AppModel) switchWorkspaceTrusted(path string) tea.Cmd {
 		m.appendSystem("工作区不存在: "+path, "warning")
 		return nil
 	}
+	rememberKnownWorkspace(path, true)
 	_ = os.Chdir(path)
 	settingsPath := filepath.Join(path, ".vb", "settings.json")
 	m.adapter.GetSettings().SetPath(settingsPath)

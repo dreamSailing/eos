@@ -10,12 +10,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dreamSailing/vb-coding/internal/ai"
 	"github.com/dreamSailing/vb-coding/internal/bridge"
 	"github.com/dreamSailing/vb-coding/internal/config"
 	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
 	sharedruntime "github.com/dreamSailing/vb-coding/internal/runtime"
 	"github.com/dreamSailing/vb-coding/internal/session"
 	skillspkg "github.com/dreamSailing/vb-coding/internal/skills"
+	"github.com/dreamSailing/vb-coding/internal/state"
 	"github.com/dreamSailing/vb-coding/internal/toolapi"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 	"github.com/dreamSailing/vb-coding/internal/tools/bg"
@@ -34,12 +36,13 @@ type Runtime struct {
 }
 
 type Model struct {
-	Name     string
-	APIBase  string
-	APIKey   string
-	Model    string
-	Source   string
-	IsActive bool
+	Name                    string
+	APIBase                 string
+	APIKey                  string
+	Model                   string
+	Source                  string
+	IsActive                bool
+	SupportsReasoningEffort bool
 }
 
 type BackgroundTask struct {
@@ -48,6 +51,7 @@ type BackgroundTask struct {
 	StartedAt time.Time
 	Label     string
 	CanKill   bool
+	Workspace string
 }
 
 type Workspace struct {
@@ -347,13 +351,15 @@ func (r *Runtime) ListModels() []Model {
 	cfg, _ := r.core.LoadFullModelConfig()
 	out := make([]Model, 0, len(cfg.Models))
 	for _, m := range cfg.Models {
+		supportsReasoning := m.SupportsReasoningEffort || ai.SupportsReasoningEffort(m.Model)
 		out = append(out, Model{
-			Name:     m.Name,
-			APIBase:  m.APIBase,
-			APIKey:   m.APIKey,
-			Model:    m.Model,
-			Source:   m.Source,
-			IsActive: strings.TrimSpace(cfg.Active) == strings.TrimSpace(m.Name),
+			Name:                    m.Name,
+			APIBase:                 m.APIBase,
+			APIKey:                  m.APIKey,
+			Model:                   m.Model,
+			Source:                  m.Source,
+			IsActive:                strings.TrimSpace(cfg.Active) == strings.TrimSpace(m.Name),
+			SupportsReasoningEffort: supportsReasoning,
 		})
 	}
 	return out
@@ -367,10 +373,11 @@ func (r *Runtime) UpsertModel(name, base, key, model string) error {
 		return errors.New("name, api base, model required")
 	}
 	entry := config.ModelEntry{
-		Name:    name,
-		APIBase: base,
-		APIKey:  strings.TrimSpace(key),
-		Model:   model,
+		Name:                    name,
+		APIBase:                 base,
+		APIKey:                  strings.TrimSpace(key),
+		Model:                   model,
+		SupportsReasoningEffort: ai.SupportsReasoningEffort(model),
 	}
 	if !r.core.UpdateModel(entry) && !r.core.AddModel(entry) {
 		return errors.New("upsert model failed")
@@ -383,6 +390,81 @@ func (r *Runtime) ActivateModel(name string) error {
 		return errors.New("model not found")
 	}
 	return nil
+}
+
+func (r *Runtime) ReasoningLevel() string {
+	cfg, _ := config.Load()
+	active := strings.TrimSpace(cfg.Active)
+	if active == "" {
+		if !cfg.Thinking.Enabled || !state.Thinking() {
+			return "off"
+		}
+		return normalizeReasoningLevel(cfg.Thinking.ReasoningEffort)
+	}
+	for _, model := range cfg.Models {
+		if !strings.EqualFold(strings.TrimSpace(model.Name), active) {
+			continue
+		}
+		supportsReasoning := model.SupportsReasoningEffort || ai.SupportsReasoningEffort(model.Model)
+		if !supportsReasoning || !model.ThinkingEnabled || !cfg.Thinking.Enabled || !state.Thinking() {
+			return "off"
+		}
+		return normalizeReasoningLevel(cfg.Thinking.ReasoningEffort)
+	}
+	if !cfg.Thinking.Enabled || !state.Thinking() {
+		return "off"
+	}
+	return normalizeReasoningLevel(cfg.Thinking.ReasoningEffort)
+}
+
+func (r *Runtime) SetReasoningLevel(level string) error {
+	cfg, cfgPath := config.Load()
+	if strings.TrimSpace(cfgPath) == "" {
+		return errors.New("config path empty")
+	}
+
+	level = normalizeReasoningLevel(level)
+	active := strings.TrimSpace(cfg.Active)
+	foundActive := false
+
+	cfg.Thinking.Enabled = true
+	cfg.Thinking.AutoDetect = true
+
+	for i := range cfg.Models {
+		cfg.Models[i].SupportsReasoningEffort = cfg.Models[i].SupportsReasoningEffort || ai.SupportsReasoningEffort(cfg.Models[i].Model)
+		if !strings.EqualFold(strings.TrimSpace(cfg.Models[i].Name), active) {
+			continue
+		}
+		foundActive = true
+		if level == "off" {
+			cfg.Models[i].ThinkingEnabled = false
+			break
+		}
+		if !cfg.Models[i].SupportsReasoningEffort {
+			return errors.New("当前模型不支持推理强度")
+		}
+		cfg.Models[i].ThinkingEnabled = true
+		cfg.Thinking.ReasoningEffort = level
+	}
+
+	if !foundActive {
+		if level == "off" {
+			cfg.Thinking.Enabled = false
+		} else {
+			cfg.Thinking.ReasoningEffort = level
+		}
+	}
+
+	if err := config.Save(cfg, cfgPath); err != nil {
+		return err
+	}
+
+	state.SetThinking(true)
+	if !foundActive && level == "off" {
+		state.SetThinking(false)
+	}
+
+	return r.core.Reload()
 }
 
 func (r *Runtime) DeleteModel(name string) error {
@@ -402,6 +484,7 @@ func (r *Runtime) ListTasks() []BackgroundTask {
 			StartedAt: t.StartedAt,
 			Label:     t.Command,
 			CanKill:   t.Status == bg.StatusRunning,
+			Workspace: normalizeWorkspacePath(t.WorkingDir),
 		})
 	}
 	slices.SortFunc(out, func(a, b BackgroundTask) int {
@@ -449,7 +532,8 @@ func (r *Runtime) ListWorkspaces() []Workspace {
 	active := normalizeWorkspacePath(r.core.GetActiveRoot())
 	roots := r.core.GetWorkspaceRoots()
 	trusted := trustedWorkspaceSet()
-	out := make([]Workspace, 0, len(roots)+len(trusted))
+	known := knownWorkspaceSet()
+	out := make([]Workspace, 0, len(roots)+len(trusted)+len(known))
 	seen := map[string]struct{}{}
 	for _, raw := range roots {
 		p := normalizeWorkspacePath(raw)
@@ -469,6 +553,14 @@ func (r *Runtime) ListWorkspaces() []Workspace {
 			continue
 		}
 		out = append(out, Workspace{Path: p, Trusted: true, Active: pathsEqual(p, active)})
+		seen[p] = struct{}{}
+	}
+	for p := range known {
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		_, ok := trusted[p]
+		out = append(out, Workspace{Path: p, Trusted: ok, Active: pathsEqual(p, active)})
 	}
 	slices.SortFunc(out, func(a, b Workspace) int { return strings.Compare(a.Path, b.Path) })
 	return out
@@ -477,6 +569,9 @@ func (r *Runtime) ListWorkspaces() []Workspace {
 func (r *Runtime) AddWorkspace(path string) error {
 	p, err := resolveWorkspacePath(path)
 	if err != nil {
+		return err
+	}
+	if err := rememberWorkspaceConfig(p, false); err != nil {
 		return err
 	}
 	r.core.AddWorkspaceRoot(p)
@@ -488,7 +583,13 @@ func (r *Runtime) RemoveWorkspace(path string) error {
 	if err != nil {
 		return err
 	}
+	if pathsEqual(p, config.DefaultWorkspacePath()) {
+		return errors.New("default workspace cannot be removed")
+	}
 	if err := removeTrustedWorkspace(p); err != nil {
+		return err
+	}
+	if err := forgetWorkspaceConfig(p); err != nil {
 		return err
 	}
 	r.core.RemoveWorkspaceRoot(p)
@@ -500,15 +601,71 @@ func (r *Runtime) UseWorkspace(path string) error {
 	if err != nil {
 		return err
 	}
+	if err := rememberWorkspaceConfig(p, true); err != nil {
+		return err
+	}
+	r.core.AddWorkspaceRoot(p)
 	if r.core.SetActiveWorkspaceRoot(p) == nil {
 		return errors.New("workspace not found")
 	}
 	return r.ReloadSkills()
 }
 
+func (r *Runtime) RememberWorkspace(path string, foreground bool) error {
+	p, err := resolveWorkspacePath(path)
+	if err != nil {
+		return err
+	}
+	if err := rememberWorkspaceConfig(p, foreground); err != nil {
+		return err
+	}
+	r.core.AddWorkspaceRoot(p)
+	return nil
+}
+
+func (r *Runtime) ForgetWorkspace(path string) error {
+	p, err := resolveWorkspacePath(path)
+	if err != nil {
+		return err
+	}
+	if pathsEqual(p, config.DefaultWorkspacePath()) {
+		return errors.New("default workspace cannot be removed")
+	}
+	if err := forgetWorkspaceConfig(p); err != nil {
+		return err
+	}
+	r.core.RemoveWorkspaceRoot(p)
+	return removeTrustedWorkspace(p)
+}
+
+func (r *Runtime) LastWorkspace() string {
+	cfg, _ := config.Load()
+	return config.ResolveForegroundWorkspace(cfg, "")
+}
+
+func (r *Runtime) DefaultWorkspacePath() string {
+	return config.DefaultWorkspacePath()
+}
+
+func (r *Runtime) ResolveForegroundWorkspace(preferred string) (string, error) {
+	cfg, _ := config.Load()
+	target := config.ResolveForegroundWorkspace(cfg, preferred)
+	target = normalizeWorkspacePath(target)
+	if target == "" {
+		return "", errors.New("workspace path required")
+	}
+	if err := r.RememberWorkspace(target, true); err != nil {
+		return "", err
+	}
+	return target, nil
+}
+
 func (r *Runtime) TrustWorkspace(path string) error {
 	p, err := resolveWorkspacePath(path)
 	if err != nil {
+		return err
+	}
+	if err := rememberWorkspaceConfig(p, false); err != nil {
 		return err
 	}
 	cfg, cfgPath := config.Load()
@@ -1277,50 +1434,15 @@ func resultToError(s string) error {
 }
 
 func resolveWorkspacePath(raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", errors.New("workspace path required")
-	}
-	if raw == "~" || strings.HasPrefix(raw, "~"+string(os.PathSeparator)) || strings.HasPrefix(raw, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil || strings.TrimSpace(home) == "" {
-			return "", errors.New("failed to resolve home path")
-		}
-		rest := strings.TrimPrefix(raw, "~")
-		rest = strings.TrimPrefix(rest, "/")
-		rest = strings.TrimPrefix(rest, "\\")
-		raw = filepath.Join(home, rest)
-	}
-	abs, err := filepath.Abs(raw)
-	if err != nil {
-		return "", err
-	}
-	return normalizeWorkspacePath(abs), nil
+	return config.ResolveWorkspacePath(raw)
 }
 
 func normalizeWorkspacePath(p string) string {
-	p = strings.TrimSpace(p)
-	if p == "" {
-		return ""
-	}
-	p = filepath.Clean(filepath.FromSlash(p))
-	if vol := filepath.VolumeName(p); vol != "" {
-		rest := strings.TrimPrefix(p, vol)
-		p = strings.ToUpper(vol) + rest
-	}
-	return p
+	return config.NormalizeWorkspacePath(p)
 }
 
 func pathsEqual(a, b string) bool {
-	a = strings.TrimSpace(a)
-	b = strings.TrimSpace(b)
-	if a == "" || b == "" {
-		return false
-	}
-	if strings.EqualFold(filepath.VolumeName(a), filepath.VolumeName(b)) {
-		return strings.EqualFold(a, b)
-	}
-	return a == b
+	return config.PathsEqual(a, b)
 }
 
 func skillInfoSource(skill *skillspkg.Skill) string {
@@ -1374,6 +1496,32 @@ func trustedWorkspaceSet() map[string]struct{} {
 	return out
 }
 
+func knownWorkspaceSet() map[string]struct{} {
+	cfg, _ := config.Load()
+	out := map[string]struct{}{}
+	for _, path := range config.NormalizeKnownWorkspaces(cfg.KnownWorkspaces) {
+		normalized := normalizeWorkspacePath(path)
+		if normalized == "" {
+			continue
+		}
+		out[normalized] = struct{}{}
+	}
+	return out
+}
+
+func normalizeReasoningLevel(level string) string {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "low":
+		return "low"
+	case "high":
+		return "high"
+	case "medium":
+		return "medium"
+	default:
+		return "off"
+	}
+}
+
 func removeTrustedWorkspace(path string) error {
 	cfg, cfgPath := config.Load()
 	if strings.TrimSpace(cfgPath) == "" {
@@ -1384,6 +1532,28 @@ func removeTrustedWorkspace(path string) error {
 		return nil
 	}
 	cfg.TrustedWorkspaces = filtered
+	return config.Save(cfg, cfgPath)
+}
+
+func rememberWorkspaceConfig(path string, foreground bool) error {
+	cfg, cfgPath := config.Load()
+	if strings.TrimSpace(cfgPath) == "" {
+		return errors.New("config path empty")
+	}
+	if !config.RememberWorkspace(&cfg, path, foreground) {
+		return nil
+	}
+	return config.Save(cfg, cfgPath)
+}
+
+func forgetWorkspaceConfig(path string) error {
+	cfg, cfgPath := config.Load()
+	if strings.TrimSpace(cfgPath) == "" {
+		return errors.New("config path empty")
+	}
+	if !config.ForgetWorkspace(&cfg, path) {
+		return nil
+	}
 	return config.Save(cfg, cfgPath)
 }
 

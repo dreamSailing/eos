@@ -126,10 +126,12 @@ func (m *AppModel) handleWorkspaceSlash(args []string) tea.Cmd {
 			return nil
 		}
 		m.adapter.GetCore().AddWorkspaceRoot(path)
+		rememberKnownWorkspace(path, false)
 		m.refreshWorkspacePanel()
 		m.appendSystem(m.localize("已添加工作区: ", "Added workspace: ")+path, "success")
 	case "remove":
 		m.adapter.GetCore().RemoveWorkspaceRoot(path)
+		forgetKnownWorkspace(path)
 		m.refreshWorkspacePanel()
 		m.appendSystem(m.localize("已移除工作区: ", "Removed workspace: ")+path, "success")
 	case "use":

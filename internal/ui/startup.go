@@ -26,6 +26,7 @@ func StartInteractiveTUI() {
 	cm := session.NewContextManager()
 	tm := tools.NewManager()
 	if p, _ := os.Getwd(); p != "" {
+		rememberKnownWorkspace(p, true)
 		core := bridge.NewRuntimeCore(cm, tm, nil) // 传入 nil 因为我们不再使用 CoreUI 接口
 		base, key, model, _ := core.ResolveAPIConfig()
 		if model != "" {
