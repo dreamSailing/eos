@@ -63,7 +63,7 @@ func TestGetModelInfo(t *testing.T) {
 		},
 		{
 			name:          "Qwen Thinking",
-			modelName:     "qwen3.5-plus",
+			modelName:     "qwen3.6-plus",
 			wantFound:     true,
 			wantThinking:  ThinkingHigh,
 			wantReasoning: false,
@@ -99,7 +99,7 @@ func TestSupportsReasoningEffort(t *testing.T) {
 		{"gpt-4o", false},
 		{"gpt-4o-mini", false},
 		{"deepseek-r1", false},
-		{"qwen3.5-plus", false},
+		{"qwen3.6-plus", false},
 		{"unknown-model", false},
 		{"", false},
 	}
@@ -123,7 +123,7 @@ func TestSupportsThinking(t *testing.T) {
 		{"o1-mini", true},
 		{"o1-preview", true},
 		{"deepseek-r1", true},
-		{"qwen3.5-plus", true},
+		{"qwen3.6-plus", true},
 		{"gpt-4o", false},
 		{"gpt-4o-mini", false},
 		{"unknown-model", false},

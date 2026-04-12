@@ -1,11 +1,11 @@
 package runtime
 
 import (
+	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 	"sort"
 	"strings"
 	"sync"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 
 	"github.com/cloudwego/eino/schema"
 	"log/slog"
@@ -213,7 +213,8 @@ func EstimateCost(modelName string, inputTokens, outputTokens int64) float64 {
 	outputPricePerMillion := 15.0
 
 	switch {
-	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "qwen3.5-plus"):
+	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "qwen3.6-plus"),
+		strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "qwen3.5-plus"):
 		inputPricePerMillion = 800.0
 		outputPricePerMillion = 4800.0
 	}

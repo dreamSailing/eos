@@ -123,13 +123,19 @@ var builtinModels = []ModelInfo{
 
 	// Moonshot Kimi 系列
 	{
-		Name:     "kimi-k2-5",
-		Aliases:  []string{"kimi-k2.5"},
+		Name:     "kimi-k2.5",
+		Aliases:  []string{"kimi-k2-5"},
 		Thinking: ThinkingMedium,
 		Provider: "moonshot",
 	},
 
 	// Zhipu GLM 系列
+	{
+		Name:     "glm-5",
+		Aliases:  []string{"glm-5-turbo"},
+		Thinking: ThinkingHigh,
+		Provider: "zhipu",
+	},
 	{
 		Name:     "glm-4.7",
 		Aliases:  []string{"glm-4.7-flash"},
@@ -154,11 +160,33 @@ var builtinModels = []ModelInfo{
 
 	// Qwen 3.5 系列
 	{
-		Name:                    "qwen3.5-plus",
-		Aliases:                 []string{"qwen3.5", "qwen3.5-plus-2026-02-15"},
+		Name:                    "qwen3.6-plus",
+		Aliases:                 []string{"qwen3.6", "qwen3.6-plus-2026-02-15", "qwen3.5-plus", "qwen3.5"},
 		Thinking:                ThinkingHigh,
 		SupportsReasoningEffort: false,
 		Provider:                "dashscope",
+	},
+
+	// MiniMax M 系列
+	{
+		Name:     "minimax-m2.7",
+		Aliases:  []string{"codex-minimax-m2.7", "minimax-m2.5", "codex-minimax-m2.5"},
+		Thinking: ThinkingHigh,
+		Provider: "minimax",
+	},
+
+	// Xiaomi MiMo 系列
+	{
+		Name:     "mimo-v2-pro",
+		Aliases:  []string{"MiMo-V2-Pro"},
+		Thinking: ThinkingHigh,
+		Provider: "mimo",
+	},
+	{
+		Name:     "mimo-v2-omni",
+		Aliases:  []string{"MiMo-V2-Omni"},
+		Thinking: ThinkingHigh,
+		Provider: "mimo",
 	},
 }
 

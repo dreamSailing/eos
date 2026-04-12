@@ -13,6 +13,8 @@ const (
 	ProviderByteDance ProviderType = "bytedance" // 字节豆包
 	ProviderZhipu     ProviderType = "zhipu"     // 智谱 GLM
 	ProviderMoonshot  ProviderType = "moonshot"  // Moonshot Kimi
+	ProviderMiniMax   ProviderType = "minimax"   // MiniMax
+	ProviderMiMo      ProviderType = "mimo"      // Xiaomi MiMo
 	ProviderOpenAI    ProviderType = "openai"    // OpenAI
 	ProviderAnthropic ProviderType = "anthropic" // Anthropic Claude
 	ProviderCustom    ProviderType = "custom"    // 自定义
@@ -53,11 +55,11 @@ var builtinProviders = []*ProviderConfig{
 		DefaultAPIBase:  "https://api.deepseek.com",
 		CodePlanAPIBase: "",
 		APIKeyEnv:       "DEEPSEEK_API_KEY",
-		Website:         "https://deepseek.com",
+		Website:         "https://platform.deepseek.com",
 		HasCodePlan:     false,
 		HasClaudeCode:   false,
 		EinoComponent:   "deepseek",
-		DefaultModels:   []string{"deepseek-v3.2", "deepseek-v3.1", "deepseek-chat", "deepseek-reasoner"},
+		DefaultModels:   []string{"deepseek-chat", "deepseek-reasoner"},
 	},
 	// 阿里云通义千问 - OpenAI 兼容格式
 	{
@@ -65,13 +67,13 @@ var builtinProviders = []*ProviderConfig{
 		Name:            "阿里云通义",
 		Type:            ProviderDashScope,
 		DefaultAPIBase:  "https://dashscope.aliyuncs.com/compatible-mode/v1",
-		CodePlanAPIBase: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+		CodePlanAPIBase: "https://coding.dashscope.aliyuncs.com/v1",
 		APIKeyEnv:       "DASHSCOPE_API_KEY",
 		Website:         "https://tongyi.aliyun.com",
-		HasCodePlan:     false,
+		HasCodePlan:     true,
 		HasClaudeCode:   false,
 		EinoComponent:   "dashscope",
-		DefaultModels:   []string{"qwen3.5-plus"},
+		DefaultModels:   []string{"qwen3.6-plus", "dashscope-coding-plan-qwen3.6-plus", "dashscope-coding-plan-glm-5", "dashscope-coding-plan-kimi-k2.5"},
 	},
 	// 字节豆包 - 独立 Code/Plan URL
 	{
@@ -86,7 +88,7 @@ var builtinProviders = []*ProviderConfig{
 		HasCodePlan:     true,
 		HasClaudeCode:   true,
 		EinoComponent:   "volcengine",
-		DefaultModels:   []string{"doubao-seed-1.8", "doubao-seed-code", "ark-coding-plan-openai", "ark-coding-plan-claude", "doubao-seed-1.6"},
+		DefaultModels:   []string{"doubao-seed-code", "doubao-seed-1.8", "ark-coding-plan-openai", "ark-coding-plan-claude"},
 	},
 	// 智谱 GLM - 独立 API 格式
 	{
@@ -101,7 +103,7 @@ var builtinProviders = []*ProviderConfig{
 		HasCodePlan:     true,
 		HasClaudeCode:   true,
 		EinoComponent:   "zhipuai",
-		DefaultModels:   []string{"glm-4-plus", "glm-4.7", "zhipu-coding-plan-openai", "zhipu-coding-plan-claude"},
+		DefaultModels:   []string{"glm-5", "glm-5-turbo", "zhipu-coding-plan-openai", "zhipu-coding-plan-claude"},
 	},
 	// Moonshot Kimi - OpenAI 兼容格式
 	{
@@ -115,7 +117,37 @@ var builtinProviders = []*ProviderConfig{
 		HasCodePlan:     false,
 		HasClaudeCode:   false,
 		EinoComponent:   "",
-		DefaultModels:   []string{"kimi-k2-5"},
+		DefaultModels:   []string{"kimi-k2.5"},
+	},
+	// MiniMax - Token Plan / OpenAI / Anthropic 兼容格式
+	{
+		ID:              "minimax",
+		Name:            "MiniMax",
+		Type:            ProviderMiniMax,
+		DefaultAPIBase:  "https://api.minimaxi.com/v1",
+		CodePlanAPIBase: "https://api.minimaxi.com/v1",
+		ClaudeAPIBase:   "https://api.minimaxi.com/anthropic/v1",
+		APIKeyEnv:       "MINIMAX_API_KEY",
+		Website:         "https://platform.minimaxi.com",
+		HasCodePlan:     true,
+		HasClaudeCode:   true,
+		EinoComponent:   "",
+		DefaultModels:   []string{"minimax-token-plan-openai", "minimax-token-plan-claude"},
+	},
+	// Xiaomi MiMo - Token Plan / OpenAI / Anthropic 兼容格式
+	{
+		ID:              "mimo",
+		Name:            "小米 MiMo",
+		Type:            ProviderMiMo,
+		DefaultAPIBase:  "https://token-plan-cn.xiaomimimo.com/v1",
+		CodePlanAPIBase: "https://token-plan-cn.xiaomimimo.com/v1",
+		ClaudeAPIBase:   "https://token-plan-cn.xiaomimimo.com/anthropic",
+		APIKeyEnv:       "MIMO_API_KEY",
+		Website:         "https://platform.xiaomimimo.com",
+		HasCodePlan:     true,
+		HasClaudeCode:   true,
+		EinoComponent:   "",
+		DefaultModels:   []string{"mimo-token-plan-openai-pro", "mimo-token-plan-openai-omni", "mimo-token-plan-claude-pro", "mimo-token-plan-claude-omni"},
 	},
 	// OpenAI - 标准 OpenAI 格式
 	{
@@ -215,6 +247,12 @@ func (pr *ProviderRegistry) DetectProvider(baseURL string) *ProviderConfig {
 		if p.Type == ProviderCustom {
 			continue
 		}
+		if p.Type == ProviderMiniMax && (strings.Contains(b, "api.minimaxi.com") || strings.Contains(b, "api.minimax.io")) {
+			return p
+		}
+		if p.Type == ProviderMiMo && strings.Contains(b, "xiaomimimo.com") {
+			return p
+		}
 		defaultBase := strings.ToLower(p.DefaultAPIBase)
 		if defaultBase != "" && strings.Contains(b, extractDomain(defaultBase)) {
 			return p
@@ -303,9 +341,19 @@ func GetAPIBase(provider ProviderType, apiType APIType, customBase string) strin
 // GetCodePlanModelNames 返回需要使用 Code Plan API 的模型列表
 func GetCodePlanModelNames() []string {
 	return []string{
+		"dashscope-coding-plan-qwen3.6-plus",
+		"dashscope-coding-plan-glm-5",
+		"dashscope-coding-plan-kimi-k2.5",
+		"dashscope-coding-plan-minimax-m2.5",
 		"ark-code-latest",
 		"zhipu-coding-plan-openai",
 		"zhipu-coding-plan-claude",
+		"minimax-token-plan-openai",
+		"minimax-token-plan-claude",
+		"mimo-token-plan-openai-pro",
+		"mimo-token-plan-openai-omni",
+		"mimo-token-plan-claude-pro",
+		"mimo-token-plan-claude-omni",
 	}
 }
 
@@ -333,6 +381,10 @@ func ParseProviderType(s string) ProviderType {
 		return ProviderZhipu
 	case "moonshot", "kimi":
 		return ProviderMoonshot
+	case "minimax":
+		return ProviderMiniMax
+	case "mimo", "xiaomi", "xiaomimimo":
+		return ProviderMiMo
 	case "openai":
 		return ProviderOpenAI
 	case "anthropic", "claude":

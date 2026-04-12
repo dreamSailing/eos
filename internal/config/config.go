@@ -308,13 +308,16 @@ func Save(cfg Config, p string) error {
 func InferDefaultModel(base string) string {
 	// 内置服务商的默认模型映射
 	providerDefaults := map[string]string{
-		"api.deepseek.com":          "deepseek-chat",
-		"dashscope.aliyuncs.com":    "qwen3.5-plus",
-		"ark.cn-beijing.volces.com": "doubao-seed-1.6",
-		"open.bigmodel.cn":          "glm-4-plus",
-		"api.moonshot.cn":           "kimi-k2-5",
-		"api.openai.com":            "gpt-4o",
-		"api.anthropic.com":         "claude-4.5-sonnet",
+		"api.deepseek.com":             "deepseek-chat",
+		"dashscope.aliyuncs.com":       "qwen3.6-plus",
+		"ark.cn-beijing.volces.com":    "doubao-seed-code-preview-251028",
+		"open.bigmodel.cn":             "glm-5",
+		"api.moonshot.cn":              "kimi-k2.5",
+		"api.minimaxi.com":             "MiniMax-M2.7",
+		"api.minimax.io":               "MiniMax-M2.7",
+		"token-plan-cn.xiaomimimo.com": "mimo-v2-pro",
+		"api.openai.com":               "gpt-4o",
+		"api.anthropic.com":            "claude-4.5-sonnet",
 	}
 
 	b := strings.ToLower(strings.TrimSpace(base))
@@ -337,10 +340,16 @@ func InferDefaultModel(base string) string {
 
 	// 回退到旧的检测逻辑
 	if strings.Contains(b, "dashscope.aliyuncs.com") && strings.Contains(b, "compatible-mode") {
-		return "qwen3.5-plus"
+		return "qwen3.6-plus"
 	}
-	if strings.Contains(b, "api.kimi.com") && strings.Contains(b, "/coding/") {
-		return "kimi-for-coding"
+	if strings.Contains(b, "api.moonshot.cn") {
+		return "kimi-k2.5"
+	}
+	if strings.Contains(b, "api.minimaxi.com") || strings.Contains(b, "api.minimax.io") {
+		return "MiniMax-M2.7"
+	}
+	if strings.Contains(b, "xiaomimimo.com") {
+		return "mimo-v2-pro"
 	}
 
 	return ""

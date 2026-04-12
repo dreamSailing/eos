@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dreamSailing/vb-coding/internal/ai"
@@ -32,7 +33,8 @@ type Event struct {
 }
 
 type Runtime struct {
-	core *bridge.RuntimeCore
+	core        *bridge.RuntimeCore
+	workspaceMu sync.Mutex
 }
 
 type Model struct {
@@ -60,6 +62,15 @@ type Workspace struct {
 	Active  bool
 }
 
+type WorkspaceSnapshot struct {
+	Path             string
+	Name             string
+	Trusted          bool
+	Active           bool
+	SessionCount     int
+	CurrentSessionID string
+}
+
 type SessionMeta struct {
 	ID      string
 	SavedAt time.Time
@@ -71,12 +82,34 @@ type SessionMeta struct {
 	Tokens  int
 }
 
+type SessionSnapshot struct {
+	ID             string
+	WorkspacePath  string
+	Title          string
+	Preview        string
+	UpdatedAt      time.Time
+	Running        bool
+	NeedsAttention bool
+	MessageCount   int
+	PendingPrompts int
+	Active         bool
+}
+
 type SessionMessage struct {
 	Role       string
 	Type       string
 	Content    string
 	Time       time.Time
 	ImagePaths []string
+}
+
+type RuntimeSnapshot struct {
+	ForegroundWorkspace string
+	Workspaces          []WorkspaceSnapshot
+	Sessions            []SessionSnapshot
+	CurrentSession      *SessionSnapshot
+	Messages            []SessionMessage
+	Tasks               []BackgroundTask
 }
 
 type MCPServer struct {
@@ -389,7 +422,7 @@ func (r *Runtime) ActivateModel(name string) error {
 	if !r.core.SetActiveModel(strings.TrimSpace(name)) {
 		return errors.New("model not found")
 	}
-	return nil
+	return r.core.Reload()
 }
 
 func (r *Runtime) ReasoningLevel() string {
@@ -682,25 +715,189 @@ func (r *Runtime) TrustWorkspace(path string) error {
 	return config.Save(cfg, cfgPath)
 }
 
-func (r *Runtime) ListSessions() []SessionMeta {
-	items, err := r.core.ListSessions()
-	if err != nil {
-		return nil
+func (r *Runtime) SetForegroundWorkspace(path string) error {
+	return r.UseWorkspace(path)
+}
+
+func (r *Runtime) ListWorkspaceSessions(workspacePath string) ([]SessionMeta, error) {
+	return withRuntimeWorkspace(r, workspacePath, func(_ string) ([]SessionMeta, error) {
+		return r.listCurrentWorkspaceSessions(), nil
+	})
+}
+
+func (r *Runtime) CreateWorkspaceSession(workspacePath, title string, messages []SessionMessage) (SessionMeta, error) {
+	return withRuntimeWorkspace(r, workspacePath, func(resolved string) (SessionMeta, error) {
+		var zero SessionMeta
+		if err := rememberWorkspaceConfig(resolved, false); err != nil {
+			return zero, err
+		}
+		sessionID, err := r.SaveSessionMessages("", messages)
+		if err != nil {
+			return zero, err
+		}
+		if strings.TrimSpace(title) != "" {
+			if err := r.UpdateSessionTitle(sessionID, title); err != nil {
+				return zero, err
+			}
+		}
+		if err := r.SetCurrentSession(sessionID); err != nil {
+			return zero, err
+		}
+		for _, meta := range r.listCurrentWorkspaceSessions() {
+			if strings.TrimSpace(meta.ID) == sessionID {
+				return meta, nil
+			}
+		}
+		return SessionMeta{
+			ID:      sessionID,
+			SavedAt: time.Now(),
+			Title:   strings.TrimSpace(title),
+			Preview: sessionPreview(messages),
+			Summary: sessionPreview(messages),
+			Rounds:  len(messages),
+		}, nil
+	})
+}
+
+func (r *Runtime) SaveWorkspaceSessionMessages(workspacePath, id string, messages []SessionMessage) (string, error) {
+	return withRuntimeWorkspace(r, workspacePath, func(_ string) (string, error) {
+		return r.SaveSessionMessages(id, messages)
+	})
+}
+
+func (r *Runtime) LoadWorkspaceSessionMessages(workspacePath, id string) ([]SessionMessage, error) {
+	return withRuntimeWorkspace(r, workspacePath, func(_ string) ([]SessionMessage, error) {
+		return r.LoadSessionMessages(id)
+	})
+}
+
+func (r *Runtime) GetWorkspaceCurrentSession(workspacePath string) (string, error) {
+	return withRuntimeWorkspace(r, workspacePath, func(_ string) (string, error) {
+		return r.CurrentSessionID()
+	})
+}
+
+func (r *Runtime) SetWorkspaceCurrentSession(workspacePath, id string) error {
+	_, err := withRuntimeWorkspace(r, workspacePath, func(_ string) (struct{}, error) {
+		return struct{}{}, r.SetCurrentSession(id)
+	})
+	return err
+}
+
+func (r *Runtime) UpdateWorkspaceSessionTitle(workspacePath, id, title string) error {
+	_, err := withRuntimeWorkspace(r, workspacePath, func(_ string) (struct{}, error) {
+		return struct{}{}, r.UpdateSessionTitle(id, title)
+	})
+	return err
+}
+
+func (r *Runtime) ResumeWorkspaceSession(workspacePath, id string) error {
+	_, err := withRuntimeWorkspace(r, workspacePath, func(_ string) (struct{}, error) {
+		return struct{}{}, r.ResumeSession(id)
+	})
+	return err
+}
+
+func (r *Runtime) DeleteWorkspaceSession(workspacePath, id string) error {
+	_, err := withRuntimeWorkspace(r, workspacePath, func(_ string) (struct{}, error) {
+		return struct{}{}, r.DeleteSession(id)
+	})
+	return err
+}
+
+func (r *Runtime) ResolveSessionWorkspace(sessionID string) (string, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return "", errors.New("session id required")
 	}
-	out := make([]SessionMeta, 0, len(items))
-	for _, it := range items {
-		out = append(out, SessionMeta{
-			ID:      it.ID,
-			SavedAt: time.Unix(it.SavedAt, 0),
-			Model:   it.Model,
-			Summary: it.Summary,
-			Preview: it.Preview,
-			Title:   it.Title,
-			Rounds:  it.Rounds,
-			Tokens:  it.Tokens,
+	for _, workspace := range r.ListWorkspaces() {
+		metas, err := r.ListWorkspaceSessions(workspace.Path)
+		if err != nil {
+			continue
+		}
+		for _, meta := range metas {
+			if strings.TrimSpace(meta.ID) == sessionID {
+				return workspace.Path, nil
+			}
+		}
+	}
+	return "", os.ErrNotExist
+}
+
+func (r *Runtime) RuntimeSnapshot() RuntimeSnapshot {
+	foreground := normalizeWorkspacePath(r.core.GetActiveRoot())
+	workspaces := r.ListWorkspaces()
+	if foreground == "" {
+		foreground = normalizeWorkspacePath(r.LastWorkspace())
+	}
+	if foreground == "" && len(workspaces) > 0 {
+		foreground = workspaces[0].Path
+	}
+
+	out := RuntimeSnapshot{
+		ForegroundWorkspace: foreground,
+		Workspaces:          make([]WorkspaceSnapshot, 0, len(workspaces)),
+		Sessions:            make([]SessionSnapshot, 0),
+		Tasks:               r.ListTasks(),
+	}
+
+	for _, workspace := range workspaces {
+		currentID, _ := r.GetWorkspaceCurrentSession(workspace.Path)
+		metas, err := r.ListWorkspaceSessions(workspace.Path)
+		if err != nil {
+			metas = nil
+		}
+		out.Workspaces = append(out.Workspaces, WorkspaceSnapshot{
+			Path:             workspace.Path,
+			Name:             workspaceDisplayName(workspace.Path),
+			Trusted:          workspace.Trusted,
+			Active:           pathsEqual(workspace.Path, foreground) || workspace.Active,
+			SessionCount:     len(metas),
+			CurrentSessionID: strings.TrimSpace(currentID),
 		})
+
+		for _, meta := range metas {
+			messageCount := meta.Rounds
+			var messages []SessionMessage
+			if loaded, err := r.LoadWorkspaceSessionMessages(workspace.Path, meta.ID); err == nil {
+				messages = loaded
+				if len(loaded) > 0 {
+					messageCount = len(loaded)
+				}
+			}
+			snapshot := SessionSnapshot{
+				ID:             meta.ID,
+				WorkspacePath:  workspace.Path,
+				Title:          strings.TrimSpace(meta.Title),
+				Preview:        fallbackText(strings.TrimSpace(meta.Preview), strings.TrimSpace(meta.Summary)),
+				UpdatedAt:      meta.SavedAt,
+				MessageCount:   messageCount,
+				PendingPrompts: 0,
+				Active:         pathsEqual(workspace.Path, foreground) && strings.TrimSpace(currentID) == strings.TrimSpace(meta.ID),
+			}
+			out.Sessions = append(out.Sessions, snapshot)
+			if snapshot.Active {
+				current := snapshot
+				out.CurrentSession = &current
+				out.Messages = append([]SessionMessage(nil), messages...)
+			}
+		}
 	}
+
+	slices.SortFunc(out.Sessions, func(a, b SessionSnapshot) int {
+		if a.UpdatedAt.After(b.UpdatedAt) {
+			return -1
+		}
+		if a.UpdatedAt.Before(b.UpdatedAt) {
+			return 1
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
 	return out
+}
+
+func (r *Runtime) ListSessions() []SessionMeta {
+	return r.listCurrentWorkspaceSessions()
 }
 
 func (r *Runtime) SaveSession(id string) (string, error) {
@@ -1507,6 +1704,87 @@ func knownWorkspaceSet() map[string]struct{} {
 		out[normalized] = struct{}{}
 	}
 	return out
+}
+
+func (r *Runtime) listCurrentWorkspaceSessions() []SessionMeta {
+	items, err := r.core.ListSessions()
+	if err != nil {
+		return nil
+	}
+	out := make([]SessionMeta, 0, len(items))
+	for _, it := range items {
+		out = append(out, SessionMeta{
+			ID:      it.ID,
+			SavedAt: time.Unix(it.SavedAt, 0),
+			Model:   it.Model,
+			Summary: it.Summary,
+			Preview: it.Preview,
+			Title:   it.Title,
+			Rounds:  it.Rounds,
+			Tokens:  it.Tokens,
+		})
+	}
+	return out
+}
+
+func withRuntimeWorkspace[T any](r *Runtime, workspacePath string, fn func(string) (T, error)) (T, error) {
+	var zero T
+	resolved, err := resolveWorkspacePath(workspacePath)
+	if err != nil {
+		return zero, err
+	}
+
+	r.workspaceMu.Lock()
+	defer r.workspaceMu.Unlock()
+
+	previous := normalizeWorkspacePath(r.core.GetActiveRoot())
+	if !pathsEqual(previous, resolved) {
+		r.core.AddWorkspaceRoot(resolved)
+		if r.core.SetActiveWorkspaceRoot(resolved) == nil {
+			return zero, errors.New("workspace not found")
+		}
+	}
+
+	defer func() {
+		if previous == "" || pathsEqual(previous, resolved) {
+			return
+		}
+		_ = r.core.SetActiveWorkspaceRoot(previous)
+	}()
+
+	return fn(resolved)
+}
+
+func sessionPreview(messages []SessionMessage) string {
+	for _, msg := range messages {
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		content = strings.ReplaceAll(content, "\r", " ")
+		content = strings.ReplaceAll(content, "\n", " ")
+		if len(content) > 96 {
+			content = content[:96]
+		}
+		return content
+	}
+	return ""
+}
+
+func workspaceDisplayName(path string) string {
+	base := filepath.Base(strings.TrimSpace(path))
+	if base == "." || base == string(filepath.Separator) || strings.TrimSpace(base) == "" {
+		return strings.TrimSpace(path)
+	}
+	return base
+}
+
+func fallbackText(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value != "" {
+		return value
+	}
+	return strings.TrimSpace(fallback)
 }
 
 func normalizeReasoningLevel(level string) string {

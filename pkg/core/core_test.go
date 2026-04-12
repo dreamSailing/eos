@@ -410,6 +410,124 @@ func TestRuntimeSetSkillEnabledPersistsState(t *testing.T) {
 	}
 }
 
+func TestRuntimeListWorkspaceSessionsSeparatesWorkspaces(t *testing.T) {
+	configureCoreWorkspaceTestEnv(t)
+	rt := NewRuntime()
+
+	workspaceA := t.TempDir()
+	workspaceB := t.TempDir()
+
+	metaA, err := rt.CreateWorkspaceSession(workspaceA, "thread-a", []SessionMessage{{Role: "assistant", Type: "text", Content: "workspace-a"}})
+	if err != nil {
+		t.Fatalf("CreateWorkspaceSession(workspaceA) error = %v", err)
+	}
+	metaB, err := rt.CreateWorkspaceSession(workspaceB, "thread-b", []SessionMessage{{Role: "assistant", Type: "text", Content: "workspace-b"}})
+	if err != nil {
+		t.Fatalf("CreateWorkspaceSession(workspaceB) error = %v", err)
+	}
+
+	sessionsA, err := rt.ListWorkspaceSessions(workspaceA)
+	if err != nil {
+		t.Fatalf("ListWorkspaceSessions(workspaceA) error = %v", err)
+	}
+	sessionsB, err := rt.ListWorkspaceSessions(workspaceB)
+	if err != nil {
+		t.Fatalf("ListWorkspaceSessions(workspaceB) error = %v", err)
+	}
+	if len(sessionsA) != 1 || sessionsA[0].ID != metaA.ID {
+		t.Fatalf("workspaceA sessions=%+v, want only %q", sessionsA, metaA.ID)
+	}
+	if len(sessionsB) != 1 || sessionsB[0].ID != metaB.ID {
+		t.Fatalf("workspaceB sessions=%+v, want only %q", sessionsB, metaB.ID)
+	}
+
+	snapshot := rt.RuntimeSnapshot()
+	foundA := false
+	foundB := false
+	for _, workspace := range snapshot.Workspaces {
+		switch {
+		case filepath.Clean(workspace.Path) == filepath.Clean(workspaceA):
+			foundA = true
+			if workspace.SessionCount != 1 {
+				t.Fatalf("workspaceA sessionCount=%d, want 1", workspace.SessionCount)
+			}
+		case filepath.Clean(workspace.Path) == filepath.Clean(workspaceB):
+			foundB = true
+			if workspace.SessionCount != 1 {
+				t.Fatalf("workspaceB sessionCount=%d, want 1", workspace.SessionCount)
+			}
+		}
+	}
+	if !foundA || !foundB {
+		t.Fatalf("runtime snapshot missing workspaces: foundA=%v foundB=%v", foundA, foundB)
+	}
+}
+
+func TestRuntimeWorkspaceSessionOpsStayScoped(t *testing.T) {
+	configureCoreWorkspaceTestEnv(t)
+	rt := NewRuntime()
+
+	workspaceA := t.TempDir()
+	workspaceB := t.TempDir()
+
+	metaA, err := rt.CreateWorkspaceSession(workspaceA, "thread-a", []SessionMessage{{Role: "assistant", Type: "text", Content: "workspace-a"}})
+	if err != nil {
+		t.Fatalf("CreateWorkspaceSession(workspaceA) error = %v", err)
+	}
+	if err := rt.SetForegroundWorkspace(workspaceA); err != nil {
+		t.Fatalf("SetForegroundWorkspace(workspaceA) error = %v", err)
+	}
+
+	metaB, err := rt.CreateWorkspaceSession(workspaceB, "thread-b", []SessionMessage{{Role: "assistant", Type: "text", Content: "workspace-b"}})
+	if err != nil {
+		t.Fatalf("CreateWorkspaceSession(workspaceB) error = %v", err)
+	}
+
+	currentA, err := rt.GetWorkspaceCurrentSession(workspaceA)
+	if err != nil {
+		t.Fatalf("GetWorkspaceCurrentSession(workspaceA) error = %v", err)
+	}
+	currentB, err := rt.GetWorkspaceCurrentSession(workspaceB)
+	if err != nil {
+		t.Fatalf("GetWorkspaceCurrentSession(workspaceB) error = %v", err)
+	}
+	if currentA != metaA.ID {
+		t.Fatalf("currentA=%q, want %q", currentA, metaA.ID)
+	}
+	if currentB != metaB.ID {
+		t.Fatalf("currentB=%q, want %q", currentB, metaB.ID)
+	}
+
+	if err := rt.DeleteWorkspaceSession(workspaceA, metaA.ID); err != nil {
+		t.Fatalf("DeleteWorkspaceSession(workspaceA) error = %v", err)
+	}
+	sessionsA, err := rt.ListWorkspaceSessions(workspaceA)
+	if err != nil {
+		t.Fatalf("ListWorkspaceSessions(workspaceA) error = %v", err)
+	}
+	sessionsB, err := rt.ListWorkspaceSessions(workspaceB)
+	if err != nil {
+		t.Fatalf("ListWorkspaceSessions(workspaceB) error = %v", err)
+	}
+	if len(sessionsA) != 0 {
+		t.Fatalf("workspaceA sessions=%d, want 0 after delete", len(sessionsA))
+	}
+	if len(sessionsB) != 1 || sessionsB[0].ID != metaB.ID {
+		t.Fatalf("workspaceB sessions=%+v, want only %q", sessionsB, metaB.ID)
+	}
+}
+
+func configureCoreWorkspaceTestEnv(t *testing.T) {
+	t.Helper()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("mkdir home: %v", err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+}
+
 func TestRuntimeListsPluginSkills(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
