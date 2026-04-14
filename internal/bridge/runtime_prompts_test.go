@@ -63,7 +63,7 @@ func TestPromptPermissionAutoStillPromptsHighRisk(t *testing.T) {
 	}
 }
 
-func TestPromptPermissionAcceptEditsAutoAllowsFilesystemWrites(t *testing.T) {
+func TestPromptPermissionLegacyAcceptEditsNormalizesToAuto(t *testing.T) {
 	rc := &RuntimeCore{
 		securityMgr: NewSecurityManager(),
 		eventsCh:    make(chan Event, 1),
@@ -81,12 +81,12 @@ func TestPromptPermissionAcceptEditsAutoAllowsFilesystemWrites(t *testing.T) {
 	}
 }
 
-func TestPromptPermissionDontAskDeniesInsteadOfPrompting(t *testing.T) {
+func TestPromptPermissionPlanDeniesInsteadOfPrompting(t *testing.T) {
 	rc := &RuntimeCore{
 		securityMgr: NewSecurityManager(),
 		eventsCh:    make(chan Event, 1),
 	}
-	rc.securityMgr.SetExecutionMode("dontAsk")
+	rc.securityMgr.SetExecutionMode("plan")
 
 	if got := rc.promptPermission(context.Background(), "git-push", "git push"); got != "deny" {
 		t.Fatalf("promptPermission() = %q, want deny", got)

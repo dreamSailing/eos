@@ -2,12 +2,12 @@ package toolapi
 
 import "testing"
 
-var testAllModes = []string{"default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"}
+var testAllModes = []string{"auto", "plan"}
 
 func TestFilterVisibleTools_PlanModeOnlyKeepsLowRisk(t *testing.T) {
 	defs := []ToolDefinition{
 		{Name: "read", RiskLevel: RiskLow, ReadOnly: true, VisibleIn: testAllModes, Invocable: true},
-		{Name: "bash", RiskLevel: RiskHigh, VisibleIn: []string{"default", "acceptEdits", "auto", "dontAsk", "bypassPermissions"}, Invocable: true},
+		{Name: "bash", RiskLevel: RiskHigh, VisibleIn: []string{"auto"}, Invocable: true},
 	}
 
 	got := FilterVisibleTools(defs, ExecSession{
@@ -20,7 +20,7 @@ func TestFilterVisibleTools_PlanModeOnlyKeepsLowRisk(t *testing.T) {
 	}
 }
 
-func TestEvaluateToolAccess_DefaultModeRequiresApproval(t *testing.T) {
+func TestEvaluateToolAccess_LegacyDefaultNormalizesToAuto(t *testing.T) {
 	access := EvaluateToolAccess(ToolDefinition{
 		Name:      "edit",
 		Category:  "filesystem",
@@ -32,15 +32,18 @@ func TestEvaluateToolAccess_DefaultModeRequiresApproval(t *testing.T) {
 		ExecutionMode: "default",
 	})
 
-	if !access.Visible || !access.Executable {
-		t.Fatalf("default mode should allow edit, got %+v", access)
+	if access.Mode != "auto" {
+		t.Fatalf("mode=%q, want auto", access.Mode)
 	}
-	if !access.NeedsApproval {
-		t.Fatalf("default mode should require approval for medium risk, got %+v", access)
+	if !access.Visible || !access.Executable {
+		t.Fatalf("legacy default should allow edit through auto mode, got %+v", access)
+	}
+	if access.NeedsApproval {
+		t.Fatalf("legacy default should inherit auto approval behavior, got %+v", access)
 	}
 }
 
-func TestEvaluateToolAccess_AcceptEditsAutoApprovesFilesystemMutations(t *testing.T) {
+func TestEvaluateToolAccess_LegacyModeRequiresDigestForMediumRisk(t *testing.T) {
 	def := ToolDefinition{Name: "edit", Category: "filesystem", RiskLevel: RiskMedium, VisibleIn: testAllModes, Invocable: true}
 
 	access := EvaluateToolAccess(def, ExecSession{
@@ -48,41 +51,8 @@ func TestEvaluateToolAccess_AcceptEditsAutoApprovesFilesystemMutations(t *testin
 		ExecutionMode:         "acceptEdits",
 		RequireApprovalDigest: true,
 	})
-
-	if !access.Visible || !access.Executable {
-		t.Fatalf("acceptEdits mode should allow edit, got %+v", access)
-	}
-	if access.NeedsApproval {
-		t.Fatalf("acceptEdits mode should auto-approve filesystem edits, got %+v", access)
-	}
-}
-
-func TestEvaluateToolAccess_AcceptEditsStillPromptsNonFilesystemMutations(t *testing.T) {
-	def := ToolDefinition{Name: "git_commit", Category: "git", RiskLevel: RiskMedium, VisibleIn: testAllModes, Invocable: true}
-
-	access := EvaluateToolAccess(def, ExecSession{
-		AllowedTools:  map[string]bool{"git_commit": true},
-		ExecutionMode: "acceptEdits",
-	})
 	if !access.NeedsApproval {
-		t.Fatalf("acceptEdits should still prompt non-filesystem mutations, got %+v", access)
-	}
-}
-
-func TestEvaluateToolAccess_BypassSkipsApproval(t *testing.T) {
-	def := ToolDefinition{Name: "bash", RiskLevel: RiskHigh, VisibleIn: testAllModes, Invocable: true}
-
-	access := EvaluateToolAccess(def, ExecSession{
-		AllowedTools:          map[string]bool{"bash": true},
-		ExecutionMode:         "bypassPermissions",
-		RequireApprovalDigest: true,
-	})
-
-	if !access.Visible || !access.Executable {
-		t.Fatalf("bypassPermissions mode should allow bash, got %+v", access)
-	}
-	if access.NeedsApproval {
-		t.Fatalf("bypassPermissions mode should skip approval, got %+v", access)
+		t.Fatalf("acceptEdits alias should normalize to auto and require digest approval, got %+v", access)
 	}
 }
 
@@ -107,53 +77,55 @@ func TestEvaluateToolAccess_AutoModeOnlyPromptsHighRiskByDefault(t *testing.T) {
 	}
 }
 
-func TestEvaluateToolAccess_DontAskDeniesUnapprovedTools(t *testing.T) {
-	def := ToolDefinition{Name: "bash", RiskLevel: RiskHigh, VisibleIn: testAllModes, Invocable: true}
+func TestEvaluateToolAccess_PlanRejectsMutatingToolsEvenForLegacyAliases(t *testing.T) {
+	def := ToolDefinition{Name: "bash", RiskLevel: RiskHigh, VisibleIn: []string{"auto"}, Invocable: true}
 
 	access := EvaluateToolAccess(def, ExecSession{
-		AllowedTools:  map[string]bool{"read": true},
-		ExecutionMode: "dontAsk",
+		AllowedTools:  map[string]bool{"bash": true},
+		ExecutionMode: "计划优先",
 	})
 
-	if !access.Visible {
-		t.Fatalf("dontAsk should keep tool visible in catalog, got %+v", access)
+	if access.Mode != "plan" {
+		t.Fatalf("mode=%q, want plan", access.Mode)
 	}
-	if access.Executable {
-		t.Fatalf("dontAsk should deny unapproved tools, got %+v", access)
+	if access.Visible || access.Executable {
+		t.Fatalf("plan should hide mutating tools, got %+v", access)
 	}
-	if access.Reason != "dont_ask" {
-		t.Fatalf("dontAsk denial reason=%q, want dont_ask", access.Reason)
+	if access.Reason != "execution_mode" {
+		t.Fatalf("reason=%q, want execution_mode", access.Reason)
 	}
 }
 
-func TestEvaluateToolAccess_DontAskAllowsExplicitTools(t *testing.T) {
+func TestEvaluateToolAccess_PlanAllowsReadOnlyTools(t *testing.T) {
 	def := ToolDefinition{Name: "read", RiskLevel: RiskLow, ReadOnly: true, VisibleIn: testAllModes, Invocable: true}
 
 	access := EvaluateToolAccess(def, ExecSession{
 		AllowedTools:  map[string]bool{"read": true},
-		ExecutionMode: "dontAsk",
+		ExecutionMode: "plan",
 	})
 
 	if !access.Visible || !access.Executable {
-		t.Fatalf("dontAsk should allow explicitly approved tools, got %+v", access)
+		t.Fatalf("plan should allow readonly tools, got %+v", access)
 	}
 	if access.NeedsApproval {
-		t.Fatalf("dontAsk should not prompt approved tools, got %+v", access)
+		t.Fatalf("plan readonly tools should not need approval, got %+v", access)
 	}
 }
 
 func TestNormalizeExecutionModeAcceptsClaudeAliases(t *testing.T) {
 	tests := map[string]string{
-		"default":            "default",
-		"manual":             "default",
-		"acceptEdits":        "acceptEdits",
-		"accept_edits":       "acceptEdits",
-		"dontAsk":            "dontAsk",
-		"dont_ask":           "dontAsk",
-		"bypassPermissions":  "bypassPermissions",
-		"bypass_permissions": "bypassPermissions",
-		"bypass":             "bypassPermissions",
-		"unknown":            "default",
+		"default":            "auto",
+		"manual":             "auto",
+		"acceptEdits":        "auto",
+		"accept_edits":       "auto",
+		"dontAsk":            "auto",
+		"dont_ask":           "auto",
+		"bypassPermissions":  "auto",
+		"bypass_permissions": "auto",
+		"bypass":             "auto",
+		"手动确认":               "auto",
+		"计划优先":               "plan",
+		"unknown":            "auto",
 	}
 
 	for input, want := range tests {
@@ -165,8 +137,8 @@ func TestNormalizeExecutionModeAcceptsClaudeAliases(t *testing.T) {
 
 func TestExecutionModeDescriptorForReturnsAliases(t *testing.T) {
 	desc := ExecutionModeDescriptorFor("acceptEdits")
-	if desc.Name != "acceptEdits" {
-		t.Fatalf("Name=%q, want acceptEdits", desc.Name)
+	if desc.Name != "auto" {
+		t.Fatalf("Name=%q, want auto", desc.Name)
 	}
 	found := false
 	for _, alias := range desc.Aliases {

@@ -113,7 +113,7 @@ func New(width, height int, s *styles.Styles, lang string) Model {
 		styles:           s,
 		language:         lang,
 		contentH:         contentHeight,
-		executionMode:    "default",
+		executionMode:    "auto",
 		thinkingExpanded: false,
 	}
 }
@@ -820,18 +820,10 @@ func (m Model) renderStatusBar() string {
 
 func executionModeLabel(lang, mode string) string {
 	switch toolapi.NormalizeExecutionMode(mode) {
-	case "default":
-		return i18n.T("exec_mode.default", lang)
-	case "acceptEdits":
-		return i18n.T("exec_mode.accept_edits", lang)
 	case "plan":
-		return i18n.T("exec_mode.plan", lang)
-	case "dontAsk":
-		return i18n.T("exec_mode.dont_ask", lang)
-	case "bypassPermissions":
-		return i18n.T("exec_mode.bypass_permissions", lang)
+		return "plan"
 	default:
-		return i18n.T("exec_mode.auto", lang)
+		return "auto"
 	}
 }
 

@@ -301,6 +301,12 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 	}
 
 	execResp := readResponse(3, 4*time.Second)
+	if errObj, ok := execResp["error"].(map[string]any); ok && errObj != nil {
+		if got, _ := errObj["message"].(string); got != "ConfirmationRequired" {
+			t.Fatalf("expected ConfirmationRequired, got: %v", execResp)
+		}
+		return
+	}
 	res, _ := execResp["result"].(map[string]any)
 	status, _ := res["status"].(string)
 	if status == "" {

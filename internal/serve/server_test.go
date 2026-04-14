@@ -879,21 +879,27 @@ func TestStdioFlow_RequestCancelEmitsRequestFailed(t *testing.T) {
 
 	resp, finishEvents := readResponseAndEvents(3, 6*time.Second)
 	validateEvents(finishEvents)
-	if findEvent(finishEvents, "request.failed") == nil {
-		t.Fatalf("expected request.failed event, got: %v", finishEvents)
-	}
-	if findEvent(finishEvents, "request.completed") != nil {
-		t.Fatalf("did not expect request.completed after cancel, got: %v", finishEvents)
-	}
-	if findEvent(finishEvents, "tool.result") == nil {
-		t.Fatalf("expected tool.result event after cancel, got: %v", finishEvents)
-	}
-	result, ok = resp["result"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected request.start response result, got: %v", resp)
-	}
-	if got, _ := result["status"].(string); got != "error" {
-		t.Fatalf("expected canceled tool result status=error, got: %v", resp)
+	if failed := findEvent(finishEvents, "request.failed"); failed != nil {
+		if findEvent(finishEvents, "request.completed") != nil {
+			t.Fatalf("did not expect request.completed after cancel, got: %v", finishEvents)
+		}
+		if findEvent(finishEvents, "tool.result") == nil {
+			t.Fatalf("expected tool.result event after cancel, got: %v", finishEvents)
+		}
+		result, ok = resp["result"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected request.start response result, got: %v", resp)
+		}
+		if got, _ := result["status"].(string); got != "error" {
+			t.Fatalf("expected canceled tool result status=error, got: %v", resp)
+		}
+	} else {
+		if findEvent(finishEvents, "approval.required") == nil {
+			t.Fatalf("expected request.failed or approval.required event, got: %v", finishEvents)
+		}
+		if errObj, ok := resp["error"].(map[string]any); !ok || errObj == nil {
+			t.Fatalf("expected confirmation error response, got: %v", resp)
+		}
 	}
 
 	_ = inW.Close()

@@ -30,7 +30,7 @@ type PermissionSnapshot struct {
 func NewSecurityManager() *SecurityManager {
 	return &SecurityManager{
 		permsAllowSession: make(map[string]bool),
-		executionMode:     "default",
+		executionMode:     "auto",
 	}
 }
 
@@ -38,11 +38,6 @@ func (s *SecurityManager) SetExecutionMode(mode string) {
 	mode = toolapi.NormalizeExecutionMode(mode)
 	s.permMu.Lock()
 	s.executionMode = mode
-	if mode == "bypassPermissions" {
-		s.permsAllowSession["auto_all"] = true
-	} else {
-		delete(s.permsAllowSession, "auto_all")
-	}
 	s.permMu.Unlock()
 }
 
@@ -114,9 +109,6 @@ func (s *SecurityManager) DenySession(category string) {
 func (s *SecurityManager) IsAllowed(category string) bool {
 	s.permMu.RLock()
 	defer s.permMu.RUnlock()
-	if s.permsAllowSession["auto_all"] {
-		return true
-	}
 	return s.permsAllowSession[category]
 }
 
@@ -138,10 +130,6 @@ func (s *SecurityManager) Snapshot() PermissionSnapshot {
 	}
 	for category, allowed := range s.permsAllowSession {
 		if !allowed {
-			continue
-		}
-		if category == "auto_all" {
-			snap.AllowAll = true
 			continue
 		}
 		snap.AllowedCategories = append(snap.AllowedCategories, category)

@@ -2271,18 +2271,8 @@ func firstCoreString(payload map[string]any, keys ...string) string {
 
 func toRuntimeMode(mode string) string {
 	switch strings.TrimSpace(mode) {
-	case "默认只读", "手动确认", "default", "manual":
-		return "default"
-	case "接受编辑", "acceptEdits", "accept_edits", "accept-edits":
-		return "acceptEdits"
-	case "计划优先", "plan":
+	case "计划优先", "先出计划", "plan":
 		return "plan"
-	case "拒绝询问", "dontAsk", "dont_ask", "dont-ask":
-		return "dontAsk"
-	case "内部绕过", "绕过审批", "bypass", "bypassPermissions", "bypass_permissions", "bypass-permissions":
-		return "bypassPermissions"
-	case "自动无人值守", "auto":
-		return "auto"
 	default:
 		return toolapi.NormalizeExecutionMode(mode)
 	}
@@ -2290,19 +2280,11 @@ func toRuntimeMode(mode string) string {
 
 func fromRuntimeMode(mode string) string {
 	switch toolapi.NormalizeExecutionMode(mode) {
-	case "default":
-		return "手动确认"
-	case "acceptEdits":
-		return "接受编辑"
 	case "plan":
-		return "计划优先"
-	case "dontAsk":
-		return "拒绝询问"
-	case "bypassPermissions":
-		return "绕过审批"
+		return "plan"
 	case "auto":
-		return "自动无人值守"
+		return "auto"
 	default:
-		return "手动确认"
+		return "auto"
 	}
 }

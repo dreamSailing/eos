@@ -256,7 +256,7 @@ func (s *Server) handleSessionCreate(req rpcRequest) {
 	}
 	requireDigest := s.opts.RequireApprovalDigest
 	confirmPolicyID := ""
-	executionMode := "default"
+	executionMode := "auto"
 	trustedWorkspace := false
 	maxConcurrent := 1
 	title := defaultSessionTitle(abs)

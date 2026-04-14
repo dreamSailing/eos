@@ -57,8 +57,8 @@ func isSupportedExecutionModeInput(raw string) bool {
 
 func (m *AppModel) executionModeUsage() string {
 	return m.localize(
-		"用法: /permissions [default|acceptEdits|plan|auto|dontAsk|bypassPermissions]（兼容 manual / bypass）",
-		"Usage: /permissions [default|acceptEdits|plan|auto|dontAsk|bypassPermissions] (legacy manual / bypass aliases still work)",
+		"用法: /permissions [auto|plan]（兼容 default / manual / acceptEdits / dontAsk / bypass）",
+		"Usage: /permissions [auto|plan] (legacy default / manual / acceptEdits / dontAsk / bypass aliases still work)",
 	)
 }
 
@@ -347,7 +347,7 @@ func (m *AppModel) handlePlanSlash(args []string) tea.Cmd {
 			lines = append(lines, line)
 		}
 	}
-	lines = append(lines, m.localize("使用 /plan default|acceptEdits|plan|auto|dontAsk|bypassPermissions 可直接切换执行模式，旧别名 manual / bypass 也兼容。", "Use /plan default|acceptEdits|plan|auto|dontAsk|bypassPermissions to switch execution mode directly; legacy manual / bypass aliases still work."))
+	lines = append(lines, m.localize("使用 /plan auto|plan 可直接切换执行模式，旧别名 default / manual / acceptEdits / dontAsk / bypass 也兼容。", "Use /plan auto|plan to switch execution mode directly; legacy default / manual / acceptEdits / dontAsk / bypass aliases still work."))
 	m.appendSystem(strings.Join(lines, "\n"), "info")
 	return nil
 }
@@ -829,18 +829,10 @@ func (m *AppModel) restoreSessionHistory(id string) {
 
 func (m *AppModel) executionModeLabel(mode string) string {
 	switch toolapi.NormalizeExecutionMode(mode) {
-	case "default":
-		return m.localize("默认只读", "default")
-	case "acceptEdits":
-		return m.localize("接受编辑", "accept edits")
 	case "plan":
-		return m.localize("先出计划", "plan first")
-	case "dontAsk":
-		return m.localize("拒绝询问", "don't ask")
-	case "bypassPermissions":
-		return m.localize("绕过审批", "bypass permissions")
+		return "plan"
 	default:
-		return m.localize("自动", "auto")
+		return "auto"
 	}
 }
 

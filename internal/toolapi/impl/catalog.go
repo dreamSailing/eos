@@ -594,7 +594,7 @@ func inferVisibleModes(level toolapi.RiskLevel) []string {
 	case toolapi.RiskLow:
 		return allModes()
 	default:
-		return []string{"default", "acceptEdits", "auto", "dontAsk", "bypassPermissions"}
+		return []string{"auto"}
 	}
 }
 
@@ -620,7 +620,7 @@ func ensureCapabilityTags(name string, level toolapi.RiskLevel, readOnly bool, t
 }
 
 func allModes() []string {
-	return []string{"default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"}
+	return []string{"auto", "plan"}
 }
 
 func uniqueStrings(values []string) []string {

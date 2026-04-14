@@ -76,8 +76,8 @@ func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
 	if !manifest.SessionDefaults.RequireApprovalDigest {
 		t.Fatal("RequireApprovalDigest should be true")
 	}
-	if manifest.SessionDefaults.ExecutionMode != "default" {
-		t.Fatalf("ExecutionMode=%q, want default", manifest.SessionDefaults.ExecutionMode)
+	if manifest.SessionDefaults.ExecutionMode != "auto" {
+		t.Fatalf("ExecutionMode=%q, want auto", manifest.SessionDefaults.ExecutionMode)
 	}
 	if len(manifest.ExecutionModes) == 0 {
 		t.Fatalf("ExecutionModes should not be empty")

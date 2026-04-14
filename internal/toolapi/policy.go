@@ -21,43 +21,30 @@ type ToolAccess struct {
 
 var executionModeDescriptors = []ExecutionModeDescriptor{
 	{
-		Name:             "default",
-		Aliases:          []string{"manual"},
-		Description:      "Conservative mode: read-only tools run directly, mutating tools require approval.",
-		ApprovalBehavior: "prompt_mutations",
-	},
-	{
-		Name:             "acceptEdits",
-		Aliases:          []string{"accept_edits", "accept-edits"},
-		Description:      "Auto-accepts filesystem edits and file operations; other side-effectful tools still require approval.",
-		ApprovalBehavior: "auto_accept_filesystem",
-	},
-	{
 		Name:             "plan",
+		Aliases:          []string{"计划优先", "先出计划", "plan_first", "plan-first"},
 		Description:      "Planning mode: read-only tools stay visible, mutating tools are hidden.",
 		ApprovalBehavior: "read_only_only",
 	},
 	{
-		Name:             "auto",
+		Name: "auto",
+		Aliases: []string{
+			"default", "manual",
+			"acceptEdits", "accept_edits", "accept-edits",
+			"dontAsk", "dont_ask", "dont-ask",
+			"bypassPermissions", "bypass_permissions", "bypass-permissions", "bypass",
+			"默认只读", "手动确认", "接受编辑", "自动无人值守", "拒绝询问", "绕过审批", "内部绕过",
+		},
 		Description:      "Balanced mode: low/medium risk tools run directly, high risk tools still prompt.",
 		ApprovalBehavior: "prompt_high_only",
-	},
-	{
-		Name:             "dontAsk",
-		Aliases:          []string{"dont_ask", "dont-ask"},
-		Description:      "Locked mode: only explicitly allowed tools can execute; everything else is denied without prompting.",
-		ApprovalBehavior: "deny_unapproved",
-	},
-	{
-		Name:             "bypassPermissions",
-		Aliases:          []string{"bypass", "bypass_permissions", "bypass-permissions"},
-		Description:      "Unsafe mode: skips approval prompts and leaves only registry/policy filtering in place.",
-		ApprovalBehavior: "no_prompts",
 	},
 }
 
 func NormalizeExecutionMode(mode string) string {
 	key := normalizeModeKey(mode)
+	if key == "" {
+		return "auto"
+	}
 	for _, item := range executionModeDescriptors {
 		if key == normalizeModeKey(item.Name) {
 			return item.Name
@@ -68,7 +55,7 @@ func NormalizeExecutionMode(mode string) string {
 			}
 		}
 	}
-	return "default"
+	return "auto"
 }
 
 func ExecutionModeDescriptorFor(mode string) ExecutionModeDescriptor {
@@ -80,7 +67,7 @@ func ExecutionModeDescriptorFor(mode string) ExecutionModeDescriptor {
 			return out
 		}
 	}
-	return ExecutionModeDescriptor{Name: "default"}
+	return ExecutionModeDescriptor{Name: "auto"}
 }
 
 func SupportedExecutionModes() []ExecutionModeDescriptor {
@@ -122,11 +109,7 @@ func EvaluateToolAccess(def ToolDefinition, sess ExecSession) ToolAccess {
 		access.Reason = "non_invocable"
 		return access
 	}
-	if mode == "dontAsk" && !isExplicitToolAllowed(sess.AllowedTools, def.Name) {
-		access.Reason = "dont_ask"
-		return access
-	}
-	if mode != "dontAsk" && !IsToolAllowed(sess.AllowedTools, def.Name) {
+	if !IsToolAllowed(sess.AllowedTools, def.Name) {
 		access.Reason = "allowed_tools"
 		return access
 	}
@@ -140,20 +123,12 @@ func EvaluateToolAccess(def ToolDefinition, sess ExecSession) ToolAccess {
 			access.Reason = "execution_mode"
 			return access
 		}
-	case "default":
-		access.NeedsApproval = !def.ReadOnly
-	case "acceptEdits":
-		access.NeedsApproval = !def.ReadOnly && !acceptEditsAutoApproved(def)
 	case "auto":
 		if sess.RequireApprovalDigest {
 			access.NeedsApproval = def.RiskLevel != RiskLow
 		} else {
 			access.NeedsApproval = def.RiskLevel == RiskHigh
 		}
-	case "dontAsk":
-		access.NeedsApproval = false
-	case "bypassPermissions":
-		access.NeedsApproval = false
 	}
 
 	return access
@@ -205,17 +180,4 @@ func normalizeModeKey(mode string) string {
 	mode = strings.ReplaceAll(mode, "-", "")
 	mode = strings.ReplaceAll(mode, " ", "")
 	return mode
-}
-
-func isExplicitToolAllowed(allowed map[string]bool, toolName string) bool {
-	if allowed == nil {
-		return false
-	}
-	return allowed[strings.ToLower(strings.TrimSpace(toolName))]
-}
-
-func acceptEditsAutoApproved(def ToolDefinition) bool {
-	return strings.EqualFold(strings.TrimSpace(def.Category), "filesystem") &&
-		!def.ReadOnly &&
-		def.RiskLevel != RiskHigh
 }

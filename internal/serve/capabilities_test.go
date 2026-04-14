@@ -160,12 +160,12 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 	capResp := readResponse(3, 10*time.Second)
 	capResult, _ := capResp["result"].(map[string]any)
 	capabilities, _ := capResult["capabilities"].([]any)
-	if got, _ := capResult["mode"].(string); got != "default" {
-		t.Fatalf("mode=%v, want default", capResult["mode"])
+	if got, _ := capResult["mode"].(string); got != "auto" {
+		t.Fatalf("mode=%v, want auto", capResult["mode"])
 	}
 	modeProfile, _ := capResult["modeProfile"].(map[string]any)
-	if got, _ := modeProfile["approvalBehavior"].(string); got != "prompt_mutations" {
-		t.Fatalf("approvalBehavior=%v, want prompt_mutations", modeProfile["approvalBehavior"])
+	if got, _ := modeProfile["approvalBehavior"].(string); got != "prompt_high_only" {
+		t.Fatalf("approvalBehavior=%v, want prompt_high_only", modeProfile["approvalBehavior"])
 	}
 	summary, _ := capResult["summary"].(map[string]any)
 	if _, ok := summary["blockedByAllow"]; !ok {

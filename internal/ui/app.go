@@ -248,9 +248,9 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 		modelBase = "(none)"
 	}
 	shellModel.SetWelcomeInfo(modelName, modelBase, "")
-	shellModel.SetExecutionMode("default")
+	shellModel.SetExecutionMode("auto")
 	shellModel.SetThinkingExpanded(false)
-	adapter.GetCore().SetExecutionMode("default")
+	adapter.GetCore().SetExecutionMode("auto")
 
 	// 创建面板
 	panelMap := make(map[string]panels.Panel)
@@ -300,7 +300,7 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 			Mode:          "ai",
 			Language:      lang,
 			Theme:         "dark",
-			ExecutionMode: "default",
+			ExecutionMode: "auto",
 		},
 		adapter:      adapter,
 		styles:       styles,

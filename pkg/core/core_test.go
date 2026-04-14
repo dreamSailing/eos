@@ -27,52 +27,52 @@ func (p *coreTestPlugin) Description() string { return p.desc }
 func (p *coreTestPlugin) Execute(context.Context, map[string]any) (any, error) { return "ok", nil }
 
 func TestToRuntimeMode(t *testing.T) {
-	if got := toRuntimeMode("手动确认"); got != "default" {
+	if got := toRuntimeMode("手动确认"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := toRuntimeMode("default"); got != "default" {
+	if got := toRuntimeMode("default"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
 	if got := toRuntimeMode("计划优先"); got != "plan" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := toRuntimeMode("acceptEdits"); got != "acceptEdits" {
+	if got := toRuntimeMode("acceptEdits"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
 	if got := toRuntimeMode("自动无人值守"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := toRuntimeMode("dontAsk"); got != "dontAsk" {
+	if got := toRuntimeMode("dontAsk"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := toRuntimeMode("bypassPermissions"); got != "bypassPermissions" {
+	if got := toRuntimeMode("bypassPermissions"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := toRuntimeMode("unknown"); got != "default" {
+	if got := toRuntimeMode("unknown"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
 }
 
 func TestFromRuntimeMode(t *testing.T) {
-	if got := fromRuntimeMode("default"); got != "手动确认" {
+	if got := fromRuntimeMode("default"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := fromRuntimeMode("acceptEdits"); got != "接受编辑" {
+	if got := fromRuntimeMode("acceptEdits"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := fromRuntimeMode("plan"); got != "计划优先" {
+	if got := fromRuntimeMode("plan"); got != "plan" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := fromRuntimeMode("auto"); got != "自动无人值守" {
+	if got := fromRuntimeMode("auto"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := fromRuntimeMode("dontAsk"); got != "拒绝询问" {
+	if got := fromRuntimeMode("dontAsk"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := fromRuntimeMode("bypassPermissions"); got != "绕过审批" {
+	if got := fromRuntimeMode("bypassPermissions"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := fromRuntimeMode("unknown"); got != "手动确认" {
+	if got := fromRuntimeMode("unknown"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
 }
@@ -734,8 +734,8 @@ func TestRuntimeSetManifestPluginEnabledPersistsState(t *testing.T) {
 func TestRuntimePermissionSnapshotDefaults(t *testing.T) {
 	rt := NewRuntime()
 	snap := rt.PermissionSnapshot()
-	if snap.ExecutionMode != "default" {
-		t.Fatalf("ExecutionMode=%q, want default", snap.ExecutionMode)
+	if snap.ExecutionMode != "auto" {
+		t.Fatalf("ExecutionMode=%q, want auto", snap.ExecutionMode)
 	}
 	if snap.HasPendingDiff {
 		t.Fatal("HasPendingDiff should default to false")

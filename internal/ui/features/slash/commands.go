@@ -45,8 +45,8 @@ var Commands = []Command{
 
 	{Name: "/memory", Aliases: []string{"/ctx", "/context"}, Group: GroupRuntime, DescriptionZH: "打开上下文与记忆面板", DescriptionEN: "Open the context and memory panel"},
 	{Name: "/tasks", Group: GroupRuntime, DescriptionZH: "打开任务面板", DescriptionEN: "Open the tasks panel"},
-	{Name: "/plan", Group: GroupRuntime, Usage: "/plan [default|acceptEdits|plan|auto|dontAsk|bypassPermissions]", DescriptionZH: "查看当前计划/待办，或切换计划执行模式", DescriptionEN: "Inspect plan/todos or switch planning mode"},
-	{Name: "/permissions", Group: GroupRuntime, Usage: "/permissions [default|acceptEdits|plan|auto|dontAsk|bypassPermissions]", DescriptionZH: "查看或切换权限/审批模式", DescriptionEN: "Inspect or change permission/approval mode"},
+	{Name: "/plan", Group: GroupRuntime, Usage: "/plan [auto|plan]", DescriptionZH: "查看当前计划/待办，或切换计划执行模式", DescriptionEN: "Inspect plan/todos or switch planning mode"},
+	{Name: "/permissions", Group: GroupRuntime, Usage: "/permissions [auto|plan]", DescriptionZH: "查看或切换权限/审批模式", DescriptionEN: "Inspect or change permission/approval mode"},
 	{Name: "/doctor", Group: GroupRuntime, DescriptionZH: "输出运行时、工具和诊断摘要", DescriptionEN: "Print a runtime, tools, and diagnostics summary"},
 
 	{Name: "/model", Aliases: []string{"/models"}, Group: GroupConfig, Usage: "/model [use <name>]", DescriptionZH: "查看模型面板或切换当前模型", DescriptionEN: "Open model management or switch the active model"},

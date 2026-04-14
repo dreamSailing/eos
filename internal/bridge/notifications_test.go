@@ -22,7 +22,7 @@ func TestWaitPrompt_SendsDesktopNotification(t *testing.T) {
 		securityMgr: NewSecurityManager(),
 		eventsCh:    make(chan Event, 2),
 	}
-	rc.securityMgr.SetExecutionMode("manual")
+	rc.securityMgr.SetExecutionMode("plan")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()

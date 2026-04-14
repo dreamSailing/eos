@@ -123,7 +123,7 @@ func BuildBridgeManifest(opts Options, manifestOpts BridgeManifestOptions) (Brid
 		SessionDefaults: BridgeSessionDefaults{
 			WorkspacePath:          workspaceAbs,
 			AllowedTools:           append([]string(nil), allowedTools...),
-			ExecutionMode:          "default",
+			ExecutionMode:          "auto",
 			RequireApprovalDigest:  opts.RequireApprovalDigest,
 			MaxConcurrentToolCalls: 1,
 		},

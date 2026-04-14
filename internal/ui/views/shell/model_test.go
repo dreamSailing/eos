@@ -21,7 +21,7 @@ func TestRenderStatusBarShowsExecutionMode(t *testing.T) {
 	model.SetExecutionMode("plan")
 
 	out := stripANSIForTest(model.renderStatusBar())
-	if !strings.Contains(out, "执行:先出计划") {
+	if !strings.Contains(out, "执行:plan") {
 		t.Fatalf("expected status bar to include execution mode, got %q", out)
 	}
 }

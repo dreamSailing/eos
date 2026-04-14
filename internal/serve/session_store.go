@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/dreamSailing/vb-coding/internal/toolapi"
 )
 
 const serveSessionStoreVersion = "v1"
@@ -109,7 +111,7 @@ func (s *Server) loadPersistedSessions() error {
 			title:                  firstNonEmpty(strings.TrimSpace(item.Title), defaultSessionTitle(abs)),
 			preview:                normalizeSessionPreview(item.Preview),
 			allowedTools:           sessionAllowedTools(item.AllowedTools),
-			executionMode:          strings.TrimSpace(item.ExecutionMode),
+			executionMode:          toolapi.NormalizeExecutionMode(item.ExecutionMode),
 			trustedWorkspace:       item.TrustedWorkspace,
 			maxConcurrentToolCalls: item.MaxConcurrentToolCalls,
 			requireApprovalDigest:  item.RequireApprovalDigest,
@@ -124,9 +126,7 @@ func (s *Server) loadPersistedSessions() error {
 		if sess.maxConcurrentToolCalls <= 0 {
 			sess.maxConcurrentToolCalls = 1
 		}
-		if strings.TrimSpace(sess.executionMode) == "" {
-			sess.executionMode = "default"
-		}
+		sess.executionMode = toolapi.NormalizeExecutionMode(sess.executionMode)
 		if sess.updatedAt.IsZero() {
 			sess.updatedAt = now
 		}

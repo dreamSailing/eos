@@ -147,7 +147,7 @@ func (rc *RuntimeCore) waitPrompt(ctx context.Context, req PromptRequest) (Promp
 	shouldNotify := desktopEnabled
 	if shouldNotify && rc.securityMgr != nil {
 		mode := rc.securityMgr.ExecutionMode()
-		if mode == "auto" || mode == "bypassPermissions" {
+		if mode == "auto" {
 			shouldNotify = promptNeedsSafetyConfirmation(req.Kind, req.Category, req.Summary)
 		}
 	}
@@ -185,19 +185,11 @@ func (rc *RuntimeCore) promptPermission(ctx context.Context, category, summary s
 	if rc != nil && rc.securityMgr != nil {
 		mode := toolapi.NormalizeExecutionMode(rc.securityMgr.ExecutionMode())
 		switch mode {
-		case "bypassPermissions":
-			rc.ClearPendingDiff()
-			return "allow"
-		case "dontAsk", "plan":
+		case "plan":
 			rc.ClearPendingDiff()
 			return "deny"
 		case "auto":
 			if !promptNeedsSafetyConfirmation(PromptKindPermission, category, summary) {
-				rc.ClearPendingDiff()
-				return "allow"
-			}
-		case "acceptEdits":
-			if acceptEditsPermissionAutoApproved(category, summary) {
 				rc.ClearPendingDiff()
 				return "allow"
 			}
