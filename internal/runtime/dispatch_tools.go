@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 	"log/slog"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -80,8 +81,7 @@ func NewDispatchTools(
 	onMetaOrig := onMeta
 	onMetaWrapped := func(line string) {
 		if hm != nil {
-			if strings.HasPrefix(line, "phase.note:") {
-				msg := strings.TrimPrefix(line, "phase.note:")
+			if msg, ok := strings.CutPrefix(line, "phase.note:"); ok {
 				msg = strings.TrimSpace(msg)
 				if !strings.HasPrefix(msg, "HOOK_NOTIFICATION:") && !strings.HasPrefix(msg, "HOOK_STATUS:") {
 					dec, _ := hm.Notification(ctx, "phase_note", msg, "")
@@ -316,7 +316,7 @@ func (dt *DispatchTools) SpawnAgent(agentName string, task string, forkContext b
 		return DispatchResult{}, fmt.Errorf("task required")
 	}
 
-	agentType, _, agent := resolveForkAgent(dt, agentName)
+	agentType, _, _ := resolveForkAgent(dt, agentName)
 	role, agent := dt.resolveAgentRuntime(agentType)
 	if agent == nil {
 		return DispatchResult{}, fmt.Errorf("fork agent not available: %s", strings.TrimSpace(agentName))
@@ -449,29 +449,31 @@ func (dt *DispatchTools) CloseAgent(agentID string) (DispatchResult, error) {
 
 // InvokePlanner 调用规划师
 func (dt *DispatchTools) InvokePlanner(task DispatchTask) DispatchResult {
+	return dt.invokeStandardAgent(task, "planner", SubAgentTypePlanner, dt.plannerAgent, dt.mcpToolsInfo, "planner agent not initialized")
+}
+
+func (dt *DispatchTools) invokeStandardAgent(task DispatchTask, role string, subType SubAgentType, agent *react.Agent, toolInfo string, missingMsg string) DispatchResult {
 	dt.mu.RLock()
 	ctx := dt.currentCtx
 	msgs := dt.currentMsgs
 	dt.mu.RUnlock()
 
-	if dt.plannerAgent == nil {
+	if agent == nil {
 		return DispatchResult{
 			Task:   task.Task,
-			Result: "planner agent not initialized",
+			Result: missingMsg,
 		}
 	}
 
 	// 创建子代理隔离上下文
 	reqID := tools.TraceIDFromContext(ctx)
-	subCtx := dt.subAgentMgr.GetOrCreateRequestContext(reqID, SubAgentTypePlanner, ctx, msgs)
+	subCtx := dt.subAgentMgr.GetOrCreateRequestContext(reqID, subType, ctx, msgs)
 	_ = dt.subAgentMgr.MarkRunning(subCtx.id, task.Task, nil)
 	dt.emitAgentEvent(EventAgentStarted, subCtx, task.Task, task.Task, nil)
 
-	// 使用 Planner 角色调用
-	roleCtx := tools.WithRole(ctx, "planner")
-	_, err := invokeRoleAgentWithSubContext(roleCtx, msgs, "planner", dt.plannerAgent, dt.onMeta, dt.onReasoning, dt.mcpToolsInfo, subCtx, dt.subAgentMgr, dt.hookMgr)
+	roleCtx := tools.WithRole(ctx, role)
+	_, err := invokeRoleAgentWithSubContext(roleCtx, msgs, role, agent, dt.onMeta, dt.onReasoning, toolInfo, subCtx, dt.subAgentMgr, dt.hookMgr)
 	if err != nil {
-		// 标记失败并记录结果
 		dt.subAgentMgr.Complete(subCtx.id, task.Task, false, err.Error())
 		dt.emitAgentEvent(EventAgentFailed, subCtx, task.Task, err.Error(), map[string]any{"error": err.Error()})
 		if dt.hookMgr != nil {
@@ -483,7 +485,6 @@ func (dt *DispatchTools) InvokePlanner(task DispatchTask) DispatchResult {
 		}
 	}
 
-	// 标记完成并记录结果摘要
 	subRes := dt.subAgentMgr.Complete(subCtx.id, task.Task, true, "")
 	dt.emitAgentEvent(EventAgentCompleted, subCtx, task.Task, dt.agentOutput(subCtx, subRes.Result), map[string]any{"duration_ms": subRes.Duration.Milliseconds()})
 	if dt.hookMgr != nil {
@@ -492,7 +493,7 @@ func (dt *DispatchTools) InvokePlanner(task DispatchTask) DispatchResult {
 
 	return DispatchResult{
 		Task:   task.Task,
-		Result: subRes.Result, // 使用摘要而非完整输出
+		Result: subRes.Result,
 	}
 }
 
@@ -607,7 +608,7 @@ func (dt *DispatchTools) getProjectStructurePrompt(ctx context.Context) string {
 		return ""
 	}
 	res := dt.toolsManager.ExecuteStructured(ctx, []tools.ToolCall{
-		{Tool: tools.ToolProjectStructure, Parameters: map[string]interface{}{"path": "."}},
+		{Tool: tools.ToolProjectStructure, Parameters: map[string]any{"path": "."}},
 	})
 	if len(res) != 1 {
 		return ""
@@ -641,108 +642,24 @@ func limitText(s string, maxLines int, maxChars int) string {
 
 // InvokeTester 调用测试工程师
 func (dt *DispatchTools) InvokeTester(task DispatchTask) DispatchResult {
-	dt.mu.RLock()
-	ctx := dt.currentCtx
-	msgs := dt.currentMsgs
-	dt.mu.RUnlock()
-	if dt.testerAgent == nil {
-		return DispatchResult{
-			Task:   task.Task,
-			Result: "tester agent not initialized",
-		}
-	}
-
-	// 创建子代理隔离上下文
-	reqID := tools.TraceIDFromContext(ctx)
-	subCtx := dt.subAgentMgr.GetOrCreateRequestContext(reqID, SubAgentTypeTester, ctx, msgs)
-	_ = dt.subAgentMgr.MarkRunning(subCtx.id, task.Task, nil)
-	dt.emitAgentEvent(EventAgentStarted, subCtx, task.Task, task.Task, nil)
-
-	// 使用 Tester 角色调用
-	roleCtx := tools.WithRole(ctx, "tester")
-	_, err := invokeRoleAgentWithSubContext(roleCtx, msgs, "tester", dt.testerAgent, dt.onMeta, dt.onReasoning, dt.mcpToolsInfo, subCtx, dt.subAgentMgr, dt.hookMgr)
-	if err != nil {
-		dt.subAgentMgr.Complete(subCtx.id, task.Task, false, err.Error())
-		dt.emitAgentEvent(EventAgentFailed, subCtx, task.Task, err.Error(), map[string]any{"error": err.Error()})
-		if dt.hookMgr != nil {
-			_, _ = dt.hookMgr.TeammateIdle(ctx, subCtx.agentType.String(), false, err.Error(), time.Since(subCtx.createdAt).Milliseconds())
-		}
-		return DispatchResult{
-			Task:   task.Task,
-			Result: err.Error(),
-		}
-	}
-
-	// 标记完成并记录结果摘要
-	subRes := dt.subAgentMgr.Complete(subCtx.id, task.Task, true, "")
-	dt.emitAgentEvent(EventAgentCompleted, subCtx, task.Task, dt.agentOutput(subCtx, subRes.Result), map[string]any{"duration_ms": subRes.Duration.Milliseconds()})
-	if dt.hookMgr != nil {
-		_, _ = dt.hookMgr.TeammateIdle(ctx, subRes.Type.String(), true, "", subRes.Duration.Milliseconds())
-	}
-
-	return DispatchResult{
-		Task:   task.Task,
-		Result: subRes.Result,
-	}
+	return dt.invokeStandardAgent(task, "tester", SubAgentTypeTester, dt.testerAgent, dt.mcpToolsInfo, "tester agent not initialized")
 }
 
 // InvokeReviewer 调用审核者
 func (dt *DispatchTools) InvokeReviewer(task DispatchTask) DispatchResult {
-	dt.mu.RLock()
-	ctx := dt.currentCtx
-	msgs := dt.currentMsgs
-	dt.mu.RUnlock()
-	if dt.reviewerAgent == nil {
-		return DispatchResult{
-			Task:   task.Task,
-			Result: "reviewer agent not initialized",
-		}
-	}
-
-	// 创建子代理隔离上下文
-	reqID := tools.TraceIDFromContext(ctx)
-	subCtx := dt.subAgentMgr.GetOrCreateRequestContext(reqID, SubAgentTypeReviewer, ctx, msgs)
-	_ = dt.subAgentMgr.MarkRunning(subCtx.id, task.Task, nil)
-	dt.emitAgentEvent(EventAgentStarted, subCtx, task.Task, task.Task, nil)
-
-	// 使用 Reviewer 角色调用
-	roleCtx := tools.WithRole(ctx, "reviewer")
-	_, err := invokeRoleAgentWithSubContext(roleCtx, msgs, "reviewer", dt.reviewerAgent, dt.onMeta, dt.onReasoning, dt.mcpToolsInfo, subCtx, dt.subAgentMgr, dt.hookMgr)
-	if err != nil {
-		dt.subAgentMgr.Complete(subCtx.id, task.Task, false, err.Error())
-		dt.emitAgentEvent(EventAgentFailed, subCtx, task.Task, err.Error(), map[string]any{"error": err.Error()})
-		if dt.hookMgr != nil {
-			_, _ = dt.hookMgr.TeammateIdle(ctx, subCtx.agentType.String(), false, err.Error(), time.Since(subCtx.createdAt).Milliseconds())
-		}
-		return DispatchResult{
-			Task:   task.Task,
-			Result: err.Error(),
-		}
-	}
-
-	// 标记完成并记录结果摘要
-	subRes := dt.subAgentMgr.Complete(subCtx.id, task.Task, true, "")
-	dt.emitAgentEvent(EventAgentCompleted, subCtx, task.Task, dt.agentOutput(subCtx, subRes.Result), map[string]any{"duration_ms": subRes.Duration.Milliseconds()})
-	if dt.hookMgr != nil {
-		_, _ = dt.hookMgr.TeammateIdle(ctx, subRes.Type.String(), true, "", subRes.Duration.Milliseconds())
-	}
-
-	return DispatchResult{
-		Task:   task.Task,
-		Result: subRes.Result,
-	}
+	return dt.invokeStandardAgent(task, "reviewer", SubAgentTypeReviewer, dt.reviewerAgent, dt.mcpToolsInfo, "reviewer agent not initialized")
 }
 
 // GetDispatchToolsInfo 返回调度工具的信息，用于注册
-func GetDispatchToolsInfo() []map[string]interface{} {
-	return []map[string]interface{}{
+func GetDispatchToolsInfo() []map[string]any {
+	return []map[string]any{
 		{
 			"name":        "invoke_planner",
 			"description": "调用规划师来制定详细的实施计划",
-			"parameters": map[string]interface{}{
+			"parameters": map[string]any{
 				"type": "object",
-				"properties": map[string]interface{}{
-					"task": map[string]interface{}{
+				"properties": map[string]any{
+					"task": map[string]any{
 						"type":        "string",
 						"description": "任务目标与验收标准（避免指定具体命令行或逐条操作步骤）",
 					},
@@ -753,10 +670,10 @@ func GetDispatchToolsInfo() []map[string]interface{} {
 		{
 			"name":        "invoke_senior_dev",
 			"description": "调用高级开发工程师来执行开发任务",
-			"parameters": map[string]interface{}{
+			"parameters": map[string]any{
 				"type": "object",
-				"properties": map[string]interface{}{
-					"task": map[string]interface{}{
+				"properties": map[string]any{
+					"task": map[string]any{
 						"type":        "string",
 						"description": "任务目标与验收标准（避免指定具体命令行或逐条操作步骤）",
 					},
@@ -767,10 +684,10 @@ func GetDispatchToolsInfo() []map[string]interface{} {
 		{
 			"name":        "invoke_tester",
 			"description": "调用测试工程师来执行测试任务",
-			"parameters": map[string]interface{}{
+			"parameters": map[string]any{
 				"type": "object",
-				"properties": map[string]interface{}{
-					"task": map[string]interface{}{
+				"properties": map[string]any{
+					"task": map[string]any{
 						"type":        "string",
 						"description": "任务目标与验收标准（避免指定具体命令行或逐条操作步骤）",
 					},
@@ -781,10 +698,10 @@ func GetDispatchToolsInfo() []map[string]interface{} {
 		{
 			"name":        "invoke_reviewer",
 			"description": "调用审核者来评估代码质量和任务完成度",
-			"parameters": map[string]interface{}{
+			"parameters": map[string]any{
 				"type": "object",
-				"properties": map[string]interface{}{
-					"task": map[string]interface{}{
+				"properties": map[string]any{
+					"task": map[string]any{
 						"type":        "string",
 						"description": "任务目标与验收标准（避免指定具体命令行或逐条操作步骤）",
 					},
@@ -795,26 +712,26 @@ func GetDispatchToolsInfo() []map[string]interface{} {
 		{
 			"name":        "spawn_agent",
 			"description": "创建并异步启动一个子代理任务，返回 agent_id。",
-			"parameters": map[string]interface{}{
+			"parameters": map[string]any{
 				"type": "object",
-				"properties": map[string]interface{}{
-					"agent": map[string]interface{}{
+				"properties": map[string]any{
+					"agent": map[string]any{
 						"type":        "string",
 						"description": "代理类型: planner, senior-dev, tester, reviewer, explorer",
 					},
-					"task": map[string]interface{}{
+					"task": map[string]any{
 						"type":        "string",
 						"description": "任务目标与验收标准",
 					},
-					"fork_context": map[string]interface{}{
+					"fork_context": map[string]any{
 						"type":        "boolean",
 						"description": "是否继承当前上下文，默认 true",
 					},
-					"context_strategy": map[string]interface{}{
+					"context_strategy": map[string]any{
 						"type":        "string",
 						"description": "可选: independent, shared, hybrid",
 					},
-					"allowed_tools": map[string]interface{}{
+					"allowed_tools": map[string]any{
 						"type":        "array",
 						"description": "可选：覆盖该子代理允许使用的工具列表",
 					},
@@ -825,14 +742,14 @@ func GetDispatchToolsInfo() []map[string]interface{} {
 		{
 			"name":        "send_input",
 			"description": "向已创建的子代理上下文追加输入，用于后续 resume。",
-			"parameters": map[string]interface{}{
+			"parameters": map[string]any{
 				"type": "object",
-				"properties": map[string]interface{}{
-					"agent_id": map[string]interface{}{
+				"properties": map[string]any{
+					"agent_id": map[string]any{
 						"type":        "string",
 						"description": "子代理 ID",
 					},
-					"input": map[string]interface{}{
+					"input": map[string]any{
 						"type":        "string",
 						"description": "要追加给子代理的新输入",
 					},
@@ -843,14 +760,14 @@ func GetDispatchToolsInfo() []map[string]interface{} {
 		{
 			"name":        "wait_agent",
 			"description": "等待子代理完成，支持超时返回当前状态。",
-			"parameters": map[string]interface{}{
+			"parameters": map[string]any{
 				"type": "object",
-				"properties": map[string]interface{}{
-					"agent_id": map[string]interface{}{
+				"properties": map[string]any{
+					"agent_id": map[string]any{
 						"type":        "string",
 						"description": "子代理 ID",
 					},
-					"timeout_ms": map[string]interface{}{
+					"timeout_ms": map[string]any{
 						"type":        "integer",
 						"description": "可选：最长等待毫秒数",
 					},
@@ -861,14 +778,14 @@ func GetDispatchToolsInfo() []map[string]interface{} {
 		{
 			"name":        "resume_agent",
 			"description": "继续执行已完成或已暂停的子代理上下文。",
-			"parameters": map[string]interface{}{
+			"parameters": map[string]any{
 				"type": "object",
-				"properties": map[string]interface{}{
-					"agent_id": map[string]interface{}{
+				"properties": map[string]any{
+					"agent_id": map[string]any{
 						"type":        "string",
 						"description": "子代理 ID",
 					},
-					"task": map[string]interface{}{
+					"task": map[string]any{
 						"type":        "string",
 						"description": "可选：继续执行前追加的新任务说明",
 					},
@@ -879,10 +796,10 @@ func GetDispatchToolsInfo() []map[string]interface{} {
 		{
 			"name":        "close_agent",
 			"description": "关闭子代理；若仍在运行则先请求取消。",
-			"parameters": map[string]interface{}{
+			"parameters": map[string]any{
 				"type": "object",
-				"properties": map[string]interface{}{
-					"agent_id": map[string]interface{}{
+				"properties": map[string]any{
+					"agent_id": map[string]any{
 						"type":        "string",
 						"description": "子代理 ID",
 					},
@@ -924,7 +841,7 @@ func invokeRoleAgentWithSubContext(
 	msgs []*schema.Message,
 	role string,
 	agent *react.Agent,
-	onMeta func(string),
+	_ func(string),
 	onReasoning func(string),
 	mcpToolsInfo string,
 	subCtx *SubAgentContext,
@@ -954,7 +871,7 @@ func invokeRoleAgentWithSubContext(
 	stopActive := false
 	var out *schema.Message
 	var err error
-	for round := 0; round < maxRounds; round++ {
+	for range maxRounds {
 		out, err = agent.Generate(ctx, agentMsgs)
 		if err != nil {
 			return nil, wrapMaxStepError(err)
@@ -988,7 +905,7 @@ func invokeRoleAgentWithSubContext(
 	}
 
 	// 将输出消息添加到子代理上下文
-	mgr.AddMessage(subCtx.id, out)
+	_ = mgr.AddMessage(subCtx.id, out)
 	subCtx.mu.Lock()
 	subCtx.result = strings.TrimSpace(out.Content)
 	subCtx.mu.Unlock()
@@ -1012,9 +929,7 @@ func (dt *DispatchTools) emitAgentEvent(eventType string, subCtx *SubAgentContex
 	if len(subCtx.allowedTools) > 0 {
 		payload["allowed_tools"] = append([]string(nil), subCtx.allowedTools...)
 	}
-	for k, v := range extra {
-		payload[k] = v
-	}
+	maps.Copy(payload, extra)
 	raw, err := json.Marshal(EventData{
 		Type:    eventType,
 		ID:      strings.TrimSpace(subCtx.id),

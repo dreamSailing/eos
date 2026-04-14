@@ -28,18 +28,6 @@ var autoModePromptCategories = map[string]bool{
 	"bash-session-kill": true,
 }
 
-var acceptEditsAutoApproveCategories = map[string]bool{
-	"file_write":         true,
-	"overwrite_file":     true,
-	"tool-delete":        true,
-	"delete_file":        true,
-	"move-overwrite":     true,
-	"move-dir":           true,
-	"move-dir-overwrite": true,
-	"copy-overwrite":     true,
-	"copy-dir":           true,
-}
-
 func promptNeedsSafetyConfirmation(kind PromptKind, category, summary string) bool {
 	if kind != PromptKindPermission {
 		return false
@@ -50,15 +38,6 @@ func promptNeedsSafetyConfirmation(kind PromptKind, category, summary string) bo
 		return true
 	}
 	return strings.Contains(summary, "restore checkpoint") || strings.Contains(summary, "恢复检查点")
-}
-
-func acceptEditsPermissionAutoApproved(category, summary string) bool {
-	category = strings.ToLower(strings.TrimSpace(category))
-	summary = strings.ToLower(strings.TrimSpace(summary))
-	if strings.HasPrefix(summary, "history ") || strings.Contains(summary, "restore checkpoint") || strings.Contains(summary, "恢复检查点") {
-		return false
-	}
-	return acceptEditsAutoApproveCategories[category]
 }
 
 type PromptKind string

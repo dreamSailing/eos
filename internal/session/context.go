@@ -1,11 +1,11 @@
 package session
 
 import (
+	"github.com/dreamSailing/vb-coding/internal/ai"
+	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 	"math"
 	"strings"
 	"sync"
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
 // CompressionStrategy 压缩策略类型
@@ -133,15 +133,13 @@ func (c *ContextManager) setModelLocked(model string) {
 	// 根据模型上下文窗口动态设定上限
 	// 128K 模型：最多使用 80K
 	// 200K+ 模型：最多使用 120K
-	maxLimit := 80000
+	maxLimit := 16000
 	if window >= 200000 {
 		maxLimit = 120000
 	} else if window >= 128000 {
 		maxLimit = 80000
 	} else if window >= 32000 {
 		maxLimit = 24000
-	} else {
-		maxLimit = 16000
 	}
 	if maxPrompt > maxLimit {
 		maxPrompt = maxLimit

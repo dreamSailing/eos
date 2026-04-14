@@ -122,7 +122,7 @@ func TestUserConfirmPromptStillAsksUserInAutoMode(t *testing.T) {
 	select {
 	case ev := <-rc.eventsCh:
 		if ev.Type != "approval.required" && ev.Type != "inquiry.required" && ev.Type != "user_confirm.required" {
-			// The prompt bridge currently reuses approval-like events for confirm flows.
+			t.Fatalf("unexpected prompt event type: %s", ev.Type)
 		}
 		if ev.RID == "" {
 			t.Fatalf("prompt event missing request id: %#v", ev)

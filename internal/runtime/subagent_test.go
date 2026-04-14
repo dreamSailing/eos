@@ -14,17 +14,21 @@ func TestSubAgentManager_RequestContextReuseAndClear(t *testing.T) {
 	c1 := m.GetOrCreateRequestContext("rid", SubAgentTypeSeniorDev, context.Background(), msgs)
 	if c1 == nil {
 		t.Fatalf("expected context, got nil")
+		return
 	}
-	_ = m.AddMessage(c1.id, schema.AssistantMessage("a", nil))
+	c1ID := c1.id
+	_ = m.AddMessage(c1ID, schema.AssistantMessage("a", nil))
 
 	c2 := m.GetOrCreateRequestContext("rid", SubAgentTypeSeniorDev, context.Background(), msgs)
 	if c2 == nil {
 		t.Fatalf("expected context, got nil")
+		return
 	}
-	if c1.id != c2.id {
-		t.Fatalf("expected same id, got %q vs %q", c1.id, c2.id)
+	c2ID := c2.id
+	if c1ID != c2ID {
+		t.Fatalf("expected same id, got %q vs %q", c1ID, c2ID)
 	}
-	if got := len(m.GetMessages(c1.id)); got < 2 {
+	if got := len(m.GetMessages(c1ID)); got < 2 {
 		t.Fatalf("expected messages persisted, got %d", got)
 	}
 
@@ -32,8 +36,10 @@ func TestSubAgentManager_RequestContextReuseAndClear(t *testing.T) {
 	c3 := m.GetOrCreateRequestContext("rid", SubAgentTypeSeniorDev, context.Background(), msgs)
 	if c3 == nil {
 		t.Fatalf("expected context, got nil")
+		return
 	}
-	if c3.id == c1.id {
-		t.Fatalf("expected new id after clear, got %q", c3.id)
+	c3ID := c3.id
+	if c3ID == c1ID {
+		t.Fatalf("expected new id after clear, got %q", c3ID)
 	}
 }

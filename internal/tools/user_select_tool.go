@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -112,20 +111,20 @@ func (m *Manager) userSelectStructured(ctx context.Context, params map[string]in
 	}
 
 	data := map[string]any{
-		"confirmed":         res.Confirmed,
-		"multi":             multi,
-		"options":           opts,
-		"selected_indices":  indices,
-		"selected_options":  selected,
-		"text":              rawText,
-		"option":            strings.TrimSpace(res.Option),
-		"option_index":      res.OptionIndex,
+		"confirmed":        res.Confirmed,
+		"multi":            multi,
+		"options":          opts,
+		"selected_indices": indices,
+		"selected_options": selected,
+		"text":             rawText,
+		"option":           strings.TrimSpace(res.Option),
+		"option_index":     res.OptionIndex,
 	}
 
 	display := "Canceled"
 	if res.Confirmed {
 		if len(selected) > 0 {
-			display = fmt.Sprintf("%s", strings.Join(selected, ", "))
+			display = strings.Join(selected, ", ")
 		} else {
 			display = "Confirmed"
 		}
@@ -179,4 +178,3 @@ func parseSelectionIndices(s string, n int) []int {
 	}
 	return out
 }
-

@@ -143,7 +143,7 @@ func (m *Manager) createClient(ctx context.Context, rootPath string) (*Client, e
 
 	// 初始化
 	if err := client.Initialize(startCtx); err != nil {
-		client.Stop()
+		_ = client.Stop()
 		return nil, fmt.Errorf("failed to initialize: %w", err)
 	}
 
@@ -235,7 +235,7 @@ func (m *Manager) SetEnabled(enabled bool) {
 	if !enabled {
 		// 关闭所有客户端
 		for _, client := range m.clients {
-			client.Stop()
+			_ = client.Stop()
 		}
 		m.clients = make(map[string]*Client)
 	}

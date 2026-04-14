@@ -90,7 +90,7 @@ func (v *MCPConfigEditorView) View() string {
 	if v.edit {
 		title = i18n.T("mcp.editor.title.edit", v.language)
 	}
-	titleStyle := v.styles.PanelTitle.Copy().
+	titleStyle := v.styles.PanelTitle.
 		Width(v.width - 4).
 		Align(lipgloss.Center)
 
@@ -105,4 +105,3 @@ func (v *MCPConfigEditorView) View() string {
 
 	return content.String()
 }
-

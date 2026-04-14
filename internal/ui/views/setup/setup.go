@@ -175,7 +175,7 @@ func (v *SetupView) View() string {
 	var content strings.Builder
 
 	// 标题
-	titleStyle := v.styles.PanelTitle.Copy().
+	titleStyle := v.styles.PanelTitle.
 		Width(v.width - 4).
 		Align(lipgloss.Center)
 	content.WriteString(titleStyle.Render("Welcome to VB Coding"))
@@ -222,8 +222,8 @@ func (v *SetupView) View() string {
 
 	// 包装在面板样式中
 	panelStyle := lipgloss.NewStyle().
-		Width(v.width - 4).
-		Height(v.height - 2).
+		Width(v.width-4).
+		Height(v.height-2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(v.styles.Theme.Primary).
 		Padding(2, 4)
@@ -239,7 +239,7 @@ func (v *SetupView) renderProgress() string {
 	for i, step := range steps {
 		style := v.styles.TextMuted
 		if i == int(v.step) {
-			style = v.styles.TextInfo.Copy().Bold(true)
+			style = v.styles.TextInfo.Bold(true)
 		} else if i < int(v.step) {
 			style = v.styles.TextSuccess
 		}
@@ -255,7 +255,7 @@ func (v *SetupView) renderProviders() string {
 	for i, p := range v.providers {
 		style := v.styles.TextMuted
 		if i == v.focusIndex {
-			style = v.styles.TextInfo.Copy().Bold(true).Background(v.styles.Theme.SurfaceAlt)
+			style = v.styles.TextInfo.Bold(true).Background(v.styles.Theme.SurfaceAlt)
 		}
 		parts = append(parts, style.Render(" "+p+" "))
 	}

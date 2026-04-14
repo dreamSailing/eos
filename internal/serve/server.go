@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -61,8 +62,8 @@ type approval struct {
 	kind       string
 	callID     string
 	tool       string
-	parameters map[string]interface{}
-	preview    map[string]interface{}
+	parameters map[string]any
+	preview    map[string]any
 	digest     string
 	expiresAt  time.Time
 	decision   string
@@ -354,15 +355,7 @@ func (s *Server) handleSessionClose(req rpcRequest) {
 		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
 		return
 	}
-	s.mu.Lock()
-	sess := s.sessions[strings.TrimSpace(p.SessionID)]
-	if sess != nil {
-		for _, cancel := range sess.runningCancels {
-			cancel()
-		}
-		delete(s.sessions, sess.id)
-	}
-	s.mu.Unlock()
+	sess := s.removeSession(strings.TrimSpace(p.SessionID))
 	if sess == nil {
 		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
 		return
@@ -449,15 +442,7 @@ func (s *Server) handleSessionDelete(req rpcRequest) {
 		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
 		return
 	}
-	s.mu.Lock()
-	sess := s.sessions[strings.TrimSpace(p.SessionID)]
-	if sess != nil {
-		for _, cancel := range sess.runningCancels {
-			cancel()
-		}
-		delete(s.sessions, sess.id)
-	}
-	s.mu.Unlock()
+	sess := s.removeSession(strings.TrimSpace(p.SessionID))
 	if sess == nil {
 		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
 		return
@@ -962,7 +947,7 @@ func (s *Server) isApproved(sess *session, call toolCallDTO, digest string) bool
 	return false
 }
 
-func (s *Server) ensurePendingApproval(sess *session, call toolCallDTO, preview map[string]interface{}, digest string, risk string) string {
+func (s *Server) ensurePendingApproval(sess *session, call toolCallDTO, preview map[string]any, digest string, risk string) string {
 	ttl := int64(60)
 	if risk == "high" {
 		ttl = 30
@@ -1132,25 +1117,9 @@ func (s *Server) handleTaskCancel(req rpcRequest) {
 }
 
 func (s *Server) handleTaskResume(req rpcRequest) {
-	var p taskResumeParams
-	if err := decodeParams(req.Params, &p); err != nil {
-		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
-		return
-	}
-	if s.getSession(strings.TrimSpace(p.SessionID)) == nil {
-		s.reply(req.ID, nil, &rpcError{Code: -32002, Message: "SessionNotFound"})
-		return
-	}
-	taskID := strings.TrimSpace(p.TaskID)
-	if taskID == "" {
-		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
-		return
-	}
-	if err := s.tools.Tasks().Resume(context.Background(), taskID); err != nil {
-		s.reply(req.ID, nil, &rpcError{Code: -32012, Message: "Internal", Data: map[string]any{"taskID": taskID}})
-		return
-	}
-	s.reply(req.ID, map[string]any{"ok": true}, nil)
+	s.handleTaskAction(req, func(taskID string) error {
+		return s.tools.Tasks().Resume(context.Background(), taskID)
+	})
 }
 
 func (s *Server) handleTaskKill(req rpcRequest) {
@@ -1177,7 +1146,13 @@ func (s *Server) handleTaskKill(req rpcRequest) {
 }
 
 func (s *Server) handleTaskClose(req rpcRequest) {
-	var p taskCloseParams
+	s.handleTaskAction(req, func(taskID string) error {
+		return s.tools.Tasks().Close(context.Background(), taskID)
+	})
+}
+
+func (s *Server) handleTaskAction(req rpcRequest, action func(taskID string) error) {
+	var p taskResumeParams
 	if err := decodeParams(req.Params, &p); err != nil {
 		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
 		return
@@ -1191,11 +1166,25 @@ func (s *Server) handleTaskClose(req rpcRequest) {
 		s.reply(req.ID, nil, &rpcError{Code: -32005, Message: "InvalidParams"})
 		return
 	}
-	if err := s.tools.Tasks().Close(context.Background(), taskID); err != nil {
+	if err := action(taskID); err != nil {
 		s.reply(req.ID, nil, &rpcError{Code: -32012, Message: "Internal", Data: map[string]any{"taskID": taskID}})
 		return
 	}
 	s.reply(req.ID, map[string]any{"ok": true}, nil)
+}
+
+func (s *Server) removeSession(id string) *session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := s.sessions[strings.TrimSpace(id)]
+	if sess == nil {
+		return nil
+	}
+	for _, cancel := range sess.runningCancels {
+		cancel()
+	}
+	delete(s.sessions, sess.id)
+	return sess
 }
 
 func (s *Server) getSession(id string) *session {
@@ -1227,30 +1216,6 @@ func (s *Server) currentToolDefinitions(workspaceRoot string) []toolapi.ToolDefi
 	s.toolDefs = append([]toolapi.ToolDefinition(nil), defs...)
 	s.mu.Unlock()
 	return defs
-}
-
-func (s *Server) currentExecutableDefinitions(sess *session) []toolapi.ToolDefinition {
-	if sess == nil {
-		return nil
-	}
-	return toolapi.FilterVisibleTools(s.currentToolDefinitions(sess.workspaceAbs), toolapi.ExecSession{
-		AllowedTools:          sess.allowedTools,
-		ExecutionMode:         sess.executionMode,
-		RequireApprovalDigest: sess.requireApprovalDigest,
-		WorkspaceRoot:         sess.workspaceAbs,
-	})
-}
-
-func (s *Server) currentVisibleCapabilities(sess *session) []toolapi.ToolDefinition {
-	if sess == nil {
-		return nil
-	}
-	return toolapi.FilterVisibleCapabilities(s.currentToolDefinitions(sess.workspaceAbs), toolapi.ExecSession{
-		AllowedTools:          sess.allowedTools,
-		ExecutionMode:         sess.executionMode,
-		RequireApprovalDigest: sess.requireApprovalDigest,
-		WorkspaceRoot:         sess.workspaceAbs,
-	})
 }
 
 func (s *Server) reply(id json.RawMessage, result any, err *rpcError) {
@@ -1320,9 +1285,7 @@ func (s *Server) newRequestEvent(sess *session, eventType protocol.EventType, re
 			"parameters": cloneMap(call.Parameters),
 		},
 	}
-	for k, v := range extra {
-		payload[k] = v
-	}
+	maps.Copy(payload, extra)
 	return protocol.NewEvent(eventType, protocol.EventOptions{
 		SessionID:     sessionIDOf(sess),
 		ThreadID:      sessionIDOf(sess),
@@ -1376,7 +1339,7 @@ func (s *Server) newToolResultEvent(sess *session, correlationID string, res too
 	})
 }
 
-func (s *Server) newApprovalRequiredEvent(sess *session, requestID string, call toolCallDTO, preview map[string]interface{}, risk, digest string, ttl int64) protocol.Envelope {
+func (s *Server) newApprovalRequiredEvent(sess *session, requestID string, call toolCallDTO, preview map[string]any, risk, digest string, ttl int64) protocol.Envelope {
 	payload := protocol.ApprovalRequestPayload(protocol.ApprovalRequest{
 		ApprovalID: strings.TrimSpace(requestID),
 		Title:      "Execution confirmation",
@@ -1769,7 +1732,7 @@ func errToRPC(err error) *rpcError {
 	return &rpcError{Code: -32012, Message: "Internal"}
 }
 
-func (s *Server) buildPreview(sess *session, call toolCallDTO) (map[string]interface{}, error) {
+func (s *Server) buildPreview(sess *session, call toolCallDTO) (map[string]any, error) {
 	if err := s.checkWorkspaceConstraints(sess, call); err != nil {
 		return nil, err
 	}
@@ -1778,7 +1741,7 @@ func (s *Server) buildPreview(sess *session, call toolCallDTO) (map[string]inter
 		cmd, _ := call.Parameters["command"].(string)
 		cmd = strings.TrimSpace(cmd)
 		if cmd == "" {
-			return map[string]interface{}{}, nil
+			return map[string]any{}, nil
 		}
 		if s.policy != nil {
 			rule := s.policy.FindRule("bash", "high")
@@ -1789,19 +1752,19 @@ func (s *Server) buildPreview(sess *session, call toolCallDTO) (map[string]inter
 				}
 			}
 		}
-		return map[string]interface{}{"command": cmd, "safetyFindings": []any{}}, nil
+		return map[string]any{"command": cmd, "safetyFindings": []any{}}, nil
 	case "edit":
 		mode, _ := call.Parameters["mode"].(string)
 		file, _ := call.Parameters["file"].(string)
-		return map[string]interface{}{"mode": strings.TrimSpace(mode), "file": strings.TrimSpace(file)}, nil
+		return map[string]any{"mode": strings.TrimSpace(mode), "file": strings.TrimSpace(file)}, nil
 	case "fs":
 		mode, _ := call.Parameters["mode"].(string)
 		path, _ := call.Parameters["path"].(string)
 		src, _ := call.Parameters["source"].(string)
 		dst, _ := call.Parameters["destination"].(string)
-		return map[string]interface{}{"mode": strings.TrimSpace(mode), "path": strings.TrimSpace(path), "source": strings.TrimSpace(src), "destination": strings.TrimSpace(dst)}, nil
+		return map[string]any{"mode": strings.TrimSpace(mode), "path": strings.TrimSpace(path), "source": strings.TrimSpace(src), "destination": strings.TrimSpace(dst)}, nil
 	default:
-		return map[string]interface{}{}, nil
+		return map[string]any{}, nil
 	}
 }
 
@@ -1895,18 +1858,16 @@ func containsExact(items []string, s string) bool {
 	return false
 }
 
-func cloneMap(m map[string]interface{}) map[string]interface{} {
+func cloneMap(m map[string]any) map[string]any {
 	if m == nil {
-		return map[string]interface{}{}
+		return map[string]any{}
 	}
-	cp := make(map[string]interface{}, len(m))
-	for k, v := range m {
-		cp[k] = v
-	}
+	cp := make(map[string]any, len(m))
+	maps.Copy(cp, m)
 	return cp
 }
 
-func (s *Server) confirmSummary(call toolCallDTO, preview map[string]interface{}) string {
+func (s *Server) confirmSummary(call toolCallDTO, preview map[string]any) string {
 	switch strings.ToLower(call.Tool) {
 	case "bash":
 		cmd, _ := preview["command"].(string)
@@ -1966,10 +1927,6 @@ func buildToolDefinitions(defs []toolapi.ToolDefinition, sess *toolapi.ExecSessi
 		out = append(out, item)
 	}
 	return out
-}
-
-func defsToDTOs(defs []toolapi.ToolDefinition) []toolDefinitionDTO {
-	return buildToolDefinitions(defs, nil)
 }
 
 func defsToDTOsForSession(defs []toolapi.ToolDefinition, sess toolapi.ExecSession) []toolDefinitionDTO {

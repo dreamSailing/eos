@@ -156,7 +156,7 @@ func DoHTTPRetry(ctx context.Context, fn RetryableFunc, policy RetryPolicy) *Ret
 				)
 
 				// 关闭响应体
-				resp.Body.Close()
+				_ = resp.Body.Close()
 
 				// 如果不是最后一次尝试，继续重试
 				if attempt < policy.MaxAttempts-1 {

@@ -158,7 +158,7 @@ func (h *HelpView) View() string {
 
 // renderKey 渲染快捷键
 func (h *HelpView) renderKey(key, desc string) string {
-	keyStyle := h.styles.TextInfo.Copy().Bold(true)
+	keyStyle := h.styles.TextInfo.Bold(true)
 	keyText := key
 	pad := 12 - lipgloss.Width(keyText)
 	if pad < 1 {
@@ -169,7 +169,7 @@ func (h *HelpView) renderKey(key, desc string) string {
 
 // renderCmd 渲染命令
 func (h *HelpView) renderCmd(cmd, desc string) string {
-	cmdStyle := h.styles.TextInfo.Copy().Bold(true)
+	cmdStyle := h.styles.TextInfo.Bold(true)
 	cmdText := cmd
 	pad := 14 - lipgloss.Width(cmdText)
 	if pad < 1 {

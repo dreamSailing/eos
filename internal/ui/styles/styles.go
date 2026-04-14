@@ -4,369 +4,369 @@ import "github.com/charmbracelet/lipgloss"
 
 // Styles 是应用程序中使用的所有样式的集合
 type Styles struct {
-    Theme *Theme // 主题引用
+	Theme *Theme // 主题引用
 
-    // 全局样式
-    App        lipgloss.Style
-    Surface    lipgloss.Style
+	// 全局样式
+	App     lipgloss.Style
+	Surface lipgloss.Style
 
-    // 内容区域
-    Content    lipgloss.Style
+	// 内容区域
+	Content lipgloss.Style
 
-    // 输入区域
-    Input      lipgloss.Style
-    InputFocus lipgloss.Style
+	// 输入区域
+	Input      lipgloss.Style
+	InputFocus lipgloss.Style
 
-    // 提示区域
-    Hints      lipgloss.Style
+	// 提示区域
+	Hints lipgloss.Style
 
-    // 状态栏
-    StatusBar  lipgloss.Style
+	// 状态栏
+	StatusBar lipgloss.Style
 
-    // 面板样式
-    Panel      lipgloss.Style
-    PanelTitle lipgloss.Style
-    PanelBody  lipgloss.Style
+	// 面板样式
+	Panel      lipgloss.Style
+	PanelTitle lipgloss.Style
+	PanelBody  lipgloss.Style
 
-    // 按钮样式
-    Button     lipgloss.Style
-    ButtonFocus lipgloss.Style
+	// 按钮样式
+	Button      lipgloss.Style
+	ButtonFocus lipgloss.Style
 
-    // 表格样式
-    Table      lipgloss.Style
-    TableHeader lipgloss.Style
-    TableCell  lipgloss.Style
+	// 表格样式
+	Table       lipgloss.Style
+	TableHeader lipgloss.Style
+	TableCell   lipgloss.Style
 
-    // 文本样式
-    Text        lipgloss.Style
-    TextMuted   lipgloss.Style
-    TextSuccess lipgloss.Style
-    TextError   lipgloss.Style
-    TextWarning lipgloss.Style
-    TextInfo    lipgloss.Style
+	// 文本样式
+	Text        lipgloss.Style
+	TextMuted   lipgloss.Style
+	TextSuccess lipgloss.Style
+	TextError   lipgloss.Style
+	TextWarning lipgloss.Style
+	TextInfo    lipgloss.Style
 
-    // 边框样式
-    Border     lipgloss.Border
+	// 边框样式
+	Border lipgloss.Border
 
-    // Markdown 样式
-    MarkdownCodeBlock lipgloss.Style
-    MarkdownLink      lipgloss.Style
-    MarkdownHeader    lipgloss.Style
+	// Markdown 样式
+	MarkdownCodeBlock lipgloss.Style
+	MarkdownLink      lipgloss.Style
+	MarkdownHeader    lipgloss.Style
 
-    // 工具调用样式
-    ToolCall    lipgloss.Style
-    ToolResult  lipgloss.Style
-    Thinking    lipgloss.Style
+	// 工具调用样式
+	ToolCall   lipgloss.Style
+	ToolResult lipgloss.Style
+	Thinking   lipgloss.Style
 
-    // 消息组件样式 (新增)
-    // 用户消息
-    MsgUser         lipgloss.Style
-    MsgUserPrefix   lipgloss.Style
-    MsgUserBorder   lipgloss.Style
+	// 消息组件样式 (新增)
+	// 用户消息
+	MsgUser       lipgloss.Style
+	MsgUserPrefix lipgloss.Style
+	MsgUserBorder lipgloss.Style
 
-    // AI消息
-    MsgAI           lipgloss.Style
-    MsgAIHeader     lipgloss.Style
-    MsgAIFooter     lipgloss.Style
-    MsgAIBorder     lipgloss.Style
+	// AI消息
+	MsgAI       lipgloss.Style
+	MsgAIHeader lipgloss.Style
+	MsgAIFooter lipgloss.Style
+	MsgAIBorder lipgloss.Style
 
-    // 工具调用消息
-    MsgTool         lipgloss.Style
-    MsgToolHeader   lipgloss.Style
-    MsgToolSuccess  lipgloss.Style
-    MsgToolError    lipgloss.Style
-    MsgToolBorder   lipgloss.Style
+	// 工具调用消息
+	MsgTool        lipgloss.Style
+	MsgToolHeader  lipgloss.Style
+	MsgToolSuccess lipgloss.Style
+	MsgToolError   lipgloss.Style
+	MsgToolBorder  lipgloss.Style
 
-    // 子Agent消息
-    MsgAgent        lipgloss.Style
-    MsgAgentHeader  lipgloss.Style
-    MsgAgentRunning lipgloss.Style
-    MsgAgentDone    lipgloss.Style
-    MsgAgentBorder  lipgloss.Style
-    MsgCopyButton   lipgloss.Style
+	// 子Agent消息
+	MsgAgent        lipgloss.Style
+	MsgAgentHeader  lipgloss.Style
+	MsgAgentRunning lipgloss.Style
+	MsgAgentDone    lipgloss.Style
+	MsgAgentBorder  lipgloss.Style
+	MsgCopyButton   lipgloss.Style
 
-    // 计划消息
-    MsgPlan         lipgloss.Style
-    MsgPlanHeader   lipgloss.Style
-    MsgPlanStep     lipgloss.Style
-    MsgPlanBorder   lipgloss.Style
+	// 计划消息
+	MsgPlan       lipgloss.Style
+	MsgPlanHeader lipgloss.Style
+	MsgPlanStep   lipgloss.Style
+	MsgPlanBorder lipgloss.Style
 
-    // 思考过程
-    MsgThinking     lipgloss.Style
-    MsgThinkingHeader lipgloss.Style
-    MsgThinkingBorder lipgloss.Style
+	// 思考过程
+	MsgThinking       lipgloss.Style
+	MsgThinkingHeader lipgloss.Style
+	MsgThinkingBorder lipgloss.Style
 
-    // 系统消息
-    MsgSystem       lipgloss.Style
-    MsgError        lipgloss.Style
-    MsgWarning      lipgloss.Style
-    MsgInfo         lipgloss.Style
+	// 系统消息
+	MsgSystem  lipgloss.Style
+	MsgError   lipgloss.Style
+	MsgWarning lipgloss.Style
+	MsgInfo    lipgloss.Style
 }
 
 // NewStyles 基于给定的主题创建新的样式集�?
 func NewStyles(theme *Theme) *Styles {
-    s := &Styles{Theme: theme}
+	s := &Styles{Theme: theme}
 
-    // 全局样式
-    s.App = lipgloss.NewStyle().
-        Background(theme.Background).
-        Foreground(theme.Text)
+	// 全局样式
+	s.App = lipgloss.NewStyle().
+		Background(theme.Background).
+		Foreground(theme.Text)
 
-    s.Surface = lipgloss.NewStyle().
-        Background(theme.Surface).
-        Foreground(theme.Text)
+	s.Surface = lipgloss.NewStyle().
+		Background(theme.Surface).
+		Foreground(theme.Text)
 
-    // 内容区域
-    s.Content = lipgloss.NewStyle().
-        Background(theme.Surface).
-        Foreground(theme.Text).
-        Padding(0, 1)
+	// 内容区域
+	s.Content = lipgloss.NewStyle().
+		Background(theme.Surface).
+		Foreground(theme.Text).
+		Padding(0, 1)
 
-    // 输入区域
-    s.Input = lipgloss.NewStyle().
-        Background(theme.SurfaceAlt).
-        Foreground(theme.Text).
-        Border(lipgloss.NormalBorder(), true, true, true, true).
-        BorderForeground(theme.Muted).
-        Padding(0, 1)
+	// 输入区域
+	s.Input = lipgloss.NewStyle().
+		Background(theme.SurfaceAlt).
+		Foreground(theme.Text).
+		Border(lipgloss.NormalBorder(), true, true, true, true).
+		BorderForeground(theme.Muted).
+		Padding(0, 1)
 
-    s.InputFocus = s.Input.Copy().
-        BorderForeground(theme.Primary)
+	s.InputFocus = s.Input
+	s.InputFocus = s.InputFocus.BorderForeground(theme.Primary)
 
-    // 提示区域
-    s.Hints = lipgloss.NewStyle().
-        Background(theme.Surface).
-        Foreground(theme.TextMuted).
-        Padding(0, 1)
+	// 提示区域
+	s.Hints = lipgloss.NewStyle().
+		Background(theme.Surface).
+		Foreground(theme.TextMuted).
+		Padding(0, 1)
 
-    // 状态栏
-    s.StatusBar = lipgloss.NewStyle().
-        Background(theme.SurfaceAlt).
-        Foreground(theme.Text).
-        Padding(0, 1)
+	// 状态栏
+	s.StatusBar = lipgloss.NewStyle().
+		Background(theme.SurfaceAlt).
+		Foreground(theme.Text).
+		Padding(0, 1)
 
-    // 面板样式
-    s.Panel = lipgloss.NewStyle().
-        Background(theme.Surface).
-        Foreground(theme.Text).
-        Border(lipgloss.NormalBorder(), true, true, true, true).
-        BorderForeground(theme.Muted)
+	// 面板样式
+	s.Panel = lipgloss.NewStyle().
+		Background(theme.Surface).
+		Foreground(theme.Text).
+		Border(lipgloss.NormalBorder(), true, true, true, true).
+		BorderForeground(theme.Muted)
 
-    s.PanelTitle = lipgloss.NewStyle().
-        Background(theme.SurfaceAlt).
-        Foreground(theme.Primary).
-        Bold(true).
-        Padding(0, 1)
+	s.PanelTitle = lipgloss.NewStyle().
+		Background(theme.SurfaceAlt).
+		Foreground(theme.Primary).
+		Bold(true).
+		Padding(0, 1)
 
-    s.PanelBody = lipgloss.NewStyle().
-        Background(theme.Surface).
-        Foreground(theme.Text).
-        Padding(1, 1)
+	s.PanelBody = lipgloss.NewStyle().
+		Background(theme.Surface).
+		Foreground(theme.Text).
+		Padding(1, 1)
 
-    // 按钮样式
-    s.Button = lipgloss.NewStyle().
-        Background(theme.SurfaceAlt).
-        Foreground(theme.Text).
-        Border(lipgloss.NormalBorder(), true, true, true, true).
-        BorderForeground(theme.Muted).
-        Padding(0, 2)
+	// 按钮样式
+	s.Button = lipgloss.NewStyle().
+		Background(theme.SurfaceAlt).
+		Foreground(theme.Text).
+		Border(lipgloss.NormalBorder(), true, true, true, true).
+		BorderForeground(theme.Muted).
+		Padding(0, 2)
 
-    s.ButtonFocus = s.Button.Copy().
-        Background(theme.Primary).
-        Foreground(theme.Background).
-        BorderForeground(theme.Primary)
+	s.ButtonFocus = s.Button
+	s.ButtonFocus = s.ButtonFocus.
+		Background(theme.Primary).
+		Foreground(theme.Background).
+		BorderForeground(theme.Primary)
 
-    // 表格样式
-    s.Table = lipgloss.NewStyle().
-        Border(lipgloss.NormalBorder(), true, true, true, true).
-        BorderForeground(theme.Muted)
+	// 表格样式
+	s.Table = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), true, true, true, true).
+		BorderForeground(theme.Muted)
 
-    s.TableHeader = theme.TableHeader
+	s.TableHeader = theme.TableHeader
 
-    s.TableCell = theme.TableCell
+	s.TableCell = theme.TableCell
 
-    // 文本样式
-    s.Text = lipgloss.NewStyle().
-        Foreground(theme.Text)
+	// 文本样式
+	s.Text = lipgloss.NewStyle().
+		Foreground(theme.Text)
 
-    s.TextMuted = lipgloss.NewStyle().
-        Foreground(theme.TextMuted)
+	s.TextMuted = lipgloss.NewStyle().
+		Foreground(theme.TextMuted)
 
-    s.TextSuccess = lipgloss.NewStyle().
-        Foreground(theme.Success)
+	s.TextSuccess = lipgloss.NewStyle().
+		Foreground(theme.Success)
 
-    s.TextError = lipgloss.NewStyle().
-        Foreground(theme.Error)
+	s.TextError = lipgloss.NewStyle().
+		Foreground(theme.Error)
 
-    s.TextWarning = lipgloss.NewStyle().
-        Foreground(theme.Warning)
+	s.TextWarning = lipgloss.NewStyle().
+		Foreground(theme.Warning)
 
-    s.TextInfo = lipgloss.NewStyle().
-        Foreground(theme.Info)
+	s.TextInfo = lipgloss.NewStyle().
+		Foreground(theme.Info)
 
-    // 边框样式
-    s.Border = theme.Border
+	// 边框样式
+	s.Border = theme.Border
 
-    // Markdown 样式
-    s.MarkdownCodeBlock = lipgloss.NewStyle().
-        Background(theme.SurfaceAlt).
-        Foreground(theme.Text).
-        Padding(0, 1).
-        Border(lipgloss.NormalBorder(), true, true, true, true).
-        BorderForeground(theme.Muted)
+	// Markdown 样式
+	s.MarkdownCodeBlock = lipgloss.NewStyle().
+		Background(theme.SurfaceAlt).
+		Foreground(theme.Text).
+		Padding(0, 1).
+		Border(lipgloss.NormalBorder(), true, true, true, true).
+		BorderForeground(theme.Muted)
 
-    s.MarkdownLink = lipgloss.NewStyle().
-        Foreground(theme.Primary).
-        Underline(true)
+	s.MarkdownLink = lipgloss.NewStyle().
+		Foreground(theme.Primary).
+		Underline(true)
 
-    s.MarkdownHeader = lipgloss.NewStyle().
-        Foreground(theme.Primary).
-        Bold(true)
+	s.MarkdownHeader = lipgloss.NewStyle().
+		Foreground(theme.Primary).
+		Bold(true)
 
-    // 工具调用样式
-    s.ToolCall = lipgloss.NewStyle().
-        Background(theme.SurfaceAlt).
-        Foreground(theme.Text).
-        Padding(0, 1)
+	// 工具调用样式
+	s.ToolCall = lipgloss.NewStyle().
+		Background(theme.SurfaceAlt).
+		Foreground(theme.Text).
+		Padding(0, 1)
 
-    s.ToolResult = lipgloss.NewStyle().
-        Background(theme.SurfaceAlt).
-        Foreground(theme.Text).
-        Padding(0, 1)
+	s.ToolResult = lipgloss.NewStyle().
+		Background(theme.SurfaceAlt).
+		Foreground(theme.Text).
+		Padding(0, 1)
 
-    s.Thinking = lipgloss.NewStyle().
-        Background(theme.SurfaceAlt).
-        Foreground(theme.Info).
-        Padding(0, 1)
+	s.Thinking = lipgloss.NewStyle().
+		Background(theme.SurfaceAlt).
+		Foreground(theme.Info).
+		Padding(0, 1)
 
-    // 消息组件样式 (新增)
-    s.MsgUser = lipgloss.NewStyle().
-        Foreground(theme.Text).
-        Background(theme.Primary)
+	// 消息组件样式 (新增)
+	s.MsgUser = lipgloss.NewStyle().
+		Foreground(theme.Text).
+		Background(theme.Primary)
 
-    s.MsgUserPrefix = lipgloss.NewStyle().
-        Foreground(theme.Text).
-        Background(theme.Primary)
+	s.MsgUserPrefix = lipgloss.NewStyle().
+		Foreground(theme.Text).
+		Background(theme.Primary)
 
-    s.MsgUserBorder = lipgloss.NewStyle().
-        Border(lipgloss.RoundedBorder()).
-        BorderForeground(theme.Primary).
-        Background(theme.Primary).
-        Padding(0, 1)
+	s.MsgUserBorder = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.Primary).
+		Background(theme.Primary).
+		Padding(0, 1)
 
-    // AI消息
-    s.MsgAI = lipgloss.NewStyle().
-        Foreground(theme.Text).
-        Padding(0, 0)
+	// AI消息
+	s.MsgAI = lipgloss.NewStyle().
+		Foreground(theme.Text).
+		Padding(0, 0)
 
-    s.MsgAIHeader = lipgloss.NewStyle().
-        Foreground(theme.Primary).
-        Bold(true)
+	s.MsgAIHeader = lipgloss.NewStyle().
+		Foreground(theme.Primary).
+		Bold(true)
 
-    s.MsgAIFooter = lipgloss.NewStyle().
-        Foreground(theme.TextMuted).
-        Italic(true)
+	s.MsgAIFooter = lipgloss.NewStyle().
+		Foreground(theme.TextMuted).
+		Italic(true)
 
-    s.MsgAIBorder = lipgloss.NewStyle().
-        Border(lipgloss.RoundedBorder()).
-        BorderForeground(theme.Muted).
-        Background(theme.SurfaceAlt).
-        Padding(0, 1)
+	s.MsgAIBorder = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.Muted).
+		Background(theme.SurfaceAlt).
+		Padding(0, 1)
 
-    // 工具调用消息
-    s.MsgTool = lipgloss.NewStyle().
-        Foreground(theme.Text).
-        Padding(0, 0)
+	// 工具调用消息
+	s.MsgTool = lipgloss.NewStyle().
+		Foreground(theme.Text).
+		Padding(0, 0)
 
-    s.MsgToolHeader = lipgloss.NewStyle().
-        Foreground(theme.Warning).
-        Bold(true)
+	s.MsgToolHeader = lipgloss.NewStyle().
+		Foreground(theme.Warning).
+		Bold(true)
 
-    s.MsgToolSuccess = lipgloss.NewStyle().
-        Foreground(theme.Success)
+	s.MsgToolSuccess = lipgloss.NewStyle().
+		Foreground(theme.Success)
 
-    s.MsgToolError = lipgloss.NewStyle().
-        Foreground(theme.Error)
+	s.MsgToolError = lipgloss.NewStyle().
+		Foreground(theme.Error)
 
-    s.MsgToolBorder = lipgloss.NewStyle().
-        Border(lipgloss.RoundedBorder()).
-        BorderForeground(theme.Warning).
-        Padding(0, 1)
+	s.MsgToolBorder = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.Warning).
+		Padding(0, 1)
 
-    // 子Agent消息
-    s.MsgAgent = lipgloss.NewStyle().
-        Foreground(theme.Text).
-        Padding(0, 0)
+	// 子Agent消息
+	s.MsgAgent = lipgloss.NewStyle().
+		Foreground(theme.Text).
+		Padding(0, 0)
 
-    s.MsgAgentHeader = lipgloss.NewStyle().
-        Foreground(theme.Secondary).
-        Bold(true)
+	s.MsgAgentHeader = lipgloss.NewStyle().
+		Foreground(theme.Secondary).
+		Bold(true)
 
-    s.MsgAgentRunning = lipgloss.NewStyle().
-        Foreground(theme.Info)
+	s.MsgAgentRunning = lipgloss.NewStyle().
+		Foreground(theme.Info)
 
-    s.MsgAgentDone = lipgloss.NewStyle().
-        Foreground(theme.Success)
+	s.MsgAgentDone = lipgloss.NewStyle().
+		Foreground(theme.Success)
 
-    s.MsgAgentBorder = lipgloss.NewStyle().
-        Border(lipgloss.RoundedBorder()).
-        BorderForeground(theme.Secondary).
-        Padding(0, 1)
+	s.MsgAgentBorder = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.Secondary).
+		Padding(0, 1)
 
-    s.MsgCopyButton = lipgloss.NewStyle().
-        Foreground(theme.Background).
-        Background(theme.Primary).
-        Bold(true).
-        Padding(0, 1)
+	s.MsgCopyButton = lipgloss.NewStyle().
+		Foreground(theme.Background).
+		Background(theme.Primary).
+		Bold(true).
+		Padding(0, 1)
 
-    // 计划消息
-    s.MsgPlan = lipgloss.NewStyle().
-        Foreground(theme.Text).
-        Padding(0, 0)
+	// 计划消息
+	s.MsgPlan = lipgloss.NewStyle().
+		Foreground(theme.Text).
+		Padding(0, 0)
 
-    s.MsgPlanHeader = lipgloss.NewStyle().
-        Foreground(theme.Accent).
-        Bold(true)
+	s.MsgPlanHeader = lipgloss.NewStyle().
+		Foreground(theme.Accent).
+		Bold(true)
 
-    s.MsgPlanStep = lipgloss.NewStyle().
-        Foreground(theme.Text)
+	s.MsgPlanStep = lipgloss.NewStyle().
+		Foreground(theme.Text)
 
-    s.MsgPlanBorder = lipgloss.NewStyle().
-        Border(lipgloss.RoundedBorder()).
-        BorderForeground(theme.Accent).
-        Padding(0, 1)
+	s.MsgPlanBorder = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.Accent).
+		Padding(0, 1)
 
-    // 思考过程
-    s.MsgThinking = lipgloss.NewStyle().
-        Foreground(theme.Text).
-        Padding(0, 0)
+	// 思考过程
+	s.MsgThinking = lipgloss.NewStyle().
+		Foreground(theme.Text).
+		Padding(0, 0)
 
-    s.MsgThinkingHeader = lipgloss.NewStyle().
-        Foreground(theme.Info).
-        Bold(true)
+	s.MsgThinkingHeader = lipgloss.NewStyle().
+		Foreground(theme.Info).
+		Bold(true)
 
-    s.MsgThinkingBorder = lipgloss.NewStyle().
-        Border(lipgloss.RoundedBorder()).
-        BorderForeground(theme.Info).
-        Padding(0, 1).
-        Background(theme.SurfaceAlt)
+	s.MsgThinkingBorder = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.Info).
+		Padding(0, 1).
+		Background(theme.SurfaceAlt)
 
-    // 系统消息
-    s.MsgSystem = lipgloss.NewStyle().
-        Foreground(theme.TextMuted).
-        Italic(true)
+	// 系统消息
+	s.MsgSystem = lipgloss.NewStyle().
+		Foreground(theme.TextMuted).
+		Italic(true)
 
-    s.MsgError = lipgloss.NewStyle().
-        Foreground(theme.Error).
-        Bold(true)
+	s.MsgError = lipgloss.NewStyle().
+		Foreground(theme.Error).
+		Bold(true)
 
-    s.MsgWarning = lipgloss.NewStyle().
-        Foreground(theme.Warning).
-        Bold(true)
+	s.MsgWarning = lipgloss.NewStyle().
+		Foreground(theme.Warning).
+		Bold(true)
 
-    s.MsgInfo = lipgloss.NewStyle().
-        Foreground(theme.Info)
+	s.MsgInfo = lipgloss.NewStyle().
+		Foreground(theme.Info)
 
-    return s
+	return s
 }
-

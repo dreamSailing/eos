@@ -76,10 +76,7 @@ func (rc *RuntimeCore) shouldRestartAfterPanic() bool {
 	}
 	rc.panicAt = now
 
-	if rc.panicHits > 3 {
-		return false
-	}
-	return true
+	return rc.panicHits <= 3
 }
 
 func (rc *RuntimeCore) restartLoopAsync() {

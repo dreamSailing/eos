@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -103,9 +102,8 @@ func (m *Manager) userInputStructured(ctx context.Context, params map[string]int
 		if txt == "" {
 			display = "Confirmed"
 		} else {
-			display = fmt.Sprintf("%s", txt)
+			display = txt
 		}
 	}
 	return ToolResult{Type: "tool_result", Tool: ToolUserInput, Status: "success", Data: data, Display: display}
 }
-

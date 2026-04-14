@@ -26,19 +26,19 @@ type MarkdownRenderer struct {
 
 // RenderStyles 渲染样式
 type RenderStyles struct {
-	Header       lipgloss.Style
-	CodeBlock    lipgloss.Style
-	InlineCode   lipgloss.Style
-	Link         lipgloss.Style
-	Bold         lipgloss.Style
-	Italic       lipgloss.Style
-	Strike       lipgloss.Style
-	List         lipgloss.Style
-	Quote        lipgloss.Style
-	Table        lipgloss.Style
-	TableHeader  lipgloss.Style
-	TableCell    lipgloss.Style
-	Normal       lipgloss.Style
+	Header      lipgloss.Style
+	CodeBlock   lipgloss.Style
+	InlineCode  lipgloss.Style
+	Link        lipgloss.Style
+	Bold        lipgloss.Style
+	Italic      lipgloss.Style
+	Strike      lipgloss.Style
+	List        lipgloss.Style
+	Quote       lipgloss.Style
+	Table       lipgloss.Style
+	TableHeader lipgloss.Style
+	TableCell   lipgloss.Style
+	Normal      lipgloss.Style
 }
 
 // NewRenderStyles 创建新的渲染样式
@@ -104,8 +104,10 @@ func NewThemeRenderStyles(s *uistyles.Styles) *RenderStyles {
 		return NewPlainRenderStyles()
 	}
 	t := s.Theme
+	headerStyle := s.MarkdownHeader
+	linkStyle := s.MarkdownLink
 	return &RenderStyles{
-		Header: s.MarkdownHeader.Copy(),
+		Header: headerStyle,
 		CodeBlock: lipgloss.NewStyle().
 			Background(t.SurfaceAlt).
 			BorderLeft(true).
@@ -115,7 +117,7 @@ func NewThemeRenderStyles(s *uistyles.Styles) *RenderStyles {
 		InlineCode: lipgloss.NewStyle().
 			Background(t.SurfaceAlt).
 			Foreground(t.Text),
-		Link: s.MarkdownLink.Copy(),
+		Link: linkStyle,
 		Bold: lipgloss.NewStyle().Bold(true),
 		Italic: lipgloss.NewStyle().
 			Italic(true),

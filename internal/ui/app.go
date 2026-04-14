@@ -63,13 +63,12 @@ type AppModel struct {
 
 	// 其他视图
 	helpView    *help.HelpView
-	setupView   interface{} // 可以是 *setup.SetupView 或 *setup.ModelSetupView
+	setupView   any // 可以是 *setup.SetupView 或 *setup.ModelSetupView
 	confirmView *confirm.Model
 	prevView    string
 
 	// 视图状态
 	activeView string // "shell", "panel", "help", "setup", "confirm"
-	showHelp   bool
 
 	// 消息跟踪
 	currentAIStartTime time.Time
@@ -282,7 +281,7 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 	panelMap["versions"] = panels.NewVersionsPanel(styles)
 	panelMap["tasks"] = panels.NewTasksPanel(styles, lang)
 
-	setupView := interface{}(setup.NewSetupView(styles))
+	setupView := any(setup.NewSetupView(styles))
 	activeView := "shell"
 	if len(cfg.Models) == 0 {
 		base, key, model, _ := adapter.ResolveAPIConfig()
@@ -668,7 +667,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case confirm.ResultMsg:
 		if strings.HasPrefix(msg.Kind, "bg_kill:") {
-			id := strings.TrimSpace(strings.TrimPrefix(msg.Kind, "bg_kill:"))
+			id, _ := strings.CutPrefix(msg.Kind, "bg_kill:")
+			id = strings.TrimSpace(id)
 			if msg.Decision == "confirm" && id != "" {
 				_, err := bg.Default().Kill(id)
 				if err != nil {
@@ -2053,9 +2053,8 @@ func (m *AppModel) updateHintsBasedOnInput() {
 	// 实际处理在 handleGlobalKey 中
 
 	// 如果以 / 开头，显示斜杠命令提示
-	if strings.HasPrefix(text, "/") {
+	if cmdLine, ok := strings.CutPrefix(text, "/"); ok {
 		// 检查是否有空格（有参数时不显示提示）
-		cmdLine := strings.TrimPrefix(text, "/")
 		if !strings.Contains(cmdLine, " ") {
 			m.shell.ShowSlashHints(cmdLine)
 		} else {
@@ -2648,11 +2647,6 @@ func (m *AppModel) handleSettingsSave(settings *settings.Settings) {
 	}
 
 	m.appendSystem(i18n.T("settings.saved", m.state.Language), "success")
-}
-
-// handleSettingsReset 处理重置设置
-func (m *AppModel) handleSettingsReset() {
-	m.appendSystem(i18n.T("settings.reset", m.state.Language), "warning")
 }
 
 func (m *AppModel) handleVersionsLoad(pathRel string) {

@@ -3,9 +3,9 @@ package git
 import (
 	"context"
 	"fmt"
-	"strings"
 	"github.com/dreamSailing/vb-coding/internal/session"
 	"github.com/dreamSailing/vb-coding/internal/tools"
+	"strings"
 )
 
 // UI 接口，用于回调 UI 显示和权限询问，解耦 UI 与逻辑
@@ -159,7 +159,6 @@ func (m *Manager) HandleCommand(ui UI, name []string) bool {
 				if len(rest) > 0 {
 					if n, ok := tryParseInt(rest[0]); ok {
 						idx = n
-						rest = rest[1:]
 					}
 				}
 			}

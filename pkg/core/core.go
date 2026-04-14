@@ -1326,10 +1326,8 @@ func (r *Runtime) ListSkills() []SkillInfo {
 			continue
 		}
 		name := strings.TrimSpace(skill.Name)
-		enabled := true
-		if sm != nil {
-			enabled = !sm.IsDisabled(name)
-		} else {
+		enabled := sm == nil || !sm.IsDisabled(name)
+		if sm == nil {
 			enabled = !config.IsSkillDisabled(&cfg, name)
 		}
 		item := SkillInfo{
@@ -1850,20 +1848,6 @@ func filterTrustedWorkspaces(trusted []string, target string) ([]string, bool) {
 		filtered = append(filtered, cur)
 	}
 	return filtered, changed
-}
-
-func (r *Runtime) wrapLegacyStream(in <-chan Event) <-chan protocol.Envelope {
-	sessionID, _ := r.CurrentSessionID()
-	sessionID = strings.TrimSpace(sessionID)
-	threadID := sessionID
-	out := make(chan protocol.Envelope, 64)
-	go func() {
-		defer close(out)
-		for ev := range in {
-			out <- legacyEventToProtocol(ev, sessionID, threadID, time.Now())
-		}
-	}()
-	return out
 }
 
 func newCoreRequestID(prefix string) string {

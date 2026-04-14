@@ -77,7 +77,7 @@ func fetchContextWindowOpenAICompatible(ctx context.Context, baseURL string, api
 	if err != nil {
 		return 0, false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return 0, false
 	}
@@ -108,9 +108,7 @@ func fetchContextWindowOpenAICompatible(ctx context.Context, baseURL string, api
 		idTrim := strings.TrimSpace(id)
 		modelTrim := strings.TrimSpace(model)
 		if !strings.EqualFold(idTrim, modelTrim) {
-			if name, _ := mm["model"].(string); strings.EqualFold(strings.TrimSpace(name), modelTrim) {
-				id = name
-			} else {
+			if name, _ := mm["model"].(string); !strings.EqualFold(strings.TrimSpace(name), modelTrim) {
 				continue
 			}
 		}

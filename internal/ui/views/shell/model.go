@@ -78,16 +78,9 @@ func New(width, height int, s *styles.Styles, lang string) Model {
 	inputModel.SetStyle(s.Input, s.InputFocus)
 	inputModel.SetPlaceholder("Enter message... (Press ? for help)")
 	inputHeight := inputModel.ViewHeight()
-	contentHeight := height - inputHeight - statusHeight - 4 // 减去边框和间距
+	contentHeight := max(height-inputHeight-statusHeight-4, 10) // 减去边框和间距
 
-	if contentHeight < 10 {
-		contentHeight = 10
-	}
-
-	contentWidth := width - 4
-	if contentWidth < 1 {
-		contentWidth = 1
-	}
+	contentWidth := max(width-4, 1)
 
 	// 创建内容组件
 	contentModel := content.New(contentWidth, contentHeight)
@@ -131,25 +124,15 @@ func (m *Model) SetSize(width, height int) {
 	}
 	m.input.SetSize(width-2, 0)
 	inputHeight := m.input.ViewHeight()
-	contentHeight := height - inputHeight - hintsHeight - statusHeight - 4 - m.livePanelOuterHeight()
-
-	if contentHeight < 10 {
-		contentHeight = 10
-	}
+	contentHeight := max(height-inputHeight-hintsHeight-statusHeight-4-m.livePanelOuterHeight(), 10)
 	m.contentH = contentHeight
 
 	hh := 3
 	if m.hints.Visible() {
-		hh = m.hints.Height()
-		if hh < 3 {
-			hh = 3
-		}
+		hh = max(m.hints.Height(), 3)
 	}
 	m.hints.SetSize(width-2, hh)
-	contentWidth := width - 4
-	if contentWidth < 1 {
-		contentWidth = 1
-	}
+	contentWidth := max(width-4, 1)
 	if m.welcome != nil {
 		m.welcome.SetSize(contentWidth+2, contentHeight)
 	}
@@ -176,14 +159,8 @@ func (m *Model) ClearLive() {
 
 func (m *Model) relayout() {
 	atBottom := m.content.AtBottom()
-	h := m.contentH
-	if h < 5 {
-		h = 5
-	}
-	contentWidth := m.width - 4
-	if contentWidth < 1 {
-		contentWidth = 1
-	}
+	h := max(m.contentH, 5)
+	contentWidth := max(m.width-4, 1)
 	m.content.SetSize(contentWidth, h)
 	if atBottom {
 		m.content.GotoBottom()
@@ -197,10 +174,7 @@ func (m *Model) recomputeLayout() {
 		hintsHeight = m.hints.Height()
 	}
 	inputHeight := m.input.ViewHeight()
-	contentHeight := m.height - inputHeight - hintsHeight - statusHeight - 4 - m.livePanelOuterHeight()
-	if contentHeight < 10 {
-		contentHeight = 10
-	}
+	contentHeight := max(m.height-inputHeight-hintsHeight-statusHeight-4-m.livePanelOuterHeight(), 10)
 	m.contentH = contentHeight
 	m.relayout()
 }
@@ -215,13 +189,7 @@ func (m Model) livePanelBodyHeight() int {
 	case 1:
 		return 4
 	case 2:
-		h := m.height / 3
-		if h < 7 {
-			h = 7
-		}
-		if h > 16 {
-			h = 16
-		}
+		h := min(max(m.height/3, 7), 16)
 		return h
 	default:
 		return 0
@@ -762,12 +730,7 @@ func (m Model) renderStatusBar() string {
 		}
 		buckets := 10
 		filled := int(math.Round(r * float64(buckets)))
-		if filled < 0 {
-			filled = 0
-		}
-		if filled > buckets {
-			filled = buckets
-		}
+		filled = min(max(filled, 0), buckets)
 		bar := strings.Repeat("█", filled) + strings.Repeat("░", buckets-filled)
 		ctxPart = m.styles.TextMuted.Render(i18n.T("status.ctx", m.language)) + valStyle.Render(pctStr) + " " + m.styles.TextMuted.Render(bar)
 	} else if m.mode == ModeAI && m.ctxVisible && m.ctxTokens > 0 {
@@ -807,18 +770,13 @@ func (m Model) renderStatusBar() string {
 		return left
 	}
 
-	innerW := m.width - 2
-	if innerW < 10 {
-		innerW = 10
-	}
+	innerW := max(m.width-2, 10)
 	gap := innerW - lipgloss.Width(left) - lipgloss.Width(rightPart)
-	if gap < 1 {
-		gap = 1
-	}
+	gap = max(gap, 1)
 	return left + strings.Repeat(" ", gap) + rightPart
 }
 
-func executionModeLabel(lang, mode string) string {
+func executionModeLabel(_ string, mode string) string {
 	switch toolapi.NormalizeExecutionMode(mode) {
 	case "plan":
 		return "plan"

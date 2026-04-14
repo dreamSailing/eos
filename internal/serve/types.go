@@ -124,11 +124,6 @@ type taskResumeParams struct {
 	Task      string `json:"task,omitempty"`
 }
 
-type taskCloseParams struct {
-	SessionID string `json:"sessionID"`
-	TaskID    string `json:"taskID"`
-}
-
 type toolCallDTO struct {
 	ID         string                 `json:"id"`
 	Tool       string                 `json:"tool"`

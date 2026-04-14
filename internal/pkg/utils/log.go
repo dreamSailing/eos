@@ -42,10 +42,7 @@ const (
 	EventTypeAssistantFinal = "assistant_final"
 )
 
-var projectRootPath string
-
 func init() {
-	projectRootPath = projectRootDir()
 	NewLogger("")
 }
 
@@ -104,24 +101,6 @@ func getLogLevel() slog.Level {
 		}
 	}
 	return slog.LevelDebug
-}
-
-func projectRootDir() string {
-	wd, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	dir := wd
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return ""
-		}
-		dir = parent
-	}
 }
 
 // LogError 结构化错误日志辅助函数

@@ -10,7 +10,6 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/tools/shell"
 	"path/filepath"
 	"strings"
-	"sync"
 )
 
 // ToolCall represents a tool invocation
@@ -25,8 +24,6 @@ type Manager struct {
 	fileOps      *fileops.FileOperations
 	shell        *shell.Shell
 	structured   map[string]func(context.Context, map[string]interface{}) ToolResult
-	todoMu       sync.Mutex
-	todos        []map[string]interface{}
 	executor     *ToolCallExecutor
 	toolIndex    *ToolIndex
 	skillManager *SkillManager

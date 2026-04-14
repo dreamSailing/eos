@@ -178,15 +178,7 @@ func (m *Manager) searchRegex(_ context.Context, root, relRoot, pattern string, 
 		MaxFileSize:  2 * 1024 * 1024,
 	}
 	res, trunc, err := search.DirRegex(pattern, opts)
-	if err != nil {
-		return ToolResult{Type: "tool_result", Tool: "search", Status: "error", Error: fmt.Sprintf("%v", err)}
-	}
-	return ToolResult{Type: "tool_result", Tool: "search", Status: "success", Data: map[string]any{"mode": "regex", "root": filepath.ToSlash(relRoot), "results": mapResults(res), "truncated": trunc}, Display: fmt.Sprintf("%d match(es)%s", len(res), func() string {
-		if trunc {
-			return " (truncated)"
-		}
-		return ""
-	}())}
+	return searchResult("regex", relRoot, res, trunc, err)
 }
 
 func (m *Manager) searchText(_ context.Context, root, relRoot, pattern string, _ int, exclude []string, limit, contextLines int, caseInsensitive bool) ToolResult {
@@ -200,15 +192,30 @@ func (m *Manager) searchText(_ context.Context, root, relRoot, pattern string, _
 		MaxFileSize:     2 * 1024 * 1024,
 	}
 	res, trunc, err := search.DirText(pattern, opts)
+	return searchResult("text", relRoot, res, trunc, err)
+}
+
+func searchResult(mode, relRoot string, res []search.Result, trunc bool, err error) ToolResult {
 	if err != nil {
 		return ToolResult{Type: "tool_result", Tool: "search", Status: "error", Error: fmt.Sprintf("%v", err)}
 	}
-	return ToolResult{Type: "tool_result", Tool: "search", Status: "success", Data: map[string]any{"mode": "text", "root": filepath.ToSlash(relRoot), "results": mapResults(res), "truncated": trunc}, Display: fmt.Sprintf("%d match(es)%s", len(res), func() string {
-		if trunc {
-			return " (truncated)"
-		}
-		return ""
-	}())}
+	return ToolResult{
+		Type:   "tool_result",
+		Tool:   "search",
+		Status: "success",
+		Data: map[string]any{
+			"mode":      mode,
+			"root":      filepath.ToSlash(relRoot),
+			"results":   mapResults(res),
+			"truncated": trunc,
+		},
+		Display: fmt.Sprintf("%d match(es)%s", len(res), func() string {
+			if trunc {
+				return " (truncated)"
+			}
+			return ""
+		}()),
+	}
 }
 
 func (m *Manager) searchCode(_ context.Context, root, relRoot, query string, k int) ToolResult {

@@ -75,7 +75,7 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 		cancel()
 		_ = inW.Close()
 		_ = outW.Close()
-		_ = <-done
+		<-done
 	}()
 
 	rd := bufio.NewReader(outR)

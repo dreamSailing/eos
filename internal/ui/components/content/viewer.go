@@ -169,20 +169,20 @@ func (m *Model) GotoTop() {
 
 // LineDown 向下滚动一行
 func (m *Model) LineDown() {
-	m.viewport.LineDown(1)
+	m.viewport.ScrollDown(1)
 }
 
 // LineUp 向上滚动一行
 func (m *Model) LineUp() {
-	m.viewport.LineUp(1)
+	m.viewport.ScrollUp(1)
 }
 
 // HalfViewDown 向下滚动半页
 func (m *Model) HalfViewDown() {
-	m.viewport.HalfViewDown()
+	m.viewport.HalfPageDown()
 }
 
 // HalfViewUp 向上滚动半页
 func (m *Model) HalfViewUp() {
-	m.viewport.HalfViewUp()
+	m.viewport.HalfPageUp()
 }

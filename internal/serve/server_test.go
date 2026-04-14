@@ -70,8 +70,7 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 		}
 	}
 
-	var readResponseAndEvents func(id float64, timeout time.Duration) (map[string]any, []map[string]any)
-	readResponseAndEvents = func(id float64, timeout time.Duration) (map[string]any, []map[string]any) {
+	readResponseAndEvents := func(id float64, timeout time.Duration) (map[string]any, []map[string]any) {
 		deadline := time.Now().Add(timeout)
 		events := make([]map[string]any, 0, 4)
 		for {

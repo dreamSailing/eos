@@ -582,7 +582,9 @@ func (rc *RuntimeCore) finalizeTask(rt *einoruntime.EinoRuntime, traceID string,
 		b.WriteString("\n  - 关键路径: " + strings.Join(paths[:max], ", "))
 	}
 
-	rc.cm.AppendTaskSummary(b.String())
+	if rc != nil && rc.cm != nil {
+		rc.cm.AppendTaskSummary(b.String())
+	}
 
 	if rt != nil {
 		meta := map[string]any{

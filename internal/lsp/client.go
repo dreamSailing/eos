@@ -226,7 +226,7 @@ func (c *Client) writeMessage(msg any) error {
 
 // readMessages 读取服务器消息
 func (c *Client) readMessages() {
-	defer c.Stop()
+	defer func() { _ = c.Stop() }()
 
 	scanner := bufio.NewScanner(c.stdout)
 	for scanner.Scan() {
@@ -359,10 +359,10 @@ func (c *Client) Stop() error {
 		// 发送 shutdown 请求
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		c.Call(ctx, "shutdown", nil, nil)
+		_ = c.Call(ctx, "shutdown", nil, nil)
 
 		// 发送 exit 通知
-		c.Notify(ctx, "exit", nil)
+		_ = c.Notify(ctx, "exit", nil)
 
 		// 等待进程结束或强制终止
 		done := make(chan error, 1)
@@ -373,7 +373,7 @@ func (c *Client) Stop() error {
 		select {
 		case <-done:
 		case <-time.After(2 * time.Second):
-			c.cmd.Process.Kill()
+			_ = c.cmd.Process.Kill()
 		}
 	}
 

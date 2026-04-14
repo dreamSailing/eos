@@ -34,7 +34,7 @@ func readImageFallback() ([]byte, error) {
 	if r, _, _ := procOpenClipboard.Call(0); r == 0 {
 		return nil, errors.New("open clipboard failed")
 	}
-	defer procCloseClipboard.Call()
+	defer func() { _, _, _ = procCloseClipboard.Call() }()
 
 	if b, err := readClipboardPNG(); err == nil && len(b) > 0 {
 		return b, nil
@@ -85,7 +85,7 @@ func readClipboardRaw(format uint32) ([]byte, error) {
 	if p == 0 {
 		return nil, errors.New("global lock failed")
 	}
-	defer procGlobalUnlock.Call(h)
+	defer func() { _, _, _ = procGlobalUnlock.Call(h) }()
 
 	sz, _, _ := procGlobalSize.Call(h)
 	if sz == 0 {
@@ -94,7 +94,7 @@ func readClipboardRaw(format uint32) ([]byte, error) {
 	n := int(sz)
 	b := make([]byte, n)
 	if n > 0 {
-		procRtlMoveMemory.Call(uintptr(unsafe.Pointer(&b[0])), p, uintptr(n))
+		_, _, _ = procRtlMoveMemory.Call(uintptr(unsafe.Pointer(&b[0])), p, uintptr(n))
 	}
 	return b, nil
 }

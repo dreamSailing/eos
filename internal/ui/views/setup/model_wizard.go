@@ -41,7 +41,6 @@ type ModelSetupView struct {
 	focusIndex       int
 	selectedProvider *ai.ProviderConfig
 	selectedModel    *ai.ModelCatalogEntry
-	config           ModelSetupConfig
 	providerFocused  bool
 	modelFocused     bool
 	customProvider   bool // 是否选择自定义服务商
@@ -570,7 +569,7 @@ func (v *ModelSetupView) View() string {
 		title = i18n.T("models.action.add", v.language)
 	}
 
-	titleStyle := v.styles.PanelTitle.Copy().
+	titleStyle := v.styles.PanelTitle.
 		Width(v.width - 12).
 		Align(lipgloss.Center)
 	content.WriteString(titleStyle.Render(title))

@@ -3,6 +3,7 @@ package shell
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -70,8 +71,7 @@ func (e *NativeExecutor) Execute(ctx context.Context, command string, workingDir
 }
 
 func (e *NativeExecutor) ExecuteDirect(ctx context.Context, name string, args []string, opts *ExecuteOptions) (stdout, stderr string, err error) {
-	var cmd *exec.Cmd
-	cmd = exec.CommandContext(ctx, name, args...)
+	cmd := exec.CommandContext(ctx, name, args...)
 
 	workingDir := ""
 	if opts != nil {
@@ -108,7 +108,8 @@ func NewFallbackExecutor(primary, fallback Executor) Executor {
 				return false
 			}
 
-			if _, ok := interp.IsExitStatus(err); ok {
+			var exitStatus interp.ExitStatus
+			if errors.As(err, &exitStatus) {
 				return false
 			}
 

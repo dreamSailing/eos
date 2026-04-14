@@ -80,7 +80,7 @@ func isRetryableModelError(err error) bool {
 	}
 	var ne net.Error
 	if errors.As(err, &ne) {
-		if ne.Timeout() || ne.Temporary() {
+		if ne.Timeout() {
 			return true
 		}
 	}

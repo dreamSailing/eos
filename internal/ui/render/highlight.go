@@ -42,16 +42,12 @@ func HighlightCodeANSI(code string, lang string) string {
 		return code
 	}
 
-	formatterName := "terminal16m"
+	formatterName := "terminal16"
 	switch termenv.EnvColorProfile() {
-	case termenv.ANSI:
-		formatterName = "terminal16"
 	case termenv.ANSI256:
 		formatterName = "terminal256"
 	case termenv.TrueColor:
 		formatterName = "terminal16m"
-	default:
-		formatterName = "terminal16"
 	}
 	formatter := formatters.Get(formatterName)
 	style := styles.Get("monokai")

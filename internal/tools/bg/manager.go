@@ -347,11 +347,9 @@ func (m *Manager) Tail(id string, opts *TailOptions) (tailResult, error) {
 			break
 		}
 	}
-	nextSeq := from
+	nextSeq := t.nextSeq
 	if len(out) > 0 {
 		nextSeq = out[len(out)-1].Seq + 1
-	} else {
-		nextSeq = t.nextSeq
 	}
 
 	return tailResult{

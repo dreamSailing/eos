@@ -9,8 +9,8 @@ import (
 
 	"github.com/dreamSailing/vb-coding/internal/ui/styles"
 
-	xansi "github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/lipgloss"
+	xansi "github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -295,13 +295,13 @@ func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
 		icon = "✅"
 		statusStr = s.MsgToolSuccess.Render(fmt.Sprintf("✓ Success · %s", formatDuration(m.Duration)))
 		if s.Theme != nil {
-			border = border.Copy().BorderForeground(s.Theme.Success)
+			border = border.BorderForeground(s.Theme.Success)
 		}
 	case "error":
 		icon = "❌"
 		statusStr = s.MsgToolError.Render(fmt.Sprintf("✗ Failed · %s", formatDuration(m.Duration)))
 		if s.Theme != nil {
-			border = border.Copy().BorderForeground(s.Theme.Error)
+			border = border.BorderForeground(s.Theme.Error)
 		}
 	}
 
@@ -309,10 +309,10 @@ func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
 	result.WriteString(headerLeft)
 	result.WriteString("\n")
 
-	blockStyle := s.ToolCall.Copy().MarginLeft(1)
-	resultStyle := s.ToolResult.Copy().MarginLeft(1)
+	blockStyle := s.ToolCall.MarginLeft(1)
+	resultStyle := s.ToolResult.MarginLeft(1)
 	if m.Status == "error" {
-		resultStyle = s.MsgToolError.Copy().MarginLeft(1)
+		resultStyle = s.MsgToolError.MarginLeft(1)
 	}
 	dividerW := contentW
 	if dividerW > 18 {
@@ -622,15 +622,15 @@ func displayToolName(raw string) string {
 	}
 	l := strings.ToLower(raw)
 	known := map[string]string{
-		"fs":            "FS",
-		"mcp":           "MCP",
-		"lsp":           "LSP",
-		"ui":            "UI",
-		"time_now":      "TimeNow",
-		"runcommand":    "RunCommand",
+		"fs":             "FS",
+		"mcp":            "MCP",
+		"lsp":            "LSP",
+		"ui":             "UI",
+		"time_now":       "TimeNow",
+		"runcommand":     "RunCommand",
 		"searchcodebase": "SearchCodebase",
-		"websearch":     "WebSearch",
-		"webfetch":      "WebFetch",
+		"websearch":      "WebSearch",
+		"webfetch":       "WebFetch",
 	}
 	if v, ok := known[l]; ok {
 		return v
@@ -733,7 +733,7 @@ func (m *AgentFinalMessage) Render(s *styles.Styles, width int) string {
 	var result strings.Builder
 
 	// 头部 - 绿色圆点表示最终结果
-	result.WriteString(s.TextSuccess.Render("●") + " " + s.TextSuccess.Copy().Bold(true).Render(m.AgentName))
+	result.WriteString(s.TextSuccess.Render("●") + " " + s.TextSuccess.Bold(true).Render(m.AgentName))
 	result.WriteString("\n")
 
 	// 内容
@@ -805,10 +805,10 @@ func (m *PlanMessage) Render(s *styles.Styles, width int) string {
 
 // ThinkingMessage 思考过程消息
 type ThinkingMessage struct {
-	Content   string
-	Duration  time.Duration
-	Expanded  bool
-	Steps     []ThinkingStep
+	Content  string
+	Duration time.Duration
+	Expanded bool
+	Steps    []ThinkingStep
 }
 
 // ThinkingStep 思考步骤

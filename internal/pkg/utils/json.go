@@ -66,9 +66,7 @@ func FixJSONEscapeSequences(data string) string {
 	for i < len(data) {
 		if data[i] == '\\' && i+1 < len(data) {
 			next := data[i+1]
-			escape := string([]byte{'\\', next})
-
-			if validEscapes[escape] {
+			if validEscapes[string([]byte{'\\', next})] {
 				result.WriteByte(data[i])
 				result.WriteByte(next)
 				i += 2

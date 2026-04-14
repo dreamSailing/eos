@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 )
 
@@ -79,6 +78,5 @@ func (m *Manager) userConfirmStructured(ctx context.Context, params map[string]i
 		}
 	}
 
-	return ToolResult{Type: "tool_result", Tool: ToolUserConfirm, Status: "success", Data: data, Display: fmt.Sprintf("%s", display)}
+	return ToolResult{Type: "tool_result", Tool: ToolUserConfirm, Status: "success", Data: data, Display: display}
 }
-

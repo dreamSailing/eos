@@ -36,7 +36,7 @@ func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {
 		cancel()
 		_ = inW.Close()
 		_ = outW.Close()
-		_ = <-done
+		<-done
 	}()
 
 	rd := bufio.NewReader(outR)
@@ -162,7 +162,7 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 		cancel()
 		_ = inW.Close()
 		_ = outW.Close()
-		_ = <-done
+		<-done
 	}()
 
 	rd := bufio.NewReader(outR)

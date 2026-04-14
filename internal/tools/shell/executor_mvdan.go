@@ -3,6 +3,7 @@ package shell
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -51,7 +52,8 @@ func (e *MvdanExecutor) Execute(ctx context.Context, command string, workingDir 
 	stderrStr := stderrBuf.String()
 
 	if err != nil {
-		if exitStatus, ok := interp.IsExitStatus(err); ok {
+		var exitStatus interp.ExitStatus
+		if errors.As(err, &exitStatus) {
 			slog.Debug("shell.mvdan.execute.exit_status", "component", utils.ComponentTool,
 				"command", command,
 				"working_dir", workingDir,
