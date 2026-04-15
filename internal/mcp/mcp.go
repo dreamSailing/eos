@@ -114,6 +114,13 @@ func (m *Manager) loadServer(ctx context.Context, server config.MCPEntry) error 
 			return fmt.Errorf("start_sse_client: %w", err)
 		}
 		cli = sseCli
+	case config.MCPTypeStreamableHTTP:
+		shCli := NewStreamableHTTPAdapter(server.BaseURL, server.Envs)
+		if _, err := shCli.Initialize(ctx, mcp.InitializeRequest{}); err != nil {
+			slog.Error("mcp.manager.streamable_http_initialize.error", "component", utils.ComponentSystem, "name", server.Name, "error", err.Error())
+			return fmt.Errorf("streamable_http_initialize: %w", err)
+		}
+		cli = shCli
 	default:
 		slog.Warn("mcp.manager.unknown_server_type", "component", utils.ComponentSystem, "name", server.Name, "type", server.Type)
 		return nil

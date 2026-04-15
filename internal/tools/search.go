@@ -95,6 +95,9 @@ func (m *Manager) searchGlob(_ context.Context, root, relRoot, pattern string, m
 		".idea": true, ".vscode": true, "vendor": true,
 	}
 
+	// Load .vbignore patterns
+	di := NewDotIgnore(root)
+
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -104,6 +107,10 @@ func (m *Manager) searchGlob(_ context.Context, root, relRoot, pattern string, m
 		if info.IsDir() && path != root {
 			base := filepath.Base(path)
 			if defaultExcludeDirs[base] {
+				return filepath.SkipDir
+			}
+			// Check .vbignore for directories
+			if di.Match(path) {
 				return filepath.SkipDir
 			}
 		}
@@ -136,6 +143,11 @@ func (m *Manager) searchGlob(_ context.Context, root, relRoot, pattern string, m
 
 		// Skip directories by default
 		if info.IsDir() {
+			return nil
+		}
+
+		// Check .vbignore for files
+		if di.Match(path) {
 			return nil
 		}
 

@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
 	"github.com/dreamSailing/vb-coding/internal/runtime"
 	"github.com/dreamSailing/vb-coding/internal/toolapi"
 	"sort"
@@ -18,6 +19,9 @@ type SecurityManager struct {
 	permMu            sync.RWMutex
 	hooks             runtime.SafetyGate
 	onModeChange      func(oldMode, newMode string) // 模式切换回调
+	deniedTools       map[string]bool                // fine-grained: denied tool names
+	allowedTools      map[string]bool                // fine-grained: allowed tool names (if non-empty, whitelist)
+	skipPermissions   bool                           // --dangerously-skip-permissions bypass
 }
 
 type PermissionSnapshot struct {
@@ -190,4 +194,47 @@ func (s *SecurityManager) Snapshot() PermissionSnapshot {
 	}
 	sort.Strings(snap.AllowedCategories)
 	return snap
+}
+
+// LoadPermissions loads fine-grained tool permissions from settings
+func (s *SecurityManager) LoadPermissions(p *settings.Permissions) {
+	s.permMu.Lock()
+	defer s.permMu.Unlock()
+	if p == nil {
+		s.deniedTools = nil
+		s.allowedTools = nil
+		return
+	}
+	s.deniedTools = make(map[string]bool, len(p.DeniedTools))
+	for _, t := range p.DeniedTools {
+		s.deniedTools[t] = true
+	}
+	s.allowedTools = make(map[string]bool, len(p.AllowedTools))
+	for _, t := range p.AllowedTools {
+		s.allowedTools[t] = true
+	}
+}
+
+// IsToolDenied checks if a tool is denied by fine-grained permissions.
+// If allowedTools is non-empty, tools not in it are also denied.
+func (s *SecurityManager) IsToolDenied(toolName string) bool {
+	s.permMu.RLock()
+	defer s.permMu.RUnlock()
+	if s.skipPermissions {
+		return false
+	}
+	if s.deniedTools != nil && s.deniedTools[toolName] {
+		return true
+	}
+	if len(s.allowedTools) > 0 && !s.allowedTools[toolName] {
+		return true
+	}
+	return false
+}
+
+// SetSkipPermissions sets the bypass mode for --dangerously-skip-permissions
+func (s *SecurityManager) SetSkipPermissions(skip bool) {
+	s.permMu.Lock()
+	defer s.permMu.Unlock()
+	s.skipPermissions = skip
 }

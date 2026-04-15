@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/dreamSailing/vb-coding/internal/ui"
 
@@ -14,10 +15,15 @@ import (
 var cfgFile string
 
 var (
-	printQuery    string
-	outputFormat  string
-	continueChat  bool
-	resumeSession string
+	printQuery         string
+	outputFormat       string
+	continueChat       bool
+	resumeSession      string
+	cliModel           string
+	cliMaxTurns        int
+	cliAllowedTools    string
+	cliDisallowedTools string
+	cliSkipPermissions bool
 )
 
 // rootLang 根据环境变量 VB_LANG 返回界面语言。
@@ -62,12 +68,36 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
-		// Handle --continue or --resume (future: integrate with session manager)
-		// For now, just start TUI normally
-		_ = continueChat
-		_ = resumeSession
+		// Build TUI options from CLI flags
+		opts := ui.TUIOptions{
+			ModelOverride:   cliModel,
+			MaxTurns:        cliMaxTurns,
+			SkipPermissions: cliSkipPermissions,
+		}
+		if continueChat {
+			opts.SessionID = "latest"
+		}
+		if resumeSession != "" {
+			opts.SessionID = resumeSession
+		}
+		if cliAllowedTools != "" {
+			for _, t := range strings.Split(cliAllowedTools, ",") {
+				t = strings.TrimSpace(t)
+				if t != "" {
+					opts.AllowedTools = append(opts.AllowedTools, t)
+				}
+			}
+		}
+		if cliDisallowedTools != "" {
+			for _, t := range strings.Split(cliDisallowedTools, ",") {
+				t = strings.TrimSpace(t)
+				if t != "" {
+					opts.DisallowedTools = append(opts.DisallowedTools, t)
+				}
+			}
+		}
 
-		ui.StartInteractiveTUI()
+		ui.StartInteractiveTUIWithOptions(opts)
 	},
 }
 
@@ -86,6 +116,11 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&outputFormat, "output-format", "text", "Output format for print mode: text, json, stream-json")
 	rootCmd.PersistentFlags().BoolVarP(&continueChat, "continue", "c", false, "Continue the most recent conversation")
 	rootCmd.PersistentFlags().StringVar(&resumeSession, "resume", "", "Resume a specific conversation by session ID")
+	rootCmd.PersistentFlags().StringVar(&cliModel, "model", "", "Override the model for this session")
+	rootCmd.PersistentFlags().IntVar(&cliMaxTurns, "max-turns", 0, "Maximum number of turns (0=unlimited)")
+	rootCmd.PersistentFlags().StringVar(&cliAllowedTools, "allowed-tools", "", "Comma-separated list of allowed tools")
+	rootCmd.PersistentFlags().StringVar(&cliDisallowedTools, "disallowed-tools", "", "Comma-separated list of disallowed tools")
+	rootCmd.PersistentFlags().BoolVar(&cliSkipPermissions, "dangerously-skip-permissions", false, "Skip all permission checks (use with caution)")
 
 	rootCmd.AddCommand(newBridgeCmd())
 	rootCmd.AddCommand(newServeCmd())

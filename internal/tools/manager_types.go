@@ -86,6 +86,8 @@ func NewManager() *Manager {
 		ToolWebSearch:        m.webSearchStructured,
 		ToolWebFetch:         m.webFetchStructured,
 		ToolEnterWorktree:    m.enterWorktreeStructured,
+		ToolExitWorktree:     m.exitWorktreeStructured,
+		ToolNotebookEdit:     m.notebookEditStructured,
 	}
 	m.LoadPluginsFromRegistry(plugins.DefaultRegistry())
 	return m

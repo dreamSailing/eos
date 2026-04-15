@@ -382,6 +382,36 @@ func (rc *RuntimeCore) loop() {
 				rc.cm.SetCompressionStrategy(session.CompressionAggressive)
 			}
 		}
+
+		// Initialize fast model runtime for summaries if FastModel is configured
+		if cfg.FastModel != "" && rc.fastRT == nil {
+			var fastModelEntry config.ModelEntry
+			fastOk := false
+			for _, m := range cfg.Models {
+				if m.Name == cfg.FastModel || m.Model == cfg.FastModel {
+					fastModelEntry = m
+					fastOk = true
+					break
+				}
+			}
+			if fastOk {
+				fastEm, errF := einoruntime.NewChatModelWithSettings(ctx, fastModelEntry.APIKey, fastModelEntry.APIBase, fastModelEntry.Model, "")
+				if errF == nil {
+					fastRT, errF2 := einoruntime.NewEinoRuntimeWithMCP(ctx, rc.cm, rc.tm, fastEm, nil)
+					if errF2 == nil {
+						rc.fastRT = fastRT
+						slog.Info("bridge.init_runtime.fast_model_created", "component", utils.ComponentSystem, "fast_model", fastModelEntry.Model)
+					} else {
+						slog.Warn("bridge.init_runtime.fast_model_runtime_failed", "component", utils.ComponentSystem, "error", errF2.Error())
+					}
+				} else {
+					slog.Warn("bridge.init_runtime.fast_model_failed", "component", utils.ComponentSystem, "error", errF.Error())
+				}
+			} else {
+				slog.Warn("bridge.init_runtime.fast_model_not_found", "component", utils.ComponentSystem, "fast_model", cfg.FastModel)
+			}
+		}
+
 		return nil
 	}
 
@@ -457,7 +487,11 @@ func (rc *RuntimeCore) loop() {
 						continue
 					}
 				}
+				// Use fast model for summaries if available
 				currentRT := rt
+				if rc.fastRT != nil {
+					currentRT = rc.fastRT
+				}
 				rc.wg.Add(1)
 				go func(tRT *einoruntime.EinoRuntime, tReq summarizeReq) {
 					defer rc.wg.Done()

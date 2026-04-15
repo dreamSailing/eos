@@ -9,7 +9,7 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/pkg/git"
 	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
 	"github.com/dreamSailing/vb-coding/internal/pkg/workspace"
-	"github.com/dreamSailing/vb-coding/internal/runtime"
+	einoruntime "github.com/dreamSailing/vb-coding/internal/runtime"
 	"github.com/dreamSailing/vb-coding/pkg/protocol"
 	"github.com/dreamSailing/vb-coding/internal/session"
 	"github.com/dreamSailing/vb-coding/internal/skills"
@@ -93,7 +93,7 @@ type RuntimeCore struct {
 	gitMgr       *git.Manager
 	wsMgr        *workspace.Manager
 	settingsMgr  *settings.Manager
-	hooks        runtime.SafetyGate
+	hooks        einoruntime.SafetyGate
 	reqCh        chan any
 	eventsCh     chan Event // 新增：事件通道
 	mu           sync.RWMutex
@@ -143,6 +143,9 @@ type RuntimeCore struct {
 
 	// 流式解析器
 	parser *StreamParser
+
+	// Fast model runtime for summaries
+	fastRT *einoruntime.EinoRuntime
 }
 
 type PromptResponse struct {
@@ -492,7 +495,7 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	tm.SetSkillManager(skillManager)
 	tm.SetMCPManager(rc.mcpMgr)
 
-	hooks := runtime.SafetyGate{
+	hooks := einoruntime.SafetyGate{
 		Classify: func(call tools.ToolCall) (string, string, string, bool) {
 			return tools.ClassifyToolDanger(call)
 		},
@@ -570,4 +573,38 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	rc.wg.Add(1)
 	go rc.loop()
 	return rc
+}
+
+// SetModelOverride overrides the model used by the runtime (from --model CLI flag)
+func (rc *RuntimeCore) SetModelOverride(model, base string) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	if model != "" {
+		rc.modelName = model
+	}
+	if base != "" {
+		rc.modelBase = base
+	}
+}
+
+// SetMaxTurns sets the maximum number of turns (from --max-turns CLI flag)
+func (rc *RuntimeCore) SetMaxTurns(n int) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	if n > 0 {
+		rc.settings.MaxTurnTokens = n // reuse field as max-turns indicator
+	}
+}
+
+// SetToolPermissions configures fine-grained tool permissions (from --allowed-tools/--disallowed-tools CLI flags)
+func (rc *RuntimeCore) SetToolPermissions(allowed, denied []string) {
+	rc.securityMgr.LoadPermissions(&settings.Permissions{
+		AllowedTools: allowed,
+		DeniedTools:  denied,
+	})
+}
+
+// SetSkipPermissions enables permission bypass mode (from --dangerously-skip-permissions CLI flag)
+func (rc *RuntimeCore) SetSkipPermissions(skip bool) {
+	rc.securityMgr.SetSkipPermissions(skip)
 }

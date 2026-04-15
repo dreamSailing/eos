@@ -73,6 +73,8 @@ const (
 	ToolWebSearch        = "web_search"
 	ToolWebFetch         = "web_fetch"
 	ToolEnterWorktree    = "enter_worktree"
+	ToolExitWorktree     = "exit_worktree"
+	ToolNotebookEdit     = "notebook_edit"
 )
 
 // GetAllToolDefinitions 返回所有工具的定义
@@ -771,6 +773,28 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Description: "Create an isolated git worktree for working on changes without affecting the main working directory.",
 			Params: map[string]*schema.ParameterInfo{
 				"name": {Type: schema.String, Required: false, Desc: "Worktree name (auto-generated if empty)"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolExitWorktree,
+			Description: "Remove or prune a git worktree.",
+			Params: map[string]*schema.ParameterInfo{
+				"path":   {Type: schema.String, Required: true, Desc: "Worktree path to remove"},
+				"remove": {Type: schema.Boolean, Required: false, Desc: "Whether to remove the worktree directory (default true)"},
+			},
+			RiskLevel: RiskLevelHigh,
+		},
+		{
+			Name:        ToolNotebookEdit,
+			Description: "Edit a Jupyter notebook (.ipynb) file. Supports replace, insert, and delete cell operations.",
+			Params: map[string]*schema.ParameterInfo{
+				"path":         {Type: schema.String, Required: true, Desc: "Path to .ipynb file"},
+				"cell_id":      {Type: schema.String, Required: false, Desc: "Cell ID to edit (required for replace/delete)"},
+				"cell_type":    {Type: schema.String, Required: false, Desc: "Cell type: code or markdown (for insert)"},
+				"source":       {Type: schema.String, Required: false, Desc: "New cell content"},
+				"edit_mode":    {Type: schema.String, Required: false, Desc: "Edit mode: replace (default), insert, delete"},
+				"insert_after": {Type: schema.String, Required: false, Desc: "Cell ID after which to insert (for insert mode)"},
 			},
 			RiskLevel: RiskLevelMedium,
 		},

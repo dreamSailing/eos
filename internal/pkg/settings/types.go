@@ -1,5 +1,11 @@
 package settings
 
+// Permissions defines tool permission rules
+type Permissions struct {
+	AllowedTools []string `json:"allowed_tools,omitempty"`
+	DeniedTools  []string `json:"denied_tools,omitempty"`
+}
+
 // Settings 表示用户配置
 type Settings struct {
 	PlanPromptStyle string   `json:"plan_prompt_style"`
@@ -23,6 +29,9 @@ type Settings struct {
 
 	// Auto mode classifier custom rules
 	AutoRules []AutoRule `json:"auto_rules,omitempty"`
+
+	// Tool permissions
+	Permissions *Permissions `json:"permissions,omitempty"`
 }
 
 // AutoRule defines a custom classification rule for auto mode

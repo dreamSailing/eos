@@ -122,4 +122,9 @@ func mergeInto(dst *Settings, src Settings) {
 			}
 		}
 	}
+
+	// Merge permissions (override if present)
+	if src.Permissions != nil {
+		dst.Permissions = src.Permissions
+	}
 }
