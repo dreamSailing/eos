@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dreamSailing/vb-coding/internal/notify"
+	"github.com/dreamSailing/vb-coding/internal/runtime"
 	"github.com/dreamSailing/vb-coding/internal/toolapi"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 
@@ -168,6 +169,17 @@ func (rc *RuntimeCore) promptPermission(ctx context.Context, category, summary s
 			rc.ClearPendingDiff()
 			return "deny"
 		case "auto":
+			// Use classifier for auto mode decisions
+			classifier := runtime.NewClassifier()
+			result := classifier.Classify(category, summary)
+			switch result.Action {
+			case runtime.ActionAllow:
+				rc.ClearPendingDiff()
+				return "allow"
+			case runtime.ActionDeny:
+				// Fall through to UI prompt for dangerous operations
+			}
+			// For ActionAsk or ActionDeny that should still show UI
 			if !promptNeedsSafetyConfirmation(PromptKindPermission, category, summary) {
 				rc.ClearPendingDiff()
 				return "allow"

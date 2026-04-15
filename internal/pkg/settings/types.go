@@ -16,4 +16,19 @@ type Settings struct {
 	Theme           string   `json:"theme"`
 	Trusted         bool     `json:"trusted"`
 	TrustedAt       string   `json:"trusted_at,omitempty"`
+
+	// Token budget configuration
+	MaxTurnTokens    int `json:"max_turn_tokens,omitempty"`
+	MaxSessionTokens int `json:"max_session_tokens,omitempty"`
+
+	// Auto mode classifier custom rules
+	AutoRules []AutoRule `json:"auto_rules,omitempty"`
+}
+
+// AutoRule defines a custom classification rule for auto mode
+type AutoRule struct {
+	Pattern     string `json:"pattern"`      // regex or glob pattern
+	Action      string `json:"action"`       // "allow", "deny", "ask"
+	Category    string `json:"category"`     // tool/command category
+	Description string `json:"description"`  // human-readable description
 }

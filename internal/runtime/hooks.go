@@ -1,10 +1,13 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	stdhttp "net/http"
+	"io"
 	ai "github.com/dreamSailing/vb-coding/internal/ai"
 	"github.com/dreamSailing/vb-coding/internal/config"
 	"github.com/dreamSailing/vb-coding/internal/hooks"
@@ -371,6 +374,19 @@ func (hm *HookManager) runWithExtra(ctx context.Context, event string, toolName 
 				dec, err := runHookAgent(ctx, eval, event, prompt, payload, time.Duration(timeout)*time.Second)
 				ch <- res{idx: i, dec: dec, err: err}
 			}(it.idx, p, to, h.Model)
+		case "http":
+			if onMeta != nil && strings.TrimSpace(h.StatusMessage) != "" {
+				onMeta("phase.note:HOOK_STATUS:" + strings.TrimSpace(h.StatusMessage))
+			}
+			to := h.Timeout
+			if to <= 0 {
+				to = 30
+			}
+			pending++
+			go func(i int, handler hooks.Handler, timeout int) {
+				dec, err := runHookHTTP(ctx, handler, payload, time.Duration(timeout)*time.Second)
+				ch <- res{idx: i, dec: dec, err: err}
+			}(it.idx, h, to)
 		}
 	}
 
@@ -553,11 +569,60 @@ func hookMatcherMatch(matcher string, toolName string) bool {
 	if m == "" || m == "*" {
 		return true
 	}
+
+	// Check if this is a glob pattern (contains *, ?, [, but not regex chars)
+	if isGlobPattern(m) {
+		return globMatch(m, toolName)
+	}
+
+	// Default: regex matching
 	re, err := regexp.Compile(m)
 	if err != nil {
 		return false
 	}
 	return re.MatchString(toolName)
+}
+
+// isGlobPattern detects if a pattern is a glob (not a regex)
+func isGlobPattern(pattern string) bool {
+	// If it contains glob-specific characters without regex escaping
+	hasGlob := strings.ContainsAny(pattern, "?[")
+	// Simple heuristic: if it has * but not .* or similar regex patterns
+	if strings.Contains(pattern, "*") && !strings.Contains(pattern, ".*") {
+		hasGlob = true
+	}
+	return hasGlob && !strings.ContainsAny(pattern, `+\()|`)
+}
+
+// globMatch performs simple glob matching
+func globMatch(pattern, name string) bool {
+	// Simple glob: convert glob to regex
+	regexPattern := globToRegex(pattern)
+	re, err := regexp.Compile("(?i)^" + regexPattern + "$")
+	if err != nil {
+		return false
+	}
+	return re.MatchString(name)
+}
+
+// globToRegex converts a glob pattern to a regex pattern
+func globToRegex(glob string) string {
+	var sb strings.Builder
+	sb.Grow(len(glob) * 2)
+	for _, ch := range glob {
+		switch ch {
+		case '*':
+			sb.WriteString(".*")
+		case '?':
+			sb.WriteString(".")
+		case '.', '^', '$', '|', '+', '(', ')', '{', '}', '\\':
+			sb.WriteRune('\\')
+			sb.WriteRune(ch)
+		default:
+			sb.WriteRune(ch)
+		}
+	}
+	return sb.String()
 }
 
 func runHookCommand(ctx context.Context, event string, command string, toolName string, toolInput map[string]any, toolResult map[string]any, extra map[string]any, source string, baseDir string, timeout time.Duration) (hooks.Decision, error) {
@@ -841,6 +906,104 @@ func decisionForOkFalse(event string) string {
 	default:
 		return "block"
 	}
+}
+
+// runHookHTTP executes an HTTP-based hook handler
+func runHookHTTP(ctx context.Context, h hooks.Handler, payload map[string]any, timeout time.Duration) (hooks.Decision, error) {
+	// Extract HTTP config from handler
+	// The HTTP config is encoded in the Command field as JSON or URL
+	url := strings.TrimSpace(h.Command)
+	if url == "" {
+		return hooks.Decision{Decision: "allow"}, nil
+	}
+
+	// Check if Command is a JSON-encoded HTTP config
+	if strings.HasPrefix(url, "{") {
+		var httpCfg hooks.HTTPHandler
+		if err := json.Unmarshal([]byte(url), &httpCfg); err == nil && httpCfg.URL != "" {
+			return executeHTTPHook(ctx, &httpCfg, payload, timeout)
+		}
+	}
+
+	// Treat Command as a plain URL
+	method := "POST"
+	if h.Prompt != "" {
+		method = strings.ToUpper(strings.TrimSpace(h.Prompt))
+	}
+
+	httpCfg := &hooks.HTTPHandler{
+		URL:     url,
+		Method:  method,
+		Timeout: int(timeout.Seconds()),
+		Headers: map[string]string{"Content-Type": "application/json"},
+	}
+
+	return executeHTTPHook(ctx, httpCfg, payload, timeout)
+}
+
+// executeHTTPHook performs the actual HTTP request for a hook
+func executeHTTPHook(ctx context.Context, cfg *hooks.HTTPHandler, payload map[string]any, timeout time.Duration) (hooks.Decision, error) {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return hooks.Decision{}, fmt.Errorf("marshal hook payload: %w", err)
+	}
+
+	req, err := stdhttp.NewRequestWithContext(ctx, cfg.Method, cfg.URL, bytes.NewReader(body))
+	if err != nil {
+		return hooks.Decision{}, fmt.Errorf("create hook request: %w", err)
+	}
+
+	for k, v := range cfg.Headers {
+		req.Header.Set(k, v)
+	}
+	if req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := stdhttp.DefaultClient.Do(req)
+	if err != nil {
+		return hooks.Decision{}, fmt.Errorf("execute hook request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return hooks.Decision{}, fmt.Errorf("read hook response: %w", err)
+	}
+
+	expectedStatus := cfg.ExpectedStatus
+	if expectedStatus == 0 {
+		expectedStatus = 200
+	}
+
+	if resp.StatusCode != expectedStatus {
+		return hooks.Decision{Decision: "allow"}, nil
+	}
+
+	// Parse response as JSON
+	ok, reason, sysMsg, suppress, perr := parseHookOk(string(respBody))
+	if perr != nil {
+		return hooks.Decision{}, perr
+	}
+	if ok {
+		dec := hooks.Decision{Decision: "allow", AdditionalContext: sysMsg}
+		if suppress {
+			dec.AdditionalContext = ""
+		}
+		return dec, nil
+	}
+	dec := hooks.Decision{Decision: "block", Reason: strings.TrimSpace(reason), AdditionalContext: sysMsg}
+	if suppress {
+		dec.AdditionalContext = ""
+	}
+	return dec, nil
 }
 
 func parseHookOk(s string) (ok bool, reason string, sysMsg string, suppress bool, err error) {

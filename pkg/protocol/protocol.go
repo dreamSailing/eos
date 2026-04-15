@@ -51,6 +51,8 @@ const (
 	EventTypeTaskUpdated    EventType = "task.updated"
 	EventTypeTaskDone       EventType = "task.completed"
 	EventTypeTaskFailed     EventType = "task.failed"
+	EventTypeModeChanged    EventType = "mode.changed"
+	EventTypeBudgetUpdated  EventType = "budget.updated"
 )
 
 type Envelope struct {

@@ -79,6 +79,9 @@ func NewManager() *Manager {
 		ToolMCPStatus:        m.mcpStatusStructured,
 		ToolSkillsList:       m.skillsListStructured,
 		ToolAskUserQuestion:  m.askUserQuestionStructured,
+		ToolEnterPlanMode:    m.enterPlanModeStructured,
+		ToolExitPlanMode:     m.exitPlanModeStructured,
+		ToolAgent:            m.agentToolStructured,
 	}
 	m.LoadPluginsFromRegistry(plugins.DefaultRegistry())
 	return m

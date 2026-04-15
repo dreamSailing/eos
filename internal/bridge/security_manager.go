@@ -14,8 +14,10 @@ type SecurityManager struct {
 	pendingDiff       string
 	pendingDiffPath   string
 	executionMode     string
+	previousMode      string // 进入 plan 前保存的模式
 	permMu            sync.RWMutex
 	hooks             runtime.SafetyGate
+	onModeChange      func(oldMode, newMode string) // 模式切换回调
 }
 
 type PermissionSnapshot struct {
@@ -37,8 +39,60 @@ func NewSecurityManager() *SecurityManager {
 func (s *SecurityManager) SetExecutionMode(mode string) {
 	mode = toolapi.NormalizeExecutionMode(mode)
 	s.permMu.Lock()
+	old := s.executionMode
 	s.executionMode = mode
+	cb := s.onModeChange
 	s.permMu.Unlock()
+	if cb != nil && old != mode {
+		cb(old, mode)
+	}
+}
+
+// SetModeChangeCallback sets the callback for mode changes
+func (s *SecurityManager) SetModeChangeCallback(cb func(oldMode, newMode string)) {
+	s.permMu.Lock()
+	defer s.permMu.Unlock()
+	s.onModeChange = cb
+}
+
+// SwitchToPlanMode saves current mode and switches to plan
+func (s *SecurityManager) SwitchToPlanMode() {
+	s.permMu.Lock()
+	s.previousMode = s.executionMode
+	old := s.executionMode
+	s.executionMode = "plan"
+	cb := s.onModeChange
+	s.permMu.Unlock()
+	if cb != nil {
+		cb(old, "plan")
+	}
+}
+
+// RestorePreviousMode restores the mode saved before entering plan
+func (s *SecurityManager) RestorePreviousMode() {
+	s.permMu.Lock()
+	prev := s.previousMode
+	if prev == "" {
+		prev = "auto"
+	}
+	old := s.executionMode
+	s.executionMode = prev
+	s.previousMode = ""
+	cb := s.onModeChange
+	s.permMu.Unlock()
+	if cb != nil && old != prev {
+		cb(old, prev)
+	}
+}
+
+// PreviousMode returns the saved previous mode
+func (s *SecurityManager) PreviousMode() string {
+	s.permMu.RLock()
+	defer s.permMu.RUnlock()
+	if s.previousMode == "" {
+		return "auto"
+	}
+	return s.previousMode
 }
 
 func (s *SecurityManager) ExecutionMode() string {

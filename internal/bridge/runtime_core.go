@@ -10,6 +10,7 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
 	"github.com/dreamSailing/vb-coding/internal/pkg/workspace"
 	"github.com/dreamSailing/vb-coding/internal/runtime"
+	"github.com/dreamSailing/vb-coding/pkg/protocol"
 	"github.com/dreamSailing/vb-coding/internal/session"
 	"github.com/dreamSailing/vb-coding/internal/skills"
 	"github.com/dreamSailing/vb-coding/internal/tools"
@@ -103,6 +104,7 @@ type RuntimeCore struct {
 	modelBase    string
 	tokenHistory []TokenRecord
 	tokenMu      sync.RWMutex
+	tokenBudget  *TokenBudget // Token budget management
 
 	metricsMu   sync.Mutex
 	inflightReq map[string]*RequestMetric
@@ -525,6 +527,26 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	}
 	tools.OnToolResult = func(id string, toolName string, success bool) {
 		rc.RecordToolResult(id, toolName, success)
+	}
+
+	// Wire plan mode tool callbacks
+	tools.OnModeChange = func(oldMode, newMode string) {
+		if newMode == "plan" {
+			rc.securityMgr.SwitchToPlanMode()
+		} else {
+			rc.securityMgr.RestorePreviousMode()
+		}
+		rc.eventsCh <- Event{
+			Type:    string(protocol.EventTypeModeChanged),
+			Content: newMode,
+			Data:    map[string]any{"old_mode": oldMode, "new_mode": newMode},
+		}
+	}
+	tools.OnGetCurrentMode = func() string {
+		return rc.securityMgr.ExecutionMode()
+	}
+	tools.OnGetPreviousMode = func() string {
+		return rc.securityMgr.PreviousMode()
 	}
 
 	// 初始化 LSP 管理器（可选功能）

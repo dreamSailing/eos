@@ -10,11 +10,12 @@ type ToolExample struct {
 
 // ToolDefinition 工具定义，包含工具的名称、描述和参数信息
 type ToolDefinition struct {
-	Name        string                           // 工具名称
-	Description string                           // 工具描述
-	Params      map[string]*schema.ParameterInfo // 参数定义
-	RiskLevel   ToolRiskLevel                    // 风险等级：low/medium/high
-	Examples    []ToolExample                    // 使用示例（提升模型理解复杂参数的准确率）
+	Name             string                           // 工具名称
+	Description      string                           // 工具描述
+	Params           map[string]*schema.ParameterInfo // 参数定义
+	RiskLevel        ToolRiskLevel                    // 风险等级：low/medium/high
+	Examples         []ToolExample                    // 使用示例（提升模型理解复杂参数的准确率）
+	ConcurrencySafe  bool                             // 标记工具是否可安全并行执行
 }
 
 // ToolRiskLevel 工具风险等级
@@ -65,6 +66,9 @@ const (
 	ToolGitRebase        = "git_rebase"
 	ToolProjectStructure = "ProjectStructure"
 	ToolAskUserQuestion  = "ask_user_question"
+	ToolEnterPlanMode    = "enter_plan_mode"
+	ToolExitPlanMode     = "exit_plan_mode"
+	ToolAgent            = "agent"
 )
 
 // GetAllToolDefinitions 返回所有工具的定义
@@ -77,7 +81,8 @@ func GetAllToolDefinitions() []ToolDefinition {
 				"question": {Type: schema.String, Required: true, Desc: "要询问用户的问题"},
 				"options":  {Type: schema.Array, Required: false, Desc: "可选：提供给用户的选项列表（字符串数组）"},
 			},
-			RiskLevel: RiskLevelLow,
+			RiskLevel:       RiskLevelLow,
+			ConcurrencySafe: true,
 			Examples: []ToolExample{
 				{Description: "询问用户一个开放性问题", Input: map[string]any{"question": "你需要什么帮助？"}},
 				{Description: "询问用户并提供选项", Input: map[string]any{"question": "选择操作模式", "options": []string{"自动", "手动"}}},
@@ -688,6 +693,40 @@ func GetAllToolDefinitions() []ToolDefinition {
 					Description: "调用代码审查技能",
 					Input:       map[string]any{"command": "code-review"},
 				},
+			},
+		},
+		{
+			Name:        ToolEnterPlanMode,
+			Description: "进入计划模式。在计划模式下，所有写操作和危险操作将被拒绝，你只能读取文件、搜索和规划。当你的计划准备好后，使用 exit_plan_mode 退出。",
+			Params: map[string]*schema.ParameterInfo{
+				"reason": {Type: schema.String, Required: false, Desc: "进入计划模式的原因"},
+			},
+			RiskLevel:       RiskLevelLow,
+			ConcurrencySafe: true,
+		},
+		{
+			Name:        ToolExitPlanMode,
+			Description: "退出计划模式，恢复到之前的执行模式。提供 plan_summary 以总结你在计划模式中制定的计划。",
+			Params: map[string]*schema.ParameterInfo{
+				"plan_summary": {Type: schema.String, Required: false, Desc: "计划摘要"},
+			},
+			RiskLevel:       RiskLevelLow,
+			ConcurrencySafe: true,
+		},
+		{
+			Name:        ToolAgent,
+			Description: "委派任务给子代理执行。子代理可以在隔离的上下文中独立运行，支持同步和异步两种模式。\n\n可用子代理类型:\n- explore: 只读探索代理，用于搜索和阅读代码\n- general-purpose: 通用代理，拥有完整工具集\n- plan: 规划专用代理\n- verification: 验证专用代理",
+			Params: map[string]*schema.ParameterInfo{
+				"prompt":          {Type: schema.String, Required: true, Desc: "子代理任务描述"},
+				"subagent_type":   {Type: schema.String, Required: false, Desc: "子代理类型: explore, general-purpose, plan, verification (默认 general-purpose)"},
+				"run_in_background": {Type: schema.Boolean, Required: false, Desc: "是否异步执行 (默认 false)"},
+				"description":     {Type: schema.String, Required: false, Desc: "任务简短描述 (用于显示)"},
+				"model":           {Type: schema.String, Required: false, Desc: "可选：指定模型"},
+			},
+			RiskLevel: RiskLevelLow,
+			Examples: []ToolExample{
+				{Description: "同步探索代码库", Input: map[string]any{"prompt": "查找所有处理用户认证的文件", "subagent_type": "explore"}},
+				{Description: "异步执行通用任务", Input: map[string]any{"prompt": "为 auth 模块编写单元测试", "subagent_type": "general-purpose", "run_in_background": true}},
 			},
 		},
 	}
