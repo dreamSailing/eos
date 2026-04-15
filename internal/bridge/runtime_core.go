@@ -366,23 +366,26 @@ type TokenRecord struct {
 	Input     int
 	Reply     int
 	Total     int
+	CostUSD   float64
 }
 
 // TokenStats Token 累计统计
 type TokenStats struct {
-	Rounds int
-	Input  int
-	Reply  int
-	Total  int
+	Rounds       int
+	Input        int
+	Reply        int
+	Total        int
+	TotalCostUSD float64
 }
 
 // ModelTokenStats 单个模型的 Token 统计
 type ModelTokenStats struct {
-	Model  string
-	Rounds int
-	Input  int
-	Reply  int
-	Total  int
+	Model        string
+	Rounds       int
+	Input        int
+	Reply        int
+	Total        int
+	TotalCostUSD float64
 }
 
 type graphInvokeReq struct {
@@ -547,6 +550,15 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	}
 	tools.OnGetPreviousMode = func() string {
 		return rc.securityMgr.PreviousMode()
+	}
+
+	// Phase 1 集成: Wire AgentTool executor callbacks
+	tools.OnAgentToolEvent = func(eventType string, data map[string]interface{}) {
+		rc.eventsCh <- Event{
+			Type:    "agent." + eventType,
+			Content: eventType,
+			Data:    data,
+		}
 	}
 
 	// 初始化 LSP 管理器（可选功能）

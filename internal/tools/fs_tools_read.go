@@ -42,7 +42,7 @@ func (m *Manager) readStructured(ctx context.Context, params map[string]any) Too
 
 	switch mode {
 	case "file", "":
-		return m.readFileContent(ctx, ap, rel)
+		return m.readFileContent(ctx, ap, rel, params)
 	case "directory":
 		return m.listDirectoryContent(ctx, ap, rel)
 	case "exists":
@@ -54,7 +54,7 @@ func (m *Manager) readStructured(ctx context.Context, params map[string]any) Too
 	}
 }
 
-func (m *Manager) readFileContent(ctx context.Context, ap, rel string) ToolResult {
+func (m *Manager) readFileContent(ctx context.Context, ap, rel string, params map[string]any) ToolResult {
 	lang := LanguageFromContext(ctx)
 	exists, isDir, errPE := m.fileOps.PathExists(ap)
 	if errPE != nil {
@@ -69,6 +69,32 @@ func (m *Manager) readFileContent(ctx context.Context, ap, rel string) ToolResul
 		slog.Error("read_file.is_directory", "component", utils.ComponentTool, "path", ap)
 		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: i18n.T("tool.error.is_directory", lang)}
 	}
+
+	// Check for special binary file types that we can handle
+	ext := strings.ToLower(filepath.Ext(ap))
+	switch ext {
+	case ".pdf":
+		pages, _ := params["pages"].(string)
+		content, err := ReadPDF(ap, pages)
+		if err != nil {
+			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("Error reading PDF: %s", err.Error())}
+		}
+		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": content, "format": "pdf"}, Display: fmt.Sprintf("Read PDF: %s", rel)}
+	case ".ipynb":
+		content, err := ReadNotebook(ap, 2000)
+		if err != nil {
+			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("Error reading notebook: %s", err.Error())}
+		}
+		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": content, "format": "notebook"}, Display: fmt.Sprintf("Read Notebook: %s", rel)}
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
+		desc, data, err := ReadImage(ap)
+		if err != nil {
+			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("Error reading image: %s", err.Error())}
+		}
+		result := ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: data, Display: desc}
+		return result
+	}
+
 	if !m.fileOps.IsTextFile(ap) {
 		slog.Error("read_file.unsupported", "component", utils.ComponentTool, "path", ap)
 		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: i18n.T("tool.error.unsupported_file", lang)}

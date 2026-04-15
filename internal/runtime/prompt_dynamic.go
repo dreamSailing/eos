@@ -30,6 +30,9 @@ func BuildProjectPromptAdditions(cwd string) string {
 	}
 
 	addSnippet("VB.md", 8000)
+
+	sb.WriteString("\n\n## Auto-Memory Guidelines\nWhen you discover important user preferences, project conventions, or recurring patterns during the conversation, use the suggest_memory tool to propose adding them to VB.md or .vb/Rules.md.")
+
 	addSnippet(filepath.Join(".vb", "Rules.md"), 8000)
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
 		addSnippetPath(filepath.Join("~", ".vb", "Rules.md"), filepath.Join(home, ".vb", "Rules.md"), 8000)

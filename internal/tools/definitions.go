@@ -69,6 +69,10 @@ const (
 	ToolEnterPlanMode    = "enter_plan_mode"
 	ToolExitPlanMode     = "exit_plan_mode"
 	ToolAgent            = "agent"
+	ToolSuggestMemory    = "suggest_memory"
+	ToolWebSearch        = "web_search"
+	ToolWebFetch         = "web_fetch"
+	ToolEnterWorktree    = "enter_worktree"
 )
 
 // GetAllToolDefinitions 返回所有工具的定义
@@ -170,8 +174,9 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Name:        ToolRead,
 			Description: "统一读取工具。注意：path 参数必须是有效的文件系统路径，不要包含 '@' 等特殊前缀。",
 			Params: map[string]*schema.ParameterInfo{
-				"mode": {Type: schema.String, Required: false, Desc: "读取模式: file (默认, 读取文件内容), directory (列出目录条目), exists (检查路径是否存在), resolve (解析路径并返回候选路径与状态)"},
-				"path": {Type: schema.String, Required: true, Desc: "要读取的绝对或相对路径 (e.g., 'main.go', 'internal/utils')"},
+				"mode":  {Type: schema.String, Required: false, Desc: "读取模式: file (默认, 读取文件内容), directory (列出目录条目), exists (检查路径是否存在), resolve (解析路径并返回候选路径与状态)"},
+				"path":  {Type: schema.String, Required: true, Desc: "要读取的绝对或相对路径 (e.g., 'main.go', 'internal/utils')"},
+				"pages": {Type: schema.String, Required: false, Desc: "PDF 页面范围 (如 '1-5', '10-20')，仅 PDF 格式必填"},
 			},
 			RiskLevel: RiskLevelLow,
 			Examples: []ToolExample{
@@ -728,6 +733,46 @@ func GetAllToolDefinitions() []ToolDefinition {
 				{Description: "同步探索代码库", Input: map[string]any{"prompt": "查找所有处理用户认证的文件", "subagent_type": "explore"}},
 				{Description: "异步执行通用任务", Input: map[string]any{"prompt": "为 auth 模块编写单元测试", "subagent_type": "general-purpose", "run_in_background": true}},
 			},
+		},
+		{
+			Name:        ToolSuggestMemory,
+			Description: "Suggest adding content to a project memory file (VB.md or .vb/Rules.md). The suggestion will be presented to the user for confirmation. Use this when you discover important user preferences, project conventions, or recurring patterns.",
+			Params: map[string]*schema.ParameterInfo{
+				"file":    {Type: schema.String, Required: true, Desc: "Target file: 'VB.md' or '.vb/Rules.md'"},
+				"content": {Type: schema.String, Required: true, Desc: "Content to add"},
+				"section": {Type: schema.String, Required: false, Desc: "Optional section header"},
+			},
+			RiskLevel:       RiskLevelMedium,
+			ConcurrencySafe: true,
+			Examples: []ToolExample{
+				{Description: "Suggest adding a project convention", Input: map[string]any{"file": "VB.md", "content": "Always use bun as package manager", "section": "Conventions"}},
+			},
+		},
+		{
+			Name:        ToolWebSearch,
+			Description: "Search the web using DuckDuckGo. Returns search results with titles, URLs, and snippets.",
+			Params: map[string]*schema.ParameterInfo{
+				"query":       {Type: schema.String, Required: true, Desc: "Search query"},
+				"max_results": {Type: schema.Integer, Required: false, Desc: "Maximum number of results (default 5)"},
+			},
+			RiskLevel: RiskLevelLow,
+		},
+		{
+			Name:        ToolWebFetch,
+			Description: "Fetch content from a URL. Returns the raw content from the web page.",
+			Params: map[string]*schema.ParameterInfo{
+				"url":    {Type: schema.String, Required: true, Desc: "URL to fetch"},
+				"format": {Type: schema.String, Required: false, Desc: "Output format: text (default) or markdown"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolEnterWorktree,
+			Description: "Create an isolated git worktree for working on changes without affecting the main working directory.",
+			Params: map[string]*schema.ParameterInfo{
+				"name": {Type: schema.String, Required: false, Desc: "Worktree name (auto-generated if empty)"},
+			},
+			RiskLevel: RiskLevelMedium,
 		},
 	}
 }

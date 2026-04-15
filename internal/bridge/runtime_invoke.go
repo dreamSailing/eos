@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"context"
+	"fmt"
 	codectx "github.com/dreamSailing/vb-coding/internal/context"
 	"github.com/dreamSailing/vb-coding/internal/pkg/workspace"
 	"github.com/dreamSailing/vb-coding/internal/session"
@@ -41,10 +42,36 @@ func (rc *RuntimeCore) GraphInvokePlanWithImages(ctx context.Context, query, exe
 		ctx = tools.WithTraceID(ctx, traceID)
 	}
 	ctx = rc.withWorkspaceRoot(ctx)
+
+	// Phase 1 集成: Token 预算检查
+	if status := rc.CheckTokenBudget(); status == BudgetExceeded {
+		return nil, fmt.Errorf("token budget exceeded: session or turn limit reached")
+	}
+
+	// Phase 1 集成: 上下文压缩 — 在 invoke 前检查是否需要压缩
+	if rc.cm != nil {
+		rc.cm.CheckAndCompact(func(text string) (string, error) {
+			return rc.Summarize(ctx, text)
+		})
+	}
+
+	// Phase 1 集成: 重置 turn 级别的 token 计数
+	rc.ResetTurnBudget()
+
 	rc.StartRequest(traceID)
 	ch := make(chan graphInvokeRes, 1)
 	rc.reqCh <- graphInvokeReq{ctx: ctx, query: query, executionMode: executionMode, imagePaths: imagePaths, resCh: ch}
 	res := <-ch
+
+	// Phase 1 集成: 记录 token 使用量到预算管理器
+	if res.msg != nil {
+		inputTokens, replyTokens, totalTokens := rc.EstimateTokens(res.msg.Content)
+		if totalTokens > 0 {
+			rc.RecordTokenUsage(inputTokens, replyTokens)
+		}
+		rc.AddTokenRecordWithModel(inputTokens, replyTokens, totalTokens, rc.ModelName())
+	}
+
 	if res.err != nil {
 		rc.EndRequest(traceID, rc.ModelName())
 		rc.FinalizeTask(traceID, query, "", false, res.err.Error())

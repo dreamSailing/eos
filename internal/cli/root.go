@@ -13,6 +13,13 @@ import (
 
 var cfgFile string
 
+var (
+	printQuery    string
+	outputFormat  string
+	continueChat  bool
+	resumeSession string
+)
+
 // rootLang 根据环境变量 VB_LANG 返回界面语言。
 // 当前仅支持 zh/en，默认返回 zh。
 func rootLang() string {
@@ -43,6 +50,23 @@ var rootCmd = &cobra.Command{
 	Long:  rootLong(),
 	Run: func(cmd *cobra.Command, args []string) {
 		slog.Info("cli.start", "lang", rootLang())
+
+		// Handle --print mode
+		if printQuery != "" {
+			if err := RunPrintMode(PrintOptions{
+				Query:        printQuery,
+				OutputFormat: outputFormat,
+			}); err != nil {
+				os.Exit(1)
+			}
+			return
+		}
+
+		// Handle --continue or --resume (future: integrate with session manager)
+		// For now, just start TUI normally
+		_ = continueChat
+		_ = resumeSession
+
 		ui.StartInteractiveTUI()
 	},
 }
@@ -58,6 +82,10 @@ func init() {
 
 	// 全局 flags
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.vb-coding.yaml)")
+	rootCmd.PersistentFlags().StringVarP(&printQuery, "print", "p", "", "Run a single query in headless mode and print the result")
+	rootCmd.PersistentFlags().StringVar(&outputFormat, "output-format", "text", "Output format for print mode: text, json, stream-json")
+	rootCmd.PersistentFlags().BoolVarP(&continueChat, "continue", "c", false, "Continue the most recent conversation")
+	rootCmd.PersistentFlags().StringVar(&resumeSession, "resume", "", "Resume a specific conversation by session ID")
 
 	rootCmd.AddCommand(newBridgeCmd())
 	rootCmd.AddCommand(newServeCmd())

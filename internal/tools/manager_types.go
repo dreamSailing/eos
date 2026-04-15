@@ -82,6 +82,10 @@ func NewManager() *Manager {
 		ToolEnterPlanMode:    m.enterPlanModeStructured,
 		ToolExitPlanMode:     m.exitPlanModeStructured,
 		ToolAgent:            m.agentToolStructured,
+		ToolSuggestMemory:    m.suggestMemoryStructured,
+		ToolWebSearch:        m.webSearchStructured,
+		ToolWebFetch:         m.webFetchStructured,
+		ToolEnterWorktree:    m.enterWorktreeStructured,
 	}
 	m.LoadPluginsFromRegistry(plugins.DefaultRegistry())
 	return m

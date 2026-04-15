@@ -15,6 +15,7 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/state"
 	"github.com/dreamSailing/vb-coding/internal/tools"
 	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
+	"github.com/google/uuid"
 	"log/slog"
 	stdruntime "runtime"
 	"sort"
@@ -336,6 +337,19 @@ func (rc *RuntimeCore) loop() {
 		})
 
 		nrt = nrt.WithSafety(rc.hooks)
+
+		// Phase 1 集成: Wire AgentTool executor to use the runtime
+		tools.AgentToolExecutor = func(agentCtx context.Context, prompt, subagentType, description, model string) (string, error) {
+			agentCtx = tools.WithTraceID(agentCtx, "agent-"+uuid.New().String()[:8])
+			result, err := nrt.GraphInvoke(agentCtx, prompt, "")
+			if err != nil {
+				return "", err
+			}
+			if result != nil {
+				return result.Content, nil
+			}
+			return "", nil
+		}
 
 		rt = nrt
 		rc.mu.Lock()

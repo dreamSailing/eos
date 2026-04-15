@@ -2,6 +2,8 @@ package bridge
 
 import (
 	"time"
+
+	"github.com/dreamSailing/vb-coding/internal/ai"
 )
 
 // AddTokenRecord 添加 Token 记录
@@ -19,12 +21,16 @@ func (rc *RuntimeCore) AddTokenRecordWithModel(input, reply, total int, model st
 		model = rc.modelName
 	}
 
+	// Estimate cost
+	costEst := ai.EstimateCost(model, input, reply)
+
 	rc.tokenHistory = append(rc.tokenHistory, TokenRecord{
 		Timestamp: time.Now(),
 		Model:     model,
 		Input:     input,
 		Reply:     reply,
 		Total:     total,
+		CostUSD:   costEst.TotalCost,
 	})
 }
 
@@ -38,6 +44,7 @@ func (rc *RuntimeCore) GetTokenStats() TokenStats {
 		stats.Input += r.Input
 		stats.Reply += r.Reply
 		stats.Total += r.Total
+		stats.TotalCostUSD += r.CostUSD
 	}
 	return stats
 }
@@ -72,6 +79,7 @@ func (rc *RuntimeCore) GetModelTokenStats() []ModelTokenStats {
 		stats.Input += r.Input
 		stats.Reply += r.Reply
 		stats.Total += r.Total
+		stats.TotalCostUSD += r.CostUSD
 	}
 
 	result := make([]ModelTokenStats, 0, len(modelMap))

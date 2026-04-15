@@ -53,6 +53,7 @@ const (
 	EventTypeTaskFailed     EventType = "task.failed"
 	EventTypeModeChanged    EventType = "mode.changed"
 	EventTypeBudgetUpdated  EventType = "budget.updated"
+	EventTypeMemorySuggestion EventType = "memory.suggestion"
 )
 
 type Envelope struct {

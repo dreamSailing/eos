@@ -194,9 +194,38 @@ func ClassifyToolDanger(call ToolCall) (category string, level string, summary s
 		return "git-add", "low", "git add", false
 	case ToolGitStatus, ToolGitBranchList, ToolGitDiff, ToolGitLog, ToolGitShow:
 		return "", "low", call.Tool, false
+	case ToolWebSearch:
+		return "web:search", "low", "web search: " + extractParamSummary(call.Parameters), false
+	case ToolWebFetch:
+		url, _ := call.Parameters["url"].(string)
+		if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://localhost") {
+			return "web:fetch", "medium", "non-HTTPS web fetch: " + url, true
+		}
+		return "web:fetch", "low", "web fetch: "+url, false
+	case ToolSuggestMemory:
+		return "memory:suggest", "low", "suggest memory", false
+	case ToolEnterWorktree:
+		return "git:worktree", "medium", "create git worktree", false
 	}
 
 	return "unknown", "low", call.Tool, false
+}
+
+// extractParamSummary extracts a short summary from tool parameters for display
+func extractParamSummary(params map[string]interface{}) string {
+	if params == nil {
+		return ""
+	}
+	// Try common parameter names
+	for _, key := range []string{"query", "command", "path", "url", "message"} {
+		if v, ok := params[key].(string); ok && v != "" {
+			if len(v) > 80 {
+				return v[:80] + "..."
+			}
+			return v
+		}
+	}
+	return ""
 }
 
 // ClassifyBashDanger 分类 Bash 命令危险等级

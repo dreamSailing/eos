@@ -52,8 +52,9 @@ type PluginEntry struct {
 type MCPClientType string
 
 const (
-	MCPTypeStdio MCPClientType = "stdio" // 本地命令行工具
-	MCPTypeSSE   MCPClientType = "sse"   // 远程SSE服务
+	MCPTypeStdio          MCPClientType = "stdio"          // 本地命令行工具
+	MCPTypeSSE            MCPClientType = "sse"            // 远程SSE服务
+	MCPTypeStreamableHTTP MCPClientType = "streamable-http" // Streamable HTTP MCP transport
 )
 
 // MCPEntry MCP服务配置条目
@@ -111,6 +112,7 @@ type Config struct {
 	LastWorkspace     string           `json:"last_workspace,omitempty"`     // 上次前台工作区（绝对路径）
 	TrustedWorkspaces []string         `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
 	Language          string           `json:"language,omitempty"`           // 语言设置 (zh, en)
+	FastModel         string           `json:"fast_model,omitempty"`         // Fast mode model name
 }
 
 func Path() string {
