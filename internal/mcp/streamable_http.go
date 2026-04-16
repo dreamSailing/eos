@@ -237,3 +237,108 @@ func (c *StreamableHTTPClient) Close() error {
 	_, err = c.httpClient.Do(req)
 	return err
 }
+
+// ListResources sends a resources/list request
+func (c *StreamableHTTPClient) ListResources(ctx context.Context) ([]interface{}, error) {
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      uuid.New().String(),
+		"method":  "resources/list",
+		"params":  map[string]interface{}{},
+	}
+
+	resp, err := c.sendRequest(ctx, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("MCP resources/list failed: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(resp.Body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse resources response: %w", err)
+	}
+
+	if resources, ok := result["resources"].([]interface{}); ok {
+		return resources, nil
+	}
+
+	return nil, nil
+}
+
+// ReadResource sends a resources/read request
+func (c *StreamableHTTPClient) ReadResource(ctx context.Context, uri string) (interface{}, error) {
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      uuid.New().String(),
+		"method":  "resources/read",
+		"params": map[string]interface{}{
+			"uri": uri,
+		},
+	}
+
+	resp, err := c.sendRequest(ctx, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("MCP resources/read failed: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(resp.Body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse resource read response: %w", err)
+	}
+
+	return result, nil
+}
+
+// ListPrompts sends a prompts/list request
+func (c *StreamableHTTPClient) ListPrompts(ctx context.Context) ([]interface{}, error) {
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      uuid.New().String(),
+		"method":  "prompts/list",
+		"params":  map[string]interface{}{},
+	}
+
+	resp, err := c.sendRequest(ctx, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("MCP prompts/list failed: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(resp.Body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse prompts response: %w", err)
+	}
+
+	if prompts, ok := result["prompts"].([]interface{}); ok {
+		return prompts, nil
+	}
+
+	return nil, nil
+}
+
+// GetPrompt sends a prompts/get request
+func (c *StreamableHTTPClient) GetPrompt(ctx context.Context, name string, args map[string]interface{}) (interface{}, error) {
+	params := map[string]interface{}{
+		"name": name,
+	}
+	if len(args) > 0 {
+		params["arguments"] = args
+	}
+
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      uuid.New().String(),
+		"method":  "prompts/get",
+		"params":  params,
+	}
+
+	resp, err := c.sendRequest(ctx, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("MCP prompts/get failed: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(resp.Body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse prompt get response: %w", err)
+	}
+
+	return result, nil
+}

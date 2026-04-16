@@ -9,9 +9,10 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
-// snippedMessages tracks message IDs that should be snipped (trimmed from context)
+// snippedMessages tracks message content hashes that should be snipped (trimmed from context)
+// Using content hash as key to match the SetSnipChecker(callback by content) signature
 var (
-	snippedMessages   map[string]string // messageID -> reason
+	snippedMessages   map[string]string // contentHash -> reason
 	snippedMessagesMu sync.RWMutex
 )
 
@@ -21,20 +22,21 @@ func init() {
 
 // snipStructured marks a message as snippable for context compression
 func (m *Manager) snipStructured(ctx context.Context, params map[string]interface{}) ToolResult {
-	messageID, _ := params["message_id"].(string)
+	content, _ := params["content"].(string)
 	reason, _ := params["reason"].(string)
 
-	if messageID == "" {
-		return ToolResult{Type: "tool_result", Tool: ToolSnip, Status: "error", Error: "message_id parameter is required"}
+	if content == "" {
+		return ToolResult{Type: "tool_result", Tool: ToolSnip, Status: "error", Error: "content parameter is required"}
 	}
 
+	// Use content itself as the key (matching SetSnipChecker callback signature)
 	snippedMessagesMu.Lock()
-	snippedMessages[messageID] = reason
+	snippedMessages[content] = reason
 	snippedMessagesMu.Unlock()
 
-	slog.Debug("tools.snip.marked", "component", utils.ComponentTool, "message_id", messageID, "reason", reason)
+	slog.Debug("tools.snip.marked", "component", utils.ComponentTool, "content_len", len(content), "reason", reason)
 
-	display := fmt.Sprintf("Marked message %s for snipping", messageID)
+	display := fmt.Sprintf("Marked content (%d bytes) for snipping", len(content))
 	if reason != "" {
 		display += ": " + reason
 	}
@@ -42,24 +44,32 @@ func (m *Manager) snipStructured(ctx context.Context, params map[string]interfac
 		Type:    "tool_result",
 		Tool:    ToolSnip,
 		Status:  "success",
-		Data:    map[string]interface{}{"message_id": messageID, "reason": reason},
+		Data:    map[string]interface{}{"content_length": len(content), "reason": reason},
 		Display: display,
 	}
 }
 
-// IsMessageSnipped checks if a message has been marked for snipping
-func IsMessageSnipped(messageID string) bool {
+// IsMessageSnipped checks if a message content has been marked for snipping
+// This function is used as the snipCheck callback in SetSnipChecker
+func IsMessageSnipped(content string) bool {
+	if content == "" {
+		return false
+	}
 	snippedMessagesMu.RLock()
 	defer snippedMessagesMu.RUnlock()
-	_, ok := snippedMessages[messageID]
+	_, ok := snippedMessages[content]
 	return ok
 }
 
-// GetSnipReason returns the reason a message was snipped
-func GetSnipReason(messageID string) string {
+// GetSnipReason returns the reason a message content was snipped
+// This function is used as the snipReasonFor callback in SetSnipChecker
+func GetSnipReason(content string) string {
+	if content == "" {
+		return ""
+	}
 	snippedMessagesMu.RLock()
 	defer snippedMessagesMu.RUnlock()
-	return snippedMessages[messageID]
+	return snippedMessages[content]
 }
 
 // ClearSnippedMessages clears all snipped message markers
@@ -69,13 +79,15 @@ func ClearSnippedMessages() {
 	snippedMessages = make(map[string]string)
 }
 
-// GetSnippedMessageIDs returns all snipped message IDs
+// GetSnippedMessageIDs returns all snipped message IDs (for debugging)
 func GetSnippedMessageIDs() []string {
 	snippedMessagesMu.RLock()
 	defer snippedMessagesMu.RUnlock()
 	ids := make([]string, 0, len(snippedMessages))
-	for id := range snippedMessages {
-		ids = append(ids, id)
+	// Note: we can't return full content as IDs, so we return a count
+	// The actual content is the key itself
+	for range snippedMessages {
+		ids = append(ids, "<content>")
 	}
 	return ids
 }

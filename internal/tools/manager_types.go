@@ -36,6 +36,14 @@ type Manager struct {
 	cache        *ToolCache // 工具输出缓存
 	mcpManager   *mcp.Manager
 	hookRunner   HookRunner // Hook integration for tool execution
+
+	// OnReactiveCompact is called when a tool result exceeds the reactive compaction threshold
+	OnReactiveCompact func()
+	// AskToolApproval is called when a tool matches an "ask" permission rule.
+	// Returns true if the user approves, false to deny.
+	AskToolApproval func(toolName string) bool
+	// resultBudget tracks aggregate tool result size per turn
+	resultBudget *ToolResultBudget
 }
 
 // NewManager creates a new tool manager with all handlers registered
@@ -97,6 +105,8 @@ func NewManager() *Manager {
 		ToolNotebookEdit:     m.notebookEditStructured,
 		ToolMCPListResources: m.mcpListResourcesStructured,
 		ToolMCPReadResource:  m.mcpReadResourceStructured,
+		ToolMCPListPrompts:   m.mcpListPromptsStructured,
+		ToolMCPGetPrompt:     m.mcpGetPromptStructured,
 		ToolPowerShell:       m.powerShellStructured,
 		ToolStructuredOutput: m.structuredOutputStructured,
 		ToolSnip:             m.snipStructured,

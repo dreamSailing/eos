@@ -177,3 +177,79 @@ func writeMemoryToFile(file, content, section string) error {
 // OnMemorySuggestion is called when the AI suggests adding to a memory file.
 // Returns true if accepted, false if rejected.
 var OnMemorySuggestion func(id, file, content, section string) bool
+
+// typedMemoryStructured handles typed memory storage (user/feedback/project/reference)
+func (m *Manager) typedMemoryStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	memType, _ := params["type"].(string)
+	content, _ := params["content"].(string)
+	file, _ := params["file"].(string)
+	section, _ := params["section"].(string)
+
+	if strings.TrimSpace(content) == "" {
+		return ToolResult{
+			Type:    "tool_result",
+			Tool:    "typed_memory",
+			Status:  "error",
+			Error:   "content is required",
+			Display: "Error: content parameter is required",
+		}
+	}
+
+	// Import the memory types package logic inline
+	mt := parseMemoryType(memType)
+	if file == "" {
+		file = mt.defaultFile()
+	}
+
+	// Delegate to the existing write logic
+	err := writeMemoryToFile(file, content, section)
+	if err != nil {
+		return ToolResult{
+			Type:    "tool_result",
+			Tool:    "typed_memory",
+			Status:  "error",
+			Error:   err.Error(),
+			Display: fmt.Sprintf("Error writing to %s: %s", file, err.Error()),
+		}
+	}
+
+	return ToolResult{
+		Type:    "tool_result",
+		Tool:    "typed_memory",
+		Status:  "success",
+		Data:    map[string]interface{}{"type": string(mt), "file": file, "content_length": len(content)},
+		Display: fmt.Sprintf("Memory saved to %s (type: %s)", file, mt),
+	}
+}
+
+// parseMemoryType converts a string to a typed memory type
+func parseMemoryType(s string) memoryType {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "feedback":
+		return memoryTypeFeedback
+	case "project":
+		return memoryTypeProject
+	case "reference":
+		return memoryTypeReference
+	default:
+		return memoryTypeUser
+	}
+}
+
+type memoryType string
+
+const (
+	memoryTypeUser      memoryType = "user"
+	memoryTypeFeedback  memoryType = "feedback"
+	memoryTypeProject   memoryType = "project"
+	memoryTypeReference memoryType = "reference"
+)
+
+func (t memoryType) defaultFile() string {
+	switch t {
+	case memoryTypeProject:
+		return ".vb/Rules.md"
+	default:
+		return "VB.md"
+	}
+}

@@ -60,3 +60,15 @@ func (m *Manager) SetMCPManager(mm *mcp.Manager) {
 func (m *Manager) SetHookRunner(hr HookRunner) {
 	m.hookRunner = hr
 }
+
+// SetResultBudget sets the tool result budget tracker
+func (m *Manager) SetResultBudget(b *ToolResultBudget) {
+	m.resultBudget = b
+}
+
+// ResetResultBudget resets the tool result budget for a new turn
+func (m *Manager) ResetResultBudget() {
+	if m.resultBudget != nil {
+		m.resultBudget.Reset()
+	}
+}

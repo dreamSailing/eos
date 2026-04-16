@@ -117,6 +117,13 @@ func (m *Manager) executeSingleWithCache(ctx context.Context, call ToolCall, now
 		return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "permission denied: tool not allowed", Display: "Error: permission denied: tool not allowed", Ts: now}
 	}
 
+	// Fix 4: Ask-tool-approval for tools that require explicit user confirmation
+	if m.AskToolApproval != nil && GetToolRiskLevel(call.Tool) >= RiskLevelHigh {
+		if !m.AskToolApproval(call.Tool) {
+			return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "tool execution denied by user", Display: "Error: tool execution denied by user", Ts: now}
+		}
+	}
+
 	// Pre-tool hook: allows input modification and execution veto
 	params := call.Parameters
 	if m.hookRunner != nil {
@@ -148,6 +155,23 @@ func (m *Manager) executeSingleWithCache(ctx context.Context, call ToolCall, now
 	}
 	r = m.limitToolOutputSize(r)
 
+	// Enforce aggregate tool result budget per turn
+	if m.resultBudget != nil && r.Status == "success" {
+		if content, ok := r.Data["content"].(string); ok {
+			replaced, truncated := m.resultBudget.CheckAndEnforce(call.ID, content)
+			if truncated {
+				r.Data["content"] = replaced
+				r.Data["budget_truncated"] = true
+			}
+		} else if text, ok := r.Data["text"].(string); ok {
+			replaced, truncated := m.resultBudget.CheckAndEnforce(call.ID, text)
+			if truncated {
+				r.Data["text"] = replaced
+				r.Data["budget_truncated"] = true
+			}
+		}
+	}
+
 	// Post-tool hook: allows result processing (logging, notifications, etc.)
 	if m.hookRunner != nil {
 		if err := m.hookRunner.PostToolUse(ctx, call.Tool, params, r.Data); err != nil {
@@ -159,6 +183,9 @@ func (m *Manager) executeSingleWithCache(ctx context.Context, call ToolCall, now
 	if r.Status == "success" && m.isReactiveCompactNeeded(r) {
 		slog.Info("tools.reactive_compact.triggered", "component", utils.ComponentTool, "tool", call.Tool)
 		r.Data["reactive_compact_suggested"] = true
+		if m.OnReactiveCompact != nil {
+			go m.OnReactiveCompact()
+		}
 	}
 
 	// 写入缓存（仅对可缓存的成功结果）

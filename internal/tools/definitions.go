@@ -77,6 +77,8 @@ const (
 	ToolNotebookEdit     = "notebook_edit"
 	ToolMCPListResources = "mcp_list_resources"
 	ToolMCPReadResource  = "mcp_read_resource"
+	ToolMCPListPrompts   = "mcp_list_prompts"
+	ToolMCPGetPrompt     = "mcp_get_prompt"
 	ToolPowerShell       = "powershell"
 	ToolStructuredOutput = "structured_output"
 	ToolSnip             = "snip"
@@ -821,6 +823,22 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Params: map[string]*schema.ParameterInfo{
 				"server": {Type: schema.String, Required: true, Desc: "MCP 服务器名称"},
 				"uri":    {Type: schema.String, Required: true, Desc: "资源 URI"},
+			},
+			RiskLevel: RiskLevelLow,
+		},
+		{
+			Name:        ToolMCPListPrompts,
+			Description: "列出所有 MCP 服务器提供的 prompt 模板。",
+			Params:      map[string]*schema.ParameterInfo{},
+			RiskLevel:   RiskLevelLow,
+		},
+		{
+			Name:        ToolMCPGetPrompt,
+			Description: "获取指定 MCP 服务器的指定 prompt 模板内容。",
+			Params: map[string]*schema.ParameterInfo{
+				"server":    {Type: schema.String, Required: true, Desc: "MCP 服务器名称"},
+				"name":      {Type: schema.String, Required: true, Desc: "prompt 名称"},
+				"arguments": {Type: schema.String, Required: false, Desc: "可选的 prompt 参数（JSON 格式）"},
 			},
 			RiskLevel: RiskLevelLow,
 		},

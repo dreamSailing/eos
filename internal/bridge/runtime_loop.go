@@ -453,7 +453,30 @@ func (rc *RuntimeCore) loop() {
 							tReq.resCh <- graphInvokeRes{msg: nil, err: ErrRuntimeLoopUnavailable}
 						}
 					}()
+
+					// Reset tool result budget at start of each turn
+					rc.tm.ResetResultBudget()
+
+					// Proactive micro-compact: compress large tool outputs before they accumulate
+					if rc.cm != nil && rc.cm.ShouldMicroCompact() {
+						slog.Debug("runtime.micro_compact.proactive", "component", utils.ComponentSystem)
+						rc.cm.MicroCompact()
+					}
+
 					msg, err := rc.graphInvokeWithRetry(tReq.ctx, tRT, tReq.query, tReq.executionMode, tReq.imagePaths)
+
+					// Gap D: Check stop hooks after graph invocation
+					if err == nil && msg != nil && rc.hookManager != nil {
+						assistantContent := ""
+						if msg.Content != "" {
+							assistantContent = msg.Content
+						}
+						stopDec, stopErr := rc.hookManager.Stop(tReq.ctx, assistantContent, true)
+						if stopErr == nil && (stopDec.Decision == "block" || stopDec.Decision == "deny") {
+							slog.Info("runtime.stop_hook.blocked", "component", utils.ComponentSystem, "reason", stopDec.Reason)
+						}
+					}
+
 					tReq.resCh <- graphInvokeRes{msg: msg, err: err}
 				}(currentRT, r)
 			case toolsNodeReq:

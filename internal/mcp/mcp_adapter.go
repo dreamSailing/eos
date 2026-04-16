@@ -43,11 +43,23 @@ func (a *StreamableHTTPAdapter) Ping(ctx context.Context) error {
 }
 
 func (a *StreamableHTTPAdapter) ListResourcesByPage(ctx context.Context, req mcp.ListResourcesRequest) (*mcp.ListResourcesResult, error) {
-	return &mcp.ListResourcesResult{}, nil
+	return a.ListResources(ctx, req)
 }
 
 func (a *StreamableHTTPAdapter) ListResources(ctx context.Context, req mcp.ListResourcesRequest) (*mcp.ListResourcesResult, error) {
-	return &mcp.ListResourcesResult{}, nil
+	resources, err := a.client.ListResources(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var mcpResources []mcp.Resource
+	for _, r := range resources {
+		raw, _ := json.Marshal(r)
+		var res mcp.Resource
+		if err := json.Unmarshal(raw, &res); err == nil {
+			mcpResources = append(mcpResources, res)
+		}
+	}
+	return &mcp.ListResourcesResult{Resources: mcpResources}, nil
 }
 
 func (a *StreamableHTTPAdapter) ListResourceTemplatesByPage(ctx context.Context, req mcp.ListResourceTemplatesRequest) (*mcp.ListResourceTemplatesResult, error) {
@@ -59,7 +71,16 @@ func (a *StreamableHTTPAdapter) ListResourceTemplates(ctx context.Context, req m
 }
 
 func (a *StreamableHTTPAdapter) ReadResource(ctx context.Context, req mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-	return &mcp.ReadResourceResult{}, nil
+	result, err := a.client.ReadResource(ctx, req.Params.URI)
+	if err != nil {
+		return nil, err
+	}
+	raw, _ := json.Marshal(result)
+	var readResult mcp.ReadResourceResult
+	if err := json.Unmarshal(raw, &readResult); err != nil {
+		return nil, fmt.Errorf("failed to parse read resource result: %w", err)
+	}
+	return &readResult, nil
 }
 
 func (a *StreamableHTTPAdapter) Subscribe(ctx context.Context, req mcp.SubscribeRequest) error {
@@ -71,15 +92,41 @@ func (a *StreamableHTTPAdapter) Unsubscribe(ctx context.Context, req mcp.Unsubsc
 }
 
 func (a *StreamableHTTPAdapter) ListPromptsByPage(ctx context.Context, req mcp.ListPromptsRequest) (*mcp.ListPromptsResult, error) {
-	return &mcp.ListPromptsResult{}, nil
+	return a.ListPrompts(ctx, req)
 }
 
 func (a *StreamableHTTPAdapter) ListPrompts(ctx context.Context, req mcp.ListPromptsRequest) (*mcp.ListPromptsResult, error) {
-	return &mcp.ListPromptsResult{}, nil
+	prompts, err := a.client.ListPrompts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var mcpPrompts []mcp.Prompt
+	for _, p := range prompts {
+		raw, _ := json.Marshal(p)
+		var prompt mcp.Prompt
+		if err := json.Unmarshal(raw, &prompt); err == nil {
+			mcpPrompts = append(mcpPrompts, prompt)
+		}
+	}
+	return &mcp.ListPromptsResult{Prompts: mcpPrompts}, nil
 }
 
 func (a *StreamableHTTPAdapter) GetPrompt(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	return &mcp.GetPromptResult{}, nil
+	args := make(map[string]interface{})
+	if req.Params.Arguments != nil {
+		raw, _ := json.Marshal(req.Params.Arguments)
+		_ = json.Unmarshal(raw, &args)
+	}
+	result, err := a.client.GetPrompt(ctx, req.Params.Name, args)
+	if err != nil {
+		return nil, err
+	}
+	raw, _ := json.Marshal(result)
+	var promptResult mcp.GetPromptResult
+	if err := json.Unmarshal(raw, &promptResult); err != nil {
+		return nil, fmt.Errorf("failed to parse get prompt result: %w", err)
+	}
+	return &promptResult, nil
 }
 
 func (a *StreamableHTTPAdapter) ListToolsByPage(ctx context.Context, req mcp.ListToolsRequest) (*mcp.ListToolsResult, error) {

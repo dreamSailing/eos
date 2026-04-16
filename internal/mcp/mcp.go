@@ -12,6 +12,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	mcpclient "github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 
 	einomcp "github.com/cloudwego/eino-ext/components/tool/mcp"
@@ -22,6 +23,7 @@ type Manager struct {
 	clients   map[string]mcpclient.MCPClient // name -> client
 	tools     map[string][]tool.BaseTool     // name -> tools
 	resources map[string][]mcp.Resource      // name -> resources (from ListResources)
+	prompts   map[string][]mcp.Prompt        // name -> prompts (from ListPrompts)
 	status    map[string]ServerStatus        // name -> status (last reload)
 	mu        sync.RWMutex
 }
@@ -40,6 +42,7 @@ func NewManager() *Manager {
 		clients:   make(map[string]mcpclient.MCPClient),
 		tools:     make(map[string][]tool.BaseTool),
 		resources: make(map[string][]mcp.Resource),
+		prompts:   make(map[string][]mcp.Prompt),
 		status:    make(map[string]ServerStatus),
 	}
 }
@@ -117,7 +120,28 @@ func (m *Manager) loadServer(ctx context.Context, server config.MCPEntry) error 
 			return fmt.Errorf("create_stdio_client: %w", err)
 		}
 	case config.MCPTypeSSE:
-		sseCli, err := mcpclient.NewSSEMCPClient(server.BaseURL)
+		var sseOpts []transport.ClientOption
+		// Inject auth headers for SSE client
+		if server.Auth != nil {
+			authHeaders := make(map[string]string)
+			if server.Auth.Token != "" {
+				switch server.Auth.Type {
+				case "bearer":
+					authHeaders["Authorization"] = "Bearer " + server.Auth.Token
+				case "api_key":
+					authHeaders["X-API-Key"] = server.Auth.Token
+				default:
+					authHeaders["Authorization"] = server.Auth.Token
+				}
+			}
+			for k, v := range server.Auth.Headers {
+				authHeaders[k] = v
+			}
+			if len(authHeaders) > 0 {
+				sseOpts = append(sseOpts, transport.WithHeaders(authHeaders))
+			}
+		}
+		sseCli, err := mcpclient.NewSSEMCPClient(server.BaseURL, sseOpts...)
 		if err != nil {
 			slog.Error("mcp.manager.create_sse_client.error", "component", utils.ComponentSystem, "name", server.Name, "error", err.Error())
 			return fmt.Errorf("create_sse_client: %w", err)
@@ -188,6 +212,21 @@ func (m *Manager) loadServer(ctx context.Context, server config.MCPEntry) error 
 		slog.Info("mcp.manager.list_resources.success", "component", utils.ComponentSystem, "name", server.Name, "resources_count", len(res.Resources))
 	}
 
+	// Fetch prompts from the MCP server
+	// Fix R2: Check if client supports ListPrompts before calling
+	if promptsCli, ok := cli.(interface{ ListPrompts(ctx context.Context, req mcp.ListPromptsRequest) (*mcp.ListPromptsResult, error) }); ok {
+		promptRes, promptErr := promptsCli.ListPrompts(ctx, mcp.ListPromptsRequest{})
+		if promptErr != nil {
+			slog.Warn("mcp.manager.list_prompts.error", "component", utils.ComponentSystem, "name", server.Name, "error", promptErr.Error())
+			// Non-fatal: continue without prompts
+		} else if promptRes != nil {
+			m.prompts[server.Name] = promptRes.Prompts
+			slog.Info("mcp.manager.list_prompts.success", "component", utils.ComponentSystem, "name", server.Name, "prompts_count", len(promptRes.Prompts))
+		}
+	} else {
+		slog.Debug("mcp.manager.list_prompts.skip", "component", utils.ComponentSystem, "name", server.Name, "reason", "client_does_not_support_prompts")
+	}
+
 	slog.Info("mcp.manager.load_server.success", "component", utils.ComponentSystem, "name", server.Name, "tools_count", len(tools))
 	return nil
 }
@@ -209,6 +248,41 @@ func (m *Manager) GetToolsByServer(name string) []tool.BaseTool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.tools[name]
+}
+
+// GetAllPrompts returns all prompts from all MCP servers
+func (m *Manager) GetAllPrompts() map[string][]mcp.Prompt {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	out := make(map[string][]mcp.Prompt, len(m.prompts))
+	for k, v := range m.prompts {
+		out[k] = v
+	}
+	return out
+}
+
+// GetPrompt retrieves a specific prompt from an MCP server
+func (m *Manager) GetPrompt(ctx context.Context, serverName, promptName string, args map[string]interface{}) (*mcp.GetPromptResult, error) {
+	m.mu.RLock()
+	cli, ok := m.clients[serverName]
+	m.mu.RUnlock()
+
+	if !ok {
+		return nil, fmt.Errorf("MCP server %q not found", serverName)
+	}
+
+	stringArgs := make(map[string]string)
+	for k, v := range args {
+		stringArgs[k] = fmt.Sprintf("%v", v)
+	}
+
+	return cli.GetPrompt(ctx, mcp.GetPromptRequest{
+		Params: mcp.GetPromptParams{
+			Name:      promptName,
+			Arguments: stringArgs,
+		},
+	})
 }
 
 // ListServers 列出已加载的服务名称

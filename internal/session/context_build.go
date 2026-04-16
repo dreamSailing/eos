@@ -16,7 +16,7 @@ func (c *ContextManager) Build() []ai.Message {
 func (c *ContextManager) buildLocked() []ai.Message {
 	msgs := make([]ai.Message, 0, len(c.pinned)+len(c.recent)+len(c.tools)+len(c.ephem))
 	for _, m := range c.pinned {
-		if strings.TrimSpace(m.Content) != "" {
+		if strings.TrimSpace(m.Content) != "" && !c.shouldSnip(m) {
 			msgs = append(msgs, m)
 		}
 	}
@@ -29,13 +29,20 @@ func (c *ContextManager) buildLocked() []ai.Message {
 		c.ephem = nil
 	}
 	for _, m := range c.recent {
-		if strings.TrimSpace(m.Content) != "" {
-			msgs = append(msgs, m)
+		if strings.TrimSpace(m.Content) == "" {
+			continue
 		}
+		if c.shouldSnip(m) {
+			// Replace snipped messages with a placeholder
+			reason := c.snipReason(m)
+			msgs = append(msgs, ai.Message{Role: m.Role, Content: "[snipped" + reason + "]"})
+			continue
+		}
+		msgs = append(msgs, m)
 	}
 	if len(c.currentFull) > 0 {
 		for _, m := range c.currentFull {
-			if strings.TrimSpace(m.Content) != "" {
+			if strings.TrimSpace(m.Content) != "" && !c.shouldSnip(m) {
 				msgs = append(msgs, m)
 			}
 		}
@@ -139,4 +146,32 @@ func (c *ContextManager) EstimateMessageTokens(msgs []ai.Message) int {
 		}
 	}
 	return total
+}
+
+// SetSnipChecker sets the callback for checking if messages should be snipped
+func (c *ContextManager) SetSnipChecker(check func(content string) bool, reason func(content string) string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.snipCheck = check
+	c.snipReasonFor = reason
+}
+
+// shouldSnip checks if a message should be snipped from context
+func (c *ContextManager) shouldSnip(m ai.Message) bool {
+	if c.snipCheck == nil {
+		return false
+	}
+	return c.snipCheck(m.Content)
+}
+
+// snipReason returns the reason for snipping a message
+func (c *ContextManager) snipReason(m ai.Message) string {
+	if c.snipReasonFor == nil {
+		return ""
+	}
+	reason := c.snipReasonFor(m.Content)
+	if reason != "" {
+		return ": " + reason
+	}
+	return ""
 }

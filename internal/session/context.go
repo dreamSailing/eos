@@ -77,6 +77,12 @@ type ContextManager struct {
 	autoCompressEnabled bool                // 是否启用自动压缩
 	compressThreshold   float64             // 自动压缩阈值 (0-1)
 	onPreCompact        func(trigger string, customInstructions string)
+
+	// snipCheck is a callback that checks if a message content hash should be snipped.
+	// Returns true if the message should be excluded from context.
+	snipCheck func(content string) bool
+	// snipReasonFor returns the reason for snipping a message
+	snipReasonFor func(content string) string
 }
 
 // NewContextManager 创建新的上下文管理器

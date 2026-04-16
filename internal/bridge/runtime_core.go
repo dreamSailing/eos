@@ -2,21 +2,24 @@ package bridge
 
 import (
 	"context"
+	"log/slog"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/dreamSailing/vb-coding/internal/ai"
 	"github.com/dreamSailing/vb-coding/internal/config"
 	codectx "github.com/dreamSailing/vb-coding/internal/context"
 	"github.com/dreamSailing/vb-coding/internal/mcp"
 	"github.com/dreamSailing/vb-coding/internal/pkg/git"
 	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
+	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 	"github.com/dreamSailing/vb-coding/internal/pkg/workspace"
 	einoruntime "github.com/dreamSailing/vb-coding/internal/runtime"
 	"github.com/dreamSailing/vb-coding/pkg/protocol"
 	"github.com/dreamSailing/vb-coding/internal/session"
 	"github.com/dreamSailing/vb-coding/internal/skills"
 	"github.com/dreamSailing/vb-coding/internal/tools"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -146,6 +149,9 @@ type RuntimeCore struct {
 
 	// Fast model runtime for summaries
 	fastRT *einoruntime.EinoRuntime
+
+	// hookManager for advanced hooks integration (Stop hooks, etc.)
+	hookManager *einoruntime.HookManager
 }
 
 type PromptResponse struct {
@@ -483,11 +489,11 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 		done:                     make(chan struct{}),
 		conversationSummaryEvery: 6,
 		pendingReload:            make(map[chan error]struct{}),
-		pendingGraph:             make(map[chan graphInvokeRes]struct{}),
-		pendingTools:             make(map[chan toolsNodeRes]struct{}),
-		pendingSumm:              make(map[chan summarizeRes]struct{}),
-		modelName:                modelName,
-		modelBase:                modelBase,
+		pendingGraph:            make(map[chan graphInvokeRes]struct{}),
+		pendingTools:            make(map[chan toolsNodeRes]struct{}),
+		pendingSumm:             make(map[chan summarizeRes]struct{}),
+		modelName:               modelName,
+		modelBase:               modelBase,
 	}
 	rc.parser = NewStreamParser(rc.eventsCh)
 
@@ -519,6 +525,36 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	}
 	rc.hooks = hooks
 	rc.securityMgr.SetHooks(hooks)
+
+	// Fix 1: Inject HookRunner so pre/post tool use hooks actually fire
+	tm.SetHookRunner(adaptSafetyGateAsHookRunner(hooks))
+
+	// Fix 3 & Fix R7: Wire reactive compaction callback
+	// Note: removed duplicate SnipToolOutputs call since reactive_compact_suggested
+	// flag already triggers SnipToolOutputs in the tool execution path
+	tm.OnReactiveCompact = func() {
+		slog.Info("runtime.reactive_compact.triggered", "component", utils.ComponentSystem)
+		// Trigger micro-compact to reduce large tool outputs before they accumulate
+		if rc.cm != nil {
+			rc.cm.MicroCompact()
+		}
+	}
+
+	// Fix 4: Wire ask-tool-approval callback
+	tm.AskToolApproval = func(toolName string) bool {
+		return rc.promptPermission(context.Background(), "tool_approval", "Allow tool: "+toolName) == "allow"
+	}
+
+	// Fix R5: Create and inject ToolResultBudget
+	tm.SetResultBudget(tools.NewToolResultBudget(rc.workingRoot()))
+
+	// Fix R4: Connect snip checker to context manager
+	if cm != nil {
+		cm.SetSnipChecker(
+			tools.IsMessageSnipped,
+			tools.GetSnipReason,
+		)
+	}
 
 	tools.SafetyGatePrompt = hooks.Prompt
 	tools.SafetyGateSessionAllowed = hooks.SessionAllowed
@@ -566,6 +602,14 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 
 	// 初始化 LSP 管理器（可选功能）
 	rc.lspManager = rc.initLSPManager()
+
+	// Initialize hook manager for advanced hooks (stop hooks, session hooks, etc.)
+	rc.hookManager = einoruntime.NewHookManager(tm)
+
+	// Fix R3: Load hook configurations from default locations
+	if err := rc.hookManager.LoadFromDefaultLocations(context.Background()); err != nil {
+		slog.Warn("runtime.hooks.load_failed", "component", utils.ComponentSystem, "error", err.Error())
+	}
 
 	// 创建会话锁，用于检测非正常退出
 	rc.syncSessionLock()
