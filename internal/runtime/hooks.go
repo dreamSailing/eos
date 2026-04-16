@@ -105,6 +105,72 @@ func (hm *HookManager) SessionStart(ctx context.Context, source string, model st
 	})
 }
 
+func (hm *HookManager) SessionEnd(ctx context.Context, reason string, durationMs int64) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "SessionEnd", strings.TrimSpace(reason), nil, nil, map[string]any{
+		"reason":       strings.TrimSpace(reason),
+		"duration_ms":  durationMs,
+	})
+}
+
+func (hm *HookManager) StopFailure(ctx context.Context, reason string, lastAssistantMessage string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "StopFailure", strings.TrimSpace(reason), nil, nil, map[string]any{
+		"reason":                strings.TrimSpace(reason),
+		"last_assistant_message": strings.TrimSpace(lastAssistantMessage),
+	})
+}
+
+func (hm *HookManager) SubagentStart(ctx context.Context, agentType string, task string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "SubagentStart", strings.TrimSpace(agentType), nil, nil, map[string]any{
+		"agent_type": strings.TrimSpace(agentType),
+		"task":       strings.TrimSpace(task),
+	})
+}
+
+func (hm *HookManager) TaskCreated(ctx context.Context, taskID string, taskType string, description string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "TaskCreated", "", nil, nil, map[string]any{
+		"task_id":      strings.TrimSpace(taskID),
+		"task_type":    strings.TrimSpace(taskType),
+		"description":  strings.TrimSpace(description),
+	})
+}
+
+func (hm *HookManager) Elicitation(ctx context.Context, elicitationType string, prompt string, options []string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "Elicitation", strings.TrimSpace(elicitationType), nil, nil, map[string]any{
+		"elicitation_type": strings.TrimSpace(elicitationType),
+		"prompt":           strings.TrimSpace(prompt),
+		"options":          options,
+	})
+}
+
+func (hm *HookManager) ElicitationResult(ctx context.Context, elicitationType string, selectedOption string, responseText string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "ElicitationResult", strings.TrimSpace(elicitationType), nil, nil, map[string]any{
+		"elicitation_type":  strings.TrimSpace(elicitationType),
+		"selected_option":   strings.TrimSpace(selectedOption),
+		"response_text":     strings.TrimSpace(responseText),
+	})
+}
+
+func (hm *HookManager) InstructionsLoaded(ctx context.Context, source string, instructionCount int) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "InstructionsLoaded", strings.TrimSpace(source), nil, nil, map[string]any{
+		"source":           strings.TrimSpace(source),
+		"instruction_count": instructionCount,
+	})
+}
+
+func (hm *HookManager) CwdChanged(ctx context.Context, oldCwd string, newCwd string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "CwdChanged", "", nil, nil, map[string]any{
+		"old_cwd": strings.TrimSpace(oldCwd),
+		"new_cwd": strings.TrimSpace(newCwd),
+	})
+}
+
+func (hm *HookManager) FileChanged(ctx context.Context, filePath string, changeType string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "FileChanged", strings.TrimSpace(filePath), nil, nil, map[string]any{
+		"file_path":   strings.TrimSpace(filePath),
+		"change_type": strings.TrimSpace(changeType),
+	})
+}
+
 func (hm *HookManager) Notification(ctx context.Context, notificationType string, message string, title string) (hooks.Decision, error) {
 	return hm.runWithExtra(ctx, "Notification", strings.TrimSpace(notificationType), nil, nil, map[string]any{
 		"notification_type": strings.TrimSpace(notificationType),
@@ -117,6 +183,14 @@ func (hm *HookManager) PreCompact(ctx context.Context, trigger string, customIns
 	return hm.runWithExtra(ctx, "PreCompact", strings.TrimSpace(trigger), nil, nil, map[string]any{
 		"trigger":             strings.TrimSpace(trigger),
 		"custom_instructions": strings.TrimSpace(customInstructions),
+	})
+}
+
+func (hm *HookManager) PostCompact(ctx context.Context, trigger string, originalTokens, savedTokens int) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "PostCompact", strings.TrimSpace(trigger), nil, nil, map[string]any{
+		"trigger":         strings.TrimSpace(trigger),
+		"original_tokens": originalTokens,
+		"saved_tokens":    savedTokens,
 	})
 }
 
