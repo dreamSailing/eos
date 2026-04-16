@@ -19,6 +19,12 @@ type ToolCall struct {
 	Parameters map[string]interface{} `json:"parameters"`
 }
 
+// HookRunner defines the interface for executing pre/post tool use hooks
+type HookRunner interface {
+	PreToolUse(ctx context.Context, toolName string, input map[string]any) (bool, map[string]any, error)
+	PostToolUse(ctx context.Context, toolName string, input map[string]any, result map[string]any) error
+}
+
 // Manager is the central orchestrator for all tool operations
 type Manager struct {
 	fileOps      *fileops.FileOperations
@@ -29,6 +35,7 @@ type Manager struct {
 	skillManager *SkillManager
 	cache        *ToolCache // 工具输出缓存
 	mcpManager   *mcp.Manager
+	hookRunner   HookRunner // Hook integration for tool execution
 }
 
 // NewManager creates a new tool manager with all handlers registered
@@ -88,6 +95,14 @@ func NewManager() *Manager {
 		ToolEnterWorktree:    m.enterWorktreeStructured,
 		ToolExitWorktree:     m.exitWorktreeStructured,
 		ToolNotebookEdit:     m.notebookEditStructured,
+		ToolMCPListResources: m.mcpListResourcesStructured,
+		ToolMCPReadResource:  m.mcpReadResourceStructured,
+		ToolPowerShell:       m.powerShellStructured,
+		ToolStructuredOutput: m.structuredOutputStructured,
+		ToolSnip:             m.snipStructured,
+		ToolTeamCreate:       m.teamCreateStructured,
+		ToolTeamDelete:       m.teamDeleteStructured,
+		ToolTeamSendMsg:      m.teamSendMessageStructured,
 	}
 	m.LoadPluginsFromRegistry(plugins.DefaultRegistry())
 	return m

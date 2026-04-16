@@ -117,7 +117,22 @@ func (m *Manager) executeSingleWithCache(ctx context.Context, call ToolCall, now
 		return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "permission denied: tool not allowed", Display: "Error: permission denied: tool not allowed", Ts: now}
 	}
 
-	r := handler(ctx, call.Parameters)
+	// Pre-tool hook: allows input modification and execution veto
+	params := call.Parameters
+	if m.hookRunner != nil {
+		proceed, modified, err := m.hookRunner.PreToolUse(ctx, call.Tool, call.Parameters)
+		if err != nil {
+			slog.Debug("tools.pre_hook.error", "component", utils.ComponentTool, "tool", call.Tool, "error", err.Error())
+		}
+		if !proceed {
+			return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "tool execution blocked by pre-hook", Display: "Error: tool execution blocked by pre-hook", Ts: now}
+		}
+		if modified != nil {
+			params = modified
+		}
+	}
+
+	r := handler(ctx, params)
 	r.ID = call.ID
 	if r.Ts == 0 {
 		r.Ts = now
@@ -132,6 +147,19 @@ func (m *Manager) executeSingleWithCache(ctx context.Context, call ToolCall, now
 		r.Data["params"] = call.Parameters
 	}
 	r = m.limitToolOutputSize(r)
+
+	// Post-tool hook: allows result processing (logging, notifications, etc.)
+	if m.hookRunner != nil {
+		if err := m.hookRunner.PostToolUse(ctx, call.Tool, params, r.Data); err != nil {
+			slog.Debug("tools.post_hook.error", "component", utils.ComponentTool, "tool", call.Tool, "error", err.Error())
+		}
+	}
+
+	// Reactive compaction: if tool output exceeds threshold, flag for context compression
+	if r.Status == "success" && m.isReactiveCompactNeeded(r) {
+		slog.Info("tools.reactive_compact.triggered", "component", utils.ComponentTool, "tool", call.Tool)
+		r.Data["reactive_compact_suggested"] = true
+	}
 
 	// 写入缓存（仅对可缓存的成功结果）
 	if m.cache != nil && r.Status == "success" && IsCacheable(call.Tool, call.Parameters) {
@@ -214,4 +242,22 @@ func normalizePathPlaceholder(p string) string {
 		return np
 	}
 	return p
+}
+
+// reactiveCompactThresholdKB is the threshold in KB above which tool output triggers reactive compaction
+const reactiveCompactThresholdKB = 50
+
+// isReactiveCompactNeeded checks if the tool result size exceeds the reactive compaction threshold
+func (m *Manager) isReactiveCompactNeeded(r ToolResult) bool {
+	if r.Data == nil {
+		return false
+	}
+	totalSize := 0
+	for _, v := range r.Data {
+		if s, ok := v.(string); ok {
+			totalSize += len(s)
+		}
+	}
+	threshold := reactiveCompactThresholdKB * 1024
+	return totalSize > threshold
 }

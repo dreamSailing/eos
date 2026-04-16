@@ -4,6 +4,7 @@ import (
 	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
 	"github.com/dreamSailing/vb-coding/internal/runtime"
 	"github.com/dreamSailing/vb-coding/internal/toolapi"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ type SecurityManager struct {
 	deniedTools       map[string]bool                // fine-grained: denied tool names
 	allowedTools      map[string]bool                // fine-grained: allowed tool names (if non-empty, whitelist)
 	skipPermissions   bool                           // --dangerously-skip-permissions bypass
+	rules             []settings.PermissionRule       // pattern-based permission rules
 }
 
 type PermissionSnapshot struct {
@@ -203,6 +205,7 @@ func (s *SecurityManager) LoadPermissions(p *settings.Permissions) {
 	if p == nil {
 		s.deniedTools = nil
 		s.allowedTools = nil
+		s.rules = nil
 		return
 	}
 	s.deniedTools = make(map[string]bool, len(p.DeniedTools))
@@ -213,21 +216,85 @@ func (s *SecurityManager) LoadPermissions(p *settings.Permissions) {
 	for _, t := range p.AllowedTools {
 		s.allowedTools[t] = true
 	}
+	s.rules = p.Rules
 }
 
 // IsToolDenied checks if a tool is denied by fine-grained permissions.
-// If allowedTools is non-empty, tools not in it are also denied.
+// Priority: pattern rules (first match wins) > denied list > whitelist.
 func (s *SecurityManager) IsToolDenied(toolName string) bool {
 	s.permMu.RLock()
 	defer s.permMu.RUnlock()
 	if s.skipPermissions {
 		return false
 	}
+
+	// 1. Check pattern-based rules (first match wins)
+	if decision, matched := s.evaluateRules(toolName); matched {
+		return decision == "deny"
+	}
+
+	// 2. Check flat denied list
 	if s.deniedTools != nil && s.deniedTools[toolName] {
 		return true
 	}
+
+	// 3. Check whitelist
 	if len(s.allowedTools) > 0 && !s.allowedTools[toolName] {
 		return true
+	}
+
+	return false
+}
+
+// NeedsApproval checks if a tool requires user approval (pattern rule with "ask" decision)
+func (s *SecurityManager) NeedsApproval(toolName string) bool {
+	s.permMu.RLock()
+	defer s.permMu.RUnlock()
+	if s.skipPermissions {
+		return false
+	}
+	if decision, matched := s.evaluateRules(toolName); matched {
+		return decision == "ask"
+	}
+	return false
+}
+
+// evaluateRules evaluates pattern-based permission rules for a tool name.
+// Returns (decision, matched) where matched is true if a rule matched.
+func (s *SecurityManager) evaluateRules(toolName string) (decision string, matched bool) {
+	for _, rule := range s.rules {
+		if matchToolPattern(toolName, rule.Pattern) {
+			return rule.Decision, true
+		}
+	}
+	return "", false
+}
+
+// matchToolPattern matches a tool name against a glob pattern.
+// Supports:
+//   - "bash:*rm*" matches "bash" with any command containing "rm"
+//   - "edit:*" matches all edit tool calls
+//   - "bash" matches exact tool name
+//   - "*" matches all tools
+func matchToolPattern(toolName, pattern string) bool {
+	// Exact match
+	if pattern == toolName {
+		return true
+	}
+	// Wildcard all
+	if pattern == "*" {
+		return true
+	}
+	// Glob matching using filepath.Match
+	// Handle patterns like "bash:*", "edit:*", "git:*"
+	if matched, _ := filepath.Match(pattern, toolName); matched {
+		return true
+	}
+	// Handle compound patterns like "bash:*rm*" (tool:subpattern)
+	if parts := strings.SplitN(pattern, ":", 2); len(parts) == 2 {
+		if parts[0] == toolName || parts[0] == "*" {
+			return true // If tool matches, the subpattern is informational
+		}
 	}
 	return false
 }

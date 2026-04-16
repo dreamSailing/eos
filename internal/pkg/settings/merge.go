@@ -11,20 +11,23 @@ import (
 type Layer string
 
 const (
-	LayerManaged Layer = "managed" // Highest priority (admin/org policy)
-	LayerProject Layer = "project" // .vb/settings.json
-	LayerUser    Layer = "user"    // ~/.vb.json (lowest priority)
+	LayerManaged     Layer = "managed"      // Highest priority (admin/org policy)
+	LayerProject     Layer = "project"      // .vb/settings.json (shared, committable)
+	LayerProjectLocal Layer = "project_local" // .vb/settings.local.json (gitignored)
+	LayerUser        Layer = "user"         // ~/.vb.json (lowest priority)
 )
 
 // LoadMerged loads and merges settings from all layers.
-// Priority: managed > project > user
+// Priority: managed > project > project_local > user
 func LoadMerged(userPath, projectRoot string) *Settings {
 	user := loadLayer(userPath)
+	projectLocal := loadLayer(filepath.Join(projectRoot, ".vb", "settings.local.json"))
 	project := loadLayer(filepath.Join(projectRoot, ".vb", "settings.json"))
 	managed := loadLayer(filepath.Join(projectRoot, ".vb", "settings.managed.json"))
 
 	// Merge: start with lowest priority, overlay higher
 	result := user
+	mergeInto(&result, projectLocal)
 	mergeInto(&result, project)
 	mergeInto(&result, managed)
 
@@ -123,8 +126,38 @@ func mergeInto(dst *Settings, src Settings) {
 		}
 	}
 
-	// Merge permissions (override if present)
+	// Merge permissions (deep merge with rules)
 	if src.Permissions != nil {
-		dst.Permissions = src.Permissions
+		if dst.Permissions == nil {
+			dst.Permissions = &Permissions{}
+		}
+		if len(src.Permissions.AllowedTools) > 0 {
+			dst.Permissions.AllowedTools = src.Permissions.AllowedTools
+		}
+		if len(src.Permissions.DeniedTools) > 0 {
+			dst.Permissions.DeniedTools = src.Permissions.DeniedTools
+		}
+		if len(src.Permissions.Rules) > 0 {
+			dst.Permissions.Rules = mergePermissionRules(dst.Permissions.Rules, src.Permissions.Rules)
+		}
 	}
+}
+
+// mergePermissionRules merges two slices of permission rules.
+// Later rules override earlier rules with the same pattern.
+func mergePermissionRules(base, overlay []PermissionRule) []PermissionRule {
+	patternIndex := make(map[string]int)
+	for i, r := range base {
+		patternIndex[r.Pattern] = i
+	}
+	result := make([]PermissionRule, len(base))
+	copy(result, base)
+	for _, r := range overlay {
+		if idx, exists := patternIndex[r.Pattern]; exists {
+			result[idx] = r // override existing rule
+		} else {
+			result = append(result, r)
+		}
+	}
+	return result
 }

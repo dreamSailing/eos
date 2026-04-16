@@ -33,6 +33,8 @@ var Commands = []Command{
 	{Name: "/clear", Group: GroupGeneral, DescriptionZH: "清空当前会话内容区域", DescriptionEN: "Clear the current conversation view"},
 	{Name: "/exit", Group: GroupGeneral, DescriptionZH: "退出应用", DescriptionEN: "Exit the application"},
 	{Name: "/lang", Group: GroupGeneral, Usage: "/lang zh|en", DescriptionZH: "切换界面语言", DescriptionEN: "Switch the UI language"},
+	{Name: "/status", Group: GroupGeneral, DescriptionZH: "显示当前模型、模式、工作区和上下文用量", DescriptionEN: "Show current model, mode, workspace, and context usage"},
+	{Name: "/fast", Group: GroupGeneral, DescriptionZH: "切换快速模型模式", DescriptionEN: "Toggle fast model mode"},
 
 	{Name: "/workspace", Aliases: []string{"/worktree"}, Group: GroupProject, Usage: "/workspace [list|add|remove|use <path>]", DescriptionZH: "管理工作区与切换活跃根目录", DescriptionEN: "Manage workspaces and switch the active root"},
 	{Name: "/session", Aliases: []string{"/sessions"}, Group: GroupProject, Usage: "/session [list|save|export <id> [path]]", DescriptionZH: "查看、保存或导出会话", DescriptionEN: "List, save, or export sessions"},
@@ -42,12 +44,16 @@ var Commands = []Command{
 	{Name: "/review", Group: GroupProject, Usage: "/review [path]", DescriptionZH: "汇总改动、诊断和审查入口", DescriptionEN: "Summarize changes, diagnostics, and review entry points"},
 	{Name: "/git", Group: GroupProject, Usage: "/git status|branches|log|show|diff [args...]", DescriptionZH: "查看 Git 状态、分支、日志和差异", DescriptionEN: "Inspect Git status, branches, history, and diff"},
 	{Name: "/compact", Group: GroupProject, DescriptionZH: "压缩当前上下文", DescriptionEN: "Compact the current context"},
+	{Name: "/export", Group: GroupProject, Usage: "/export [markdown|json] [path]", DescriptionZH: "导出当前会话为 Markdown 或 JSON", DescriptionEN: "Export current session as Markdown or JSON"},
+	{Name: "/rename", Group: GroupProject, Usage: "/rename <title>", DescriptionZH: "重命名当前会话", DescriptionEN: "Rename the current session"},
+	{Name: "/share", Group: GroupProject, DescriptionZH: "分享会话到剪贴板或文件", DescriptionEN: "Share session to clipboard or file"},
 
 	{Name: "/memory", Aliases: []string{"/ctx", "/context"}, Group: GroupRuntime, DescriptionZH: "打开上下文与记忆面板", DescriptionEN: "Open the context and memory panel"},
 	{Name: "/tasks", Group: GroupRuntime, DescriptionZH: "打开任务面板", DescriptionEN: "Open the tasks panel"},
 	{Name: "/plan", Group: GroupRuntime, Usage: "/plan [auto|plan]", DescriptionZH: "查看当前计划/待办，或切换计划执行模式", DescriptionEN: "Inspect plan/todos or switch planning mode"},
 	{Name: "/permissions", Group: GroupRuntime, Usage: "/permissions [auto|plan]", DescriptionZH: "查看或切换权限/审批模式", DescriptionEN: "Inspect or change permission/approval mode"},
 	{Name: "/doctor", Group: GroupRuntime, DescriptionZH: "输出运行时、工具和诊断摘要", DescriptionEN: "Print a runtime, tools, and diagnostics summary"},
+	{Name: "/stats", Group: GroupRuntime, DescriptionZH: "显示 Token 用量和工具调用统计", DescriptionEN: "Show token usage and tool call statistics"},
 
 	{Name: "/model", Aliases: []string{"/models"}, Group: GroupConfig, Usage: "/model [use <name>]", DescriptionZH: "查看模型面板或切换当前模型", DescriptionEN: "Open model management or switch the active model"},
 	{Name: "/config", Aliases: []string{"/settings"}, Group: GroupConfig, DescriptionZH: "打开配置面板", DescriptionEN: "Open the settings panel"},
@@ -58,6 +64,7 @@ var Commands = []Command{
 	{Name: "/plugin", Group: GroupConfig, DescriptionZH: "列出已注册插件", DescriptionEN: "List registered plugins"},
 	{Name: "/reload-plugins", Group: GroupConfig, DescriptionZH: "重载插件扩展与目录发现", DescriptionEN: "Reload plugin extensions and discovery"},
 	{Name: "/cost", Group: GroupConfig, DescriptionZH: "打开成本统计面板", DescriptionEN: "Open the cost panel"},
+	{Name: "/theme", Group: GroupConfig, Usage: "/theme [dark|light|nord|...]", DescriptionZH: "切换 TUI 配色主题", DescriptionEN: "Switch TUI color theme"},
 }
 
 func ParseCommand(input string) (cmd string, args []string, isCmd bool) {

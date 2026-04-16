@@ -1158,6 +1158,20 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 		return m.handlePlanSlash(args)
 	case "/git":
 		return m.handleGitSlash(args)
+	case "/status":
+		return m.handleStatusSlash()
+	case "/fast":
+		return m.handleFastSlash()
+	case "/export":
+		return m.handleExportSlash(args)
+	case "/theme":
+		return m.handleThemeSlash(args)
+	case "/stats":
+		return m.handleStatsSlash()
+	case "/rename":
+		return m.handleRenameSlash(args)
+	case "/share":
+		return m.handleShareSlash()
 	default:
 		m.appendSystem(fmt.Sprintf("Unknown command: %s", cmd), "warning")
 	}

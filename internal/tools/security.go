@@ -206,6 +206,14 @@ func ClassifyToolDanger(call ToolCall) (category string, level string, summary s
 		return "memory:suggest", "low", "suggest memory", false
 	case ToolEnterWorktree:
 		return "git:worktree", "medium", "create git worktree", false
+	case ToolMCPListResources, ToolMCPReadResource, ToolStructuredOutput, ToolSnip:
+		return "", "low", call.Tool, false
+	case ToolPowerShell:
+		return "shell:powershell", "high", "powershell", true
+	case ToolTeamCreate, ToolTeamDelete:
+		return "team", "medium", call.Tool, true
+	case ToolTeamSendMsg:
+		return "", "low", "team_send_message", false
 	}
 
 	return "unknown", "low", call.Tool, false

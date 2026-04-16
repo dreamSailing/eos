@@ -55,3 +55,8 @@ func (m *Manager) GetSkillManager() *SkillManager {
 func (m *Manager) SetMCPManager(mm *mcp.Manager) {
 	m.mcpManager = mm
 }
+
+// SetHookRunner sets the HookRunner for tool execution hooks
+func (m *Manager) SetHookRunner(hr HookRunner) {
+	m.hookRunner = hr
+}

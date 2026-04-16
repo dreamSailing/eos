@@ -2,8 +2,15 @@ package settings
 
 // Permissions defines tool permission rules
 type Permissions struct {
-	AllowedTools []string `json:"allowed_tools,omitempty"`
-	DeniedTools  []string `json:"denied_tools,omitempty"`
+	AllowedTools []string        `json:"allowed_tools,omitempty"`
+	DeniedTools  []string        `json:"denied_tools,omitempty"`
+	Rules        []PermissionRule `json:"rules,omitempty"` // Pattern-based permission rules
+}
+
+// PermissionRule defines a glob-pattern-based permission rule
+type PermissionRule struct {
+	Pattern  string `json:"pattern"`            // Glob pattern matching tool name (e.g., "bash:*rm*", "edit:*")
+	Decision string `json:"decision"`            // "allow" | "deny" | "ask"
 }
 
 // Settings 表示用户配置

@@ -66,6 +66,15 @@ type MCPEntry struct {
 	Envs    map[string]string `json:"envs,omitempty"`     // stdio: 环境变量
 	BaseURL string            `json:"base_url,omitempty"` // sse: 服务URL
 	Enabled bool              `json:"enabled"`            // 是否启用
+	Auth    *MCPAuth          `json:"auth,omitempty"`     // 认证配置
+}
+
+// MCPAuth defines authentication configuration for MCP servers
+type MCPAuth struct {
+	Type    string            `json:"type"`               // "bearer", "basic", "api_key"
+	Token   string            `json:"token,omitempty"`    // Bearer token or API key value
+	Headers map[string]string `json:"headers,omitempty"`  // Custom headers to inject
+	HeadersEnv map[string]string `json:"headers_env,omitempty"` // Header names whose values come from env vars
 }
 
 // LSPConfig LSP 配置

@@ -2,9 +2,12 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	runpkg "runtime"
 	"sort"
 	"strings"
 	"time"
@@ -855,4 +858,254 @@ func blankFallback(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func (m *AppModel) handleStatusSlash() tea.Cmd {
+	core := m.adapter.GetCore()
+	modelName, modelBase := m.adapter.GetModelInfo()
+	if modelName == "" {
+		base, _, model, _ := m.adapter.ResolveAPIConfig()
+		if modelName == "" {
+			modelName = model
+		}
+		if modelBase == "" {
+			modelBase = base
+		}
+	}
+	snap := core.PermissionSnapshot()
+	currentSessionID, _ := core.CurrentSessionID()
+
+	lines := []string{
+		m.localize("当前状态", "Status"),
+		fmt.Sprintf("%s: %s", m.localize("工作区", "Workspace"), m.currentWorkspaceRoot()),
+		fmt.Sprintf("%s: %s (%s)", m.localize("模型", "Model"), strings.TrimSpace(modelName), strings.TrimSpace(modelBase)),
+		fmt.Sprintf("%s: %s", m.localize("执行模式", "Mode"), m.executionModeLabel(snap.ExecutionMode)),
+		fmt.Sprintf("%s: %s", m.localize("当前会话", "Session"), blankFallback(currentSessionID, m.localize("无", "none"))),
+	}
+
+	// Context usage
+	ctxWindowTokens := core.GetContextWindowTokens()
+	if ctxWindowTokens > 0 {
+		lines = append(lines, fmt.Sprintf("%s: %d tokens", m.localize("上下文窗口", "Context window"), ctxWindowTokens))
+	}
+
+	m.appendSystem(strings.Join(lines, "\n"), "info")
+	return nil
+}
+
+func (m *AppModel) handleFastSlash() tea.Cmd {
+	cfg, _ := config.Load()
+	if cfg.FastModel == "" {
+		m.appendSystem(m.localize("快速模型未配置。请在配置文件中设置 fast_model。", "Fast model not configured. Set fast_model in config."), "warning")
+		return nil
+	}
+
+	// Toggle fast mode by switching to/from fast model
+	currentModel, _ := m.adapter.GetModelInfo()
+	if currentModel == cfg.FastModel {
+		// Switch back to active model
+		if active := cfg.Active; active != "" {
+			m.adapter.SetActiveModel(active)
+			_ = m.adapter.Reload()
+			m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已切换回标准模型", "Switched back to standard model"), active), "success")
+		}
+	} else {
+		m.adapter.SetActiveModel(cfg.FastModel)
+		_ = m.adapter.Reload()
+		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已切换到快速模型", "Switched to fast model"), cfg.FastModel), "success")
+	}
+	return nil
+}
+
+func (m *AppModel) handleExportSlash(args []string) tea.Cmd {
+	core := m.adapter.GetCore()
+	format := "markdown"
+	path := ""
+
+	if len(args) > 0 {
+		f := strings.ToLower(strings.TrimSpace(args[0]))
+		if f == "json" || f == "markdown" || f == "md" {
+			format = f
+			if format == "md" {
+				format = "markdown"
+			}
+		}
+	}
+	if len(args) > 1 {
+		path = strings.TrimSpace(args[1])
+	}
+
+	currentID, _ := core.CurrentSessionID()
+	if currentID == "" {
+		m.appendSystem(m.localize("没有当前会话可导出。", "No current session to export."), "warning")
+		return nil
+	}
+
+	if path == "" {
+		ext := ".md"
+		if format == "json" {
+			ext = ".json"
+		}
+		path = filepath.Join(core.SessionsDir(), currentID+ext)
+	}
+
+	if format == "json" {
+		// Export as JSON
+		messages := m.sessionTranscript()
+		data, err := json.MarshalIndent(messages, "", "  ")
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("导出失败", "Export failed"), err), "error")
+			return nil
+		}
+		if err := os.WriteFile(path, data, 0644); err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("导出失败", "Export failed"), err), "error")
+			return nil
+		}
+	} else {
+		if err := core.SaveSessionMarkdown(currentID, path); err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("导出失败", "Export failed"), err), "error")
+			return nil
+		}
+	}
+
+	m.appendSystem(fmt.Sprintf("%s: %s (%s)", m.localize("已导出会话", "Exported session"), path, format), "success")
+	return nil
+}
+
+func (m *AppModel) handleThemeSlash(args []string) tea.Cmd {
+	if len(args) == 0 {
+		// Show current theme
+		s := m.adapter.GetCore().GetSettings()
+		current := s.Theme
+		if current == "" {
+			current = "dark"
+		}
+		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("当前主题", "Current theme"), current), "info")
+		return nil
+	}
+
+	theme := strings.ToLower(strings.TrimSpace(args[0]))
+	s := m.adapter.GetCore().GetSettings()
+	s.Theme = theme
+	m.adapter.GetCore().SaveSettings("", &s)
+	m.state.Theme = theme
+	m.applyTheme(theme)
+	m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已切换主题", "Switched theme to"), theme), "success")
+	return nil
+}
+
+func (m *AppModel) handleStatsSlash() tea.Cmd {
+	core := m.adapter.GetCore()
+	stats := core.GetTokenStats()
+	toolStats := m.adapter.GetTools().GetToolStats()
+
+	lines := []string{
+		m.localize("统计信息", "Statistics"),
+		fmt.Sprintf("%s: %d", m.localize("对话轮数", "Rounds"), stats.Rounds),
+		fmt.Sprintf("%s: %d", m.localize("输入 Tokens", "Input tokens"), stats.Input),
+		fmt.Sprintf("%s: %d", m.localize("输出 Tokens", "Reply tokens"), stats.Reply),
+		fmt.Sprintf("%s: %d", m.localize("总 Tokens", "Total tokens"), stats.Total),
+		fmt.Sprintf("%s: $%.6f", m.localize("总成本", "Total cost"), stats.TotalCostUSD),
+	}
+
+	if len(toolStats) > 0 {
+		lines = append(lines, m.localize("工具调用统计:", "Tool call stats:"))
+		type statEntry struct {
+			name  string
+			calls int
+			avg   time.Duration
+		}
+		var entries []statEntry
+		for name, stat := range toolStats {
+			if stat == nil {
+				continue
+			}
+			entries = append(entries, statEntry{name: name, calls: stat.TotalCalls, avg: stat.AvgDuration})
+		}
+		sort.Slice(entries, func(i, j int) bool { return entries[i].calls > entries[j].calls })
+		for _, e := range entries {
+			lines = append(lines, fmt.Sprintf("  - %s: %d calls, avg %s", e.name, e.calls, e.avg.Round(time.Millisecond)))
+		}
+	}
+
+	m.appendSystem(strings.Join(lines, "\n"), "info")
+	return nil
+}
+
+func (m *AppModel) handleRenameSlash(args []string) tea.Cmd {
+	if len(args) == 0 {
+		m.appendSystem(m.localize("用法: /rename <title>", "Usage: /rename <title>"), "warning")
+		return nil
+	}
+	title := strings.TrimSpace(strings.Join(args, " "))
+	core := m.adapter.GetCore()
+	currentID, _ := core.CurrentSessionID()
+	if currentID == "" {
+		m.appendSystem(m.localize("没有当前会话。", "No current session."), "warning")
+		return nil
+	}
+	core.UpdateSessionTitle(currentID, title)
+	m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已重命名会话", "Renamed session to"), title), "success")
+	return nil
+}
+
+func (m *AppModel) handleShareSlash() tea.Cmd {
+	core := m.adapter.GetCore()
+	currentID, _ := core.CurrentSessionID()
+	if currentID == "" {
+		m.appendSystem(m.localize("没有当前会话可分享。", "No current session to share."), "warning")
+		return nil
+	}
+
+	messages := m.sessionTranscript()
+	var sb strings.Builder
+	sb.WriteString("# Session: ")
+	sb.WriteString(currentID)
+	sb.WriteString("\n\n")
+	for _, msg := range messages {
+		role := strings.TrimSpace(msg.Role)
+		if role == "" {
+			role = "unknown"
+		}
+		sb.WriteString(fmt.Sprintf("**%s**: %s\n\n", role, strings.TrimSpace(msg.Content)))
+	}
+
+	content := sb.String()
+
+	// Try to copy to clipboard
+	if err := copyToClipboard(content); err != nil {
+		// Fallback: save to file
+		path := filepath.Join(core.SessionsDir(), currentID+"_shared.md")
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("分享失败", "Share failed"), err), "error")
+			return nil
+		}
+		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已保存到文件", "Saved to file"), path), "success")
+		return nil
+	}
+
+	m.appendSystem(m.localize("已复制会话到剪贴板。", "Session copied to clipboard."), "success")
+	return nil
+}
+
+func copyToClipboard(text string) error {
+	// Try using clip command on Windows, pbcopy on macOS, xclip on Linux
+	var cmd *exec.Cmd
+	switch runpkg.GOOS {
+	case "windows":
+		cmd = exec.Command("clip")
+	case "darwin":
+		cmd = exec.Command("pbcopy")
+	default:
+		cmd = exec.Command("xclip", "-selection", "clipboard")
+	}
+	cmd.Stdin = strings.NewReader(text)
+	return cmd.Run()
+}
+
+// applyTheme applies a theme by name
+func (m *AppModel) applyTheme(name string) {
+	// Theme is stored and will be applied on next render
+	// The actual theme application happens in styles package
+	m.updateContextUsageUI()
 }

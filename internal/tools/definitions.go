@@ -75,6 +75,14 @@ const (
 	ToolEnterWorktree    = "enter_worktree"
 	ToolExitWorktree     = "exit_worktree"
 	ToolNotebookEdit     = "notebook_edit"
+	ToolMCPListResources = "mcp_list_resources"
+	ToolMCPReadResource  = "mcp_read_resource"
+	ToolPowerShell       = "powershell"
+	ToolStructuredOutput = "structured_output"
+	ToolSnip             = "snip"
+	ToolTeamCreate       = "team_create"
+	ToolTeamDelete       = "team_delete"
+	ToolTeamSendMsg      = "team_send_message"
 )
 
 // GetAllToolDefinitions 返回所有工具的定义
@@ -797,6 +805,80 @@ func GetAllToolDefinitions() []ToolDefinition {
 				"insert_after": {Type: schema.String, Required: false, Desc: "Cell ID after which to insert (for insert mode)"},
 			},
 			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolMCPListResources,
+			Description: "列出 MCP 服务器暴露的资源（模板、静态数据等）。可按服务器名筛选。",
+			Params: map[string]*schema.ParameterInfo{
+				"server": {Type: schema.String, Required: false, Desc: "可选：指定 MCP 服务器名称"},
+			},
+			RiskLevel:       RiskLevelLow,
+			ConcurrencySafe: true,
+		},
+		{
+			Name:        ToolMCPReadResource,
+			Description: "读取指定 MCP 服务器的指定资源 URI 内容。",
+			Params: map[string]*schema.ParameterInfo{
+				"server": {Type: schema.String, Required: true, Desc: "MCP 服务器名称"},
+				"uri":    {Type: schema.String, Required: true, Desc: "资源 URI"},
+			},
+			RiskLevel: RiskLevelLow,
+		},
+		{
+			Name:        ToolPowerShell,
+			Description: "执行 PowerShell 命令（Windows 上使用 powershell.exe，跨平台使用 pwsh）。",
+			Params: map[string]*schema.ParameterInfo{
+				"command": {Type: schema.String, Required: true, Desc: "要执行的 PowerShell 命令"},
+			},
+			RiskLevel: RiskLevelHigh,
+		},
+		{
+			Name:        ToolStructuredOutput,
+			Description: "生成符合 JSON Schema 的结构化输出。接收 schema 和 data 参数，验证 data 符合 schema 后返回。",
+			Params: map[string]*schema.ParameterInfo{
+				"schema": {Type: schema.String, Required: true, Desc: "JSON Schema 字符串"},
+				"data":   {Type: schema.String, Required: true, Desc: "要验证的 JSON 数据字符串"},
+			},
+			RiskLevel:       RiskLevelLow,
+			ConcurrencySafe: true,
+		},
+		{
+			Name:        ToolSnip,
+			Description: "标记上下文中可裁剪的消息。Agent 主动标记不再需要的上下文内容以释放 token 空间。",
+			Params: map[string]*schema.ParameterInfo{
+				"message_id": {Type: schema.String, Required: true, Desc: "要裁剪的消息 ID"},
+				"reason":     {Type: schema.String, Required: false, Desc: "裁剪原因"},
+			},
+			RiskLevel:       RiskLevelLow,
+			ConcurrencySafe: true,
+		},
+		{
+			Name:        ToolTeamCreate,
+			Description: "创建命名 team，配置多个 agent 角色并行协作执行任务。",
+			Params: map[string]*schema.ParameterInfo{
+				"name":   {Type: schema.String, Required: true, Desc: "Team 名称"},
+				"agents": {Type: schema.Array, Required: true, Desc: "Agent 配置列表（每个元素包含 role, prompt, subagent_type）"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolTeamDelete,
+			Description: "停止并清理指定 team。",
+			Params: map[string]*schema.ParameterInfo{
+				"name": {Type: schema.String, Required: true, Desc: "Team 名称"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolTeamSendMsg,
+			Description: "在 team 内的 agent 之间发送消息。",
+			Params: map[string]*schema.ParameterInfo{
+				"team":        {Type: schema.String, Required: true, Desc: "Team 名称"},
+				"from_agent":  {Type: schema.String, Required: true, Desc: "发送方 agent 角色"},
+				"to_agent":    {Type: schema.String, Required: true, Desc: "接收方 agent 角色"},
+				"message":     {Type: schema.String, Required: true, Desc: "消息内容"},
+			},
+			RiskLevel: RiskLevelLow,
 		},
 	}
 }
