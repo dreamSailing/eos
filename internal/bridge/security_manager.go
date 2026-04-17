@@ -1,9 +1,9 @@
 package bridge
 
 import (
-	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
-	"github.com/dreamSailing/vb-coding/internal/runtime"
-	"github.com/dreamSailing/vb-coding/internal/toolapi"
+	"github.com/dreamSailing/eos/internal/pkg/settings"
+	"github.com/dreamSailing/eos/internal/runtime"
+	"github.com/dreamSailing/eos/internal/toolapi"
 	"path/filepath"
 	"sort"
 	"strings"

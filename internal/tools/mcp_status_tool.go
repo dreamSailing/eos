@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 func (m *Manager) mcpStatusStructured(ctx context.Context, params map[string]interface{}) ToolResult {

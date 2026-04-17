@@ -3,9 +3,9 @@ package bridge
 import (
 	"context"
 
-	"github.com/dreamSailing/vb-coding/internal/hooks"
-	einoruntime "github.com/dreamSailing/vb-coding/internal/runtime"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/hooks"
+	einoruntime "github.com/dreamSailing/eos/internal/runtime"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 // hookRunnerAdapter bridges runtime.SafetyGate to tools.HookRunner interface

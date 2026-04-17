@@ -748,16 +748,16 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolSuggestMemory,
-			Description: "Suggest adding content to a project memory file (VB.md or .vb/Rules.md). The suggestion will be presented to the user for confirmation. Use this when you discover important user preferences, project conventions, or recurring patterns.",
+			Description: "Suggest adding content to a project memory file (EOS.md or .eos/Rules.md). The suggestion will be presented to the user for confirmation. Use this when you discover important user preferences, project conventions, or recurring patterns.",
 			Params: map[string]*schema.ParameterInfo{
-				"file":    {Type: schema.String, Required: true, Desc: "Target file: 'VB.md' or '.vb/Rules.md'"},
+				"file":    {Type: schema.String, Required: true, Desc: "Target file: 'EOS.md' or '.eos/Rules.md'"},
 				"content": {Type: schema.String, Required: true, Desc: "Content to add"},
 				"section": {Type: schema.String, Required: false, Desc: "Optional section header"},
 			},
 			RiskLevel:       RiskLevelMedium,
 			ConcurrencySafe: true,
 			Examples: []ToolExample{
-				{Description: "Suggest adding a project convention", Input: map[string]any{"file": "VB.md", "content": "Always use bun as package manager", "section": "Conventions"}},
+				{Description: "Suggest adding a project convention", Input: map[string]any{"file": "EOS.md", "content": "Always use bun as package manager", "section": "Conventions"}},
 			},
 		},
 		{

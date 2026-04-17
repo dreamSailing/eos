@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 type Result struct {

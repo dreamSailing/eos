@@ -12,18 +12,18 @@ type Layer string
 
 const (
 	LayerManaged     Layer = "managed"      // Highest priority (admin/org policy)
-	LayerProject     Layer = "project"      // .vb/settings.json (shared, committable)
-	LayerProjectLocal Layer = "project_local" // .vb/settings.local.json (gitignored)
-	LayerUser        Layer = "user"         // ~/.vb.json (lowest priority)
+	LayerProject     Layer = "project"      // .eos/settings.json (shared, committable)
+	LayerProjectLocal Layer = "project_local" // .eos/settings.local.json (gitignored)
+	LayerUser        Layer = "user"         // ~/.eos.json (lowest priority)
 )
 
 // LoadMerged loads and merges settings from all layers.
 // Priority: managed > project > project_local > user
 func LoadMerged(userPath, projectRoot string) *Settings {
 	user := loadLayer(userPath)
-	projectLocal := loadLayer(filepath.Join(projectRoot, ".vb", "settings.local.json"))
-	project := loadLayer(filepath.Join(projectRoot, ".vb", "settings.json"))
-	managed := loadLayer(filepath.Join(projectRoot, ".vb", "settings.managed.json"))
+	projectLocal := loadLayer(filepath.Join(projectRoot, ".eos", "settings.local.json"))
+	project := loadLayer(filepath.Join(projectRoot, ".eos", "settings.json"))
+	managed := loadLayer(filepath.Join(projectRoot, ".eos", "settings.managed.json"))
 
 	// Merge: start with lowest priority, overlay higher
 	result := user

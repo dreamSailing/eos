@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/bridge"
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/i18n"
-	"github.com/dreamSailing/vb-coding/internal/session"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/bridge"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/session"
+	"github.com/dreamSailing/eos/internal/tools"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -59,15 +59,15 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 			}
 		}
 		injectProjectConventions(cm, p)
-		if raw, err := os.ReadFile(filepath.Join(p, "VB.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-			cm.SetPinnedDoc("VB.md", string(raw), 20000)
+		if raw, err := os.ReadFile(filepath.Join(p, "EOS.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
+			cm.SetPinnedDoc("EOS.md", string(raw), 20000)
 		}
-		if raw, err := os.ReadFile(filepath.Join(p, ".vb", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-			cm.SetPinnedDoc(".vb/Rules.md", string(raw), 20000)
+		if raw, err := os.ReadFile(filepath.Join(p, ".eos", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
+			cm.SetPinnedDoc(".eos/Rules.md", string(raw), 20000)
 		}
 		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-			if raw, err := os.ReadFile(filepath.Join(home, ".vb", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-				cm.SetPinnedDoc("~/.vb/Rules.md", string(raw), 20000)
+			if raw, err := os.ReadFile(filepath.Join(home, ".eos", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
+				cm.SetPinnedDoc("~/.eos/Rules.md", string(raw), 20000)
 			}
 		}
 		m := NewAppModel(core)
@@ -100,15 +100,15 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 			cm.SetCompressionStrategy(session.CompressionAggressive)
 		}
 	}
-	if raw, err := os.ReadFile(filepath.Join(".", "VB.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-		cm.SetPinnedDoc("VB.md", string(raw), 20000)
+	if raw, err := os.ReadFile(filepath.Join(".", "EOS.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
+		cm.SetPinnedDoc("EOS.md", string(raw), 20000)
 	}
-	if raw, err := os.ReadFile(filepath.Join(".", ".vb", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-		cm.SetPinnedDoc(".vb/Rules.md", string(raw), 20000)
+	if raw, err := os.ReadFile(filepath.Join(".", ".eos", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
+		cm.SetPinnedDoc(".eos/Rules.md", string(raw), 20000)
 	}
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		if raw, err := os.ReadFile(filepath.Join(home, ".vb", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-			cm.SetPinnedDoc("~/.vb/Rules.md", string(raw), 20000)
+		if raw, err := os.ReadFile(filepath.Join(home, ".eos", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
+			cm.SetPinnedDoc("~/.eos/Rules.md", string(raw), 20000)
 		}
 	}
 	m := NewAppModel(core)

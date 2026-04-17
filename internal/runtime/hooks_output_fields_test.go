@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/hooks"
+	"github.com/dreamSailing/eos/internal/hooks"
 )
 
 func continueFalseCommand(reason string) string {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 type RequestMetric struct {

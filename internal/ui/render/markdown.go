@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	uistyles "github.com/dreamSailing/vb-coding/internal/ui/styles"
+	uistyles "github.com/dreamSailing/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/glamour"
 	gansi "github.com/charmbracelet/glamour/ansi"

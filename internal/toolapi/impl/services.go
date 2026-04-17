@@ -1,6 +1,6 @@
 package impl
 
-import "github.com/dreamSailing/vb-coding/internal/toolapi"
+import "github.com/dreamSailing/eos/internal/toolapi"
 
 type services struct {
 	catalog toolapi.Catalog

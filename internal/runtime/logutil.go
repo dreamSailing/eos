@@ -2,7 +2,7 @@ package runtime
 
 import (
 	"log/slog"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // 统一的日志键名

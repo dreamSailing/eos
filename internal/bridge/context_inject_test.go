@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
+	codectx "github.com/dreamSailing/eos/internal/context"
 )
 
 func TestExtractMentionedPaths(t *testing.T) {

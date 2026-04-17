@@ -3,11 +3,11 @@ package panels
 import (
 	"context"
 	"fmt"
-	"github.com/dreamSailing/vb-coding/internal/i18n"
-	"github.com/dreamSailing/vb-coding/internal/toolapi"
-	toolapiimpl "github.com/dreamSailing/vb-coding/internal/toolapi/impl"
-	"github.com/dreamSailing/vb-coding/internal/tools/bg"
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/toolapi"
+	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
+	"github.com/dreamSailing/eos/internal/tools/bg"
+	"github.com/dreamSailing/eos/internal/ui/styles"
 	"strings"
 	"time"
 

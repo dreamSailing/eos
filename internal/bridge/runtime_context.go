@@ -2,10 +2,10 @@ package bridge
 
 import (
 	"context"
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
-	"github.com/dreamSailing/vb-coding/internal/pkg/workspace"
-	"github.com/dreamSailing/vb-coding/internal/skills"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	codectx "github.com/dreamSailing/eos/internal/context"
+	"github.com/dreamSailing/eos/internal/pkg/workspace"
+	"github.com/dreamSailing/eos/internal/skills"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 // SetContextEngine 设置上下文引擎

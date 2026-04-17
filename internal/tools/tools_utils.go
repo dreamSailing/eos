@@ -2,7 +2,7 @@ package tools
 
 import (
 	"path/filepath"
-	"github.com/dreamSailing/vb-coding/internal/search"
+	"github.com/dreamSailing/eos/internal/search"
 )
 
 func toStringSlice(v interface{}) []string {

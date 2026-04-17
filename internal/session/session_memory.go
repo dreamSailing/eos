@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	ai "github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	ai "github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 const (
@@ -169,7 +169,7 @@ func (sm *SessionMemoryManager) RecordExtraction(tokenCount int, lastMessageCont
 
 // GetMemoryDir returns the session memory directory path
 func GetMemoryDir(rootDir string) string {
-	return filepath.Join(rootDir, ".vb", "session-memory")
+	return filepath.Join(rootDir, ".eos", "session-memory")
 }
 
 // GetMemoryPath returns the session memory file path

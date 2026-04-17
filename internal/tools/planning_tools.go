@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/ai"
+	codectx "github.com/dreamSailing/eos/internal/context"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 func (m *Manager) planStepsStructured(ctx context.Context, params map[string]interface{}) ToolResult {
@@ -28,7 +28,7 @@ func (m *Manager) planStepsStructured(ctx context.Context, params map[string]int
 	}
 	wd, _ := os.Getwd()
 	e := codectx.NewEngine(wd)
-	idxp := filepath.Join(wd, ".vb", "index.json")
+	idxp := filepath.Join(wd, ".eos", "index.json")
 	langCounts := map[string]int{}
 	if _, err := os.Stat(idxp); err == nil {
 		_ = e.LoadIndex(idxp)

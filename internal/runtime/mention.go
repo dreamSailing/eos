@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // MentionType 提及类型

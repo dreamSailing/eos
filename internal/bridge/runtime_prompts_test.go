@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 func TestPromptPermissionAutoAllowsMediumRisk(t *testing.T) {

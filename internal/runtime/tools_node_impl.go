@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/hooks"
-	"github.com/dreamSailing/vb-coding/internal/tools"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/hooks"
+	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"

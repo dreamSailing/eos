@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dreamSailing/vb-coding/internal/cli"
-	_ "github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/cli"
+	_ "github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 func main() {

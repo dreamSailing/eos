@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/tools"
 
 	"github.com/cloudwego/eino/components/tool"
 )

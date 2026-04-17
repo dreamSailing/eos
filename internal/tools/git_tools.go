@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 
-	gitops "github.com/dreamSailing/vb-coding/internal/tools/git"
+	gitops "github.com/dreamSailing/eos/internal/tools/git"
 )
 
 func (m *Manager) gitStatusStructured(ctx context.Context, params map[string]interface{}) ToolResult {

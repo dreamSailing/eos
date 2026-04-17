@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
+	"github.com/dreamSailing/eos/internal/config"
 )
 
 func MergeMCPEntries(cfg *config.Config, workspaceRoot string) []config.MCPEntry {

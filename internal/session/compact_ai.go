@@ -3,7 +3,7 @@ package session
 import (
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/ai"
+	"github.com/dreamSailing/eos/internal/ai"
 )
 
 const (

@@ -3,9 +3,9 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
-	"github.com/dreamSailing/vb-coding/internal/tools"
-	gitops "github.com/dreamSailing/vb-coding/internal/tools/git"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/tools"
+	gitops "github.com/dreamSailing/eos/internal/tools/git"
 	"os"
 	"path/filepath"
 	"sort"

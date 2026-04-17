@@ -11,23 +11,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/bridge"
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/i18n"
-	"github.com/dreamSailing/vb-coding/internal/pkg/clip"
-	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
-	"github.com/dreamSailing/vb-coding/internal/state"
-	"github.com/dreamSailing/vb-coding/internal/tools/bg"
-	"github.com/dreamSailing/vb-coding/internal/ui/adapter"
-	"github.com/dreamSailing/vb-coding/internal/ui/components/messages"
-	"github.com/dreamSailing/vb-coding/internal/ui/features/slash"
-	"github.com/dreamSailing/vb-coding/internal/ui/panels"
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
-	"github.com/dreamSailing/vb-coding/internal/ui/views/confirm"
-	"github.com/dreamSailing/vb-coding/internal/ui/views/help"
-	"github.com/dreamSailing/vb-coding/internal/ui/views/setup"
-	"github.com/dreamSailing/vb-coding/internal/ui/views/shell"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/bridge"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/pkg/clip"
+	"github.com/dreamSailing/eos/internal/pkg/settings"
+	"github.com/dreamSailing/eos/internal/state"
+	"github.com/dreamSailing/eos/internal/tools/bg"
+	"github.com/dreamSailing/eos/internal/ui/adapter"
+	"github.com/dreamSailing/eos/internal/ui/components/messages"
+	"github.com/dreamSailing/eos/internal/ui/features/slash"
+	"github.com/dreamSailing/eos/internal/ui/panels"
+	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/ui/views/confirm"
+	"github.com/dreamSailing/eos/internal/ui/views/help"
+	"github.com/dreamSailing/eos/internal/ui/views/setup"
+	"github.com/dreamSailing/eos/internal/ui/views/shell"
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
@@ -326,7 +326,7 @@ func (m *AppModel) Init() tea.Cmd {
 		rememberKnownWorkspace(abs, true)
 		if m.isWorkspaceTrusted(abs) {
 			m.adapter.GetCore().StartContextEngine(abs)
-			settingsPath := filepath.Join(abs, ".vb", "settings.json")
+			settingsPath := filepath.Join(abs, ".eos", "settings.json")
 			m.adapter.GetSettings().SetPath(settingsPath)
 			_, _ = m.adapter.GetCore().LoadSettings(settingsPath)
 		} else {
@@ -710,7 +710,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "init":
 				rememberKnownWorkspace(path, true)
 				m.adapter.GetCore().StartContextEngine(path)
-				settingsPath := filepath.Join(path, ".vb", "settings.json")
+				settingsPath := filepath.Join(path, ".eos", "settings.json")
 				m.adapter.GetSettings().SetPath(settingsPath)
 				_, _ = m.adapter.GetCore().LoadSettings(settingsPath)
 				m.refreshWorkspacePanel()
@@ -1192,7 +1192,7 @@ func (m *AppModel) initVBMD() tea.Cmd {
 		root = wd
 	}
 
-	dst := filepath.Join(root, "VB.md")
+	dst := filepath.Join(root, "EOS.md")
 	existing := ""
 	existed := false
 	if raw, err := os.ReadFile(dst); err == nil {
@@ -1200,9 +1200,9 @@ func (m *AppModel) initVBMD() tea.Cmd {
 		existing = string(raw)
 	}
 
-	template := strings.TrimRight(`# VB.md
+	template := strings.TrimRight(`# EOS.md
 
-This file provides guidance to VB Coding when working with code in this repository.
+This file provides guidance to EOS when working with code in this repository.
 
 ## Project Context
 
@@ -1220,7 +1220,7 @@ This file provides guidance to VB Coding when working with code in this reposito
 
 `+"```bash"+`
 go test ./...
-go build -o vb-coding
+go build -o eos
 `+"```"+`
 
 ## Repository Map
@@ -1237,16 +1237,16 @@ go build -o vb-coding
 - Don’t log secrets/keys.
 `, "\n") + "\n"
 
-	mergeVB := func(old string) string {
+	mergeEOS := func(old string) string {
 		s := strings.TrimSpace(old)
 		if s == "" {
 			return template
 		}
-		s = strings.Replace(s, "# CLAUDE.md", "# VB.md", 1)
-		s = strings.Replace(s, "Claude Code (claude.ai/code)", "VB Coding", 1)
-		s = strings.Replace(s, "guidance to Claude Code", "guidance to VB Coding", 1)
-		if !strings.HasPrefix(strings.TrimSpace(s), "# VB.md") {
-			s = "# VB.md\n\n" + strings.TrimLeft(s, "\n")
+		s = strings.Replace(s, "# CLAUDE.md", "# EOS.md", 1)
+		s = strings.Replace(s, "Claude Code (claude.ai/code)", "EOS", 1)
+		s = strings.Replace(s, "guidance to Claude Code", "guidance to EOS", 1)
+		if !strings.HasPrefix(strings.TrimSpace(s), "# EOS.md") {
+			s = "# EOS.md\n\n" + strings.TrimLeft(s, "\n")
 		}
 		required := []struct {
 			heading string
@@ -1254,7 +1254,7 @@ go build -o vb-coding
 		}{
 			{"## Project Context", "## Project Context\n\n- What this project does:\n- Target users:\n- Key constraints (performance/security/platform):\n"},
 			{"## How To Work", "## How To Work\n\n- When changing behavior, add/adjust tests when possible.\n- Prefer minimal, focused diffs over broad refactors.\n- Keep user-facing text consistent with UI language (zh/en).\n"},
-			{"## Build and Development Commands", "## Build and Development Commands\n\n```bash\ngo test ./...\ngo build -o vb-coding\n```\n"},
+			{"## Build and Development Commands", "## Build and Development Commands\n\n```bash\ngo test ./...\ngo build -o eos\n```\n"},
 			{"## Repository Map", "## Repository Map\n\n- UI: internal/ui/\n- Bridge: internal/bridge/\n- Runtime: internal/runtime/\n- Tools: internal/tools/\n"},
 			{"## Coding Style", "## Coding Style\n\n- Follow existing patterns and naming.\n- Avoid introducing new dependencies unless necessary.\n- Don’t log secrets/keys.\n"},
 		}
@@ -1267,19 +1267,19 @@ go build -o vb-coding
 		return strings.TrimRight(s, "\n") + "\n"
 	}
 
-	content := mergeVB(existing)
+	content := mergeEOS(existing)
 
 	if err := os.WriteFile(dst, []byte(content), 0o644); err != nil {
-		m.appendSystem(fmt.Sprintf("VB.md 写入失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf("EOS.md 写入失败: %v", err), "error")
 		return nil
 	}
 	if cm := m.adapter.GetCore().GetContext(); cm != nil {
-		cm.SetPinnedDoc("VB.md", content, 20000)
+		cm.SetPinnedDoc("EOS.md", content, 20000)
 	}
 	if existed {
-		m.appendSystem("已更新 VB.md", "success")
+		m.appendSystem("已更新 EOS.md", "success")
 	} else {
-		m.appendSystem("已生成 VB.md", "success")
+		m.appendSystem("已生成 EOS.md", "success")
 	}
 	return nil
 }
@@ -1417,7 +1417,7 @@ func (m *AppModel) switchWorkspaceTrusted(path string) tea.Cmd {
 	}
 	rememberKnownWorkspace(path, true)
 	_ = os.Chdir(path)
-	settingsPath := filepath.Join(path, ".vb", "settings.json")
+	settingsPath := filepath.Join(path, ".eos", "settings.json")
 	m.adapter.GetSettings().SetPath(settingsPath)
 	_, _ = m.adapter.GetCore().LoadSettings(settingsPath)
 	m.refreshWorkspacePanel()
@@ -1737,7 +1737,7 @@ func (m *AppModel) View() string {
 		}
 		return m.styles.App.Render("Panel not found: " + m.activePanel)
 	default:
-		return m.styles.App.Render("Welcome to VB Coding!")
+		return m.styles.App.Render("Welcome to EOS!")
 	}
 }
 
@@ -1957,7 +1957,7 @@ func (m *AppModel) pasteClipboardImage() tea.Cmd {
 		m.appendSystem("粘贴图片失败: 无法获取工作目录", "error")
 		return func() tea.Msg { return nil }
 	}
-	dir := filepath.Join(wd, ".vb", "attachments")
+	dir := filepath.Join(wd, ".eos", "attachments")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		m.appendSystem("粘贴图片失败: "+err.Error(), "error")
 		return func() tea.Msg { return nil }
@@ -2237,7 +2237,7 @@ func (m *AppModel) handleModelSyncEnv() {
 		}
 		m.appendSystem("Synced model from environment variables", "success")
 	} else {
-		m.appendSystem("Failed to sync model from environment (VB_API_BASE and VB_API_KEY required)", "error")
+		m.appendSystem("Failed to sync model from environment (EOS_API_BASE and EOS_API_KEY required)", "error")
 	}
 }
 
@@ -2448,7 +2448,7 @@ func (m *AppModel) refreshRulesPanel() {
 	projectContent := ""
 	projectExists := false
 	if strings.TrimSpace(root) != "" {
-		projectPath = filepath.Join(root, ".vb", "Rules.md")
+		projectPath = filepath.Join(root, ".eos", "Rules.md")
 		if _, err := os.Stat(projectPath); err == nil {
 			projectExists = true
 			if raw, err2 := os.ReadFile(projectPath); err2 == nil {
@@ -2461,7 +2461,7 @@ func (m *AppModel) refreshRulesPanel() {
 	globalContent := ""
 	globalExists := false
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		globalPath = filepath.Join(home, ".vb", "Rules.md")
+		globalPath = filepath.Join(home, ".eos", "Rules.md")
 		if _, err := os.Stat(globalPath); err == nil {
 			globalExists = true
 			if raw, err2 := os.ReadFile(globalPath); err2 == nil {
@@ -2485,8 +2485,8 @@ func (m *AppModel) handleRulesSave(msg panels.RulesSaveMsg) {
 	switch scope {
 	case "global":
 		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-			dst = filepath.Join(home, ".vb", "Rules.md")
-			docID = "~/.vb/Rules.md"
+			dst = filepath.Join(home, ".eos", "Rules.md")
+			docID = "~/.eos/Rules.md"
 		}
 	default:
 		root := strings.TrimSpace(m.adapter.GetCore().GetActiveRoot())
@@ -2496,8 +2496,8 @@ func (m *AppModel) handleRulesSave(msg panels.RulesSaveMsg) {
 			}
 		}
 		if strings.TrimSpace(root) != "" {
-			dst = filepath.Join(root, ".vb", "Rules.md")
-			docID = ".vb/Rules.md"
+			dst = filepath.Join(root, ".eos", "Rules.md")
+			docID = ".eos/Rules.md"
 		}
 	}
 
@@ -2646,7 +2646,7 @@ func (m *AppModel) handleSettingsSave(settings *settings.Settings) {
 
 	if wd, _ := os.Getwd(); wd != "" {
 		abs := normalizeWorkspacePath(wd)
-		settingsPath := filepath.Join(abs, ".vb", "settings.json")
+		settingsPath := filepath.Join(abs, ".eos", "settings.json")
 		if err := m.adapter.GetCore().SaveSettings(settingsPath, settings); err != nil {
 			m.appendSystem(fmt.Sprintf("Failed to save workspace settings: %v", err), "error")
 			return

@@ -107,7 +107,7 @@ func duckduckgoSearch(ctx context.Context, query string, maxResults int) ([]map[
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; vb-coding/1.0)")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; eos/1.0)")
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
@@ -194,7 +194,7 @@ func fetchURL(ctx context.Context, url, format string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; vb-coding/1.0)")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; eos/1.0)")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)

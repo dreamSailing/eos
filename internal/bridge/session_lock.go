@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // sessionLockInfo lock 文件中存储的信息
@@ -38,7 +38,7 @@ func sessionLockPathForRoot(root string) string {
 		}
 		root = cwd
 	}
-	return filepath.Join(root, ".vb", "sessions", ".lock")
+	return filepath.Join(root, ".eos", "sessions", ".lock")
 }
 
 // AcquireSessionLock 创建 lock 文件，写入 PID + 时间戳

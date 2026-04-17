@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/mcp"
-	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
-	"github.com/dreamSailing/vb-coding/internal/skills"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/mcp"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/skills"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 func configureManagerExtensions(ctx context.Context, mgr *tools.Manager, workspaceRoot string) {

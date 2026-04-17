@@ -3,7 +3,7 @@ package runtime
 import (
 	"log/slog"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 // EventEmitter 统一的事件发送器

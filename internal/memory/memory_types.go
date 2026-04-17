@@ -51,15 +51,15 @@ func (e *MemoryEntry) Validate() bool {
 func (t MemoryType) DefaultFile() string {
 	switch t {
 	case MemoryTypeUser:
-		return "VB.md"
+		return "EOS.md"
 	case MemoryTypeProject:
-		return ".vb/Rules.md"
+		return ".eos/Rules.md"
 	case MemoryTypeFeedback:
-		return "VB.md"
+		return "EOS.md"
 	case MemoryTypeReference:
-		return "VB.md"
+		return "EOS.md"
 	default:
-		return "VB.md"
+		return "EOS.md"
 	}
 }
 

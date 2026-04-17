@@ -1,16 +1,16 @@
 # CLI 对外 API 文档（serve / stdio JSON-RPC）
 
-本文档说明 `vb-coding serve` 当前对外暴露的能力、调用方式、请求/响应格式与常见错误。
+本文档说明 `eos serve` 当前对外暴露的能力、调用方式、请求/响应格式与常见错误。
 
 ## 1. 总览
 
 - 传输方式：仅支持 `stdio`
 - 协议：JSON-RPC 2.0（按行传输，一行一个 JSON）
-- IDE / Remote 宿主建议先生成桥接清单：`vb-coding bridge manifest --workspace "/abs/workspace"`
+- IDE / Remote 宿主建议先生成桥接清单：`eos bridge manifest --workspace "/abs/workspace"`
 - 服务启动命令：
 
 ```bash
-vb-coding serve --transport stdio --workspace "/abs/workspace" --allowed-tools "read,bash" --policy "./policy.json" --require-approval-digest=true
+eos serve --transport stdio --workspace "/abs/workspace" --allowed-tools "read,bash" --policy "./policy.json" --require-approval-digest=true
 ```
 
 - 必填参数：`--workspace`
@@ -79,12 +79,12 @@ vb-coding serve --transport stdio --workspace "/abs/workspace" --allowed-tools "
 为了避免宿主硬编码启动参数、方法名和能力声明，建议先执行：
 
 ```bash
-vb-coding bridge manifest --workspace "/abs/workspace" --allowed-tools "read,bash"
+eos bridge manifest --workspace "/abs/workspace" --allowed-tools "read,bash"
 ```
 
 返回 JSON 清单会包含：
 
-- `launch.command` / `launch.args`：如何启动 `vb-coding serve`
+- `launch.command` / `launch.args`：如何启动 `eos serve`
 - `protocolVersion`：当前 JSON-RPC 协议版本
 - `sessionDefaults`：推荐的初始会话参数
 - `serverCapabilities`：握手能力声明
@@ -335,4 +335,4 @@ vb-coding bridge manifest --workspace "/abs/workspace" --allowed-tools "read,bas
 
 - 当前仅支持 `stdio`，不支持 HTTP 路由调用
 - 工具列表与参数定义以 `tool.list` 的实时返回为准
-- IDE / Remote 宿主建议优先消费 `vb-coding bridge manifest`，而不是自行拼接 `serve` 启动参数
+- IDE / Remote 宿主建议优先消费 `eos bridge manifest`，而不是自行拼接 `serve` 启动参数

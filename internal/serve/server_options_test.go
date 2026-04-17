@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	toolapiimpl "github.com/dreamSailing/vb-coding/internal/toolapi/impl"
+	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
 )
 
 func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {

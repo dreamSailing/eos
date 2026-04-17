@@ -9,8 +9,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/dreamSailing/vb-coding/internal/serve"
-	toolapiimpl "github.com/dreamSailing/vb-coding/internal/toolapi/impl"
+	"github.com/dreamSailing/eos/internal/serve"
+	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
 	"github.com/spf13/cobra"
 )
 
@@ -24,7 +24,7 @@ func newServeCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Start vb-coding as a local tool service (for agents/platform).",
+		Short: "Start eos as a local tool service (for agents/platform).",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			transport = strings.TrimSpace(transport)
 			if transport == "" {

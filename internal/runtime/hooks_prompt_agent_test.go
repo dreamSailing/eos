@@ -6,8 +6,8 @@ import (
 	"testing"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/hooks"
-	ai "github.com/dreamSailing/vb-coding/internal/ai"
+	"github.com/dreamSailing/eos/internal/hooks"
+	ai "github.com/dreamSailing/eos/internal/ai"
 )
 
 type fakeHookModel struct {

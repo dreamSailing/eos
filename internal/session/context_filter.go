@@ -2,8 +2,8 @@ package session
 
 import (
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // ContextFilter 上下文过滤器配置

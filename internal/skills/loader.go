@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dreamSailing/vb-coding/internal/hooks"
-	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/hooks"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 
 	"gopkg.in/yaml.v3"
 )
@@ -169,7 +169,7 @@ func (l *Loader) scanSkillRoot(root string) error {
 		"dist":         true,
 		"build":        true,
 		"vendor":       true,
-		".vb":          true,
+		".eos":          true,
 		".trae":        true,
 	}
 	maxDepth := 8
@@ -185,7 +185,7 @@ func (l *Loader) scanSkillRoot(root string) error {
 		if !d.IsDir() {
 			return nil
 		}
-		if strings.HasPrefix(d.Name(), ".") && d.Name() != ".claude" && d.Name() != ".vb" && d.Name() != ".trae" {
+		if strings.HasPrefix(d.Name(), ".") && d.Name() != ".claude" && d.Name() != ".eos" && d.Name() != ".trae" {
 			return filepath.SkipDir
 		}
 		if ignoreDirs[strings.ToLower(d.Name())] && filepath.Clean(path) != rootClean {
@@ -332,7 +332,7 @@ func isUserSkillsDir(root, home string) bool {
 		return false
 	}
 	roots := []string{
-		filepath.Join(home, ".vb", "skills"),
+		filepath.Join(home, ".eos", "skills"),
 		filepath.Join(home, ".claude", "skills"),
 		filepath.Join(home, ".trae", "skills"),
 	}
@@ -364,7 +364,7 @@ func isUserCommandsDir(root, home string) bool {
 		return false
 	}
 	roots := []string{
-		filepath.Join(home, ".vb", "commands"),
+		filepath.Join(home, ".eos", "commands"),
 		filepath.Join(home, ".claude", "commands"),
 		filepath.Join(home, ".trae", "commands"),
 	}

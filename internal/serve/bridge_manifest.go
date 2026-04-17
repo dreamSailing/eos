@@ -8,9 +8,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/toolapi"
-	"github.com/dreamSailing/vb-coding/internal/tools"
-	"github.com/dreamSailing/vb-coding/internal/version"
+	"github.com/dreamSailing/eos/internal/toolapi"
+	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/internal/version"
 )
 
 const (
@@ -88,7 +88,7 @@ func BuildBridgeManifest(opts Options, manifestOpts BridgeManifestOptions) (Brid
 		if exe, err := os.Executable(); err == nil && strings.TrimSpace(exe) != "" {
 			launchCommand = exe
 		} else {
-			launchCommand = "vb-coding"
+			launchCommand = "eos"
 		}
 	}
 
@@ -111,7 +111,7 @@ func BuildBridgeManifest(opts Options, manifestOpts BridgeManifestOptions) (Brid
 
 	manifest := BridgeManifest{
 		SchemaVersion:   bridgeSchemaVersion,
-		Name:            "vb-coding-stdio-bridge",
+		Name: "eos-stdio-bridge",
 		Version:         version.AppVersion,
 		ProtocolVersion: serveProtocolVersion,
 		Transport:       transport,

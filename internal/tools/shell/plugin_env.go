@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
-	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/config"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
 )
 
 func withPluginEnv(ctx context.Context, workingDir string) context.Context {

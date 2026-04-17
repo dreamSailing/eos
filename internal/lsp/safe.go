@@ -6,7 +6,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // SafeLSP 安全的 LSP 包装器，优雅降级

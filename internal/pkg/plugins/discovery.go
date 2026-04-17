@@ -54,14 +54,14 @@ func ResolveScanDirs(workspaceRoot string) []string {
 	}
 
 	if home, err := os.UserHomeDir(); err == nil {
-		addDir(filepath.Join(home, ".vb", "plugins"))
+		addDir(filepath.Join(home, ".eos", "plugins"))
 		addDir(filepath.Join(home, ".claude", "plugins"))
 		addDir(filepath.Join(home, ".trae", "plugins"))
 	}
 
 	workspaceRoot = strings.TrimSpace(workspaceRoot)
 	if workspaceRoot != "" {
-		addDir(filepath.Join(workspaceRoot, ".vb", "plugins"))
+		addDir(filepath.Join(workspaceRoot, ".eos", "plugins"))
 		addDir(filepath.Join(workspaceRoot, ".claude", "plugins"))
 		addDir(filepath.Join(workspaceRoot, ".trae", "plugins"))
 	}

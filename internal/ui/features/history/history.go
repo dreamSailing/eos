@@ -23,7 +23,7 @@ func NewManager(maxSize int) *Manager {
 
 	// 历史文件路径
 	homeDir, _ := os.UserHomeDir()
-	historyFile := filepath.Join(homeDir, ".vb-coding", "history.txt")
+	historyFile := filepath.Join(homeDir, ".eos", "history.txt")
 
 	m := &Manager{
 		aiHistory:   make([]string, 0, maxSize),

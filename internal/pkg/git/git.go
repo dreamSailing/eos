@@ -3,8 +3,8 @@ package git
 import (
 	"context"
 	"fmt"
-	"github.com/dreamSailing/vb-coding/internal/session"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/session"
+	"github.com/dreamSailing/eos/internal/tools"
 	"strings"
 )
 

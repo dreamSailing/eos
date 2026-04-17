@@ -1,8 +1,8 @@
 package tools
 
 import (
-	"github.com/dreamSailing/vb-coding/internal/mcp"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/mcp"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // GetToolTraces returns tool call trace records

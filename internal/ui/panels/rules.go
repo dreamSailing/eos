@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	uinput "github.com/dreamSailing/vb-coding/internal/ui/components/input"
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
+	uinput "github.com/dreamSailing/eos/internal/ui/components/input"
+	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"

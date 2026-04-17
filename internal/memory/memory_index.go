@@ -199,8 +199,8 @@ func ScanMemoryFiles(rootDir string) ([]MemoryEntry, error) {
 	}
 
 	files := []fileInfo{
-		{"VB.md", MemoryTypeUser},
-		{".vb/Rules.md", MemoryTypeProject},
+		{"EOS.md", MemoryTypeUser},
+		{".eos/Rules.md", MemoryTypeProject},
 	}
 
 	for _, fi := range files {

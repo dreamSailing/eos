@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"mvdan.cc/sh/v3/interp"
 )
 

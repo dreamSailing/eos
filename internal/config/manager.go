@@ -18,9 +18,9 @@ func NewManager(path string) *Manager {
 }
 
 func (m *Manager) ResolveAPIConfig() (string, string, string, string) {
-	base := os.Getenv("VB_API_BASE")
-	key := os.Getenv("VB_API_KEY")
-	model := os.Getenv("VB_MODEL")
+	base := os.Getenv("EOS_API_BASE")
+	key := os.Getenv("EOS_API_KEY")
+	model := os.Getenv("EOS_MODEL")
 	if base == "" || key == "" || model == "" {
 		if entry, ok := m.GetActiveModel(); ok {
 			if base == "" {
@@ -97,9 +97,9 @@ func (m *Manager) GetActiveModel() (ModelEntry, bool) {
 }
 
 func (m *Manager) SyncEnvModel() (string, bool) {
-	base := os.Getenv("VB_API_BASE")
-	key := os.Getenv("VB_API_KEY")
-	model := os.Getenv("VB_MODEL")
+	base := os.Getenv("EOS_API_BASE")
+	key := os.Getenv("EOS_API_KEY")
+	model := os.Getenv("EOS_MODEL")
 	if strings.TrimSpace(base) == "" || strings.TrimSpace(key) == "" {
 		return "", false
 	}

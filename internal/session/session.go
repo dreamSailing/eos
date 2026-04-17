@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/ai"
+	"github.com/dreamSailing/eos/internal/ai"
 )
 
 type Session struct {

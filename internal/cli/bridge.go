@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/serve"
-	toolapiimpl "github.com/dreamSailing/vb-coding/internal/toolapi/impl"
+	"github.com/dreamSailing/eos/internal/serve"
+	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +30,7 @@ func newBridgeCmd() *cobra.Command {
 
 	manifestCmd := &cobra.Command{
 		Use:   "manifest",
-		Short: "Print a JSON bridge manifest for vb-coding serve.",
+		Short: "Print a JSON bridge manifest for eos serve.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			transport = strings.TrimSpace(transport)
 			if transport == "" {

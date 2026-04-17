@@ -11,18 +11,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/bridge"
-	"github.com/dreamSailing/vb-coding/internal/config"
-	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
-	sharedruntime "github.com/dreamSailing/vb-coding/internal/runtime"
-	"github.com/dreamSailing/vb-coding/internal/session"
-	skillspkg "github.com/dreamSailing/vb-coding/internal/skills"
-	"github.com/dreamSailing/vb-coding/internal/state"
-	"github.com/dreamSailing/vb-coding/internal/toolapi"
-	"github.com/dreamSailing/vb-coding/internal/tools"
-	"github.com/dreamSailing/vb-coding/internal/tools/bg"
-	"github.com/dreamSailing/vb-coding/pkg/protocol"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/bridge"
+	"github.com/dreamSailing/eos/internal/config"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	sharedruntime "github.com/dreamSailing/eos/internal/runtime"
+	"github.com/dreamSailing/eos/internal/session"
+	skillspkg "github.com/dreamSailing/eos/internal/skills"
+	"github.com/dreamSailing/eos/internal/state"
+	"github.com/dreamSailing/eos/internal/toolapi"
+	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/internal/tools/bg"
+	"github.com/dreamSailing/eos/pkg/protocol"
 )
 
 type Event struct {
@@ -1581,9 +1581,9 @@ func (r *Runtime) CostItems() []CostItem {
 func (r *Runtime) projectRulesPath() string {
 	root := r.workingRoot()
 	if strings.TrimSpace(root) == "" {
-		return filepath.Join(".vb", "Rules.md")
+		return filepath.Join(".eos", "Rules.md")
 	}
-	return filepath.Join(root, ".vb", "Rules.md")
+	return filepath.Join(root, ".eos", "Rules.md")
 }
 
 func (r *Runtime) workingRoot() string {
@@ -1600,12 +1600,12 @@ func (r *Runtime) workingRoot() string {
 func (r *Runtime) settingsPath() string {
 	root := strings.TrimSpace(r.core.GetActiveRoot())
 	if root != "" {
-		return filepath.Join(root, ".vb", "settings.json")
+		return filepath.Join(root, ".eos", "settings.json")
 	}
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		return filepath.Join(home, ".vb", "settings.json")
+		return filepath.Join(home, ".eos", "settings.json")
 	}
-	return filepath.Join(".vb", "settings.json")
+	return filepath.Join(".eos", "settings.json")
 }
 
 func (r *Runtime) findVersionByID(id string) (VersionItem, error) {

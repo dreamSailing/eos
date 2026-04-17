@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
+	codectx "github.com/dreamSailing/eos/internal/context"
 )
 
 func TestSessionLock_AcquireAndRelease(t *testing.T) {
@@ -16,8 +16,8 @@ func TestSessionLock_AcquireAndRelease(t *testing.T) {
 	defer func() { _ = os.Chdir(origDir) }()
 	_ = os.Chdir(tmpDir)
 
-	// 创建 .vb/sessions 目录
-	sessDir := filepath.Join(tmpDir, ".vb", "sessions")
+	// 创建 .eos/sessions 目录
+	sessDir := filepath.Join(tmpDir, ".eos", "sessions")
 	_ = os.MkdirAll(sessDir, 0755)
 
 	lockPath := filepath.Join(sessDir, ".lock")
@@ -69,7 +69,7 @@ func TestDetectCrashRecovery_StaleLock(t *testing.T) {
 	defer func() { _ = os.Chdir(origDir) }()
 	_ = os.Chdir(tmpDir)
 
-	sessDir := filepath.Join(tmpDir, ".vb", "sessions")
+	sessDir := filepath.Join(tmpDir, ".eos", "sessions")
 	_ = os.MkdirAll(sessDir, 0755)
 
 	// 写入一个假的 lock 文件（使用不存在的 PID）

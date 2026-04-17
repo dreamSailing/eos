@@ -3,11 +3,11 @@ package tools
 import (
 	"context"
 	"fmt"
-	"github.com/dreamSailing/vb-coding/internal/mcp"
-	"github.com/dreamSailing/vb-coding/internal/pkg/plugins"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
-	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
-	"github.com/dreamSailing/vb-coding/internal/tools/shell"
+	"github.com/dreamSailing/eos/internal/mcp"
+	"github.com/dreamSailing/eos/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/tools/fileops"
+	"github.com/dreamSailing/eos/internal/tools/shell"
 	"path/filepath"
 	"strings"
 )

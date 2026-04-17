@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // ToolResultBudget manages aggregate size of tool results per turn.
@@ -33,7 +33,7 @@ type ToolResultBudget struct {
 
 // NewToolResultBudget creates a new budget tracker
 func NewToolResultBudget(workspaceRoot string) *ToolResultBudget {
-	dir := filepath.Join(workspaceRoot, ".vb", PersistDir)
+	dir := filepath.Join(workspaceRoot, ".eos", PersistDir)
 	return &ToolResultBudget{
 		resultSizes: make(map[string]int),
 		persistDir:  dir,
@@ -127,7 +127,7 @@ func (b *ToolResultBudget) persistLocked(toolCallID, content string) error {
 
 // LoadPersistedResult loads a previously persisted tool result from disk
 func LoadPersistedResult(workspaceRoot, toolCallID string) (string, error) {
-	path := filepath.Join(workspaceRoot, ".vb", PersistDir, toolCallID+".json")
+	path := filepath.Join(workspaceRoot, ".eos", PersistDir, toolCallID+".json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("persisted result not found: %w", err)

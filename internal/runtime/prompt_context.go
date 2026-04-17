@@ -79,20 +79,20 @@ func FormatProjectContext(ctx ProjectContext) string {
 	return sb.String()
 }
 
-// LoadCustomPrompt 从项目根目录的 .vb/prompt.md 读取用户自定义提示词
+// LoadCustomPrompt 从项目根目录的 .eos/prompt.md 读取用户自定义提示词
 func LoadCustomPrompt(rootDir string) string {
-	promptPath := filepath.Join(rootDir, ".vb", "prompt.md")
+	promptPath := filepath.Join(rootDir, ".eos", "prompt.md")
 	return readFileTruncated(promptPath, maxCustomPromptBytes)
 }
 
-// loadCodingStyle 加载项目规则/约定文件（优先 .vb/Rules.md，其次 ~/.vb/Rules.md）
+// loadCodingStyle 加载项目规则/约定文件（优先 .eos/Rules.md，其次 ~/.eos/Rules.md）
 func loadCodingStyle(rootDir string) string {
 	home, _ := os.UserHomeDir()
 	// 按优先级尝试加载
 	candidates := []string{
-		filepath.Join(rootDir, ".vb", "Rules.md"),
-		filepath.Join(home, ".vb", "Rules.md"),
-		filepath.Join(rootDir, "VB.md"),
+		filepath.Join(rootDir, ".eos", "Rules.md"),
+		filepath.Join(home, ".eos", "Rules.md"),
+		filepath.Join(rootDir, "EOS.md"),
 	}
 
 	for _, path := range candidates {
@@ -211,7 +211,7 @@ func buildDirSummary(rootDir string) string {
 		".git": true, ".idea": true, ".vscode": true,
 		"node_modules": true, "dist": true, "build": true,
 		"vendor": true, "__pycache__": true, ".DS_Store": true,
-		"bin": true, "obj": true, "target": true, ".vb": true,
+		"bin": true, "obj": true, "target": true, ".eos": true,
 	}
 
 	var sb strings.Builder

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/skills"
+	"github.com/dreamSailing/eos/internal/skills"
 )
 
 func TestSkillBangCommandPreprocess(t *testing.T) {

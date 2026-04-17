@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"log/slog"
 )
 
@@ -17,7 +17,7 @@ func (rc *RuntimeCore) EnterWorktree(ctx context.Context, name string) (string, 
 		name = fmt.Sprintf("wt-%d", os.Getpid())
 	}
 
-	worktreesDir := ".vb/worktrees"
+	worktreesDir := ".eos/worktrees"
 	targetPath := filepath.Join(worktreesDir, name)
 
 	cmd := exec.CommandContext(ctx, "git", "worktree", "add", targetPath)

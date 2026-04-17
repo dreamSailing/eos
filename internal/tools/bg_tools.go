@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
-	"github.com/dreamSailing/vb-coding/internal/tools/bg"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/tools/bg"
 )
 
 func (m *Manager) bgTaskStructured(ctx context.Context, params map[string]interface{}) ToolResult {

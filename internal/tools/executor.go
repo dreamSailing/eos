@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // ToolCallKey 工具调用的缓存键

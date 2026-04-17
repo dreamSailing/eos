@@ -1,4 +1,4 @@
-module github.com/dreamSailing/vb-coding
+module github.com/dreamSailing/eos
 
 go 1.25
 

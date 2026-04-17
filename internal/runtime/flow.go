@@ -9,8 +9,8 @@ import (
 	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 func buildToolsNodeConfig(toolsList []tool.BaseTool, onMeta func(string)) compose.ToolsNodeConfig {

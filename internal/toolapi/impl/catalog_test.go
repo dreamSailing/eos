@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
-	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
-	"github.com/dreamSailing/vb-coding/internal/toolapi"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/config"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/toolapi"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 type testPlugin struct {
@@ -41,7 +41,7 @@ func TestCatalogListIncludesUnifiedCapabilities(t *testing.T) {
 		t.Fatalf("save config: %v", err)
 	}
 
-	skillDir := filepath.Join(home, ".vb", "skills", "review")
+	skillDir := filepath.Join(home, ".eos", "skills", "review")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir skill: %v", err)
 	}

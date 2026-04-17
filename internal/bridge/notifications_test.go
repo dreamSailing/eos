@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/notify"
-	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
-	"github.com/dreamSailing/vb-coding/internal/session"
+	"github.com/dreamSailing/eos/internal/notify"
+	"github.com/dreamSailing/eos/internal/pkg/settings"
+	"github.com/dreamSailing/eos/internal/session"
 )
 
 func TestWaitPrompt_SendsDesktopNotification(t *testing.T) {

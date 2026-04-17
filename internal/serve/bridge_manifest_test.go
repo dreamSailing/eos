@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
-	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
-	toolapiimpl "github.com/dreamSailing/vb-coding/internal/toolapi/impl"
+	"github.com/dreamSailing/eos/internal/config"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
 )
 
 func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
@@ -29,7 +29,7 @@ func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
 		t.Fatalf("save config: %v", err)
 	}
 
-	skillDir := filepath.Join(home, ".vb", "skills", "review")
+	skillDir := filepath.Join(home, ".eos", "skills", "review")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir skill: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
 		DefaultAllowedTools:   []string{"read", "skills_list", "mcp_status", "echo_plugin"},
 		RequireApprovalDigest: true,
 	}, BridgeManifestOptions{
-		LaunchCommand:       "vb-coding",
+		LaunchCommand: "eos",
 		Services:            toolapiimpl.NewServices(),
 		IncludeTools:        true,
 		IncludeCapabilities: true,
@@ -64,8 +64,8 @@ func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
 	if manifest.Transport != "stdio" {
 		t.Fatalf("Transport=%q, want stdio", manifest.Transport)
 	}
-	if manifest.Launch.Command != "vb-coding" {
-		t.Fatalf("Launch.Command=%q, want vb-coding", manifest.Launch.Command)
+	if manifest.Launch.Command != "eos" {
+		t.Fatalf("Launch.Command=%q, want eos", manifest.Launch.Command)
 	}
 	if manifest.Launch.Cwd != workspaceAbs {
 		t.Fatalf("Launch.Cwd=%q, want %q", manifest.Launch.Cwd, workspaceAbs)

@@ -1,8 +1,8 @@
 package session
 
 import (
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"math"
 	"strings"
 	"sync"

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
+	"github.com/dreamSailing/eos/internal/ai"
+	codectx "github.com/dreamSailing/eos/internal/context"
 )
 
 func computeInjectBudgetBytes(rc *RuntimeCore, maxInjectKB int) int {
@@ -35,7 +35,7 @@ func buildInjectCandidates(rc *RuntimeCore, query string, sugg []codectx.Suggest
 	}
 
 	root := ""
-	versionsRoot := filepath.Join(".vb", "versions")
+	versionsRoot := filepath.Join(".eos", "versions")
 	if rc != nil {
 		root = rc.workingRoot()
 		versionsRoot = rc.versionsRoot()

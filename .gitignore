@@ -6,8 +6,8 @@
 *.dylib
 ai-cli
 ai-cli.exe
-vb-coding
-vb-coding.exe
+eos
+eos.exe
 
 # Test binary, built with `go test -c`
 *.test
@@ -55,11 +55,11 @@ release/
 installer.iss
 
 # Runtime data
-.vb.json
-.vb/
-internal/.vb/
-**/.vb/
-**/.vb/**
+.eos.json
+.eos/
+internal/.eos/
+**/.eos/
+**/.eos/**
 
 # Local secrets/config
 .env

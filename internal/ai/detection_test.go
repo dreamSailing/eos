@@ -3,7 +3,7 @@ package ai
 import (
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
+	"github.com/dreamSailing/eos/internal/config"
 )
 
 func TestDetectThinkingCapability(t *testing.T) {

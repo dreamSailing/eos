@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/tools"
 
 	"github.com/cloudwego/eino/compose"
 )

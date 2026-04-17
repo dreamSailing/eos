@@ -1,10 +1,10 @@
-# VB Coding
+# EOS
 
 Go 语言实现的终端 AI 编码助手，基于 CloudWeGo Eino 做多代理编排，提供可交互 TUI、工具调用、安全门禁与工作区上下文能力。
 
-- 项目仓库：https://github.com/dreamSailing/vb-coding
-- 问题反馈：https://github.com/dreamSailing/vb-coding/issues
-- 版本发布：https://github.com/dreamSailing/vb-coding/releases
+- 项目仓库：https://github.com/dreamSailing/eos
+- 问题反馈：https://github.com/dreamSailing/eos/issues
+- 版本发布：https://github.com/dreamSailing/eos/releases
 
 ## 核心能力
 
@@ -19,29 +19,29 @@ Go 语言实现的终端 AI 编码助手，基于 CloudWeGo Eino 做多代理编
 ## 环境要求
 
 - Go 1.25+
-- 可访问的 OpenAI 兼容接口（`VB_API_BASE`、`VB_API_KEY`、`VB_MODEL`）
+- 可访问的 OpenAI 兼容接口（`EOS_API_BASE`、`EOS_API_KEY`、`EOS_MODEL`）
 
 ## 快速开始
 
 ### 1) 编译
 
 ```bash
-git clone https://github.com/dreamSailing/vb-coding.git
-cd vb-coding
+git clone https://github.com/dreamSailing/eos.git
+cd eos
 go mod tidy
-go build -o vb-coding
+go build -o eos
 ```
 
 Windows:
 
 ```powershell
-.\vb-coding.exe
+.\eos.exe
 ```
 
 macOS / Linux:
 
 ```bash
-./vb-coding
+./eos
 ```
 
 ### 2) 配置模型
@@ -49,12 +49,12 @@ macOS / Linux:
 方式 A：环境变量
 
 ```bash
-export VB_API_BASE="https://api.openai.com/v1"
-export VB_API_KEY="sk-..."
-export VB_MODEL="gpt-4o-mini"
+export EOS_API_BASE="https://api.openai.com/v1"
+export EOS_API_KEY="sk-..."
+export EOS_MODEL="gpt-4o-mini"
 ```
 
-方式 B：`~/.vb.json`
+方式 B：`~/.eos.json`
 
 ```json
 {
@@ -73,11 +73,11 @@ export VB_MODEL="gpt-4o-mini"
 ## 构建变体（LSP）
 
 - 最小版（无 LSP）  
-  `go build -tags without_lsp -o vb-coding`
+  `go build -tags without_lsp -o eos`
 - 默认版（启用 LSP 框架）  
-  `go build -o vb-coding`
+  `go build -o eos`
 - Go 增强版（嵌入 gopls）  
-  `go build -tags with_gopls -o vb-coding`
+  `go build -tags with_gopls -o eos`
 
 项目内提供了 gopls 嵌入脚本：`scripts/embed_gopls.sh`、`scripts/embed_gopls.bat`。
 
@@ -103,8 +103,8 @@ export VB_MODEL="gpt-4o-mini"
 
 ## 服务模式 API
 
-- CLI 对外 API（`vb-coding serve`）：[internal/docs/serve/API.md](./internal/docs/serve/API.md)
-- IDE bridge 最小接入：先生成桥接清单 `vb-coding bridge manifest --workspace "/abs/workspace"`，详见 [internal/docs/serve/IDE_BRIDGE.md](./internal/docs/serve/IDE_BRIDGE.md)
+- CLI 对外 API（`eos serve`）：[internal/docs/serve/API.md](./internal/docs/serve/API.md)
+- IDE bridge 最小接入：先生成桥接清单 `eos bridge manifest --workspace "/abs/workspace"`，详见 [internal/docs/serve/IDE_BRIDGE.md](./internal/docs/serve/IDE_BRIDGE.md)
 
 ## 项目结构（简版）
 
@@ -129,8 +129,8 @@ go build ./...
 
 ## 开源发布注意事项
 
-- 运行时会在工作目录生成 `.vb/` 数据（会话、检查点、版本快照等）
-- 请确保 `.vb/`、`.vb.json`、`.env`、日志和本地配置不进入版本控制
+- 运行时会在工作目录生成 `.eos/` 数据（会话、检查点、版本快照等）
+- 请确保 `.eos/`、`.eos.json`、`.env`、日志和本地配置不进入版本控制
 - 提交前建议做一次敏感信息检查（API Key、私钥、证书、绝对路径等）
 
 ## 许可证

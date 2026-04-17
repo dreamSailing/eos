@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
-	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/config"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // ListMCPServers 列出所有 MCP 服务器

@@ -2,8 +2,8 @@ package session
 
 import (
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 func estimateTextTokens(model string, cache *utils.TokenEstimateCache, text string) int {

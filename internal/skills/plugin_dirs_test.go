@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
+	"github.com/dreamSailing/eos/internal/config"
 )
 
 func TestResolveScanDirsIncludesEnabledPluginSkills(t *testing.T) {

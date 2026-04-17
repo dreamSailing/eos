@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/hooks"
-	"github.com/dreamSailing/vb-coding/internal/skills"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/hooks"
+	"github.com/dreamSailing/eos/internal/skills"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 func denyHookCommand() string {

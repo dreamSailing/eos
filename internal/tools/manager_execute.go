@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 
 	"github.com/google/uuid"
 )

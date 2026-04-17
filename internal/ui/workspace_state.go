@@ -1,6 +1,6 @@
 package ui
 
-import "github.com/dreamSailing/vb-coding/internal/config"
+import "github.com/dreamSailing/eos/internal/config"
 
 func rememberKnownWorkspace(path string, foreground bool) {
 	cfg, cfgPath := config.Load()

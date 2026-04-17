@@ -4,8 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/config"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/config"
 )
 
 // SaveModelConfig 保存模型配置
@@ -66,9 +66,9 @@ func (rc *RuntimeCore) GetActiveModel() (config.ModelEntry, bool) {
 
 // SyncEnvModel 同步环境变量模型
 func (rc *RuntimeCore) SyncEnvModel() bool {
-	base := os.Getenv("VB_API_BASE")
-	key := os.Getenv("VB_API_KEY")
-	model := os.Getenv("VB_MODEL")
+	base := os.Getenv("EOS_API_BASE")
+	key := os.Getenv("EOS_API_KEY")
+	model := os.Getenv("EOS_MODEL")
 	if strings.TrimSpace(base) == "" || strings.TrimSpace(key) == "" {
 		return false
 	}
@@ -101,11 +101,11 @@ func (rc *RuntimeCore) GetContextWindowTokens() int {
 
 // ResolveAPIConfig 解析 API 配置
 func (rc *RuntimeCore) ResolveAPIConfig() (string, string, string, string) {
-	base := os.Getenv("VB_API_BASE")
-	key := os.Getenv("VB_API_KEY")
-	model := os.Getenv("VB_MODEL")
+	base := os.Getenv("EOS_API_BASE")
+	key := os.Getenv("EOS_API_KEY")
+	model := os.Getenv("EOS_MODEL")
 	home, _ := os.UserHomeDir()
-	cfgPath := filepath.Join(home, ".vb.json")
+	cfgPath := filepath.Join(home, ".eos.json")
 	if base == "" || key == "" || model == "" {
 		if m, ok := rc.GetActiveModel(); ok {
 			if base == "" {

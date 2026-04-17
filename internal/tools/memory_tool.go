@@ -44,20 +44,20 @@ func (m *Manager) suggestMemoryStructured(ctx context.Context, params map[string
 
 	// Default file
 	if file == "" {
-		file = "VB.md"
+		file = "EOS.md"
 	}
 
 	// Validate file name
 	allowedFiles := map[string]bool{
-		"VB.md":         true,
-		".vb/Rules.md":  true,
+		"EOS.md":         true,
+		".eos/Rules.md":  true,
 	}
 	if !allowedFiles[file] {
 		return ToolResult{
 			Type:   "tool_result",
 			Tool:   ToolSuggestMemory,
 			Status: "error",
-			Error:  fmt.Sprintf("file must be one of: VB.md, .vb/Rules.md (got: %s)", file),
+			Error:  fmt.Sprintf("file must be one of: EOS.md, .eos/Rules.md (got: %s)", file),
 			Display: fmt.Sprintf("错误：无效的文件名 '%s'", file),
 		}
 	}
@@ -248,8 +248,8 @@ const (
 func (t memoryType) defaultFile() string {
 	switch t {
 	case memoryTypeProject:
-		return ".vb/Rules.md"
+		return ".eos/Rules.md"
 	default:
-		return "VB.md"
+		return "EOS.md"
 	}
 }

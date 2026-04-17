@@ -56,17 +56,17 @@ func defaultLogDir() string {
 		if strings.TrimSpace(base) == "" {
 			base, _ = os.UserHomeDir()
 		}
-		return filepath.Join(base, "VBCoding", "logs")
+		return filepath.Join(base, "EOS", "logs")
 	case "darwin":
 		home, _ := os.UserHomeDir()
-		return filepath.Join(home, "Library", "Logs", "VBCoding")
+		return filepath.Join(home, "Library", "Logs", "EOS")
 	default:
 		base := os.Getenv("XDG_STATE_HOME")
 		if strings.TrimSpace(base) == "" {
 			home, _ := os.UserHomeDir()
 			base = filepath.Join(home, ".local", "state")
 		}
-		return filepath.Join(base, "vb-coding", "logs")
+		return filepath.Join(base, "eos", "logs")
 	}
 }
 
@@ -82,7 +82,7 @@ func NewLogger(dir string) {
 }
 
 func getLogLevel() slog.Level {
-	lvl := os.Getenv("VBCODING_LOG_LEVEL")
+	lvl := os.Getenv("EOS_LOG_LEVEL")
 	if strings.TrimSpace(lvl) == "" {
 		lvl = os.Getenv("LOG_LEVEL")
 	}

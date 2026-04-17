@@ -1,6 +1,6 @@
 # IDE Bridge 最小接入
 
-本文档说明如何用 `vb-coding bridge manifest` 把 `vb-coding serve` 接到 IDE、自动化宿主或其他本地平台进程。
+本文档说明如何用 `eos bridge manifest` 把 `eos serve` 接到 IDE、自动化宿主或其他本地平台进程。
 
 ## 目标
 
@@ -12,7 +12,7 @@
 ## 1. 生成桥接清单
 
 ```bash
-vb-coding bridge manifest --workspace "/abs/workspace" --allowed-tools "read,bash"
+eos bridge manifest --workspace "/abs/workspace" --allowed-tools "read,bash"
 ```
 
 常用可选参数：
@@ -24,7 +24,7 @@ vb-coding bridge manifest --workspace "/abs/workspace" --allowed-tools "read,bas
 - `--include-tools=false`
 - `--include-capabilities=false`
 
-如果你是在开发期通过 `go run . bridge manifest ...` 生成清单，建议同时传 `--command /abs/path/to/vb-coding`，否则清单里会记录临时构建产物路径。
+如果你是在开发期通过 `go run . bridge manifest ...` 生成清单，建议同时传 `--command /abs/path/to/eos`，否则清单里会记录临时构建产物路径。
 
 ## 2. 清单结构
 
@@ -48,7 +48,7 @@ vb-coding bridge manifest --workspace "/abs/workspace" --allowed-tools "read,bas
 宿主推荐按以下顺序工作：
 
 1. 读取桥接清单
-2. 按 `launch.command` + `launch.args` 启动 `vb-coding serve`
+2. 按 `launch.command` + `launch.args` 启动 `eos serve`
 3. 通过 stdio 按行发送 JSON-RPC 2.0 请求
 4. 调用 `initialize`
 5. 调用 `session.create`

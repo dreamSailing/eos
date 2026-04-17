@@ -1,7 +1,7 @@
 package bridge
 
 import (
-	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
+	"github.com/dreamSailing/eos/internal/pkg/settings"
 )
 
 // LoadSettings 加载设置

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"github.com/dreamSailing/vb-coding/internal/ai"
+	"github.com/dreamSailing/eos/internal/ai"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	ErrMissingAPISettings = errors.New("missing API settings: please configure ~/.vb.json or environment variables")
+	ErrMissingAPISettings = errors.New("missing API settings: please configure ~/.eos.json or environment variables")
 	ErrMissingModelName   = errors.New("model not specified and provider unknown for base")
 )
 

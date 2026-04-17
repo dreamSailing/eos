@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/events"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/events"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // Manager LSP 管理器

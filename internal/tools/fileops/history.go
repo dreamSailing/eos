@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -49,7 +49,7 @@ func (f *FileOperations) versionsDirFor(absPath string) (string, string, error) 
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return "", "", err
 	}
-	dir := filepath.Join(wd, ".vb", "versions", filepath.FromSlash(rel))
+	dir := filepath.Join(wd, ".eos", "versions", filepath.FromSlash(rel))
 	return dir, rel, nil
 }
 
@@ -170,7 +170,7 @@ func checkpointPathUnder(root string, traceID string) (string, error) {
 	if wd == "" {
 		wd, _ = os.Getwd()
 	}
-	dir := filepath.Join(wd, ".vb", "versions", "_checkpoints")
+	dir := filepath.Join(wd, ".eos", "versions", "_checkpoints")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}
@@ -267,7 +267,7 @@ func writeVersionIndexUnder(root string, pathRel string, vm VersionMeta, extra V
 	if wd == "" {
 		wd, _ = os.Getwd()
 	}
-	p := filepath.Join(wd, ".vb", "versions", "_index.jsonl")
+	p := filepath.Join(wd, ".eos", "versions", "_index.jsonl")
 	dir := filepath.Dir(p)
 	_ = os.MkdirAll(dir, 0755)
 	type row struct {
@@ -320,7 +320,7 @@ func ListCheckpointsUnder(root string, limit int) ([]CheckpointSummary, error) {
 	if wd == "" {
 		wd, _ = os.Getwd()
 	}
-	dir := filepath.Join(wd, ".vb", "versions", "_checkpoints")
+	dir := filepath.Join(wd, ".eos", "versions", "_checkpoints")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {

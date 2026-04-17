@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 
 	"github.com/gen2brain/beeep"
 )
@@ -14,7 +14,7 @@ var once sync.Once
 
 var defaultSender = func(title, message string) error {
 	once.Do(func() {
-		beeep.AppName = "VB CODING"
+		beeep.AppName = "EOS"
 	})
 	return beeep.Notify(title, message, "")
 }
@@ -39,7 +39,7 @@ func NotifyAsync(title, message string) {
 		return
 	}
 	if title == "" {
-		title = "VB CODING"
+		title = "EOS"
 	}
 	go func() {
 		defer func() { _ = recover() }()

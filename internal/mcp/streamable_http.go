@@ -45,7 +45,7 @@ func (c *StreamableHTTPClient) Initialize(ctx context.Context) (map[string]inter
 			"protocolVersion": "2025-03-26",
 			"capabilities":    map[string]interface{}{},
 			"clientInfo": map[string]interface{}{
-				"name":    "vb-coding",
+				"name":    "eos",
 				"version": "1.0.0",
 			},
 		},

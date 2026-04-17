@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
-	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/config"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
 )
 
 func ResolveScanDirs(workspaceRoot string, cfg *config.Config) []string {
@@ -31,20 +31,20 @@ func ResolveScanDirs(workspaceRoot string, cfg *config.Config) []string {
 	}
 
 	if home, err := os.UserHomeDir(); err == nil {
-		addDir(filepath.Join(home, ".vb", "skills"))
+		addDir(filepath.Join(home, ".eos", "skills"))
 		addDir(filepath.Join(home, ".claude", "skills"))
 		addDir(filepath.Join(home, ".trae", "skills"))
-		addDir(filepath.Join(home, ".vb", "commands"))
+		addDir(filepath.Join(home, ".eos", "commands"))
 		addDir(filepath.Join(home, ".claude", "commands"))
 		addDir(filepath.Join(home, ".trae", "commands"))
 	}
 
 	workspaceRoot = strings.TrimSpace(workspaceRoot)
 	if workspaceRoot != "" {
-		addDir(filepath.Join(workspaceRoot, ".vb", "skills"))
+		addDir(filepath.Join(workspaceRoot, ".eos", "skills"))
 		addDir(filepath.Join(workspaceRoot, ".claude", "skills"))
 		addDir(filepath.Join(workspaceRoot, ".trae", "skills"))
-		addDir(filepath.Join(workspaceRoot, ".vb", "commands"))
+		addDir(filepath.Join(workspaceRoot, ".eos", "commands"))
 		addDir(filepath.Join(workspaceRoot, ".claude", "commands"))
 		addDir(filepath.Join(workspaceRoot, ".trae", "commands"))
 	}

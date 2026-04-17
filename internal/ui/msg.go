@@ -4,8 +4,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/bridge"
-	"github.com/dreamSailing/vb-coding/pkg/protocol"
+	"github.com/dreamSailing/eos/internal/bridge"
+	"github.com/dreamSailing/eos/pkg/protocol"
 )
 
 // Msg 是所有消息类型的接口

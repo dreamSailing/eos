@@ -4,8 +4,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/version"
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/version"
+	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -62,14 +62,10 @@ func (w *WelcomeCard) View() string {
 
 	// 大 ASCII Logo 行
 	logoLines := []string{
-		" __      ______     _____          _ _             ",
-		" \\ \\    / /  _ \\   / ____|        | (_)            ",
-		"  \\ \\  / /| |_) | | |     ___   __| |_ _ __   __ _ ",
-		"   \\ \\/ / |  _ <  | |    / _ \\ / _` | | '_ \\ / _` |",
-		"    \\  /  | |_) | | |___| (_) | (_| | | | | | (_| |",
-		"     \\/   |____/   \\_____\\___/ \\__,_|_|_| |_|\\__, |",
-		"                                              __/ |",
-		"                                             |___/ ",
+		"   ___    ___    ___  ",
+		"  / _ \\  / _ \\  / __| ",
+		" |  __/ | (_) | \\__ \\ ",
+		"  \\___|  \\___/  |___/ ",
 	}
 
 	// Logo 样式（橙色/黄色）

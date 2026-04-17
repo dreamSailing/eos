@@ -2,7 +2,7 @@ package runtime
 
 import (
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/config"
+	"github.com/dreamSailing/eos/internal/config"
 )
 
 func resolveAgentToolTimeout(cfg config.Config) time.Duration {

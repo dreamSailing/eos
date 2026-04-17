@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
+	"github.com/dreamSailing/eos/internal/config"
 )
 
 func TestRuntimeModelCatalogMatchesCLIProviders(t *testing.T) {

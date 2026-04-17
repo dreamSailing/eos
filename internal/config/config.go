@@ -136,9 +136,9 @@ func Path() string {
 	if err != nil {
 		slog.Error("config.path.user_home_dir.error",
 			"error", err)
-		return ".vb.json"
+		return ".eos.json"
 	}
-	return filepath.Join(home, ".vb.json")
+	return filepath.Join(home, ".eos.json")
 }
 
 func Load() (Config, string) {

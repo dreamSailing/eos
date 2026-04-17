@@ -1,6 +1,6 @@
 package bridge
 
-import "github.com/dreamSailing/vb-coding/internal/session"
+import "github.com/dreamSailing/eos/internal/session"
 
 func (rc *RuntimeCore) GetCompressionStats() session.CompressionStats {
 	if rc == nil || rc.cm == nil {

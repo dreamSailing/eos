@@ -3,7 +3,7 @@ package adapter
 import (
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/bridge"
+	"github.com/dreamSailing/eos/internal/bridge"
 )
 
 func TestNormalizeRuntimeEventMapsPromptRequestToApprovalRequired(t *testing.T) {

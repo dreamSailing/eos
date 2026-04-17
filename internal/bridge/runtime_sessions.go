@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/session"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/session"
 )
 
 type PersistedSession struct {
@@ -60,9 +60,9 @@ func (rc *RuntimeCore) AutoSaveSession(ctx context.Context) {
 func (rc *RuntimeCore) sessionsDir() string {
 	root := rc.workingRoot()
 	if strings.TrimSpace(root) == "" {
-		return filepath.Join(".vb", "sessions")
+		return filepath.Join(".eos", "sessions")
 	}
-	return filepath.Join(root, ".vb", "sessions")
+	return filepath.Join(root, ".eos", "sessions")
 }
 
 func (rc *RuntimeCore) SessionsDir() string {
@@ -72,9 +72,9 @@ func (rc *RuntimeCore) SessionsDir() string {
 func (rc *RuntimeCore) sessionStatePath() string {
 	root := rc.workingRoot()
 	if strings.TrimSpace(root) == "" {
-		return filepath.Join(".vb", "session_state.json")
+		return filepath.Join(".eos", "session_state.json")
 	}
-	return filepath.Join(root, ".vb", "session_state.json")
+	return filepath.Join(root, ".eos", "session_state.json")
 }
 
 func (rc *RuntimeCore) SaveSession(ctx context.Context, id string) (string, error) {

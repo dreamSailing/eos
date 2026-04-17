@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	toolapiimpl "github.com/dreamSailing/vb-coding/internal/toolapi/impl"
-	"github.com/dreamSailing/vb-coding/pkg/protocol"
+	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
+	"github.com/dreamSailing/eos/pkg/protocol"
 )
 
 type serveHarness struct {
@@ -156,7 +156,7 @@ func findEventByType(events []map[string]any, target string) map[string]any {
 
 func TestServeSessionStore_RestoresPendingApprovalAcrossRestart(t *testing.T) {
 	workspace := t.TempDir()
-	storePath := filepath.Join(workspace, ".vb", "serve", "sessions.json")
+	storePath := filepath.Join(workspace, ".eos", "serve", "sessions.json")
 	opts := Options{
 		Transport:             "stdio",
 		DefaultWorkspacePath:  workspace,

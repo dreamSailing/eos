@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 func ExecuteWithStdin(ctx context.Context, command string, workingDir string, stdin string) (stdout, stderr string, exitCode int, err error) {

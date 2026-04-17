@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
-	"github.com/dreamSailing/vb-coding/internal/session"
+	codectx "github.com/dreamSailing/eos/internal/context"
+	"github.com/dreamSailing/eos/internal/session"
 )
 
 func TestRuntimeCore_SaveAndResumeSession(t *testing.T) {
@@ -30,7 +30,7 @@ func TestRuntimeCore_SaveAndResumeSession(t *testing.T) {
 	if id != "test_session" {
 		t.Fatalf("unexpected id: %s", id)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".vb", "sessions", "test_session.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, ".eos", "sessions", "test_session.json")); err != nil {
 		t.Fatalf("session file not found: %v", err)
 	}
 
@@ -67,10 +67,10 @@ func TestRuntimeCore_SaveAndResumeSession_UsesActiveRoot(t *testing.T) {
 	if id != "test_session" {
 		t.Fatalf("unexpected id: %s", id)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".vb", "sessions", "test_session.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, ".eos", "sessions", "test_session.json")); err != nil {
 		t.Fatalf("session file not found under active root: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(other, ".vb", "sessions", "test_session.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(other, ".eos", "sessions", "test_session.json")); !os.IsNotExist(err) {
 		t.Fatalf("session file should not be created under unrelated root, err=%v", err)
 	}
 
@@ -150,7 +150,7 @@ func TestRuntimeCore_SaveSessionMessagesAndDeleteSession(t *testing.T) {
 	if err := rc.DeleteSession("thread-1"); err != nil {
 		t.Fatalf("delete session error: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".vb", "sessions", "thread-1.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, ".eos", "sessions", "thread-1.json")); !os.IsNotExist(err) {
 		t.Fatalf("session file should be removed, err=%v", err)
 	}
 }

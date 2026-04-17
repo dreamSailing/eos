@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/tools"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -35,19 +35,19 @@ func startHooksWatcher(ctx context.Context, dt *DispatchTools) {
 	}
 	watchFiles := make([]watchFile, 0, 8)
 	if home != "" {
-		watchFiles = append(watchFiles, watchFile{path: filepath.Join(home, ".vb", "settings.json"), source: "user_settings"})
+		watchFiles = append(watchFiles, watchFile{path: filepath.Join(home, ".eos", "settings.json"), source: "user_settings"})
 		watchFiles = append(watchFiles, watchFile{path: filepath.Join(home, ".claude", "settings.json"), source: "user_settings"})
 		watchFiles = append(watchFiles, watchFile{path: filepath.Join(home, ".trae", "settings.json"), source: "user_settings"})
 	}
-	watchFiles = append(watchFiles, watchFile{path: filepath.Join(wd, ".vb", "settings.json"), source: "project_settings"})
-	watchFiles = append(watchFiles, watchFile{path: filepath.Join(wd, ".vb", "settings.local.json"), source: "local_settings"})
+	watchFiles = append(watchFiles, watchFile{path: filepath.Join(wd, ".eos", "settings.json"), source: "project_settings"})
+	watchFiles = append(watchFiles, watchFile{path: filepath.Join(wd, ".eos", "settings.local.json"), source: "local_settings"})
 	watchFiles = append(watchFiles, watchFile{path: filepath.Join(wd, ".claude", "settings.json"), source: "project_settings"})
 	watchFiles = append(watchFiles, watchFile{path: filepath.Join(wd, ".claude", "settings.local.json"), source: "local_settings"})
 	watchFiles = append(watchFiles, watchFile{path: filepath.Join(wd, ".trae", "settings.json"), source: "project_settings"})
 	watchFiles = append(watchFiles, watchFile{path: filepath.Join(wd, ".trae", "settings.local.json"), source: "local_settings"})
 
 	skillsDirs := []string{
-		filepath.Join(wd, ".vb", "skills"),
+		filepath.Join(wd, ".eos", "skills"),
 		filepath.Join(wd, ".claude", "skills"),
 		filepath.Join(wd, ".trae", "skills"),
 	}

@@ -132,7 +132,7 @@ func (e *Engine) StartWatch(ctx context.Context) error {
 				}
 				go func() {
 					wd, _ := os.Getwd()
-					idxp := filepath.Join(wd, ".vb", "index.json")
+					idxp := filepath.Join(wd, ".eos", "index.json")
 					_ = os.MkdirAll(filepath.Dir(idxp), 0755)
 					_ = e.SaveIndex(idxp)
 				}()

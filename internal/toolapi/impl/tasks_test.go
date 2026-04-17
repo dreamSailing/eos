@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/runtime"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/runtime"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 func TestTasksListIncludesTodoAndAgent(t *testing.T) {

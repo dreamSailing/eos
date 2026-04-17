@@ -1,8 +1,8 @@
 package bridge
 
 import (
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
-	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
+	codectx "github.com/dreamSailing/eos/internal/context"
+	"github.com/dreamSailing/eos/internal/tools/fileops"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,7 +50,7 @@ func TestListVersionFiles_UsesActiveRoot(t *testing.T) {
 	if err := os.WriteFile(p, []byte("new\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	versionDir := filepath.Join(tmp, ".vb", "versions", "dir", "sub", "file.txt")
+	versionDir := filepath.Join(tmp, ".eos", "versions", "dir", "sub", "file.txt")
 	if err := os.MkdirAll(versionDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(versionDir) error = %v", err)
 	}

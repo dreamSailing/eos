@@ -45,7 +45,7 @@ func TestLoaderUserOverridesProjectForSameName(t *testing.T) {
 		t.Fatalf("home: %v", err)
 	}
 
-	base := filepath.Join(home, ".vb", "skills")
+	base := filepath.Join(home, ".eos", "skills")
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		t.Fatalf("mkdir base: %v", err)
 	}

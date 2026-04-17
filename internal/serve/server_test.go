@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	toolapiimpl "github.com/dreamSailing/vb-coding/internal/toolapi/impl"
-	"github.com/dreamSailing/vb-coding/pkg/protocol"
+	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
+	"github.com/dreamSailing/eos/pkg/protocol"
 )
 
 func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {

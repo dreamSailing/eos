@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"github.com/dreamSailing/vb-coding/internal/session"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/session"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 func TestToolsNode_SafetyGateBlocksFsWrite(t *testing.T) {

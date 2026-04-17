@@ -3,7 +3,7 @@ package bridge
 import (
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/pkg/protocol"
+	"github.com/dreamSailing/eos/pkg/protocol"
 )
 
 func bridgeTextDeltaEvent(content string) Event {

@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
+	codectx "github.com/dreamSailing/eos/internal/context"
 )
 
 // UI 接口，用于回调 UI 操作
@@ -121,7 +121,7 @@ func (m *Manager) handleUse(ui UI, name []string) bool {
 			_ = os.Chdir(p)
 			ui.SetActiveEngine(e)
 			if p2, _ := os.Getwd(); p2 != "" {
-				ui.UpdateSettingsPath(filepath.Join(p2, ".vb", "settings.json"))
+				ui.UpdateSettingsPath(filepath.Join(p2, ".eos", "settings.json"))
 			}
 			ui.SaveSettings()
 			ui.WriteLine("white", "Active workspace: "+p)

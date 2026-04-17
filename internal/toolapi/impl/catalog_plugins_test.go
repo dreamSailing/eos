@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/toolapi"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/toolapi"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 func TestCatalogListIncludesManifestPluginCapability(t *testing.T) {

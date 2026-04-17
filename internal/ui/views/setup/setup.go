@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -178,7 +178,7 @@ func (v *SetupView) View() string {
 	titleStyle := v.styles.PanelTitle.
 		Width(v.width - 4).
 		Align(lipgloss.Center)
-	content.WriteString(titleStyle.Render("Welcome to VB Coding"))
+	content.WriteString(titleStyle.Render("Welcome to EOS"))
 	content.WriteString("\n\n")
 
 	// 进度指示器

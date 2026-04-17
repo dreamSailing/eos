@@ -3,7 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
-	"github.com/dreamSailing/vb-coding/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/pkg/plugins"
 )
 
 // RegisterPlugin 将插件注册到工具管理器中

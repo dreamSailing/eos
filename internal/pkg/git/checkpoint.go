@@ -276,7 +276,7 @@ func DefaultCheckpointConfig() *CheckpointConfig {
 	return &CheckpointConfig{
 		AutoCreate:       true,
 		MaxCheckpoints:   50,
-		ExcludedPaths:    []string{".vb", "node_modules", ".git"},
+		ExcludedPaths:    []string{".eos", "node_modules", ".git"},
 		IncludeUntracked: false,
 	}
 }

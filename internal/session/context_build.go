@@ -2,7 +2,7 @@ package session
 
 import (
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/ai"
+	"github.com/dreamSailing/eos/internal/ai"
 )
 
 // Build 构建上下文消息列表

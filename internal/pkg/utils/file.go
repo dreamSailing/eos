@@ -126,7 +126,7 @@ var textExtensions = map[string]bool{
 	".pm":            true,
 	".r":             true,
 	".sql":           true,
-	".vb":            true,
+	".eos":            true,
 	".vbs":           true,
 	".dockerfile":    true,
 	".env":           true,

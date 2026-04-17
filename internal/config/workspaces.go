@@ -11,9 +11,9 @@ import (
 func DefaultWorkspacePath() string {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" {
-		return filepath.Join(".vb", "workspace")
+		return filepath.Join(".eos", "workspace")
 	}
-	return filepath.Join(home, ".vb", "workspace")
+	return filepath.Join(home, ".eos", "workspace")
 }
 
 func EnsureDefaultWorkspaceDir() error {

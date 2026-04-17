@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 func (rc *RuntimeCore) withWorkspaceRoot(ctx context.Context) context.Context {

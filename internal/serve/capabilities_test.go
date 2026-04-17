@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
-	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
-	toolapiimpl "github.com/dreamSailing/vb-coding/internal/toolapi/impl"
+	"github.com/dreamSailing/eos/internal/config"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
 )
 
 type serveTestPlugin struct {
@@ -45,7 +45,7 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 		t.Fatalf("save config: %v", err)
 	}
 
-	skillDir := filepath.Join(home, ".vb", "skills", "review")
+	skillDir := filepath.Join(home, ".eos", "skills", "review")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir skill: %v", err)
 	}

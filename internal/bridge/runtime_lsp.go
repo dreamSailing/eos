@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/lsp"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/lsp"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // lspManagerEntry LSP 管理器条目

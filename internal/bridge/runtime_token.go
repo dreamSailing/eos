@@ -3,7 +3,7 @@ package bridge
 import (
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/ai"
+	"github.com/dreamSailing/eos/internal/ai"
 )
 
 // AddTokenRecord 添加 Token 记录

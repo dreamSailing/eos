@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 type FileOperations struct {
@@ -214,7 +214,7 @@ func (f *FileOperations) IsTextFile(path string) bool {
 	if strings.Contains(filepath.Base(path), ".") {
 		ext := strings.ToLower(filepath.Ext(path))
 		switch ext {
-		case ".txt", ".md", ".go", ".js", ".ts", ".py", ".html", ".css", ".json", ".yaml", ".yml", ".xml", ".toml", ".sh", ".bat", ".ps1", ".java", ".c", ".cpp", ".h", ".hpp", ".rs", ".rb", ".php", ".cs", ".swift", ".kt", ".lua", ".pl", ".r", ".sql", ".vb", ".vbs", ".ini", ".conf", ".cfg", ".properties", ".env", ".gitignore", ".dockerfile", "dockerfile", "makefile":
+		case ".txt", ".md", ".go", ".js", ".ts", ".py", ".html", ".css", ".json", ".yaml", ".yml", ".xml", ".toml", ".sh", ".bat", ".ps1", ".java", ".c", ".cpp", ".h", ".hpp", ".rs", ".rb", ".php", ".cs", ".swift", ".kt", ".lua", ".pl", ".r", ".sql", ".eos", ".vbs", ".ini", ".conf", ".cfg", ".properties", ".env", ".gitignore", ".dockerfile", "dockerfile", "makefile":
 			return true
 		}
 	}

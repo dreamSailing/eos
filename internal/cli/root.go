@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/ui"
+	"github.com/dreamSailing/eos/internal/ui"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -29,7 +29,7 @@ var (
 // rootLang 根据环境变量 VB_LANG 返回界面语言。
 // 当前仅支持 zh/en，默认返回 zh。
 func rootLang() string {
-	lang := os.Getenv("VB_LANG")
+	lang := os.Getenv("EOS_LANG")
 	if lang == "en" {
 		return "en"
 	}
@@ -51,7 +51,7 @@ func rootLong() string {
 
 // rootCmd 表示根命令：不带子命令时启动交互式 TUI。
 var rootCmd = &cobra.Command{
-	Use:   "vb-coding",
+	Use:   "eos",
 	Short: rootShort(),
 	Long:  rootLong(),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -111,7 +111,7 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	// 全局 flags
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.vb-coding.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.eos.yaml)")
 	rootCmd.PersistentFlags().StringVarP(&printQuery, "print", "p", "", "Run a single query in headless mode and print the result")
 	rootCmd.PersistentFlags().StringVar(&outputFormat, "output-format", "text", "Output format for print mode: text, json, stream-json")
 	rootCmd.PersistentFlags().BoolVarP(&continueChat, "continue", "c", false, "Continue the most recent conversation")
@@ -137,7 +137,7 @@ func initConfig() {
 		slog.Debug("cli.config.search", "home", home)
 		viper.AddConfigPath(home)
 		viper.SetConfigType("yaml")
-		viper.SetConfigName(".vb-coding")
+		viper.SetConfigName(".eos")
 	}
 
 	viper.AutomaticEnv()

@@ -4,7 +4,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
+	"github.com/dreamSailing/eos/internal/config"
 )
 
 // RegistryEntry describes a known MCP server from the built-in registry

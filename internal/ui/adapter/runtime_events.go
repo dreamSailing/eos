@@ -3,8 +3,8 @@ package adapter
 import (
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/bridge"
-	"github.com/dreamSailing/vb-coding/pkg/protocol"
+	"github.com/dreamSailing/eos/internal/bridge"
+	"github.com/dreamSailing/eos/pkg/protocol"
 )
 
 func normalizeRuntimeEvent(ev bridge.Event) bridge.Event {

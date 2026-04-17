@@ -2,8 +2,8 @@ package bridge
 
 import (
 	"log/slog"
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // ClearContext 清除上下文

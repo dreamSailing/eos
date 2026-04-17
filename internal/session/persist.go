@@ -1,7 +1,7 @@
 package session
 
 import (
-	"github.com/dreamSailing/vb-coding/internal/ai"
+	"github.com/dreamSailing/eos/internal/ai"
 )
 
 type ContextState struct {

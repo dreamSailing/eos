@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"sync"
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 
 	"github.com/cloudwego/eino/components/tool"
 	mcpclient "github.com/mark3labs/mcp-go/client"
@@ -184,7 +184,7 @@ func (m *Manager) loadServer(ctx context.Context, server config.MCPEntry) error 
 	initReq := mcp.InitializeRequest{}
 	initReq.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
 	initReq.Params.ClientInfo = mcp.Implementation{
-		Name:    "vb-coding",
+		Name:    "eos",
 		Version: "1.0.0",
 	}
 	if _, err := cli.Initialize(ctx, initReq); err != nil {

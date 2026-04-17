@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 
 	"github.com/pmezard/go-difflib/difflib"
 )
@@ -130,7 +130,7 @@ func (m *Manager) DeleteAllVersions(params map[string]any) string {
 // DeleteAllFileVersions 批量删除所有文件的所有版本
 func (m *Manager) DeleteAllFileVersions(params map[string]any) string {
 	wd, _ := os.Getwd()
-	versionsDir := filepath.Join(wd, ".vb", "versions")
+	versionsDir := filepath.Join(wd, ".eos", "versions")
 	if err := os.RemoveAll(versionsDir); err != nil {
 		if os.IsNotExist(err) {
 			return "No file versions found"
@@ -143,7 +143,7 @@ func (m *Manager) DeleteAllFileVersions(params map[string]any) string {
 // ListHistoryFiles 列出所有有版本历史的文件
 func (m *Manager) ListHistoryFiles(params map[string]any) string {
 	wd, _ := os.Getwd()
-	versionsDir := filepath.Join(wd, ".vb", "versions")
+	versionsDir := filepath.Join(wd, ".eos", "versions")
 
 	if _, err := os.Stat(versionsDir); err != nil {
 		if os.IsNotExist(err) {

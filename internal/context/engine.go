@@ -47,7 +47,7 @@ func NewEngine(root string) *Engine {
 		docFreq:        map[string]int{},
 		imports:        map[string]map[string]struct{}{},
 		rimports:       map[string]map[string]struct{}{},
-		ignorePatterns: []string{".git", ".vb", ".claude", "node_modules", "dist", "build", "vendor", ".idea", ".vscode"},
+		ignorePatterns: []string{".git", ".eos", ".claude", "node_modules", "dist", "build", "vendor", ".idea", ".vscode"},
 		debounceMs:     300,
 	}
 	// Load .vbignore patterns and merge into ignorePatterns

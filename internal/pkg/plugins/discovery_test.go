@@ -13,7 +13,7 @@ func TestDiscoverFindsManifestPluginsAndComponents(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 
 	userPlugin := filepath.Join(home, ".claude", "plugins", "shared-plugin")
-	projectPlugin := filepath.Join(workspace, ".vb", "plugins", "review-kit")
+	projectPlugin := filepath.Join(workspace, ".eos", "plugins", "review-kit")
 	writePluginManifest(t, userPlugin, "shared-plugin", "shared plugin")
 	writePluginManifest(t, projectPlugin, "review-kit", "review plugin")
 	mustMkdir(t, filepath.Join(projectPlugin, "skills", "review"))
@@ -54,7 +54,7 @@ func TestDiscoverPrefersProjectPluginOverUserPluginWithSameName(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	writePluginManifest(t, filepath.Join(home, ".vb", "plugins", "dup"), "dup", "user plugin")
+	writePluginManifest(t, filepath.Join(home, ".eos", "plugins", "dup"), "dup", "user plugin")
 	writePluginManifest(t, filepath.Join(workspace, ".claude", "plugins", "dup"), "dup", "project plugin")
 
 	items, err := Discover(workspace)

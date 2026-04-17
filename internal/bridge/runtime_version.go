@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
+	"github.com/dreamSailing/eos/internal/tools/fileops"
 	"os"
 	"path/filepath"
 	"sort"

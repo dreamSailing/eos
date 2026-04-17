@@ -1,8 +1,8 @@
 package bridge
 
 import (
-	"github.com/dreamSailing/vb-coding/internal/pkg/git"
-	"github.com/dreamSailing/vb-coding/internal/pkg/workspace"
+	"github.com/dreamSailing/eos/internal/pkg/git"
+	"github.com/dreamSailing/eos/internal/pkg/workspace"
 )
 
 // ExecuteGit 执行 Git 命令

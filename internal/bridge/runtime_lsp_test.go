@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
-	"github.com/dreamSailing/vb-coding/internal/lsp"
+	codectx "github.com/dreamSailing/eos/internal/context"
+	"github.com/dreamSailing/eos/internal/lsp"
 )
 
 func TestFormatProblemsAndDiagnosticsMarkdown(t *testing.T) {

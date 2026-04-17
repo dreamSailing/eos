@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
-	"github.com/dreamSailing/vb-coding/internal/search"
+	codectx "github.com/dreamSailing/eos/internal/context"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/search"
 
 	"github.com/bmatcuk/doublestar/v4"
 )
@@ -91,7 +91,7 @@ func (m *Manager) searchGlob(_ context.Context, root, relRoot, pattern string, m
 	// 默认排除的目录（VCS、构建产物等）
 	defaultExcludeDirs := map[string]bool{
 		".git": true, ".svn": true, ".hg": true,
-		"node_modules": true, ".vb": true, "__pycache__": true,
+		"node_modules": true, ".eos": true, "__pycache__": true,
 		".idea": true, ".vscode": true, "vendor": true,
 	}
 
@@ -232,7 +232,7 @@ func searchResult(mode, relRoot string, res []search.Result, trunc bool, err err
 
 func (m *Manager) searchCode(_ context.Context, root, relRoot, query string, k int) ToolResult {
 	e := codectx.NewEngine(root)
-	idxp := filepath.Join(root, ".vb", "index.json")
+	idxp := filepath.Join(root, ".eos", "index.json")
 	if _, err := os.Stat(idxp); err == nil {
 		_ = e.LoadIndex(idxp)
 	} else {
@@ -259,7 +259,7 @@ func (m *Manager) searchDeps(_ context.Context, root string, _ string, file stri
 		return ToolResult{Type: "tool_result", Tool: "search", Status: "error", Error: "file required"}
 	}
 	e := codectx.NewEngine(root)
-	idxp := filepath.Join(root, ".vb", "index.json")
+	idxp := filepath.Join(root, ".eos", "index.json")
 	if _, err := os.Stat(idxp); err == nil {
 		_ = e.LoadIndex(idxp)
 	} else {

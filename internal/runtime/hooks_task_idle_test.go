@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/hooks"
+	"github.com/dreamSailing/eos/internal/hooks"
 )
 
 func TestHookManagerTaskCompletedIgnoresMatcher(t *testing.T) {

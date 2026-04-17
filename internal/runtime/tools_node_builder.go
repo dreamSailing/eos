@@ -2,7 +2,7 @@ package runtime
 
 import (
 	"context"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/tools"
 	"strings"
 	"time"
 
@@ -52,7 +52,7 @@ func buildWikipediaSearchTool(ctx context.Context) tool.BaseTool {
 		Timeout:     15 * time.Second,
 		MaxRedirect: 3,
 		DocMaxChars: 2000,
-		UserAgent:   "vb-coding (https://github.com/cloudwego/eino)",
+		UserAgent:   "eos (https://github.com/cloudwego/eino)",
 	})
 	if err != nil {
 		LogError("runtime.tools_node.wikipedia.init_failed", "err", err)
@@ -69,7 +69,7 @@ func buildHTTPGetTool(ctx context.Context) tool.BaseTool {
 		ToolName: "http_get",
 		ToolDesc: "通过 HTTP GET 获取指定 URL 的文本响应内容",
 		Headers: map[string]string{
-			"User-Agent": "vb-coding (https://github.com/cloudwego/eino)",
+			"User-Agent": "eos (https://github.com/cloudwego/eino)",
 		},
 	})
 	if err != nil {
@@ -87,7 +87,7 @@ func buildHTTPPostTool(ctx context.Context) tool.BaseTool {
 		ToolName: "http_post",
 		ToolDesc: "通过 HTTP POST 向指定 URL 发送请求并返回响应内容",
 		Headers: map[string]string{
-			"User-Agent": "vb-coding (https://github.com/cloudwego/eino)",
+			"User-Agent": "eos (https://github.com/cloudwego/eino)",
 		},
 	})
 	if err != nil {
@@ -105,7 +105,7 @@ func buildHTTPPutTool(ctx context.Context) tool.BaseTool {
 		ToolName: "http_put",
 		ToolDesc: "通过 HTTP PUT 向指定 URL 发送请求并返回响应内容",
 		Headers: map[string]string{
-			"User-Agent": "vb-coding (https://github.com/cloudwego/eino)",
+			"User-Agent": "eos (https://github.com/cloudwego/eino)",
 		},
 	})
 	if err != nil {
@@ -123,7 +123,7 @@ func buildHTTPDeleteTool(ctx context.Context) tool.BaseTool {
 		ToolName: "http_delete",
 		ToolDesc: "通过 HTTP DELETE 向指定 URL 发送请求并返回响应内容",
 		Headers: map[string]string{
-			"User-Agent": "vb-coding (https://github.com/cloudwego/eino)",
+			"User-Agent": "eos (https://github.com/cloudwego/eino)",
 		},
 	})
 	if err != nil {

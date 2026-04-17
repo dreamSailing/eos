@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
-	"github.com/dreamSailing/vb-coding/internal/skills"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/skills"
 )
 
 // SkillManager 管理 Agent Skills

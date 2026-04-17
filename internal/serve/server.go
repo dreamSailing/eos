@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/toolapi"
-	"github.com/dreamSailing/vb-coding/internal/tools"
-	"github.com/dreamSailing/vb-coding/pkg/protocol"
+	"github.com/dreamSailing/eos/internal/toolapi"
+	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/pkg/protocol"
 	"github.com/google/uuid"
 )
 
@@ -220,7 +220,7 @@ func (s *Server) handleInitialize(req rpcRequest) {
 	s.mu.Unlock()
 	s.reply(req.ID, map[string]any{
 		"server": map[string]any{
-			"name":    "vb-coding",
+			"name":    "eos",
 			"version": "dev",
 		},
 		"protocolVersion": serveProtocolVersion,

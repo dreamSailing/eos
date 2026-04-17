@@ -3,8 +3,8 @@ package ui
 import (
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/bridge"
-	"github.com/dreamSailing/vb-coding/pkg/protocol"
+	"github.com/dreamSailing/eos/internal/bridge"
+	"github.com/dreamSailing/eos/pkg/protocol"
 )
 
 func TestConvertEventApprovalRequired(t *testing.T) {

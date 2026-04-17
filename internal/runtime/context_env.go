@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 func envInfoForContext(ctx context.Context) utils.EnvInfo {

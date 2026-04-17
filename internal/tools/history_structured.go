@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
-	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/tools/fileops"
 )
 
 func (m *Manager) historyStructured(ctx context.Context, params map[string]any) ToolResult {
@@ -202,7 +202,7 @@ func scanVersionFiles(root string) ([]fileops.VersionFileEntry, error) {
 	if wd == "" {
 		wd, _ = os.Getwd()
 	}
-	versionsDir := filepath.Join(wd, ".vb", "versions")
+	versionsDir := filepath.Join(wd, ".eos", "versions")
 	if _, err := os.Stat(versionsDir); err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil

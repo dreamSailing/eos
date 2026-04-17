@@ -29,27 +29,27 @@ func BuildProjectPromptAdditions(cwd string) string {
 		addSnippetPath(rel, filepath.Join(cwd, rel), max)
 	}
 
-	addSnippet("VB.md", 8000)
+	addSnippet("EOS.md", 8000)
 
 	// Fix 4.5: Inject session memory content if available
-	sessionMemPath := filepath.Join(cwd, ".vb", "session-memory", "session.md")
+	sessionMemPath := filepath.Join(cwd, ".eos", "session-memory", "session.md")
 	if memContent, ok := readTextFileBestEffort(sessionMemPath, 4000); ok {
 		sb.WriteString("\n\n**会话记忆**：\n```\n")
 		sb.WriteString(strings.TrimSpace(memContent))
 		sb.WriteString("\n```\n")
 	}
 
-	sb.WriteString("\n\n## 自动记忆指南\n当你在对话中发现重要的用户偏好、项目约定或反复出现的模式时，使用 suggest_memory 工具将它们建议添加到 VB.md 或 .vb/Rules.md 中。")
+	sb.WriteString("\n\n## 自动记忆指南\n当你在对话中发现重要的用户偏好、项目约定或反复出现的模式时，使用 suggest_memory 工具将它们建议添加到 EOS.md 或 .eos/Rules.md 中。")
 
-	addSnippet(filepath.Join(".vb", "Rules.md"), 8000)
+	addSnippet(filepath.Join(".eos", "Rules.md"), 8000)
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		addSnippetPath(filepath.Join("~", ".vb", "Rules.md"), filepath.Join(home, ".vb", "Rules.md"), 8000)
+		addSnippetPath(filepath.Join("~", ".eos", "Rules.md"), filepath.Join(home, ".eos", "Rules.md"), 8000)
 	}
-	addSnippet(filepath.Join(".vb", "prompt.md"), 4000)
+	addSnippet(filepath.Join(".eos", "prompt.md"), 4000)
 
 	sb.WriteString("\n**规范文件约定**：\n")
-	sb.WriteString("- 项目规范文件：.vb/Rules.md（默认写这里）\n")
-	sb.WriteString("- 全局规范文件：~/.vb/Rules.md（仅用户明确要求“全局规则”时写这里）\n")
+	sb.WriteString("- 项目规范文件：.eos/Rules.md（默认写这里）\n")
+	sb.WriteString("- 全局规范文件：~/.eos/Rules.md（仅用户明确要求“全局规则”时写这里）\n")
 	sb.WriteString("- 项目指导文件只使用 VB.md，不使用 CLAUDE.md\n")
 	sb.WriteString("- 用户要求“写/更新规则”时，直接更新对应 Rules.md 文件内容\n")
 	sb.WriteString("- 生成/更新规范时使用固定模板；若文件已存在，更新其对应章节，不要整文件重写或重复追加标题\n")
@@ -58,7 +58,7 @@ func BuildProjectPromptAdditions(cwd string) string {
 	sb.WriteString("\n```\n")
 
 	if recent := recentVersionedFiles(cwd, 8); recent != "" {
-		sb.WriteString("\n**最近修改（基于 .vb/versions）**：\n")
+		sb.WriteString("\n**最近修改（基于 .eos/versions）**：\n")
 		sb.WriteString(recent)
 		sb.WriteString("\n")
 	}
@@ -193,7 +193,7 @@ func recentVersionedFiles(cwd string, limit int) string {
 	if limit <= 0 {
 		limit = 8
 	}
-	root := filepath.Join(cwd, ".vb", "versions")
+	root := filepath.Join(cwd, ".eos", "versions")
 	_, err := os.Stat(root)
 	if err != nil {
 		return ""

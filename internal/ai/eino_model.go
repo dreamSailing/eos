@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 func ResolveAPISettings() (string, string, string) {
-	apiKey := os.Getenv("VB_API_KEY")
-	base := os.Getenv("VB_API_BASE")
-	model := os.Getenv("VB_MODEL")
+	apiKey := os.Getenv("EOS_API_KEY")
+	base := os.Getenv("EOS_API_BASE")
+	model := os.Getenv("EOS_MODEL")
 	cfg, _ := config.Load()
 	if (apiKey == "" || base == "" || model == "") && cfg.Active != "" && len(cfg.Models) > 0 {
 		if m, ok := config.ActiveModel(cfg); ok {

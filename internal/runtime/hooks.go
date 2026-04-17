@@ -8,12 +8,12 @@ import (
 	"fmt"
 	stdhttp "net/http"
 	"io"
-	ai "github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/hooks"
-	pluginpkg "github.com/dreamSailing/vb-coding/internal/pkg/plugins"
-	"github.com/dreamSailing/vb-coding/internal/tools"
-	"github.com/dreamSailing/vb-coding/internal/tools/shell"
+	ai "github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/hooks"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/internal/tools/shell"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1170,7 +1170,7 @@ func loadHookConfig(workspaceRoot string) (hooks.Config, error) {
 	}
 
 	if home != "" {
-		vbUser := filepath.Join(home, ".vb", "settings.json")
+		vbUser := filepath.Join(home, ".eos", "settings.json")
 		if fileExists(vbUser) {
 			addIfExists(vbUser, "user_settings")
 		} else {
@@ -1180,8 +1180,8 @@ func loadHookConfig(workspaceRoot string) (hooks.Config, error) {
 	}
 
 	if wd := strings.TrimSpace(workspaceRoot); wd != "" {
-		vbProject := filepath.Join(wd, ".vb", "settings.json")
-		vbLocal := filepath.Join(wd, ".vb", "settings.local.json")
+		vbProject := filepath.Join(wd, ".eos", "settings.json")
+		vbLocal := filepath.Join(wd, ".eos", "settings.local.json")
 		workspaceUsesVB := fileExists(vbProject) || fileExists(vbLocal)
 
 		if workspaceUsesVB {
@@ -1194,8 +1194,8 @@ func loadHookConfig(workspaceRoot string) (hooks.Config, error) {
 			addIfExists(filepath.Join(wd, ".trae", "settings.local.json"), "local_settings")
 		}
 	} else if wd, err := os.Getwd(); err == nil {
-		vbProject := filepath.Join(wd, ".vb", "settings.json")
-		vbLocal := filepath.Join(wd, ".vb", "settings.local.json")
+		vbProject := filepath.Join(wd, ".eos", "settings.json")
+		vbLocal := filepath.Join(wd, ".eos", "settings.local.json")
 		workspaceUsesVB := fileExists(vbProject) || fileExists(vbLocal)
 
 		if workspaceUsesVB {

@@ -20,9 +20,9 @@ func (rc *RuntimeCore) workingRoot() string {
 func (rc *RuntimeCore) versionsRoot() string {
 	root := rc.workingRoot()
 	if root == "" {
-		return filepath.Join(".vb", "versions")
+		return filepath.Join(".eos", "versions")
 	}
-	return filepath.Join(root, ".vb", "versions")
+	return filepath.Join(root, ".eos", "versions")
 }
 
 func (rc *RuntimeCore) resolveWithinRoot(path string) string {

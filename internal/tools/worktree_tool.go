@@ -31,7 +31,7 @@ func (m *Manager) enterWorktreeStructured(ctx context.Context, params map[string
 	}
 
 	// Create worktrees directory
-	worktreesDir := ".vb/worktrees"
+	worktreesDir := ".eos/worktrees"
 	if err := os.MkdirAll(worktreesDir, 0755); err != nil {
 		return ToolResult{
 			Type:   "tool_result",

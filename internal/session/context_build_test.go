@@ -3,7 +3,7 @@ package session
 import (
 	"strings"
 	"testing"
-	"github.com/dreamSailing/vb-coding/internal/ai"
+	"github.com/dreamSailing/eos/internal/ai"
 )
 
 func TestContextManager_BuildTrimsToBudget(t *testing.T) {

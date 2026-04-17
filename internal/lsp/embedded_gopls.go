@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 //go:embed binaries/*
@@ -75,7 +75,7 @@ func extractBinary() (string, error) {
 		}
 
 		// 创建临时目录
-		tempDir, createErr := os.MkdirTemp("", "vb-coding-gopls-*")
+		tempDir, createErr := os.MkdirTemp("", "eos-gopls-*")
 		if createErr != nil {
 			extractErr = createErr
 			return

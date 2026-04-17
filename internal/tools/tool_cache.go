@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // ToolCache 工具输出缓存，基于文件 mtime 的失效机制

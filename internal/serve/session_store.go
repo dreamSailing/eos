@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/toolapi"
+	"github.com/dreamSailing/eos/internal/toolapi"
 )
 
 const serveSessionStoreVersion = "v1"
@@ -65,7 +65,7 @@ func resolveSessionStorePath(opts Options) string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(abs, ".vb", "serve", "sessions.json")
+	return filepath.Join(abs, ".eos", "serve", "sessions.json")
 }
 
 func (s *Server) loadPersistedSessions() error {
