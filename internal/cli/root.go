@@ -124,6 +124,7 @@ func init() {
 
 	rootCmd.AddCommand(newBridgeCmd())
 	rootCmd.AddCommand(newServeCmd())
+	rootCmd.AddCommand(newHiddenLegalCmd())
 }
 
 // initConfig 读取配置文件与环境变量。

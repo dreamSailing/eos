@@ -99,7 +99,7 @@ export EOS_MODEL="gpt-4o-mini"
 - `/models` `/mcp` `/ctx` `/cost` `/tasks`
 - `/workspace list|add|remove|use <path>`
 - `/settings` `/lsp` `/rules` `/lang` `/compact`
-- `/init`：在当前工作区初始化 `VB.md`
+- `/init`：在当前工作区初始化 `EOS.md`
 
 ## 服务模式 API
 
@@ -135,9 +135,15 @@ go build ./...
 
 ## 许可证
 
-本项目采用自定义非商用许可证，详见 [LICENSE](./LICENSE)：
+本项目采用 EOS 非商用许可证 v1.1，详见 [LICENSE](./LICENSE)：
 
 - 个人/非商业用途可免费使用（包含安装包使用）
 - 允许自行编译、修改和分发非商业版本
+- 衍生作品必须以相同许可证开源发布
 - 禁止任何商业使用（含企业内部生产用途、收费服务、SaaS、二次商业分发）
-- 商业使用必须获得作者单独书面授权
+- 商业使用必须获得版权人单独书面授权
+
+## 联系方式
+
+- 问题反馈：https://github.com/dreamSailing/eos/issues
+- 商业合作/授权咨询：smart-os@qq.com

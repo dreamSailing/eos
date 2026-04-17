@@ -28,6 +28,7 @@ import (
 	"github.com/dreamSailing/eos/internal/ui/views/help"
 	"github.com/dreamSailing/eos/internal/ui/views/setup"
 	"github.com/dreamSailing/eos/internal/ui/views/shell"
+	"github.com/dreamSailing/eos/internal/version"
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
@@ -1172,6 +1173,8 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 		return m.handleRenameSlash(args)
 	case "/share":
 		return m.handleShareSlash()
+	case "/_legal":
+		return m.handleHiddenLegalSlash()
 	default:
 		m.appendSystem(fmt.Sprintf("Unknown command: %s", cmd), "warning")
 	}
@@ -2725,4 +2728,13 @@ func (m *AppModel) handleVersionsDeleteAll() {
 	out := m.adapter.GetCore().DeleteAllFileVersions()
 	m.appendSystem(out, "warning")
 	m.refreshVersionsPanel()
+}
+
+func (m *AppModel) handleHiddenLegalSlash() tea.Cmd {
+	m.appendSystem("Copyright (c) 2026 DreamSailing", "info")
+	m.appendSystem("License: EOS Non-Commercial License v1.1 (EOS-NCL-1.1)", "info")
+	m.appendSystem("SPDX-License-Identifier: EOS-NCL-1.1", "info")
+	m.appendSystem("Contact: smart-os@qq.com", "info")
+	m.appendSystem(fmt.Sprintf("Version: %s | Commit: %s | Build: %s", version.AppVersion, version.BuildCommit, version.BuildDate), "info")
+	return nil
 }

@@ -29,7 +29,7 @@ type GroupedCommands struct {
 
 var Commands = []Command{
 	{Name: "/help", Group: GroupGeneral, DescriptionZH: "查看命令帮助与快捷键", DescriptionEN: "Show command help and shortcuts"},
-	{Name: "/init", Group: GroupGeneral, DescriptionZH: "生成仓库级 VB.md 指南文件", DescriptionEN: "Generate a repository VB.md guide"},
+	{Name: "/init", Group: GroupGeneral, DescriptionZH: "生成仓库级 EOS.md 指南文件", DescriptionEN: "Generate a repository EOS.md guide"},
 	{Name: "/clear", Group: GroupGeneral, DescriptionZH: "清空当前会话内容区域", DescriptionEN: "Clear the current conversation view"},
 	{Name: "/exit", Group: GroupGeneral, DescriptionZH: "退出应用", DescriptionEN: "Exit the application"},
 	{Name: "/lang", Group: GroupGeneral, Usage: "/lang zh|en", DescriptionZH: "切换界面语言", DescriptionEN: "Switch the UI language"},

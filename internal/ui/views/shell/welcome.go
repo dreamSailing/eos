@@ -107,6 +107,21 @@ func (w *WelcomeCard) View() string {
 	content.WriteString(subtitleStyle.Render("AI Powered Development Assistant"))
 	content.WriteString("\n")
 	content.WriteString(subtitleStyle.Render(version.AppName + " " + w.appVersion))
+	content.WriteString("\n")
+	if version.BuildCommit != "unknown" || version.BuildDate != "" {
+		buildInfo := version.BuildCommit
+		if buildInfo != "unknown" && len(buildInfo) > 8 {
+			buildInfo = buildInfo[:8]
+		}
+		if version.BuildDate != "" {
+			if buildInfo != "unknown" {
+				buildInfo += " · " + version.BuildDate
+			} else {
+				buildInfo = version.BuildDate
+			}
+		}
+		content.WriteString(subtitleStyle.Render("build " + buildInfo))
+	}
 	content.WriteString("\n\n")
 
 	// 信息行

@@ -22,6 +22,8 @@ type BridgeManifest struct {
 	SchemaVersion      string                   `json:"schemaVersion"`
 	Name               string                   `json:"name"`
 	Version            string                   `json:"version"`
+	BuildCommit        string                   `json:"buildCommit,omitempty"`
+	BuildDate          string                   `json:"buildDate,omitempty"`
 	ProtocolVersion    string                   `json:"protocolVersion"`
 	Transport          string                   `json:"transport"`
 	Launch             BridgeLaunchSpec         `json:"launch"`
@@ -113,6 +115,8 @@ func BuildBridgeManifest(opts Options, manifestOpts BridgeManifestOptions) (Brid
 		SchemaVersion:   bridgeSchemaVersion,
 		Name: "eos-stdio-bridge",
 		Version:         version.AppVersion,
+		BuildCommit:     version.BuildCommit,
+		BuildDate:       version.BuildDate,
 		ProtocolVersion: serveProtocolVersion,
 		Transport:       transport,
 		Launch: BridgeLaunchSpec{
