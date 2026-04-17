@@ -16,7 +16,7 @@ func (m *Manager) exitWorktreeStructured(ctx context.Context, params map[string]
 			Tool:    ToolExitWorktree,
 			Status:  "error",
 			Error:   "path is required",
-			Display: "Error: exit_worktree requires a path",
+			Display: "错误：exit_worktree 需要指定路径",
 		}
 	}
 
@@ -32,7 +32,7 @@ func (m *Manager) exitWorktreeStructured(ctx context.Context, params map[string]
 			Tool:    ToolExitWorktree,
 			Status:  "error",
 			Error:   fmt.Sprintf("path does not exist: %s", path),
-			Display: fmt.Sprintf("Error: path %s does not exist", path),
+			Display: fmt.Sprintf("错误：路径 %s 不存在", path),
 		}
 	}
 
@@ -46,7 +46,7 @@ func (m *Manager) exitWorktreeStructured(ctx context.Context, params map[string]
 				Tool:    ToolExitWorktree,
 				Status:  "error",
 				Error:   fmt.Sprintf("git worktree remove failed: %s (%s)", err, string(output)),
-				Display: fmt.Sprintf("Error removing worktree: %s", string(output)),
+				Display: fmt.Sprintf("错误：移除 worktree 失败：%s", string(output)),
 			}
 		}
 
@@ -62,7 +62,7 @@ func (m *Manager) exitWorktreeStructured(ctx context.Context, params map[string]
 				"path":   path,
 				"removed": true,
 			},
-			Display: fmt.Sprintf("Removed worktree at %s", path),
+			Display: fmt.Sprintf("已移除 worktree：%s", path),
 		}
 	}
 
@@ -75,7 +75,7 @@ func (m *Manager) exitWorktreeStructured(ctx context.Context, params map[string]
 			Tool:    ToolExitWorktree,
 			Status:  "error",
 			Error:   fmt.Sprintf("git worktree prune failed: %s (%s)", err, string(output)),
-			Display: fmt.Sprintf("Error pruning worktrees: %s", string(output)),
+			Display: fmt.Sprintf("错误：清理 worktree 失败：%s", string(output)),
 		}
 	}
 
@@ -87,6 +87,6 @@ func (m *Manager) exitWorktreeStructured(ctx context.Context, params map[string]
 			"path":    path,
 			"removed": false,
 		},
-		Display: fmt.Sprintf("Pruned worktree references for %s", path),
+		Display: fmt.Sprintf("已清理 %s 的 worktree 引用", path),
 	}
 }

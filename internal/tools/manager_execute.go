@@ -114,13 +114,13 @@ func (m *Manager) executeSingleWithCache(ctx context.Context, call ToolCall, now
 	}
 
 	if allowed := AllowedToolsFromContext(ctx); allowed != nil && !allowed[strings.ToLower(call.Tool)] {
-		return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "permission denied: tool not allowed", Display: "Error: permission denied: tool not allowed", Ts: now}
+		return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "permission denied: tool not allowed", Display: "错误：权限被拒绝：工具未授权", Ts: now}
 	}
 
 	// Fix 4: Ask-tool-approval for tools that require explicit user confirmation
 	if m.AskToolApproval != nil && GetToolRiskLevel(call.Tool) >= RiskLevelHigh {
 		if !m.AskToolApproval(call.Tool) {
-			return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "tool execution denied by user", Display: "Error: tool execution denied by user", Ts: now}
+			return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "tool execution denied by user", Display: "错误：工具执行已被用户拒绝", Ts: now}
 		}
 	}
 
@@ -132,7 +132,7 @@ func (m *Manager) executeSingleWithCache(ctx context.Context, call ToolCall, now
 			slog.Debug("tools.pre_hook.error", "component", utils.ComponentTool, "tool", call.Tool, "error", err.Error())
 		}
 		if !proceed {
-			return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "tool execution blocked by pre-hook", Display: "Error: tool execution blocked by pre-hook", Ts: now}
+			return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "tool execution blocked by pre-hook", Display: "错误：工具执行已被 pre-hook 阻止", Ts: now}
 		}
 		if modified != nil {
 			params = modified
@@ -254,7 +254,7 @@ func (m *Manager) execStructured(ctx context.Context, call ToolCall) ToolResult 
 	}
 
 	if allowed := AllowedToolsFromContext(ctx); allowed != nil && !allowed[strings.ToLower(call.Tool)] {
-		r := ToolResult{Type: "tool_result", Tool: call.Tool, Status: "error", Error: "permission denied: tool not allowed", Display: "Error: permission denied: tool not allowed"}
+		r := ToolResult{Type: "tool_result", Tool: call.Tool, Status: "error", Error: "permission denied: tool not allowed", Display: "错误：权限被拒绝：工具未授权"}
 		return r
 	}
 

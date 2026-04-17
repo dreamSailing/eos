@@ -40,7 +40,7 @@ type ProviderConfig struct {
 	APIKeyEnv       string       // API Key 环境变量名
 	Website         string       // 官方网站
 	HasCodePlan     bool         // 是否支持 Code/Plan 套餐
-	HasClaudeCode   bool         // 是否支持 Claude Code 兼容模式
+	HasClaudeCode   bool         // 是否支持 Claude 兼容 API 模式
 	EinoComponent   string       // Eino 组件名称（空则用 OpenAI 兼容）
 	DefaultModels   []string     // 默认/推荐模型列表
 }

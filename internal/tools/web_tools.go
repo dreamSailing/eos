@@ -19,7 +19,7 @@ func (m *Manager) webSearchStructured(ctx context.Context, params map[string]int
 			Tool:   ToolWebSearch,
 			Status: "error",
 			Error:  "query is required",
-			Display: "Error: query parameter is required for web_search",
+			Display: "错误：query 参数为必填项",
 		}
 	}
 
@@ -36,7 +36,7 @@ func (m *Manager) webSearchStructured(ctx context.Context, params map[string]int
 			Tool:   ToolWebSearch,
 			Status: "error",
 			Error:  err.Error(),
-			Display: fmt.Sprintf("Web search failed: %s", err.Error()),
+			Display: fmt.Sprintf("网络搜索失败：%s", err.Error()),
 		}
 	}
 
@@ -45,7 +45,7 @@ func (m *Manager) webSearchStructured(ctx context.Context, params map[string]int
 		Tool:   ToolWebSearch,
 		Status: "success",
 		Data:   map[string]interface{}{"results": results, "query": query, "count": len(results)},
-		Display: fmt.Sprintf("Found %d results for: %s", len(results), query),
+		Display: fmt.Sprintf("找到 %d 条结果：%s", len(results), query),
 	}
 }
 
@@ -58,7 +58,7 @@ func (m *Manager) webFetchStructured(ctx context.Context, params map[string]inte
 			Tool:   ToolWebFetch,
 			Status: "error",
 			Error:  "url is required",
-			Display: "Error: url parameter is required for web_fetch",
+			Display: "错误：url 参数为必填项",
 		}
 	}
 
@@ -75,7 +75,7 @@ func (m *Manager) webFetchStructured(ctx context.Context, params map[string]inte
 			Tool:   ToolWebFetch,
 			Status: "success",
 			Data:   map[string]interface{}{"warning": "non-HTTPS URL", "url": url},
-			Display: fmt.Sprintf("Warning: non-HTTPS URL %s", url),
+			Display: fmt.Sprintf("警告：非 HTTPS URL %s", url),
 		}
 	}
 
@@ -86,7 +86,7 @@ func (m *Manager) webFetchStructured(ctx context.Context, params map[string]inte
 			Tool:   ToolWebFetch,
 			Status: "error",
 			Error:  err.Error(),
-			Display: fmt.Sprintf("Web fetch failed: %s", err.Error()),
+			Display: fmt.Sprintf("网页获取失败：%s", err.Error()),
 		}
 	}
 
@@ -95,7 +95,7 @@ func (m *Manager) webFetchStructured(ctx context.Context, params map[string]inte
 		Tool:   ToolWebFetch,
 		Status: "success",
 		Data:   map[string]interface{}{"content": content, "url": url, "format": format},
-		Display: fmt.Sprintf("Fetched %d bytes from %s", len(content), url),
+		Display: fmt.Sprintf("已获取 %d 字节：%s", len(content), url),
 	}
 }
 

@@ -38,7 +38,7 @@ func (m *Manager) suggestMemoryStructured(ctx context.Context, params map[string
 			Tool:   ToolSuggestMemory,
 			Status: "error",
 			Error:  "content is required",
-			Display: "Error: content parameter is required",
+			Display: "错误：content 参数为必填项",
 		}
 	}
 
@@ -58,7 +58,7 @@ func (m *Manager) suggestMemoryStructured(ctx context.Context, params map[string
 			Tool:   ToolSuggestMemory,
 			Status: "error",
 			Error:  fmt.Sprintf("file must be one of: VB.md, .vb/Rules.md (got: %s)", file),
-			Display: fmt.Sprintf("Error: invalid file '%s'", file),
+			Display: fmt.Sprintf("错误：无效的文件名 '%s'", file),
 		}
 	}
 
@@ -87,7 +87,7 @@ func (m *Manager) suggestMemoryStructured(ctx context.Context, params map[string
 					Tool:   ToolSuggestMemory,
 					Status: "error",
 					Error:  err.Error(),
-					Display: fmt.Sprintf("Error writing to %s: %s", file, err.Error()),
+					Display: fmt.Sprintf("错误：写入 %s 失败：%s", file, err.Error()),
 				}
 			}
 			return ToolResult{
@@ -95,7 +95,7 @@ func (m *Manager) suggestMemoryStructured(ctx context.Context, params map[string
 				Tool:   ToolSuggestMemory,
 				Status: "success",
 				Data:   map[string]interface{}{"file": file, "content_length": len(content)},
-				Display: fmt.Sprintf("Memory suggestion accepted and saved to %s", file),
+				Display: fmt.Sprintf("记忆建议已接受并保存到 %s", file),
 			}
 		}
 
@@ -104,7 +104,7 @@ func (m *Manager) suggestMemoryStructured(ctx context.Context, params map[string
 			Tool:   ToolSuggestMemory,
 			Status: "success",
 			Data:   map[string]interface{}{"rejected": true},
-			Display: "Memory suggestion rejected by user",
+			Display: "记忆建议已被用户拒绝",
 		}
 	}
 
@@ -116,7 +116,7 @@ func (m *Manager) suggestMemoryStructured(ctx context.Context, params map[string
 			Tool:   ToolSuggestMemory,
 			Status: "error",
 			Error:  err.Error(),
-			Display: fmt.Sprintf("Error writing to %s: %s", file, err.Error()),
+			Display: fmt.Sprintf("错误：写入 %s 失败：%s", file, err.Error()),
 		}
 	}
 
@@ -125,7 +125,7 @@ func (m *Manager) suggestMemoryStructured(ctx context.Context, params map[string
 		Tool:   ToolSuggestMemory,
 		Status: "success",
 		Data:   map[string]interface{}{"file": file, "content_length": len(content), "auto_accepted": true},
-		Display: fmt.Sprintf("Memory saved to %s (auto-accepted, no UI)", file),
+		Display: fmt.Sprintf("记忆已保存到 %s（自动接受，无 UI）", file),
 	}
 }
 
@@ -191,7 +191,7 @@ func (m *Manager) typedMemoryStructured(ctx context.Context, params map[string]i
 			Tool:    "typed_memory",
 			Status:  "error",
 			Error:   "content is required",
-			Display: "Error: content parameter is required",
+			Display: "错误：content 参数为必填项",
 		}
 	}
 
@@ -209,7 +209,7 @@ func (m *Manager) typedMemoryStructured(ctx context.Context, params map[string]i
 			Tool:    "typed_memory",
 			Status:  "error",
 			Error:   err.Error(),
-			Display: fmt.Sprintf("Error writing to %s: %s", file, err.Error()),
+			Display: fmt.Sprintf("错误：写入 %s 失败：%s", file, err.Error()),
 		}
 	}
 
@@ -218,7 +218,7 @@ func (m *Manager) typedMemoryStructured(ctx context.Context, params map[string]i
 		Tool:    "typed_memory",
 		Status:  "success",
 		Data:    map[string]interface{}{"type": string(mt), "file": file, "content_length": len(content)},
-		Display: fmt.Sprintf("Memory saved to %s (type: %s)", file, mt),
+		Display: fmt.Sprintf("记忆已保存到 %s（类型：%s）", file, mt),
 	}
 }
 

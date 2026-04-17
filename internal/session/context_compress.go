@@ -75,6 +75,12 @@ func (c *ContextManager) compactLocked() {
 	// 保存快照
 	snapshot.Stats = c.compressionStats
 	c.addSnapshotLocked(snapshot)
+
+	// Notify post-compact callback
+	if c.onPostCompact != nil {
+		savedTokens := originalTokens - compressedTokens
+		go c.onPostCompact("compact", originalTokens, savedTokens)
+	}
 }
 
 // AutoCompactIfNeeded 检查当前上下文大小并在超过阈值时自动压缩
@@ -82,6 +88,13 @@ func (c *ContextManager) AutoCompactIfNeeded() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.autoCompactIfNeededLocked()
+}
+
+// EstimateCurrentTokens returns the estimated token count for the current context
+func (c *ContextManager) EstimateCurrentTokens() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.estimateTotalTokensLocked()
 }
 
 // autoCompactIfNeededLocked 内部自动压缩方法（调用前需持有锁）

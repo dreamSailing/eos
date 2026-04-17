@@ -604,11 +604,26 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	rc.lspManager = rc.initLSPManager()
 
 	// Initialize hook manager for advanced hooks (stop hooks, session hooks, etc.)
+
 	rc.hookManager = einoruntime.NewHookManager(tm)
 
 	// Fix R3: Load hook configurations from default locations
 	if err := rc.hookManager.LoadFromDefaultLocations(context.Background()); err != nil {
 		slog.Warn("runtime.hooks.load_failed", "component", utils.ComponentSystem, "error", err.Error())
+	}
+
+	// Fix 4.3: Wire PostCompact hook - fires after context compression
+	if cm != nil && rc.hookManager != nil {
+		hm := rc.hookManager
+		cm.SetOnPostCompact(func(trigger string, originalTokens, savedTokens int) {
+			hm.PostCompact(context.Background(), trigger, originalTokens, savedTokens)
+		})
+	}
+
+	// Fix 4.2: Instantiate SessionMemoryManager and inject into ContextManager
+	if cm != nil {
+		smMgr := session.NewSessionMemoryManager()
+		cm.SetSessionMemoryManager(smMgr)
 	}
 
 	// 创建会话锁，用于检测非正常退出

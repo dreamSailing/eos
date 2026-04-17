@@ -77,19 +77,19 @@ func (m *Manager) readFileContent(ctx context.Context, ap, rel string, params ma
 		pages, _ := params["pages"].(string)
 		content, err := ReadPDF(ap, pages)
 		if err != nil {
-			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("Error reading PDF: %s", err.Error())}
+			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("错误：读取 PDF 失败：%s", err.Error())}
 		}
-		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": content, "format": "pdf"}, Display: fmt.Sprintf("Read PDF: %s", rel)}
+		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": content, "format": "pdf"}, Display: fmt.Sprintf("已读取 PDF：%s", rel)}
 	case ".ipynb":
 		content, err := ReadNotebook(ap, 2000)
 		if err != nil {
-			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("Error reading notebook: %s", err.Error())}
+			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("错误：读取 Notebook 失败：%s", err.Error())}
 		}
-		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": content, "format": "notebook"}, Display: fmt.Sprintf("Read Notebook: %s", rel)}
+		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": content, "format": "notebook"}, Display: fmt.Sprintf("已读取 Notebook：%s", rel)}
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
 		desc, data, err := ReadImage(ap)
 		if err != nil {
-			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("Error reading image: %s", err.Error())}
+			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("错误：读取图片失败：%s", err.Error())}
 		}
 		result := ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: data, Display: desc}
 		return result

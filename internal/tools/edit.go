@@ -33,7 +33,7 @@ func (m *Manager) editStructured(ctx context.Context, params map[string]interfac
 			Tool:    "edit",
 			Status:  "error",
 			Error:   "mode parameter is required (valid: single, multi, batch)",
-			Display: "Error: mode parameter is required (valid: single, multi, batch)",
+			Display: "错误：mode 参数为必填项（可选值：single, multi, batch）",
 		}
 	}
 
@@ -50,7 +50,7 @@ func (m *Manager) editStructured(ctx context.Context, params map[string]interfac
 			Tool:    "edit",
 			Status:  "error",
 			Error:   fmt.Sprintf("unknown mode: %s (valid: single, multi, batch)", mode),
-			Display: fmt.Sprintf("Error: unknown mode '%s'", mode),
+			Display: fmt.Sprintf("错误：未知模式 '%s'", mode),
 		}
 	}
 }
@@ -75,25 +75,25 @@ func (m *Manager) editSingle(ctx context.Context, params map[string]interface{})
 	}
 
 	if strings.TrimSpace(file) == "" {
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "file parameter is required for single mode", Display: "Error: file parameter is required"}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "file parameter is required for single mode", Display: "错误：file 参数为必填项"}
 	}
 	if strings.TrimSpace(find) == "" {
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "find parameter is required for single mode", Display: "Error: find parameter is required"}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "find parameter is required for single mode", Display: "错误：find 参数为必填项"}
 	}
 	file = normalizePathPlaceholder(file)
 	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), file)
 	if !res.IsValid {
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "path outside working directory", Display: "Error: path outside working directory"}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "path outside working directory", Display: "错误：路径超出工作目录"}
 	}
 	ap := res.AbsPath
 	rel := res.RelPath
 	old, err := m.fileOps.ReadFile(ap)
 	if err != nil {
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: fmt.Sprintf("%v", err), Display: fmt.Sprintf("Error: %v", err)}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: fmt.Sprintf("%v", err), Display: fmt.Sprintf("错误：%v", err)}
 	}
 	newText, count := applyReplace(old, find, replace, limit, ci, isRegex)
 	if count == 0 {
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": 0}, Display: "No changes"}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": 0}, Display: "无变更"}
 	}
 	if preview {
 		diffRes := m.generateDiffStructured(context.Background(), map[string]interface{}{"path": filepath.ToSlash(rel), "proposed_content": newText})
@@ -103,7 +103,7 @@ func (m *Manager) editSingle(ctx context.Context, params map[string]interface{})
 				diff = textVal
 			}
 		}
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": count, "diff": diff}, Display: fmt.Sprintf("Preview: %d occurrence(s)", count)}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": count, "diff": diff}, Display: fmt.Sprintf("预览：%d 处匹配", count)}
 	}
 	if m.fileOps.IsTextFile(ap) {
 		_, _ = m.fileOps.SaveVersionWithExtra(ap, old, fileops.VersionExtra{
@@ -113,9 +113,9 @@ func (m *Manager) editSingle(ctx context.Context, params map[string]interface{})
 		})
 	}
 	if err := m.fileOps.WriteFile(ap, newText); err != nil {
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: fmt.Sprintf("%v", err), Display: fmt.Sprintf("Error: %v", err)}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: fmt.Sprintf("%v", err), Display: fmt.Sprintf("错误：%v", err)}
 	}
-	return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": count}, Display: fmt.Sprintf("Edited %d occurrence(s)", count)}
+	return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": count}, Display: fmt.Sprintf("已编辑 %d 处匹配", count)}
 }
 
 // editMulti 单文件多次编辑
@@ -127,21 +127,21 @@ func (m *Manager) editMulti(ctx context.Context, params map[string]interface{}) 
 		preview = v
 	}
 	if strings.TrimSpace(file) == "" {
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "file parameter is required for multi mode", Display: "Error: file parameter is required"}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "file parameter is required for multi mode", Display: "错误：file 参数为必填项"}
 	}
 	if len(editsRaw) == 0 {
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "edits parameter is required for multi mode", Display: "Error: edits parameter is required"}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "edits parameter is required for multi mode", Display: "错误：edits 参数为必填项"}
 	}
 	file = normalizePathPlaceholder(file)
 	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), file)
 	if !res.IsValid {
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "path outside working directory", Display: "Error: path outside working directory"}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "path outside working directory", Display: "错误：路径超出工作目录"}
 	}
 	ap := res.AbsPath
 	rel := res.RelPath
 	old, err := m.fileOps.ReadFile(ap)
 	if err != nil {
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: fmt.Sprintf("%v", err), Display: fmt.Sprintf("Error: %v", err)}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: fmt.Sprintf("%v", err), Display: fmt.Sprintf("错误：%v", err)}
 	}
 	text := old
 	total := 0
@@ -189,7 +189,7 @@ func (m *Manager) editMulti(ctx context.Context, params map[string]interface{}) 
 		}
 	}
 	if total == 0 {
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": 0}, Display: "No changes"}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": 0}, Display: "无变更"}
 	}
 	if preview {
 		diffRes := m.generateDiffStructured(context.Background(), map[string]interface{}{"path": filepath.ToSlash(rel), "proposed_content": text})
@@ -199,7 +199,7 @@ func (m *Manager) editMulti(ctx context.Context, params map[string]interface{}) 
 				diff = textVal
 			}
 		}
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": total, "diff": diff}, Display: fmt.Sprintf("Preview: %d edit(s)", total)}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": total, "diff": diff}, Display: fmt.Sprintf("预览：%d 处编辑", total)}
 	}
 	if m.fileOps.IsTextFile(ap) {
 		_, _ = m.fileOps.SaveVersionWithExtra(ap, old, fileops.VersionExtra{
@@ -209,9 +209,9 @@ func (m *Manager) editMulti(ctx context.Context, params map[string]interface{}) 
 		})
 	}
 	if err := m.fileOps.WriteFile(ap, text); err != nil {
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: fmt.Sprintf("%v", err), Display: fmt.Sprintf("Error: %v", err)}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: fmt.Sprintf("%v", err), Display: fmt.Sprintf("错误：%v", err)}
 	}
-	return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": total}, Display: fmt.Sprintf("Applied %d edit(s)", total)}
+	return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": total}, Display: fmt.Sprintf("已应用 %d 处编辑", total)}
 }
 
 // editBatch 跨文件批量编辑
@@ -226,7 +226,7 @@ func (m *Manager) editBatch(ctx context.Context, params map[string]interface{}) 
 		doFormat = v
 	}
 	if len(raw) == 0 {
-		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "edits required", Display: "Error: edits required"}
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: "edits required", Display: "错误：edits 为必填项"}
 	}
 	total := 0
 	results := make([]map[string]interface{}, 0, len(raw))
@@ -333,7 +333,7 @@ func (m *Manager) editBatch(ctx context.Context, params map[string]interface{}) 
 		}
 		results = append(results, map[string]interface{}{"path": filepath.ToSlash(rel), "applied": applied, "diff": diff, "wrote": wrote})
 	}
-	display := fmt.Sprintf("Batch edit: %d change(s)", total)
+	display := fmt.Sprintf("批量编辑：%d 处变更", total)
 	if len(paths) > 0 {
 		max := 3
 		if len(paths) < max {

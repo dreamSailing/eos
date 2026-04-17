@@ -17,7 +17,7 @@ func (m *Manager) agentToolStructured(ctx context.Context, params map[string]int
 			Tool:   ToolAgent,
 			Status: "error",
 			Error:  "prompt is required",
-			Display: "Error: prompt parameter is required for agent tool",
+			Display: "错误：prompt 参数为必填项",
 		}
 	}
 
@@ -60,7 +60,7 @@ func (m *Manager) executeAgentSync(ctx context.Context, prompt, subagentType, de
 			Tool:   ToolAgent,
 			Status: "error",
 			Error:  "agent executor not registered",
-			Display: "Error: sub-agent execution is not available",
+			Display: "错误：子代理执行不可用",
 		}
 	}
 
@@ -81,7 +81,7 @@ func (m *Manager) executeAgentSync(ctx context.Context, prompt, subagentType, de
 			Tool:   ToolAgent,
 			Status: "error",
 			Error:  err.Error(),
-			Display: fmt.Sprintf("Agent (%s) failed: %s", subagentType, err.Error()),
+			Display: fmt.Sprintf("代理 (%s) 失败：%s", subagentType, err.Error()),
 		}
 	}
 
@@ -101,7 +101,7 @@ func (m *Manager) executeAgentSync(ctx context.Context, prompt, subagentType, de
 		resultData["description"] = description
 	}
 
-	display := fmt.Sprintf("Agent (%s) completed in %v", subagentType, elapsed.Round(time.Millisecond))
+	display := fmt.Sprintf("代理 (%s) 已完成，耗时 %v", subagentType, elapsed.Round(time.Millisecond))
 	if len(result) > 200 {
 		display += fmt.Sprintf(" (%d chars)", len(result))
 	}
@@ -123,7 +123,7 @@ func (m *Manager) executeAgentBackground(ctx context.Context, prompt, subagentTy
 			Tool:   ToolAgent,
 			Status: "error",
 			Error:  "background agent executor not registered",
-			Display: "Error: background sub-agent execution is not available",
+			Display: "错误：后台子代理执行不可用",
 		}
 	}
 
@@ -134,7 +134,7 @@ func (m *Manager) executeAgentBackground(ctx context.Context, prompt, subagentTy
 			Tool:   ToolAgent,
 			Status: "error",
 			Error:  err.Error(),
-			Display: fmt.Sprintf("Failed to start background agent: %s", err.Error()),
+			Display: fmt.Sprintf("启动后台代理失败：%s", err.Error()),
 		}
 	}
 
@@ -148,7 +148,7 @@ func (m *Manager) executeAgentBackground(ctx context.Context, prompt, subagentTy
 			"subagent_type": subagentType,
 			"background":    true,
 		},
-		Display: fmt.Sprintf("Background agent (%s) started: %s", subagentType, taskID),
+		Display: fmt.Sprintf("后台代理 (%s) 已启动：%s", subagentType, taskID),
 	}
 }
 

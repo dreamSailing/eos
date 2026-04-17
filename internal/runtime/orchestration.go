@@ -490,6 +490,9 @@ func buildDispatchSystemPrompt(ctx context.Context, rt *EinoRuntime, mcpTools []
 	prompt += "\n" + BuildProjectPromptAdditions(envInfo.CWD)
 	prompt += "\n" + buildIntentPromptAdditions(history)
 
+	// Inject system reminders from prompt_system.go
+	prompt += "\n\n" + getSystemRemindersSection()
+
 	return prompt
 }
 

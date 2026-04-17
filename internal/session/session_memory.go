@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -235,7 +236,7 @@ func analyzeAndWarnSections(content string) string {
 
 	for section, tokens := range sections {
 		if tokens > defaultMaxSectionLength {
-			warnings = append(warnings, "- \""+section+"\" 约 "+itoa(tokens)+" tokens（限制："+itoa(defaultMaxSectionLength)+"）")
+			warnings = append(warnings, "- \""+section+"\" 约 "+strconv.Itoa(tokens)+" tokens（限制："+strconv.Itoa(defaultMaxSectionLength)+"）")
 		}
 	}
 
@@ -246,9 +247,9 @@ func analyzeAndWarnSections(content string) string {
 	var result strings.Builder
 	if isOverBudget {
 		result.WriteString("\n\n严重：会话记忆文件当前约 ")
-		result.WriteString(itoa(totalTokens))
+		result.WriteString(strconv.Itoa(totalTokens))
 		result.WriteString(" tokens，超过了最大限制 ")
-		result.WriteString(itoa(defaultMaxTotalSessionMemoryTokens))
+		result.WriteString(strconv.Itoa(defaultMaxTotalSessionMemoryTokens))
 		result.WriteString(" tokens。你必须压缩文件以符合此预算。")
 	}
 
@@ -297,25 +298,6 @@ func analyzeSectionSizes(content string) map[string]int {
 func estimateTokenCount(content string) int {
 	// Rough estimation: ~4 characters per token
 	return len(content) / 4
-}
-
-// itoa converts int to string
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	var sb strings.Builder
-	for i > 0 {
-		sb.WriteByte(byte('0' + i%10))
-		i /= 10
-	}
-	result := sb.String()
-	// Reverse
-	runes := []rune(result)
-	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
-		runes[i], runes[j] = runes[j], runes[i]
-	}
-	return string(runes)
 }
 
 // ============================================================================
@@ -381,7 +363,7 @@ func GetDefaultSessionMemoryUpdatePrompt() string {
 - 为每个部分编写详细的、信息密集的内容——包括具体信息如文件路径、函数名、错误消息、确切命令、技术细节等
 - 对于"关键结果"，包含用户要求的完整确切输出（例如完整表格、完整答案等）
 - 不要包含上下文中已包含的 VB.md 文件中的信息
-- 每个部分保持在 ~` + itoa(defaultMaxSectionLength) + ` tokens/词以下——如果某个部分接近此限制，通过循环移除较不重要的细节同时保留最关键的信息来压缩它
+- 每个部分保持在 ~` + strconv.Itoa(defaultMaxSectionLength) + ` tokens/词以下——如果某个部分接近此限制，通过循环移除较不重要的细节同时保留最关键的信息来压缩它
 - 专注于可操作的、具体的信息，帮助他人理解或重现对话中讨论的工作
 - 重要：始终更新"当前状态"以反映最近的工作——这对于压缩后的连续性至关重要
 

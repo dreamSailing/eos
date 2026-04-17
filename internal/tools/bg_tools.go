@@ -14,14 +14,14 @@ func (m *Manager) bgTaskStructured(ctx context.Context, params map[string]interf
 	action, _ := params["action"].(string)
 	action = strings.ToLower(strings.TrimSpace(action))
 	if action == "" {
-		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: "action parameter is required", Display: "Error: action parameter is required"}
+		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: "action parameter is required", Display: "错误：action 参数为必填项"}
 	}
 
 	switch action {
 	case "start":
 		command, _ := params["command"].(string)
 		if err := validateBashCommand(command); err != nil {
-			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: err.Error(), Display: "Error: " + err.Error()}
+			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
 		}
 		wd, _ := params["working_dir"].(string)
 		var env []string
@@ -39,31 +39,31 @@ func (m *Manager) bgTaskStructured(ctx context.Context, params map[string]interf
 		info, err := bg.Default().Start(command, &bg.StartOptions{WorkingDir: wd, Env: env, LogCap: logCap})
 		if err != nil {
 			slog.Error("bg_task.start.error", "component", utils.ComponentTool, "cmd", command, "err", err.Error())
-			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: err.Error(), Display: "Error: " + err.Error()}
+			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
 		}
-		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "success", Data: map[string]any{"task": info}, Display: "Started task: " + info.ID}
+		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "success", Data: map[string]any{"task": info}, Display: "已启动任务：" + info.ID}
 	case "list":
 		items := bg.Default().List()
 		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "success", Data: map[string]any{"tasks": items}}
 	case "cleanup":
 		n := bg.Default().CleanupFinished()
-		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "success", Data: map[string]any{"cleaned": n}, Display: fmt.Sprintf("Cleaned %d finished tasks", n)}
+		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "success", Data: map[string]any{"cleaned": n}, Display: fmt.Sprintf("已清理 %d 个已完成的任务", n)}
 	case "info":
 		id, _ := params["id"].(string)
 		id = strings.TrimSpace(id)
 		if id == "" {
-			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: "id required", Display: "Error: id required"}
+			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: "id required", Display: "错误：id 为必填项"}
 		}
 		info, err := bg.Default().Info(id)
 		if err != nil {
-			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: err.Error(), Display: "Error: " + err.Error()}
+			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
 		}
 		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "success", Data: map[string]any{"task": info}}
 	case "tail":
 		id, _ := params["id"].(string)
 		id = strings.TrimSpace(id)
 		if id == "" {
-			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: "id required", Display: "Error: id required"}
+			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: "id required", Display: "错误：id 为必填项"}
 		}
 		fromSeq := int64(0)
 		if v, ok := params["from_seq"].(float64); ok {
@@ -79,22 +79,22 @@ func (m *Manager) bgTaskStructured(ctx context.Context, params map[string]interf
 		}
 		res, err := bg.Default().Tail(id, &bg.TailOptions{FromSeq: fromSeq, Limit: limit})
 		if err != nil {
-			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: err.Error(), Display: "Error: " + err.Error()}
+			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
 		}
 		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "success", Data: map[string]any{"tail": res}}
 	case "kill":
 		id, _ := params["id"].(string)
 		id = strings.TrimSpace(id)
 		if id == "" {
-			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: "id required", Display: "Error: id required"}
+			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: "id required", Display: "错误：id 为必填项"}
 		}
 		info, err := bg.Default().Kill(id)
 		if err != nil {
-			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: err.Error(), Display: "Error: " + err.Error()}
+			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
 		}
-		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "success", Data: map[string]any{"task": info}, Display: "Killed task: " + id}
+		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "success", Data: map[string]any{"task": info}, Display: "已终止任务：" + id}
 	default:
-		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: fmt.Sprintf("unknown action: %s", action), Display: "Error: unknown action " + action}
+		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: fmt.Sprintf("unknown action: %s", action), Display: "错误：未知操作 " + action}
 	}
 }
 

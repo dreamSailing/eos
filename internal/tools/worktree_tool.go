@@ -25,7 +25,7 @@ func (m *Manager) enterWorktreeStructured(ctx context.Context, params map[string
 				Tool:   ToolEnterWorktree,
 				Status: "error",
 				Error:  "not in a git repository and git not found",
-				Display: "Error: enter_worktree requires a git repository",
+				Display: "错误：enter_worktree 需要 git 仓库",
 			}
 		}
 	}
@@ -38,7 +38,7 @@ func (m *Manager) enterWorktreeStructured(ctx context.Context, params map[string
 			Tool:   ToolEnterWorktree,
 			Status: "error",
 			Error:  fmt.Sprintf("failed to create worktrees directory: %s", err),
-			Display: fmt.Sprintf("Error creating worktrees directory: %s", err),
+			Display: fmt.Sprintf("错误：创建 worktrees 目录失败：%s", err),
 		}
 	}
 
@@ -53,7 +53,7 @@ func (m *Manager) enterWorktreeStructured(ctx context.Context, params map[string
 			Tool:   ToolEnterWorktree,
 			Status: "error",
 			Error:  fmt.Sprintf("git worktree add failed: %s (%s)", err, string(output)),
-			Display: fmt.Sprintf("Error creating worktree: %s", string(output)),
+			Display: fmt.Sprintf("错误：创建 worktree 失败：%s", string(output)),
 		}
 	}
 
@@ -72,7 +72,7 @@ func (m *Manager) enterWorktreeStructured(ctx context.Context, params map[string
 			"path": absPath,
 			"name": name,
 		},
-		Display: fmt.Sprintf("Created worktree at %s", absPath),
+		Display: fmt.Sprintf("已创建 worktree：%s", absPath),
 	}
 }
 

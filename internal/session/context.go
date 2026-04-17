@@ -77,6 +77,8 @@ type ContextManager struct {
 	autoCompressEnabled bool                // 是否启用自动压缩
 	compressThreshold   float64             // 自动压缩阈值 (0-1)
 	onPreCompact        func(trigger string, customInstructions string)
+	onPostCompact       func(trigger string, originalTokens, savedTokens int)
+	sessionMemoryMgr    *SessionMemoryManager
 
 	// snipCheck is a callback that checks if a message content hash should be snipped.
 	// Returns true if the message should be excluded from context.
@@ -165,6 +167,27 @@ func (c *ContextManager) SetOnPreCompact(cb func(trigger string, customInstructi
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.onPreCompact = cb
+}
+
+// SetOnPostCompact sets the callback invoked after context compression completes
+func (c *ContextManager) SetOnPostCompact(cb func(trigger string, originalTokens, savedTokens int)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onPostCompact = cb
+}
+
+// SetSessionMemoryManager sets the session memory manager instance
+func (c *ContextManager) SetSessionMemoryManager(mgr *SessionMemoryManager) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.sessionMemoryMgr = mgr
+}
+
+// GetSessionMemoryManager returns the session memory manager instance
+func (c *ContextManager) GetSessionMemoryManager() *SessionMemoryManager {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.sessionMemoryMgr
 }
 
 // SetMaxChars 设置上下文最大字符数

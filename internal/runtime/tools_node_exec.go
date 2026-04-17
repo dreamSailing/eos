@@ -190,7 +190,7 @@ func (rt *EinoRuntime) ToolsNode(ctx context.Context, text string) (results []st
 					Tool:    c.Tool,
 					Status:  "error",
 					Error:   errMsg,
-					Display: "Error: " + errMsg,
+					Display: "错误：" + errMsg,
 				})
 				continue
 			}
@@ -224,7 +224,7 @@ func (rt *EinoRuntime) ToolsNode(ctx context.Context, text string) (results []st
 							Tool:    c.Tool,
 							Status:  "error",
 							Error:   errMsg,
-							Display: "Error: " + errMsg,
+							Display: "错误：" + errMsg,
 						})
 						continue
 					}
@@ -245,7 +245,7 @@ func (rt *EinoRuntime) ToolsNode(ctx context.Context, text string) (results []st
 						Tool:    c.Tool,
 						Status:  "error",
 						Error:   errMsg,
-						Display: "Error: " + errMsg,
+						Display: "错误：" + errMsg,
 					})
 					continue
 				}

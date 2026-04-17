@@ -463,6 +463,11 @@ func (rc *RuntimeCore) loop() {
 						rc.cm.MicroCompact()
 					}
 
+					// Fix 4.4: Auto-compact when token threshold exceeded
+					if rc.cm != nil && rc.cm.GetAutoCompressEnabled() {
+						rc.cm.AutoCompactIfNeeded()
+					}
+
 					msg, err := rc.graphInvokeWithRetry(tReq.ctx, tRT, tReq.query, tReq.executionMode, tReq.imagePaths)
 
 					// Gap D: Check stop hooks after graph invocation
@@ -474,6 +479,25 @@ func (rc *RuntimeCore) loop() {
 						stopDec, stopErr := rc.hookManager.Stop(tReq.ctx, assistantContent, true)
 						if stopErr == nil && (stopDec.Decision == "block" || stopDec.Decision == "deny") {
 							slog.Info("runtime.stop_hook.blocked", "component", utils.ComponentSystem, "reason", stopDec.Reason)
+						}
+					}
+
+					// Fix 4.2: Check session memory extraction after graph invoke
+					if err == nil && rc.cm != nil {
+						if smMgr := rc.cm.GetSessionMemoryManager(); smMgr != nil && rc.cm.IsSessionMemoryEnabled() {
+							messages := rc.cm.Build()
+							tokenCount := rc.cm.EstimateCurrentTokens()
+							if smMgr.ShouldExtractMemory(messages, tokenCount) {
+								go func() {
+									smMgr.SetExtractionInProgress(true)
+									defer smMgr.SetExtractionInProgress(false)
+									if extractErr := rc.cm.ExtractSessionMemory(context.Background()); extractErr != nil {
+										slog.Warn("runtime.session_memory.extract_failed", "component", utils.ComponentSystem, "error", extractErr.Error())
+									} else {
+										smMgr.RecordExtraction(tokenCount, "")
+									}
+								}()
+							}
 						}
 					}
 

@@ -31,7 +31,15 @@ func BuildProjectPromptAdditions(cwd string) string {
 
 	addSnippet("VB.md", 8000)
 
-	sb.WriteString("\n\n## Auto-Memory Guidelines\nWhen you discover important user preferences, project conventions, or recurring patterns during the conversation, use the suggest_memory tool to propose adding them to VB.md or .vb/Rules.md.")
+	// Fix 4.5: Inject session memory content if available
+	sessionMemPath := filepath.Join(cwd, ".vb", "session-memory", "session.md")
+	if memContent, ok := readTextFileBestEffort(sessionMemPath, 4000); ok {
+		sb.WriteString("\n\n**会话记忆**：\n```\n")
+		sb.WriteString(strings.TrimSpace(memContent))
+		sb.WriteString("\n```\n")
+	}
+
+	sb.WriteString("\n\n## 自动记忆指南\n当你在对话中发现重要的用户偏好、项目约定或反复出现的模式时，使用 suggest_memory 工具将它们建议添加到 VB.md 或 .vb/Rules.md 中。")
 
 	addSnippet(filepath.Join(".vb", "Rules.md"), 8000)
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {

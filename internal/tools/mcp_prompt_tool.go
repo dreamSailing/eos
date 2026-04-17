@@ -16,7 +16,7 @@ func (m *Manager) mcpListPromptsStructured(ctx context.Context, params map[strin
 			Tool:    ToolMCPListPrompts,
 			Status:  "error",
 			Error:   "MCP not initialized",
-			Display: "Error: MCP manager is not available",
+			Display: "错误：MCP 管理器不可用",
 		}
 	}
 
@@ -27,7 +27,7 @@ func (m *Manager) mcpListPromptsStructured(ctx context.Context, params map[strin
 			Tool:    ToolMCPListPrompts,
 			Status:  "success",
 			Data:    map[string]interface{}{"prompts": []interface{}{}, "count": 0},
-			Display: "No MCP prompts available",
+			Display: "无可用的 MCP 提示词",
 		}
 	}
 
@@ -74,7 +74,7 @@ func (m *Manager) mcpListPromptsStructured(ctx context.Context, params map[strin
 		Tool:    ToolMCPListPrompts,
 		Status:  "success",
 		Data:    map[string]interface{}{"prompts": rawList, "count": len(prompts)},
-		Display: fmt.Sprintf("Available MCP prompts (%d):\n%s", len(prompts), strings.Join(displayLines, "\n")),
+		Display: fmt.Sprintf("可用的 MCP 提示词（%d 个）：\n%s", len(prompts), strings.Join(displayLines, "\n")),
 	}
 }
 
@@ -86,7 +86,7 @@ func (m *Manager) mcpGetPromptStructured(ctx context.Context, params map[string]
 			Tool:    ToolMCPGetPrompt,
 			Status:  "error",
 			Error:   "MCP not initialized",
-			Display: "Error: MCP manager is not available",
+			Display: "错误：MCP 管理器不可用",
 		}
 	}
 
@@ -99,7 +99,7 @@ func (m *Manager) mcpGetPromptStructured(ctx context.Context, params map[string]
 			Tool:    ToolMCPGetPrompt,
 			Status:  "error",
 			Error:   "server parameter is required",
-			Display: "Error: specify the MCP server name",
+			Display: "错误：请指定 MCP 服务器名称",
 		}
 	}
 	if strings.TrimSpace(promptName) == "" {
@@ -108,7 +108,7 @@ func (m *Manager) mcpGetPromptStructured(ctx context.Context, params map[string]
 			Tool:    ToolMCPGetPrompt,
 			Status:  "error",
 			Error:   "name parameter is required",
-			Display: "Error: specify the prompt name",
+			Display: "错误：请指定提示词名称",
 		}
 	}
 
@@ -127,7 +127,7 @@ func (m *Manager) mcpGetPromptStructured(ctx context.Context, params map[string]
 			Tool:    ToolMCPGetPrompt,
 			Status:  "error",
 			Error:   err.Error(),
-			Display: fmt.Sprintf("Error fetching prompt %s from %s: %s", promptName, serverName, err.Error()),
+			Display: fmt.Sprintf("获取提示词 %s（来自 %s）失败：%s", promptName, serverName, err.Error()),
 		}
 	}
 
@@ -135,7 +135,7 @@ func (m *Manager) mcpGetPromptStructured(ctx context.Context, params map[string]
 	var resultData interface{}
 	json.Unmarshal(raw, &resultData)
 
-	display := fmt.Sprintf("Prompt: %s (from %s)", promptName, serverName)
+	display := fmt.Sprintf("提示词：%s（来自 %s）", promptName, serverName)
 	if result != nil && result.Description != "" {
 		display += "\n" + result.Description
 	}
