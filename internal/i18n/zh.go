@@ -1,5 +1,11 @@
 package i18n
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 var zhText = map[string]string{
 	"cli.root.short":               "powered by EOS 的 AI 命令行界面",
 	"cli.root.long":                "eos 是一个基于终端的 AI 助手，帮助你完成编码、文件操作和命令执行等任务，通过自然语言进行交互。",
