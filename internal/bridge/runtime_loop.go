@@ -23,6 +23,7 @@ import (
 	"github.com/dreamSailing/eos/internal/tools/fileops"
 	"github.com/google/uuid"
 	"log/slog"
+	"regexp"
 	stdruntime "runtime"
 	"sort"
 	"strconv"
@@ -30,6 +31,8 @@ import (
 	"sync"
 	"time"
 )
+
+var thinkBlockPattern = regexp.MustCompile(`(?is)<think>.*?</think>`)
 
 // loop 运行时事件循环
 func (rc *RuntimeCore) loop() {
@@ -654,7 +657,7 @@ func (rc *RuntimeCore) finalizeTask(rt *einoruntime.EinoRuntime, traceID string,
 	if len(userShort) > 180 {
 		userShort = userShort[:180] + "…"
 	}
-	assistantShort := assistantText
+	assistantShort := sanitizeTaskSummaryAssistantText(assistantText)
 	if len(assistantShort) > 380 {
 		assistantShort = assistantShort[:380] + "…"
 	}
@@ -727,6 +730,19 @@ func (rc *RuntimeCore) finalizeTask(rt *einoruntime.EinoRuntime, traceID string,
 	if desktopEnabled {
 		notify.NotifyAsync("EOS", msg)
 	}
+}
+
+func sanitizeTaskSummaryAssistantText(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	text = thinkBlockPattern.ReplaceAllString(text, "")
+	text = strings.TrimSpace(text)
+	for strings.Contains(text, "\n\n\n") {
+		text = strings.ReplaceAll(text, "\n\n\n", "\n\n")
+	}
+	return text
 }
 
 func extractSummaryPaths(toolObs []string, toolSummaries []string) []string {

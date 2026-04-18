@@ -5,7 +5,6 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"errors"
@@ -95,5 +94,12 @@ func TestWithDefaultTimeoutKeepsDeadline(t *testing.T) {
 	defer outCancel()
 	if _, ok := out.Deadline(); !ok {
 		t.Fatalf("expected deadline")
+	}
+}
+
+func TestSanitizeTaskSummaryAssistantText_RemovesThinkBlock(t *testing.T) {
+	got := sanitizeTaskSummaryAssistantText("<think>reasoning</think>\n\n你好！")
+	if got != "你好！" {
+		t.Fatalf("sanitizeTaskSummaryAssistantText() = %q, want %q", got, "你好！")
 	}
 }

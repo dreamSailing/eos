@@ -5,7 +5,6 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"log/slog"
 	"sync"
@@ -30,7 +29,7 @@ type TokenBudget struct {
 	SessionStart     time.Time
 
 	// Callbacks
-	OnWarn  func(usageRatio float64, turnUsed, sessionUsed int)
+	OnWarn   func(usageRatio float64, turnUsed, sessionUsed int)
 	OnExceed func(reason string, totalUsed int)
 }
 
@@ -209,11 +208,16 @@ func (rc *RuntimeCore) InitializeTokenBudget(maxTurn, maxSession int) {
 	rc.tokenBudget = tb
 }
 
-// CheckTokenBudget checks the token budget before an operation
-func (rc *RuntimeCore) CheckTokenBudget() TokenBudgetStatus {
+func (rc *RuntimeCore) currentTokenBudget() *TokenBudget {
 	rc.tokenMu.RLock()
 	tb := rc.tokenBudget
 	rc.tokenMu.RUnlock()
+	return tb
+}
+
+// CheckTokenBudget checks the token budget before an operation
+func (rc *RuntimeCore) CheckTokenBudget() TokenBudgetStatus {
+	tb := rc.currentTokenBudget()
 	if tb == nil {
 		return BudgetOK
 	}
@@ -222,9 +226,7 @@ func (rc *RuntimeCore) CheckTokenBudget() TokenBudgetStatus {
 
 // RecordTokenUsage records token usage after a graph invoke
 func (rc *RuntimeCore) RecordTokenUsage(inputTokens, outputTokens int) TokenBudgetStatus {
-	rc.tokenMu.Lock()
-	tb := rc.tokenBudget
-	rc.tokenMu.RUnlock()
+	tb := rc.currentTokenBudget()
 	if tb == nil {
 		return BudgetOK
 	}
@@ -233,9 +235,7 @@ func (rc *RuntimeCore) RecordTokenUsage(inputTokens, outputTokens int) TokenBudg
 
 // ResetTurnBudget resets the per-turn token budget
 func (rc *RuntimeCore) ResetTurnBudget() {
-	rc.tokenMu.Lock()
-	tb := rc.tokenBudget
-	rc.tokenMu.RUnlock()
+	tb := rc.currentTokenBudget()
 	if tb != nil {
 		tb.ResetTurn()
 	}

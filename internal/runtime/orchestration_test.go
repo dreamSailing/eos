@@ -7,6 +7,7 @@ package runtime
 
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cloudwego/eino/schema"
@@ -37,6 +38,50 @@ func TestShouldBypassArchitect_PlanPreferenceFirst(t *testing.T) {
 	}
 	if shouldBypassArchitect(msgs) {
 		t.Fatalf("expected not bypass when plan preference first")
+	}
+}
+
+func TestNormalizeDispatchHistory_FoldsLeadingSystemMessagesIntoPrompt(t *testing.T) {
+	systemPrompt, history := normalizeDispatchHistory("BASE_PROMPT", []*schema.Message{
+		schema.SystemMessage("DOC:EOS.md\ncontent"),
+		schema.SystemMessage("DOC:.eos/Rules.md\nrules"),
+		schema.UserMessage("你好"),
+	})
+
+	if len(history) != 1 {
+		t.Fatalf("history len = %d, want 1", len(history))
+	}
+	if history[0].Role != schema.User || strings.TrimSpace(history[0].Content) != "你好" {
+		t.Fatalf("unexpected history[0]: role=%v content=%q", history[0].Role, history[0].Content)
+	}
+	if !strings.Contains(systemPrompt, "BASE_PROMPT") {
+		t.Fatalf("system prompt missing base prompt: %q", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "## 前置上下文") {
+		t.Fatalf("system prompt missing leading context section: %q", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "DOC:EOS.md\ncontent") || !strings.Contains(systemPrompt, "DOC:.eos/Rules.md\nrules") {
+		t.Fatalf("system prompt missing folded system content: %q", systemPrompt)
+	}
+}
+
+func TestNormalizeDispatchHistory_FoldsTrailingSystemMessagesIntoPrompt(t *testing.T) {
+	systemPrompt, history := normalizeDispatchHistory("BASE_PROMPT", []*schema.Message{
+		schema.UserMessage("你好"),
+		schema.SystemMessage("STOP_HOOK: retry"),
+	})
+
+	if !strings.Contains(systemPrompt, "BASE_PROMPT") {
+		t.Fatalf("system prompt missing base prompt: %q", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "STOP_HOOK: retry") {
+		t.Fatalf("system prompt missing folded trailing system content: %q", systemPrompt)
+	}
+	if len(history) != 1 {
+		t.Fatalf("history len = %d, want 1", len(history))
+	}
+	if history[0].Role != schema.User || strings.TrimSpace(history[0].Content) != "你好" {
+		t.Fatalf("unexpected remaining history: role=%v content=%q", history[0].Role, history[0].Content)
 	}
 }
 

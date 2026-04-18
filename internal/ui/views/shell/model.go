@@ -5,7 +5,6 @@ package shell
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"fmt"
 	"math"
@@ -416,8 +415,9 @@ func (m *Model) ShowSlashHints(query string) {
 	var slashHints []hints.Hint
 	for _, cmd := range slash.GetSuggestions(query) {
 		slashHints = append(slashHints, hints.Hint{
-			Key:  cmd.DisplayText(),
-			Desc: cmd.Description(m.language),
+			Key:   cmd.DisplayText(),
+			Desc:  cmd.Description(m.language),
+			Value: cmd.Name,
 		})
 	}
 
@@ -482,7 +482,7 @@ func (m *Model) ShowPathHints(query string) {
 			name = filepath.ToSlash(filepath.Join(relPath, name))
 		}
 
-		pathHints = append(pathHints, hints.Hint{Key: name, Desc: desc})
+		pathHints = append(pathHints, hints.Hint{Key: name, Desc: desc, Value: name})
 	}
 
 	if len(pathHints) == 0 {
@@ -819,6 +819,7 @@ func (m *Model) HandleKey(msg tea.KeyMsg) (handled bool, cmd tea.Cmd) {
 				m.acceptHint(selected)
 			}
 			m.hints.Hide()
+			m.input.Focus()
 			return true, nil
 		case "enter":
 			// 接受选中的 hint 并隐藏 hints
@@ -827,10 +828,12 @@ func (m *Model) HandleKey(msg tea.KeyMsg) (handled bool, cmd tea.Cmd) {
 				m.acceptHint(selected)
 			}
 			m.hints.Hide()
+			m.input.Focus()
 			return true, nil
 		case "esc":
 			m.hints.Hide()
 			m.input.Clear()
+			m.input.Focus()
 			return true, nil
 		}
 	}

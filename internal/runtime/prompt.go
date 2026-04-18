@@ -231,6 +231,14 @@ func buildHistoryMessages(cm *session.ContextManager, extra []ai.Message, worksp
 		msgs = append(msgs, extra...)
 	}
 	out := make([]*schema.Message, 0, len(msgs))
+	var leadingSystem []string
+	flushLeadingSystem := func() {
+		if len(leadingSystem) == 0 {
+			return
+		}
+		out = append(out, schema.SystemMessage(strings.Join(leadingSystem, "\n\n")))
+		leadingSystem = nil
+	}
 	for _, m := range msgs {
 		s := strings.TrimSpace(m.Content)
 		if s == "" && len(m.ImagePaths) == 0 {
@@ -238,8 +246,18 @@ func buildHistoryMessages(cm *session.ContextManager, extra []ai.Message, worksp
 		}
 		switch m.Role {
 		case "system":
+			if strings.HasPrefix(s, "TASK_SUMMARY_HISTORY:\n") {
+				flushLeadingSystem()
+				out = append(out, schema.UserMessage("[TASK SUMMARY]\n"+s))
+				continue
+			}
+			if len(out) == 0 {
+				leadingSystem = append(leadingSystem, s)
+				continue
+			}
 			out = append(out, schema.SystemMessage(s))
 		case "user":
+			flushLeadingSystem()
 			if len(m.ImagePaths) > 0 {
 				var parts []schema.MessageInputPart
 				if s != "" {
@@ -275,9 +293,11 @@ func buildHistoryMessages(cm *session.ContextManager, extra []ai.Message, worksp
 				out = append(out, schema.UserMessage(s))
 			}
 		default:
+			flushLeadingSystem()
 			out = append(out, schema.AssistantMessage(s, nil))
 		}
 	}
+	flushLeadingSystem()
 	return out
 }
 

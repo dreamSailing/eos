@@ -5,10 +5,19 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"testing"
 )
+
+func mustNotPanic(t *testing.T, fn func()) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+	fn()
+}
 
 func TestNewTokenBudget(t *testing.T) {
 	tb := NewTokenBudget()
@@ -112,5 +121,73 @@ func TestTokenBudgetUsageRatio(t *testing.T) {
 	ratio := tb.UsageRatio()
 	if ratio != 0.5 {
 		t.Errorf("expected ratio 0.5, got %f", ratio)
+	}
+}
+
+func TestRuntimeCoreRecordTokenUsageWithoutBudgetIsOK(t *testing.T) {
+	rc := &RuntimeCore{}
+
+	var status TokenBudgetStatus
+	mustNotPanic(t, func() {
+		status = rc.RecordTokenUsage(10, 20)
+	})
+
+	if status != BudgetOK {
+		t.Fatalf("expected BudgetOK without token budget, got %v", status)
+	}
+}
+
+func TestRuntimeCoreResetTurnBudgetWithoutBudgetDoesNotPanic(t *testing.T) {
+	rc := &RuntimeCore{}
+
+	mustNotPanic(t, func() {
+		rc.ResetTurnBudget()
+	})
+}
+
+func TestRuntimeCoreRecordTokenUsageTracksTurnAndSession(t *testing.T) {
+	rc := &RuntimeCore{
+		eventsCh: make(chan Event, 4),
+	}
+	rc.InitializeTokenBudget(1000, 5000)
+
+	var status TokenBudgetStatus
+	mustNotPanic(t, func() {
+		status = rc.RecordTokenUsage(30, 20)
+	})
+
+	if status != BudgetOK {
+		t.Fatalf("expected BudgetOK, got %v", status)
+	}
+
+	turnIn, turnOut, sessionTotal, _, _ := rc.tokenBudget.Snapshot()
+	if turnIn != 30 || turnOut != 20 {
+		t.Fatalf("expected turn usage 30/20, got %d/%d", turnIn, turnOut)
+	}
+	if sessionTotal != 50 {
+		t.Fatalf("expected session total 50, got %d", sessionTotal)
+	}
+}
+
+func TestRuntimeCoreResetTurnBudgetClearsTurnOnly(t *testing.T) {
+	rc := &RuntimeCore{
+		eventsCh: make(chan Event, 4),
+	}
+	rc.InitializeTokenBudget(1000, 5000)
+
+	mustNotPanic(t, func() {
+		rc.RecordTokenUsage(40, 10)
+	})
+
+	mustNotPanic(t, func() {
+		rc.ResetTurnBudget()
+	})
+
+	turnIn, turnOut, sessionTotal, _, _ := rc.tokenBudget.Snapshot()
+	if turnIn != 0 || turnOut != 0 {
+		t.Fatalf("expected turn usage reset to 0/0, got %d/%d", turnIn, turnOut)
+	}
+	if sessionTotal != 50 {
+		t.Fatalf("expected session total to remain 50, got %d", sessionTotal)
 	}
 }

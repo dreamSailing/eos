@@ -69,7 +69,8 @@ type AppModel struct {
 	prevView    string
 
 	// 视图状态
-	activeView string // "shell", "panel", "help", "setup", "confirm"
+	activeView       string // "shell", "panel", "help", "setup", "confirm"
+	initialSetupFlow bool
 
 	// 消息跟踪
 	currentAIStartTime time.Time
@@ -124,6 +125,14 @@ func (m *AppModel) updateBGTaskCountUI() {
 		return
 	}
 	m.shell.SetBGTaskCount(len(bg.Default().List()))
+}
+
+func (m *AppModel) refreshShellWelcomeInfo() {
+	if m == nil || m.shell == nil || m.adapter == nil {
+		return
+	}
+	modelName, modelBase := resolveShellWelcomeInfo(m.adapter)
+	m.shell.SetWelcomeInfo(modelName, modelBase, "")
 }
 
 func (m *AppModel) refreshAILive() {
@@ -215,6 +224,26 @@ type historyEntry struct {
 	copiedAt    time.Time
 }
 
+func resolveShellWelcomeInfo(adapter *adapter.RuntimeAdapter) (string, string) {
+	modelName, modelBase := adapter.GetModelInfo()
+	if modelName == "" || modelBase == "" {
+		base, _, mdl, _ := adapter.ResolveAPIConfig()
+		if modelName == "" {
+			modelName = mdl
+		}
+		if modelBase == "" {
+			modelBase = base
+		}
+	}
+	if modelName == "" {
+		modelName = "(none)"
+	}
+	if modelBase == "" {
+		modelBase = "(none)"
+	}
+	return modelName, modelBase
+}
+
 // NewAppModel 创建新的应用模型
 func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 	adapter := adapter.NewRuntimeAdapter(core)
@@ -230,23 +259,7 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 
 	// 创建Shell视图
 	shellModel := shell.New(80, 24, styles, lang)
-	modelName, modelBase := adapter.GetModelInfo()
-	if modelName == "" || modelBase == "" {
-		// 如果为空，尝试解析 API 配置
-		base, _, mdl, _ := adapter.ResolveAPIConfig()
-		if modelName == "" {
-			modelName = mdl
-		}
-		if modelBase == "" {
-			modelBase = base
-		}
-	}
-	if modelName == "" {
-		modelName = "(none)"
-	}
-	if modelBase == "" {
-		modelBase = "(none)"
-	}
+	modelName, modelBase := resolveShellWelcomeInfo(adapter)
 	shellModel.SetWelcomeInfo(modelName, modelBase, "")
 	shellModel.SetExecutionMode("auto")
 	shellModel.SetThinkingExpanded(false)
@@ -284,6 +297,7 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 
 	setupView := any(setup.NewSetupView(styles))
 	activeView := "shell"
+	initialSetupFlow := false
 	if len(cfg.Models) == 0 {
 		base, key, model, _ := adapter.ResolveAPIConfig()
 		if strings.TrimSpace(base) == "" || strings.TrimSpace(key) == "" || strings.TrimSpace(model) == "" {
@@ -291,6 +305,7 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 			wizard.SetSize(80, 24)
 			setupView = wizard
 			activeView = "setup"
+			initialSetupFlow = true
 			shellModel.BlurInput()
 		}
 	}
@@ -302,17 +317,18 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 			Theme:         "dark",
 			ExecutionMode: "auto",
 		},
-		adapter:      adapter,
-		styles:       styles,
-		msgRenderer:  messages.NewRenderer(styles, 80),
-		shell:        &shellModel,
-		panels:       panelMap,
-		helpView:     help.NewHelpView(styles, lang),
-		setupView:    setupView,
-		activeView:   activeView,
-		activePanel:  "",
-		toolInflight: make(map[string]toolTrack),
-		history:      make([]historyEntry, 0, 128),
+		adapter:          adapter,
+		styles:           styles,
+		msgRenderer:      messages.NewRenderer(styles, 80),
+		shell:            &shellModel,
+		panels:           panelMap,
+		helpView:         help.NewHelpView(styles, lang),
+		setupView:        setupView,
+		activeView:       activeView,
+		initialSetupFlow: initialSetupFlow,
+		activePanel:      "",
+		toolInflight:     make(map[string]toolTrack),
+		history:          make([]historyEntry, 0, 128),
 	}
 }
 
@@ -526,12 +542,21 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// 如果按 Enter 且 hints 显示，隐藏 hints 不发送
 			// 如果按 Enter 且 hints 不显示，检查是否需要发送
 			shouldUpdateShell := true
+			shouldRefreshHints := true
+			if hintsVisibleBeforeKey && handled {
+				switch msg.String() {
+				case "up", "down", "enter", "tab", "esc":
+					shouldUpdateShell = false
+					shouldRefreshHints = false
+				}
+			}
 			if hintsVisibleBeforeKey && handled && (msg.String() == "enter" || msg.String() == "tab") {
 				shouldUpdateShell = false
 			}
 			if msg.String() == "enter" {
 				if hintsVisibleBeforeKey {
 					shouldUpdateShell = false // hints 已处理，不需要再更新 shell
+					shouldRefreshHints = false
 				} else {
 					shouldSend, exitCmd := m.shouldSendMessage()
 					if exitCmd != nil {
@@ -562,7 +587,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// 输入变化后更新 hints
-			m.updateHintsBasedOnInput()
+			if shouldRefreshHints {
+				m.updateHintsBasedOnInput()
+			}
 		}
 
 	case bridge.Event:
@@ -797,11 +824,15 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case setup.SetupCompleteMsg:
 		// 设置完成
 		m.activeView = "shell"
+		m.initialSetupFlow = false
+		m.shell.FocusInput()
 		m.appendSystem(fmt.Sprintf("Setup complete! Provider: %s, Model: %s", msg.Config.Provider, msg.Config.Model), "info")
 
 	case setup.SetupCancelMsg:
 		// 设置取消
 		m.activeView = "shell"
+		m.initialSetupFlow = false
+		m.shell.FocusInput()
 		m.appendSystem("Setup cancelled.", "warning")
 
 	case setup.ModelFormCompleteMsg:
@@ -2247,6 +2278,8 @@ func (m *AppModel) handleModelSyncEnv() {
 // handleModelFormComplete 处理模型表单完成
 func (m *AppModel) handleModelFormComplete(msg setup.ModelFormCompleteMsg) {
 	m.activeView = "shell"
+	m.shell.FocusInput()
+	suppressSuccessMessage := m.initialSetupFlow && len(m.history) == 0 && !msg.EditMode
 
 	// 使用配置中的名称
 	name := msg.Config.Name
@@ -2275,11 +2308,15 @@ func (m *AppModel) handleModelFormComplete(msg setup.ModelFormCompleteMsg) {
 			m.adapter.SetActiveModel(name)
 			// 重新加载运行时环境
 			_ = m.adapter.Reload()
-			m.appendSystem(fmt.Sprintf("Added and switched to model: %s", name), "success")
+			m.refreshShellWelcomeInfo()
+			if !suppressSuccessMessage {
+				m.appendSystem(fmt.Sprintf("Added and switched to model: %s", name), "success")
+			}
 		} else {
 			m.appendSystem(fmt.Sprintf("Failed to add model: %s", name), "error")
 		}
 	}
+	m.initialSetupFlow = false
 
 	// 刷新模型列表面板
 	if modelsPanel, ok := m.panels["models"].(*panels.ModelsPanel); ok {

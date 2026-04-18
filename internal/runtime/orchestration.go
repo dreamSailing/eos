@@ -448,8 +448,8 @@ func invokeDispatchAgentWithTools(ctx context.Context, in []*schema.Message, dis
 	slog.Debug("runtime.dispatch_agent.invoke.start", "input_messages_count", len(in))
 
 	// 构建系统提示：替换占位符并注入上下文信息
-	systemPrompt := buildDispatchSystemPrompt(ctx, rt, mcpTools, in)
-	msgs := append([]*schema.Message{schema.SystemMessage(systemPrompt)}, in...)
+	systemPrompt, history := normalizeDispatchHistory(systemPromptWithContext(ctx, rt, mcpTools, in), in)
+	msgs := append([]*schema.Message{schema.SystemMessage(systemPrompt)}, history...)
 
 	slog.Debug("runtime.dispatch_agent.invoke.generating", "system_prompt_len", len(systemPrompt))
 
@@ -468,6 +468,41 @@ func invokeDispatchAgentWithTools(ctx context.Context, in []*schema.Message, dis
 	slog.Debug("runtime.dispatch_agent.output", "content", out.Content, "content_len", len(out.Content))
 
 	return append(in, out), nil
+}
+
+func systemPromptWithContext(ctx context.Context, rt *EinoRuntime, mcpTools []tool.BaseTool, history []*schema.Message) string {
+	return buildDispatchSystemPrompt(ctx, rt, mcpTools, history)
+}
+
+func normalizeDispatchHistory(systemPrompt string, history []*schema.Message) (string, []*schema.Message) {
+	if len(history) == 0 {
+		return systemPrompt, nil
+	}
+	normalized := make([]*schema.Message, 0, len(history))
+	var foldedSystem []string
+	for _, msg := range history {
+		if msg == nil {
+			continue
+		}
+		if msg.Role == schema.System {
+			if content := strings.TrimSpace(msg.Content); content != "" {
+				foldedSystem = append(foldedSystem, content)
+			}
+			continue
+		}
+		normalized = append(normalized, msg)
+	}
+	if len(foldedSystem) == 0 {
+		return systemPrompt, normalized
+	}
+	var sb strings.Builder
+	sb.WriteString(strings.TrimSpace(systemPrompt))
+	sb.WriteString("\n\n## 前置上下文\n")
+	for _, block := range foldedSystem {
+		sb.WriteString(block)
+		sb.WriteString("\n\n")
+	}
+	return strings.TrimSpace(sb.String()), normalized
 }
 
 // buildDispatchSystemPrompt 构建调度 Agent 的系统提示词
