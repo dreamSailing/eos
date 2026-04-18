@@ -35,6 +35,13 @@ type RuntimeModel struct {
 	provider ai.ProviderType
 }
 
+type providerCompatToolCallingModel struct {
+	inner    model.ToolCallingChatModel
+	name     string
+	base     string
+	provider ai.ProviderType
+}
+
 type ToolCallingProvider interface {
 	ToolCalling() model.ToolCallingChatModel
 }
@@ -147,6 +154,7 @@ func NewChatModelWithSettings(ctx context.Context, apiKey, base, name, reasoning
 	if err != nil {
 		return nil, err
 	}
+	cm = wrapProviderCompatModel(cm, providerType, name, base)
 	return &RuntimeModel{cm: cm, name: name, base: base, provider: providerType}, nil
 }
 
@@ -278,6 +286,176 @@ func getMimeType(path string) string {
 
 func (m *RuntimeModel) ToolCalling() model.ToolCallingChatModel {
 	return m.cm
+}
+
+func wrapProviderCompatModel(inner model.ToolCallingChatModel, provider ai.ProviderType, name, base string) model.ToolCallingChatModel {
+	if inner == nil {
+		return nil
+	}
+	return &providerCompatToolCallingModel{
+		inner:    inner,
+		name:     name,
+		base:     base,
+		provider: provider,
+	}
+}
+
+func (m *providerCompatToolCallingModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	return m.inner.Generate(ctx, m.normalizeInput(input), opts...)
+}
+
+func (m *providerCompatToolCallingModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	return m.inner.Stream(ctx, m.normalizeInput(input), opts...)
+}
+
+func (m *providerCompatToolCallingModel) WithTools(tools []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
+	next, err := m.inner.WithTools(tools)
+	if err != nil {
+		return nil, err
+	}
+	return wrapProviderCompatModel(next, m.provider, m.name, m.base), nil
+}
+
+func (m *providerCompatToolCallingModel) normalizeInput(input []*schema.Message) []*schema.Message {
+	if !shouldNormalizeMiniMaxMessages(m.provider, m.base, m.name) {
+		return input
+	}
+	normalized := normalizeMiniMaxMessages(input)
+	if len(normalized) != len(input) {
+		slog.Debug("model.minimax.normalize_messages",
+			"model", m.name,
+			"base", m.base,
+			"before", len(input),
+			"after", len(normalized))
+	}
+	return normalized
+}
+
+func shouldNormalizeMiniMaxMessages(provider ai.ProviderType, base, name string) bool {
+	if provider == ai.ProviderMiniMax {
+		return true
+	}
+	lowerBase := strings.ToLower(strings.TrimSpace(base))
+	if strings.Contains(lowerBase, "api.minimaxi.com") || strings.Contains(lowerBase, "api.minimax.io") {
+		return true
+	}
+	lowerName := strings.ToLower(strings.TrimSpace(name))
+	return strings.Contains(lowerName, "minimax")
+}
+
+func normalizeMiniMaxMessages(input []*schema.Message) []*schema.Message {
+	if len(input) == 0 {
+		return input
+	}
+	out := make([]*schema.Message, 0, len(input))
+	for _, msg := range input {
+		if msg == nil {
+			continue
+		}
+		if isEffectivelyEmptyMessage(msg) {
+			continue
+		}
+		msgCopy := cloneSchemaMessage(msg)
+		if len(out) == 0 {
+			out = append(out, msgCopy)
+			continue
+		}
+		last := out[len(out)-1]
+		if canMergeMiniMaxMessages(last, msgCopy) {
+			last.Content = mergeMessageText(last.Content, msgCopy.Content)
+			continue
+		}
+		out = append(out, msgCopy)
+	}
+	return out
+}
+
+func canMergeMiniMaxMessages(prev, curr *schema.Message) bool {
+	if prev == nil || curr == nil {
+		return false
+	}
+	if prev.Role != curr.Role {
+		return false
+	}
+	switch prev.Role {
+	case schema.System, schema.User, schema.Assistant:
+	default:
+		return false
+	}
+	if !isSimpleTextMessage(prev) || !isSimpleTextMessage(curr) {
+		return false
+	}
+	if strings.TrimSpace(prev.Name) != strings.TrimSpace(curr.Name) {
+		return false
+	}
+	return true
+}
+
+func isSimpleTextMessage(msg *schema.Message) bool {
+	if msg == nil {
+		return false
+	}
+	return len(msg.MultiContent) == 0 &&
+		len(msg.UserInputMultiContent) == 0 &&
+		len(msg.AssistantGenMultiContent) == 0 &&
+		len(msg.ToolCalls) == 0 &&
+		strings.TrimSpace(msg.ToolCallID) == "" &&
+		strings.TrimSpace(msg.ToolName) == "" &&
+		len(msg.Extra) == 0
+}
+
+func isEffectivelyEmptyMessage(msg *schema.Message) bool {
+	if msg == nil {
+		return true
+	}
+	if strings.TrimSpace(msg.Content) != "" || strings.TrimSpace(msg.ReasoningContent) != "" {
+		return false
+	}
+	return len(msg.MultiContent) == 0 &&
+		len(msg.UserInputMultiContent) == 0 &&
+		len(msg.AssistantGenMultiContent) == 0 &&
+		len(msg.ToolCalls) == 0 &&
+		strings.TrimSpace(msg.ToolCallID) == "" &&
+		strings.TrimSpace(msg.ToolName) == ""
+}
+
+func cloneSchemaMessage(msg *schema.Message) *schema.Message {
+	if msg == nil {
+		return nil
+	}
+	cp := *msg
+	if len(msg.MultiContent) > 0 {
+		cp.MultiContent = append([]schema.ChatMessagePart(nil), msg.MultiContent...)
+	}
+	if len(msg.UserInputMultiContent) > 0 {
+		cp.UserInputMultiContent = append([]schema.MessageInputPart(nil), msg.UserInputMultiContent...)
+	}
+	if len(msg.AssistantGenMultiContent) > 0 {
+		cp.AssistantGenMultiContent = append([]schema.MessageOutputPart(nil), msg.AssistantGenMultiContent...)
+	}
+	if len(msg.ToolCalls) > 0 {
+		cp.ToolCalls = append([]schema.ToolCall(nil), msg.ToolCalls...)
+	}
+	if len(msg.Extra) > 0 {
+		cp.Extra = make(map[string]any, len(msg.Extra))
+		for k, v := range msg.Extra {
+			cp.Extra[k] = v
+		}
+	}
+	return &cp
+}
+
+func mergeMessageText(a, b string) string {
+	a = strings.TrimSpace(a)
+	b = strings.TrimSpace(b)
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	default:
+		return a + "\n\n" + b
+	}
 }
 
 func (m *RuntimeModel) Name() string {

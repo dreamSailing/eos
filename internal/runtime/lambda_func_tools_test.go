@@ -7,6 +7,7 @@ package runtime
 
 
 import (
+	"strings"
 	"testing"
 	"github.com/dreamSailing/eos/internal/tools"
 )
@@ -17,6 +18,9 @@ func TestAllowedTools_IncludeGitShow(t *testing.T) {
 		allowed := AllowedTools(role)
 		if !allowed[tools.ToolGitShow] {
 			t.Fatalf("role %s missing %s", role, tools.ToolGitShow)
+		}
+		if !allowed[strings.ToLower(tools.ToolProjectStructure)] {
+			t.Fatalf("role %s missing %s", role, tools.ToolProjectStructure)
 		}
 	}
 }

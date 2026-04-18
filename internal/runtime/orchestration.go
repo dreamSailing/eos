@@ -519,8 +519,8 @@ func buildDispatchSystemPrompt(ctx context.Context, rt *EinoRuntime, mcpTools []
 	}
 	prompt = strings.Replace(prompt, "{model_name}", modelName, -1)
 
-	// 替换工具能力描述
-	toolsDesc := GetAvailableToolsDescription(ctx, mcpTools)
+	// 调度 Agent 只能看到自己真实可调用的调度工具，避免调用执行层工具。
+	toolsDesc := GetDispatchToolsDescription()
 	prompt = strings.Replace(prompt, "{available_tools}", toolsDesc, -1)
 
 	// 替换工作目录
@@ -528,7 +528,7 @@ func buildDispatchSystemPrompt(ctx context.Context, rt *EinoRuntime, mcpTools []
 	prompt = strings.Replace(prompt, "{cwd}", envInfo.CWD, -1)
 
 	prompt += "\n\n" + utils.FormatEnvInfo(envInfo)
-	prompt += "\n" + BuildProjectPromptAdditions(envInfo.CWD)
+	prompt += "\n" + BuildDispatchPromptAdditions(envInfo.CWD)
 	prompt += "\n" + buildIntentPromptAdditions(history)
 
 	// Inject system reminders from prompt_system.go

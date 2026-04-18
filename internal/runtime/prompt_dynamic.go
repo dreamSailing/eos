@@ -18,6 +18,14 @@ import (
 )
 
 func BuildProjectPromptAdditions(cwd string) string {
+	return buildProjectPromptAdditions(cwd, false)
+}
+
+func BuildDispatchPromptAdditions(cwd string) string {
+	return buildProjectPromptAdditions(cwd, true)
+}
+
+func buildProjectPromptAdditions(cwd string, dispatchOnly bool) string {
 	var sb strings.Builder
 
 	sb.WriteString("**项目约定**：\n")
@@ -45,7 +53,9 @@ func BuildProjectPromptAdditions(cwd string) string {
 		sb.WriteString("\n```\n")
 	}
 
-	sb.WriteString("\n\n## 自动记忆指南\n当你在对话中发现重要的用户偏好、项目约定或反复出现的模式时，使用 suggest_memory 工具将它们建议添加到 EOS.md 或 .eos/Rules.md 中。")
+	if !dispatchOnly {
+		sb.WriteString("\n\n## 自动记忆指南\n当你在对话中发现重要的用户偏好、项目约定或反复出现的模式时，使用 suggest_memory 工具将它们建议添加到 EOS.md 或 .eos/Rules.md 中。")
+	}
 
 	addSnippet(filepath.Join(".eos", "Rules.md"), 8000)
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
@@ -53,15 +63,17 @@ func BuildProjectPromptAdditions(cwd string) string {
 	}
 	addSnippet(filepath.Join(".eos", "prompt.md"), 4000)
 
-	sb.WriteString("\n**规范文件约定**：\n")
-	sb.WriteString("- 项目规范文件：.eos/Rules.md（默认写这里）\n")
-	sb.WriteString("- 全局规范文件：~/.eos/Rules.md（仅用户明确要求“全局规则”时写这里）\n")
-	sb.WriteString("- 项目指导文件只使用 VB.md，不使用 CLAUDE.md\n")
-	sb.WriteString("- 用户要求“写/更新规则”时，直接更新对应 Rules.md 文件内容\n")
-	sb.WriteString("- 生成/更新规范时使用固定模板；若文件已存在，更新其对应章节，不要整文件重写或重复追加标题\n")
-	sb.WriteString("```\n")
-	sb.WriteString(strings.TrimSpace(RulesMdTemplate()))
-	sb.WriteString("\n```\n")
+	if !dispatchOnly {
+		sb.WriteString("\n**规范文件约定**：\n")
+		sb.WriteString("- 项目规范文件：.eos/Rules.md（默认写这里）\n")
+		sb.WriteString("- 全局规范文件：~/.eos/Rules.md（仅用户明确要求“全局规则”时写这里）\n")
+		sb.WriteString("- 项目指导文件只使用 VB.md，不使用 CLAUDE.md\n")
+		sb.WriteString("- 用户要求“写/更新规则”时，直接更新对应 Rules.md 文件内容\n")
+		sb.WriteString("- 生成/更新规范时使用固定模板；若文件已存在，更新其对应章节，不要整文件重写或重复追加标题\n")
+		sb.WriteString("```\n")
+		sb.WriteString(strings.TrimSpace(RulesMdTemplate()))
+		sb.WriteString("\n```\n")
+	}
 
 	if recent := recentVersionedFiles(cwd, 8); recent != "" {
 		sb.WriteString("\n**最近修改（基于 .eos/versions）**：\n")
