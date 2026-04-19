@@ -267,3 +267,39 @@ func TestShell_ExecuteWithWorkingDirIncludesPluginBinInPath(t *testing.T) {
 		t.Fatalf("output=%q, want plugin-bin-ok", out)
 	}
 }
+
+func TestResolveShellCommand_PowerShellUsesRawCommand(t *testing.T) {
+	raw := `Get-Content C:\temp\demo.txt`
+	name, args, err := resolveShellCommand(ShellTypePowerShell, raw)
+	if err != nil {
+		t.Fatalf("resolveShellCommand error: %v", err)
+	}
+	if got := args[len(args)-1]; got != raw {
+		t.Fatalf("command arg=%q, want raw %q", got, raw)
+	}
+	if strings.HasPrefix(args[len(args)-1], "'") || strings.HasSuffix(args[len(args)-1], "'") {
+		t.Fatalf("command arg should not be wrapped in single quotes: %q", args[len(args)-1])
+	}
+	if runtime.GOOS == "windows" && name != "powershell" {
+		t.Fatalf("name=%q, want powershell", name)
+	}
+}
+
+func TestResolveShellCommand_BashUsesLoginShell(t *testing.T) {
+	name, args, err := resolveShellCommand(ShellTypeBash, "printf 'ok'")
+	if err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("bash not available on PATH: %v", err)
+		}
+		t.Fatalf("resolveShellCommand error: %v", err)
+	}
+	if filepath.Base(name) != "bash" && filepath.Base(name) != "bash.exe" {
+		t.Fatalf("name=%q, want bash executable", name)
+	}
+	if len(args) != 2 || args[0] != "-lc" {
+		t.Fatalf("args=%v, want [-lc <command>]", args)
+	}
+	if args[1] != "printf 'ok'" {
+		t.Fatalf("command=%q, want original command", args[1])
+	}
+}

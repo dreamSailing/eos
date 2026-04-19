@@ -473,7 +473,7 @@ var enText = map[string]string{
 	"help.key.alt_v":      "Paste image",
 	"help.key.ctrl_o":     "Toggle verbose mode",
 	"help.key.ctrl_j":     "New line (Ctrl+J)",
-	"help.key.esc_esc":    "Clear input",
+	"help.key.esc_esc":    "Stop current flow",
 	"help.key.ctrl_c":     "Interrupt / Exit",
 	"help.key.pgup_pgdn":  "Page up/down",
 	"help.key.home":       "Jump to top",

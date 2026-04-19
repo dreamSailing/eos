@@ -5,7 +5,6 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"encoding/json"
 	"fmt"
@@ -25,7 +24,7 @@ const (
 	MaxTotalBytes = 200_000
 	// PreviewBytes is how many bytes of the original result to keep inline
 	PreviewBytes = 2000
-	// PersistDir is the subdirectory under .vb for persisted tool results
+	// PersistDir is the subdirectory under .eos for persisted tool results.
 	PersistDir = "tool_results"
 )
 

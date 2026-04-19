@@ -5,7 +5,6 @@ package runtime
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"io/fs"
 	"os"
@@ -67,7 +66,7 @@ func buildProjectPromptAdditions(cwd string, dispatchOnly bool) string {
 		sb.WriteString("\n**规范文件约定**：\n")
 		sb.WriteString("- 项目规范文件：.eos/Rules.md（默认写这里）\n")
 		sb.WriteString("- 全局规范文件：~/.eos/Rules.md（仅用户明确要求“全局规则”时写这里）\n")
-		sb.WriteString("- 项目指导文件只使用 VB.md，不使用 CLAUDE.md\n")
+		sb.WriteString("- 项目指导文件只使用 EOS.md，不使用 CLAUDE.md\n")
 		sb.WriteString("- 用户要求“写/更新规则”时，直接更新对应 Rules.md 文件内容\n")
 		sb.WriteString("- 生成/更新规范时使用固定模板；若文件已存在，更新其对应章节，不要整文件重写或重复追加标题\n")
 		sb.WriteString("```\n")

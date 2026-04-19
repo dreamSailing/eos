@@ -10,6 +10,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/dreamSailing/eos/internal/tools/shell"
 )
 
 // toolSearchStructured handles tool search for dynamic tool discovery
@@ -96,5 +98,5 @@ func (m *Manager) GetToolIndexStats() map[string]any {
 
 // ExecuteBashDirect executes bash command bypassing tool call mechanism
 func (m *Manager) ExecuteBashDirect(ctx context.Context, cmd string) (string, error) {
-	return m.shell.ExecuteWithWorkingDirCtx(ctx, cmd, WorkspaceRootFromContext(ctx))
+	return m.shell.ExecuteTypedWithWorkingDirCtx(ctx, shell.ShellTypeBash, cmd, WorkspaceRootFromContext(ctx))
 }

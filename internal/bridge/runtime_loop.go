@@ -563,6 +563,13 @@ func (rc *RuntimeCore) loop() {
 			case finalizeTaskReq:
 				rc.finalizeTask(rt, r.traceID, r.userText, r.assistantText, r.success, r.errorMsg)
 				r.resCh <- struct{}{}
+			case cancelForegroundReq:
+				cancelled := false
+				if rt != nil && strings.TrimSpace(r.traceID) != "" {
+					rt.ClearRequestContexts(strings.TrimSpace(r.traceID))
+					cancelled = true
+				}
+				r.resCh <- cancelled
 			case hookEventReq:
 				if rt == nil {
 					continue

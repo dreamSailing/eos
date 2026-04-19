@@ -5,7 +5,6 @@ package shell
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"os"
@@ -14,7 +13,7 @@ import (
 
 type ctxKey string
 
-const ctxKeyEnv ctxKey = "vb.shell.env"
+const ctxKeyEnv ctxKey = "eos.shell.env"
 
 func WithEnv(ctx context.Context, env []string) context.Context {
 	if ctx == nil {

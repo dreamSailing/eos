@@ -30,6 +30,45 @@ func (rc *RuntimeCore) Reload() error {
 	return <-resCh
 }
 
+func (rc *RuntimeCore) setForegroundRequest(traceID string, cancel context.CancelFunc) {
+	rc.foregroundMu.Lock()
+	rc.foregroundTraceID = strings.TrimSpace(traceID)
+	rc.foregroundCancel = cancel
+	rc.foregroundMu.Unlock()
+}
+
+func (rc *RuntimeCore) clearForegroundRequest(traceID string) {
+	traceID = strings.TrimSpace(traceID)
+	rc.foregroundMu.Lock()
+	if traceID == "" || rc.foregroundTraceID == traceID {
+		rc.foregroundTraceID = ""
+		rc.foregroundCancel = nil
+	}
+	rc.foregroundMu.Unlock()
+}
+
+func (rc *RuntimeCore) CancelForegroundRequest() bool {
+	rc.foregroundMu.Lock()
+	traceID := strings.TrimSpace(rc.foregroundTraceID)
+	cancel := rc.foregroundCancel
+	rc.foregroundTraceID = ""
+	rc.foregroundCancel = nil
+	rc.foregroundMu.Unlock()
+
+	if cancel == nil && traceID == "" {
+		return false
+	}
+	if cancel != nil {
+		cancel()
+	}
+	if traceID == "" {
+		return true
+	}
+	resCh := make(chan bool, 1)
+	rc.reqCh <- cancelForegroundReq{traceID: traceID, resCh: resCh}
+	return <-resCh
+}
+
 // GraphInvoke 执行图形编排调用
 func (rc *RuntimeCore) GraphInvoke(ctx context.Context, query string) (*schema.Message, error) {
 	return rc.GraphInvokePlan(ctx, query, "")
@@ -48,6 +87,12 @@ func (rc *RuntimeCore) GraphInvokePlanWithImages(ctx context.Context, query, exe
 		ctx = tools.WithTraceID(ctx, traceID)
 	}
 	ctx = rc.withWorkspaceRoot(ctx)
+	ctx, cancel := context.WithCancel(ctx)
+	rc.setForegroundRequest(traceID, cancel)
+	defer func() {
+		cancel()
+		rc.clearForegroundRequest(traceID)
+	}()
 
 	// Phase 1 集成: Token 预算检查
 	if status := rc.CheckTokenBudget(); status == BudgetExceeded {

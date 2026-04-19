@@ -5,7 +5,6 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"bufio"
 	"os"
@@ -15,7 +14,7 @@ import (
 	"time"
 )
 
-// DotIgnore manages .vbignore pattern loading and caching
+// DotIgnore manages .eosignore pattern loading and caching
 type DotIgnore struct {
 	mu       sync.RWMutex
 	patterns []string
@@ -28,15 +27,15 @@ func NewDotIgnore(root string) *DotIgnore {
 	return &DotIgnore{root: root}
 }
 
-// LoadIgnorePatterns loads and caches .vbignore patterns from the project root
+// LoadIgnorePatterns loads and caches .eosignore patterns from the project root
 func LoadIgnorePatterns(root string) []string {
 	di := NewDotIgnore(root)
 	return di.Load()
 }
 
-// Load reads .vbignore and returns patterns
+// Load reads .eosignore and returns patterns
 func (di *DotIgnore) Load() []string {
-	ignorePath := filepath.Join(di.root, ".vbignore")
+	ignorePath := filepath.Join(di.root, ".eosignore")
 
 	info, err := os.Stat(ignorePath)
 	if err != nil {
@@ -76,7 +75,7 @@ func (di *DotIgnore) Load() []string {
 	return patterns
 }
 
-// Match checks if a path matches any .vbignore pattern
+// Match checks if a path matches any .eosignore pattern
 func (di *DotIgnore) Match(path string) bool {
 	patterns := di.Load()
 	if len(patterns) == 0 {

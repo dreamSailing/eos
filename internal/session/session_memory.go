@@ -5,7 +5,6 @@ package session
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"log/slog"
@@ -22,25 +21,25 @@ import (
 
 const (
 	// Default thresholds for session memory extraction
-	defaultMinMessageTokensToInit    = 8000
-	defaultMinTokensBetweenUpdate     = 4000
+	defaultMinMessageTokensToInit      = 8000
+	defaultMinTokensBetweenUpdate      = 4000
 	defaultToolCallsBetweenUpdates     = 15
-	defaultMaxSectionLength           = 2000
+	defaultMaxSectionLength            = 2000
 	defaultMaxTotalSessionMemoryTokens = 12000
 )
 
 // SessionMemoryConfig holds configuration for session memory extraction
 type SessionMemoryConfig struct {
-	MinMessageTokensToInit  int
-	MinTokensBetweenUpdate  int
+	MinMessageTokensToInit int
+	MinTokensBetweenUpdate int
 	ToolCallsBetweenUpdate int
 }
 
 // DefaultSessionMemoryConfig returns the default session memory config
 func DefaultSessionMemoryConfig() *SessionMemoryConfig {
 	return &SessionMemoryConfig{
-		MinMessageTokensToInit:  defaultMinMessageTokensToInit,
-		MinTokensBetweenUpdate:  defaultMinTokensBetweenUpdate,
+		MinMessageTokensToInit: defaultMinMessageTokensToInit,
+		MinTokensBetweenUpdate: defaultMinTokensBetweenUpdate,
 		ToolCallsBetweenUpdate: defaultToolCallsBetweenUpdates,
 	}
 }
@@ -348,7 +347,7 @@ _分步骤，尝试了什么，做了什么？每一步非常简洁的总结_
 func GetDefaultSessionMemoryUpdatePrompt() string {
 	return `重要提示：此消息和这些说明不是实际用户对话的一部分。不要在笔记内容中包含任何关于"笔记"、"会话笔记提取"或这些更新说明的引用。
 
-基于上面的用户对话（不包括此笔记说明消息以及系统提示、VB.md 条目或任何过去的会话摘要），更新会话笔记文件。
+基于上面的用户对话（不包括此笔记说明消息以及系统提示、EOS.md 条目或任何过去的会话摘要），更新会话笔记文件。
 
 文件 {{notesPath}} 已为你读取。以下是当前内容：
 <current_notes_content>
@@ -368,7 +367,7 @@ func GetDefaultSessionMemoryUpdatePrompt() string {
 - 如果没有实质性新见解，可以跳过更新某个部分。不要添加"No info yet"等填充内容，如果适当的话直接留空/不编辑
 - 为每个部分编写详细的、信息密集的内容——包括具体信息如文件路径、函数名、错误消息、确切命令、技术细节等
 - 对于"关键结果"，包含用户要求的完整确切输出（例如完整表格、完整答案等）
-- 不要包含上下文中已包含的 VB.md 文件中的信息
+- 不要包含上下文中已包含的 EOS.md 文件中的信息
 - 每个部分保持在 ~` + strconv.Itoa(defaultMaxSectionLength) + ` tokens/词以下——如果某个部分接近此限制，通过循环移除较不重要的细节同时保留最关键的信息来压缩它
 - 专注于可操作的、具体的信息，帮助他人理解或重现对话中讨论的工作
 - 重要：始终更新"当前状态"以反映最近的工作——这对于压缩后的连续性至关重要

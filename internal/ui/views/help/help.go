@@ -122,7 +122,7 @@ func (h *HelpView) View() string {
 	b.WriteString(h.renderKey("Tab", i18n.T("help.key.tab", lang)) + "\n")
 	b.WriteString(h.renderKey("Alt+V", i18n.T("help.key.alt_v", lang)) + "\n")
 	b.WriteString(h.renderKey("Ctrl+J", i18n.T("help.key.ctrl_j", lang)) + "\n")
-	b.WriteString(h.renderKey("Esc Esc", i18n.T("help.key.esc_esc", lang)) + "\n")
+	b.WriteString(h.renderKey("Esc", i18n.T("help.key.esc_esc", lang)) + "\n")
 	b.WriteString(h.renderKey("Ctrl+C", i18n.T("help.key.ctrl_c", lang)) + "\n")
 	b.WriteString(h.renderKey("PgUp/PgDn", i18n.T("help.key.pgup_pgdn", lang)) + "\n")
 	b.WriteString(h.renderKey("Home / End", i18n.T("help.key.home_end", lang)) + "\n")

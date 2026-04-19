@@ -9,9 +9,11 @@ package tools
 import (
 	"context"
 	"fmt"
-	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"log/slog"
 	"strings"
+
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/tools/shell"
 )
 
 func validateBashCommand(cmd string) error {
@@ -40,7 +42,7 @@ func (m *Manager) bashStructured(ctx context.Context, params map[string]interfac
 	if err := validateBashCommand(cmd); err != nil {
 		return ToolResult{Type: "tool_result", Tool: "bash", Status: "error", Error: err.Error()}
 	}
-	out, err := m.shell.ExecuteWithWorkingDirCtx(ctx, cmd, WorkspaceRootFromContext(ctx))
+	out, err := m.shell.ExecuteTypedWithWorkingDirCtx(ctx, shell.ShellTypeBash, cmd, WorkspaceRootFromContext(ctx))
 	if err != nil {
 		slog.Error("bash.error", "component", utils.ComponentTool, "cmd", cmd, "err", err.Error())
 		return ToolResult{Type: "tool_result", Tool: "bash", Status: "error", Error: fmt.Sprintf("%v", err), Data: map[string]interface{}{"stdout": out}}

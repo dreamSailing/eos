@@ -351,16 +351,32 @@ func (m *SubAgentManager) ClearRequest(requestID string) {
 		return
 	}
 
+	prefix := requestID + "|"
+	toRemove := make([]struct {
+		key string
+		id  string
+	}, 0)
+
+	m.mu.RLock()
+	for k, id := range m.requestIndex {
+		if strings.HasPrefix(k, prefix) {
+			toRemove = append(toRemove, struct {
+				key string
+				id  string
+			}{key: k, id: id})
+		}
+	}
+	m.mu.RUnlock()
+
+	for _, item := range toRemove {
+		_ = m.RequestCancel(item.id)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	prefix := requestID + "|"
-	for k, id := range m.requestIndex {
-		if !strings.HasPrefix(k, prefix) {
-			continue
-		}
-		delete(m.agents, id)
-		delete(m.requestIndex, k)
+	for _, item := range toRemove {
+		delete(m.agents, item.id)
+		delete(m.requestIndex, item.key)
 	}
 }
 

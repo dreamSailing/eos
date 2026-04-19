@@ -5,7 +5,6 @@ package core
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"errors"
@@ -726,9 +725,15 @@ func (r *Runtime) SetForegroundWorkspace(path string) error {
 }
 
 func (r *Runtime) ListWorkspaceSessions(workspacePath string) ([]SessionMeta, error) {
-	return withRuntimeWorkspace(r, workspacePath, func(_ string) ([]SessionMeta, error) {
-		return r.listCurrentWorkspaceSessions(), nil
-	})
+	resolved, err := resolveWorkspacePath(workspacePath)
+	if err != nil {
+		return nil, err
+	}
+	items, err := r.core.ListSessionsForWorkspaceRoot(resolved)
+	if err != nil {
+		return nil, err
+	}
+	return sessionMetasFromPersisted(items), nil
 }
 
 func (r *Runtime) CreateWorkspaceSession(workspacePath, title string, messages []SessionMessage) (SessionMeta, error) {
@@ -772,15 +777,23 @@ func (r *Runtime) SaveWorkspaceSessionMessages(workspacePath, id string, message
 }
 
 func (r *Runtime) LoadWorkspaceSessionMessages(workspacePath, id string) ([]SessionMessage, error) {
-	return withRuntimeWorkspace(r, workspacePath, func(_ string) ([]SessionMessage, error) {
-		return r.LoadSessionMessages(id)
-	})
+	resolved, err := resolveWorkspacePath(workspacePath)
+	if err != nil {
+		return nil, err
+	}
+	items, err := r.core.LoadSessionMessagesForWorkspaceRoot(resolved, strings.TrimSpace(id))
+	if err != nil {
+		return nil, err
+	}
+	return sessionMessagesFromBridge(items), nil
 }
 
 func (r *Runtime) GetWorkspaceCurrentSession(workspacePath string) (string, error) {
-	return withRuntimeWorkspace(r, workspacePath, func(_ string) (string, error) {
-		return r.CurrentSessionID()
-	})
+	resolved, err := resolveWorkspacePath(workspacePath)
+	if err != nil {
+		return "", err
+	}
+	return r.core.CurrentSessionIDForWorkspaceRoot(resolved)
 }
 
 func (r *Runtime) SetWorkspaceCurrentSession(workspacePath, id string) error {
@@ -865,10 +878,13 @@ func (r *Runtime) RuntimeSnapshot() RuntimeSnapshot {
 		for _, meta := range metas {
 			messageCount := meta.Rounds
 			var messages []SessionMessage
-			if loaded, err := r.LoadWorkspaceSessionMessages(workspace.Path, meta.ID); err == nil {
-				messages = loaded
-				if len(loaded) > 0 {
-					messageCount = len(loaded)
+			isActiveSession := pathsEqual(workspace.Path, foreground) && strings.TrimSpace(currentID) == strings.TrimSpace(meta.ID)
+			if isActiveSession {
+				if loaded, err := r.LoadWorkspaceSessionMessages(workspace.Path, meta.ID); err == nil {
+					messages = loaded
+					if len(loaded) > 0 {
+						messageCount = len(loaded)
+					}
 				}
 			}
 			snapshot := SessionSnapshot{
@@ -879,7 +895,7 @@ func (r *Runtime) RuntimeSnapshot() RuntimeSnapshot {
 				UpdatedAt:      meta.SavedAt,
 				MessageCount:   messageCount,
 				PendingPrompts: 0,
-				Active:         pathsEqual(workspace.Path, foreground) && strings.TrimSpace(currentID) == strings.TrimSpace(meta.ID),
+				Active:         isActiveSession,
 			}
 			out.Sessions = append(out.Sessions, snapshot)
 			if snapshot.Active {
@@ -1715,6 +1731,10 @@ func (r *Runtime) listCurrentWorkspaceSessions() []SessionMeta {
 	if err != nil {
 		return nil
 	}
+	return sessionMetasFromPersisted(items)
+}
+
+func sessionMetasFromPersisted(items []bridge.PersistedSessionMeta) []SessionMeta {
 	out := make([]SessionMeta, 0, len(items))
 	for _, it := range items {
 		out = append(out, SessionMeta{
@@ -1726,6 +1746,24 @@ func (r *Runtime) listCurrentWorkspaceSessions() []SessionMeta {
 			Title:   it.Title,
 			Rounds:  it.Rounds,
 			Tokens:  it.Tokens,
+		})
+	}
+	return out
+}
+
+func sessionMessagesFromBridge(items []bridge.SessionTranscriptMessage) []SessionMessage {
+	out := make([]SessionMessage, 0, len(items))
+	for _, item := range items {
+		var ts time.Time
+		if item.Timestamp > 0 {
+			ts = time.Unix(item.Timestamp, 0)
+		}
+		out = append(out, SessionMessage{
+			Role:       item.Role,
+			Type:       item.Type,
+			Content:    item.Content,
+			Time:       ts,
+			ImagePaths: append([]string{}, item.ImagePaths...),
 		})
 	}
 	return out

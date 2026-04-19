@@ -143,7 +143,7 @@ func (w *WelcomeCard) View() string {
 	content.WriteString("\n")
 	content.WriteString(infoStyle.Render("?  显示帮助   F2 切换模式   /  命令提示"))
 	content.WriteString("\n")
-	content.WriteString(infoStyle.Render("Enter 发送   Esc 清空      Ctrl+C 退出"))
+	content.WriteString(infoStyle.Render("Enter 发送   Esc 停止      Ctrl+C 退出"))
 
 	return borderStyle.Render(content.String())
 }

@@ -8,6 +8,7 @@ package tools
 
 import (
 	"context"
+	"os/exec"
 	"os"
 	"path/filepath"
 	"testing"
@@ -38,6 +39,9 @@ func TestGlob_FindFiles(t *testing.T) {
 }
 
 func TestBash_RunEcho(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skipf("bash not available on PATH: %v", err)
+	}
 	m := NewManager()
 	ctx := WithAllowedTools(context.Background(), map[string]bool{"bash": true})
 	r := m.execStructured(ctx, ToolCall{Tool: "bash", Parameters: map[string]interface{}{"command": "echo test"}})

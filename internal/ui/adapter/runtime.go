@@ -54,6 +54,13 @@ func (a *RuntimeAdapter) Invoke(ctx context.Context, query, executionMode string
 	return msg.Content, nil
 }
 
+func (a *RuntimeAdapter) CancelForegroundRequest() bool {
+	if a == nil || a.core == nil {
+		return false
+	}
+	return a.core.CancelForegroundRequest()
+}
+
 // GetContext 获取会话上下文管理器
 func (a *RuntimeAdapter) GetContext() *session.ContextManager {
 	return a.core.GetContext()

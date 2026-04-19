@@ -5,7 +5,6 @@ package cli
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"fmt"
 	"log/slog"
@@ -32,7 +31,7 @@ var (
 	cliSkipPermissions bool
 )
 
-// rootLang 根据环境变量 VB_LANG 返回界面语言。
+// rootLang 根据环境变量 EOS_LANG 返回界面语言。
 // 当前仅支持 zh/en，默认返回 zh。
 func rootLang() string {
 	lang := os.Getenv("EOS_LANG")

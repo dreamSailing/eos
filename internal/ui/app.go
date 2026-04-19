@@ -89,6 +89,8 @@ type AppModel struct {
 
 	trustPendingPath   string
 	trustPendingAction string
+	activeCancel       context.CancelFunc
+	stopRequested      bool
 }
 
 type copyHit struct {
@@ -1107,7 +1109,7 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 		return tea.Quit
 	case "/init":
 		m.shell.ClearInput()
-		return m.initVBMD()
+		return m.initEOSMD()
 	case "/history":
 		m.activeView = "panel"
 		m.activePanel = "versions"
@@ -1212,7 +1214,7 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 	return nil
 }
 
-func (m *AppModel) initVBMD() tea.Cmd {
+func (m *AppModel) initEOSMD() tea.Cmd {
 	root := ""
 	if m != nil && m.adapter != nil && m.adapter.GetCore() != nil {
 		root = strings.TrimSpace(m.adapter.GetCore().GetActiveRoot())
@@ -1598,6 +1600,9 @@ func (m *AppModel) sendMessage() tea.Cmd {
 	// 记录AI开始时间
 	m.currentAIStartTime = time.Now()
 	m.currentAITokens = 0
+	m.setActiveCancel(func() {
+		m.adapter.CancelForegroundRequest()
+	})
 
 	// 使用新的消息渲染器显示用户消息
 	imagePaths := m.pendingImagePaths
@@ -1631,6 +1636,9 @@ func (m *AppModel) sendMessage() tea.Cmd {
 		ctx := context.Background()
 		content, err := m.adapter.Invoke(ctx, expanded, m.state.ExecutionMode, imagePaths)
 		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "context canceled") {
+				return nil
+			}
 			return ErrorMsg{Err: err}
 		}
 		return InvokeDoneMsg{Content: content}
@@ -1644,15 +1652,19 @@ func (m *AppModel) sendBashCommand() tea.Cmd {
 	m.shell.ClearInput()
 	m.state.Processing = true
 	m.shell.SetProcessing(true)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	m.setActiveCancel(cancel)
 
 	id := fmt.Sprintf("bash:%d", time.Now().UnixNano())
 	m.handleToolCall(ToolCallMsg{ID: id, Name: "bash", Params: map[string]any{"command": value}})
 
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		out, err := m.adapter.GetCore().ExecuteBash(ctx, value)
 		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "context canceled") {
+				return ToolResultMsg{ID: id, Status: "canceled"}
+			}
 			msg := strings.ReplaceAll(err.Error(), "\r\n", "\n")
 			msg = strings.ReplaceAll(msg, "\r", "")
 			return ToolResultMsg{ID: id, Status: "error", Output: msg}
@@ -1792,6 +1804,44 @@ func (m *AppModel) cancelProcessingUI() {
 	m.state.Thinking = false
 	m.shell.SetThinking(false, "")
 	m.toolInflight = make(map[string]toolTrack)
+	m.activeCancel = nil
+	m.stopRequested = false
+}
+
+func (m *AppModel) setActiveCancel(cancel context.CancelFunc) {
+	m.activeCancel = cancel
+	m.stopRequested = false
+}
+
+func (m *AppModel) cancelActiveRequest() bool {
+	if m == nil || m.activeCancel == nil || m.stopRequested {
+		return false
+	}
+	cancel := m.activeCancel
+	m.activeCancel = nil
+	m.stopRequested = true
+	cancel()
+	return true
+}
+
+func (m *AppModel) markInflightToolsCanceled(output string) {
+	if len(m.toolInflight) == 0 {
+		return
+	}
+	for _, track := range m.toolInflight {
+		if track.idx < 0 || track.idx >= len(m.history) {
+			continue
+		}
+		e := m.history[track.idx]
+		e.toolStatus = "canceled"
+		e.toolSuccess = false
+		if strings.TrimSpace(e.toolOutput) == "" {
+			e.toolOutput = output
+		}
+		e.duration = time.Since(track.started)
+		m.history[track.idx] = e
+	}
+	m.rebuildHistoryContent()
 }
 
 func (m *AppModel) renderHistoryEntry(e historyEntry) string {
@@ -2059,9 +2109,12 @@ func (m *AppModel) handleGlobalKey(msg tea.KeyMsg) tea.Cmd {
 
 	case "esc":
 		if m.state.Processing {
-			m.cancelProcessingUI()
-			m.appendSystem(i18n.T("toast.stopped", m.state.Language), "warning")
-			return func() tea.Msg { return nil }
+			if m.cancelActiveRequest() {
+				m.markInflightToolsCanceled(i18n.T("toast.stopped", m.state.Language))
+				m.cancelProcessingUI()
+				m.appendSystem(i18n.T("toast.stopped", m.state.Language), "warning")
+				return func() tea.Msg { return nil }
+			}
 		}
 		m.shell.HideHints()
 		m.shell.ClearInput()
@@ -2219,6 +2272,15 @@ func (m *AppModel) handleToolResult(msg ToolResultMsg) tea.Cmd {
 		if strings.EqualFold(name, "bash") {
 			m.state.Processing = false
 			m.shell.SetProcessing(false)
+			m.activeCancel = nil
+			m.stopRequested = false
+		}
+		return nil
+	}
+	if msg.Status == "canceled" {
+		if strings.EqualFold(name, "bash") {
+			m.activeCancel = nil
+			m.stopRequested = false
 		}
 		return nil
 	}
@@ -2226,6 +2288,8 @@ func (m *AppModel) handleToolResult(msg ToolResultMsg) tea.Cmd {
 	if strings.EqualFold(name, "bash") {
 		m.state.Processing = false
 		m.shell.SetProcessing(false)
+		m.activeCancel = nil
+		m.stopRequested = false
 	}
 	return nil
 }

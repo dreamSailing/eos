@@ -49,3 +49,21 @@ func TestSubAgentManager_RequestContextReuseAndClear(t *testing.T) {
 		t.Fatalf("expected new id after clear, got %q", c3ID)
 	}
 }
+
+func TestSubAgentManager_ClearRequestCancelsRunningAgents(t *testing.T) {
+	m := NewSubAgentManager()
+	sub := m.GetOrCreateRequestContext("rid", SubAgentTypeSeniorDev, context.Background(), []*schema.Message{schema.UserMessage("hello")})
+	if sub == nil {
+		t.Fatalf("expected context, got nil")
+	}
+	cancelled := false
+	if err := m.MarkRunning(sub.id, "task", func() { cancelled = true }); err != nil {
+		t.Fatalf("MarkRunning error: %v", err)
+	}
+
+	m.ClearRequest("rid")
+
+	if !cancelled {
+		t.Fatalf("expected ClearRequest to cancel running agent")
+	}
+}

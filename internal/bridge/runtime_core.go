@@ -115,6 +115,10 @@ type RuntimeCore struct {
 	tokenMu      sync.RWMutex
 	tokenBudget  *TokenBudget // Token budget management
 
+	foregroundMu      sync.Mutex
+	foregroundTraceID string
+	foregroundCancel  context.CancelFunc
+
 	metricsMu   sync.Mutex
 	inflightReq map[string]*RequestMetric
 	reqHistory  []RequestMetric
@@ -456,6 +460,11 @@ type hookEventReq struct {
 
 type reloadReq struct {
 	resCh chan error
+}
+
+type cancelForegroundReq struct {
+	traceID string
+	resCh   chan bool
 }
 
 // NewRuntimeCore 创建运行时核心实例

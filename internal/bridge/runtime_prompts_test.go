@@ -105,6 +105,39 @@ func TestPromptPermissionPlanDeniesInsteadOfPrompting(t *testing.T) {
 	}
 }
 
+func TestRuntimeCore_CancelForegroundRequestCancelsAndClears(t *testing.T) {
+	rc := &RuntimeCore{
+		reqCh: make(chan any, 1),
+	}
+	done := make(chan string, 1)
+	go func() {
+		req := (<-rc.reqCh).(cancelForegroundReq)
+		done <- req.traceID
+		req.resCh <- true
+	}()
+
+	cancelled := false
+	rc.setForegroundRequest("trace-1", func() { cancelled = true })
+
+	if ok := rc.CancelForegroundRequest(); !ok {
+		t.Fatalf("CancelForegroundRequest() = false, want true")
+	}
+	if !cancelled {
+		t.Fatalf("expected foreground cancel func to be called")
+	}
+	select {
+	case got := <-done:
+		if got != "trace-1" {
+			t.Fatalf("traceID=%q, want trace-1", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("expected cancel request to reach runtime loop")
+	}
+	if ok := rc.CancelForegroundRequest(); ok {
+		t.Fatalf("second CancelForegroundRequest() = true, want false")
+	}
+}
+
 func TestUserConfirmPromptStillAsksUserInAutoMode(t *testing.T) {
 	rc := &RuntimeCore{
 		securityMgr: NewSecurityManager(),

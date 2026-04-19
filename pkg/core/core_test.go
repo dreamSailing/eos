@@ -5,7 +5,6 @@ package core
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"os"
@@ -520,6 +519,145 @@ func TestRuntimeWorkspaceSessionOpsStayScoped(t *testing.T) {
 	}
 	if len(sessionsB) != 1 || sessionsB[0].ID != metaB.ID {
 		t.Fatalf("workspaceB sessions=%+v, want only %q", sessionsB, metaB.ID)
+	}
+}
+
+func TestRuntimeWorkspaceReadsDoNotChangeActiveWorkspace(t *testing.T) {
+	configureCoreWorkspaceTestEnv(t)
+	rt := NewRuntime()
+
+	workspaceA := t.TempDir()
+	workspaceB := t.TempDir()
+
+	metaA, err := rt.CreateWorkspaceSession(workspaceA, "thread-a", []SessionMessage{
+		{Role: "user", Type: "text", Content: "hello a"},
+		{Role: "assistant", Type: "text", Content: "reply a"},
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkspaceSession(workspaceA) error = %v", err)
+	}
+	metaB, err := rt.CreateWorkspaceSession(workspaceB, "thread-b", []SessionMessage{
+		{Role: "user", Type: "text", Content: "hello b"},
+		{Role: "assistant", Type: "text", Content: "reply b"},
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkspaceSession(workspaceB) error = %v", err)
+	}
+	if err := rt.SetForegroundWorkspace(workspaceA); err != nil {
+		t.Fatalf("SetForegroundWorkspace(workspaceA) error = %v", err)
+	}
+	before := normalizeWorkspacePath(rt.core.GetActiveRoot())
+	if before != normalizeWorkspacePath(workspaceA) {
+		t.Fatalf("active root before reads = %q, want %q", before, normalizeWorkspacePath(workspaceA))
+	}
+
+	if _, err := rt.ListWorkspaceSessions(workspaceB); err != nil {
+		t.Fatalf("ListWorkspaceSessions(workspaceB) error = %v", err)
+	}
+	if got := normalizeWorkspacePath(rt.core.GetActiveRoot()); got != before {
+		t.Fatalf("active root after ListWorkspaceSessions = %q, want %q", got, before)
+	}
+
+	if currentID, err := rt.GetWorkspaceCurrentSession(workspaceB); err != nil {
+		t.Fatalf("GetWorkspaceCurrentSession(workspaceB) error = %v", err)
+	} else if currentID != metaB.ID {
+		t.Fatalf("GetWorkspaceCurrentSession(workspaceB)=%q, want %q", currentID, metaB.ID)
+	}
+	if got := normalizeWorkspacePath(rt.core.GetActiveRoot()); got != before {
+		t.Fatalf("active root after GetWorkspaceCurrentSession = %q, want %q", got, before)
+	}
+
+	if messages, err := rt.LoadWorkspaceSessionMessages(workspaceB, metaB.ID); err != nil {
+		t.Fatalf("LoadWorkspaceSessionMessages(workspaceB) error = %v", err)
+	} else if len(messages) != 2 {
+		t.Fatalf("len(LoadWorkspaceSessionMessages(workspaceB))=%d, want 2", len(messages))
+	}
+	if got := normalizeWorkspacePath(rt.core.GetActiveRoot()); got != before {
+		t.Fatalf("active root after LoadWorkspaceSessionMessages = %q, want %q", got, before)
+	}
+
+	if resolved, err := rt.ResolveSessionWorkspace(metaB.ID); err != nil {
+		t.Fatalf("ResolveSessionWorkspace(metaB) error = %v", err)
+	} else if filepath.Clean(resolved) != filepath.Clean(workspaceB) {
+		t.Fatalf("ResolveSessionWorkspace(metaB)=%q, want %q", resolved, workspaceB)
+	}
+	if got := normalizeWorkspacePath(rt.core.GetActiveRoot()); got != before {
+		t.Fatalf("active root after ResolveSessionWorkspace = %q, want %q", got, before)
+	}
+
+	snapshot := rt.RuntimeSnapshot()
+	if got := normalizeWorkspacePath(rt.core.GetActiveRoot()); got != before {
+		t.Fatalf("active root after RuntimeSnapshot = %q, want %q", got, before)
+	}
+	if snapshot.CurrentSession == nil || snapshot.CurrentSession.ID != metaA.ID {
+		t.Fatalf("snapshot.CurrentSession=%+v, want %q", snapshot.CurrentSession, metaA.ID)
+	}
+}
+
+func TestRuntimeSnapshotLoadsOnlyForegroundMessages(t *testing.T) {
+	configureCoreWorkspaceTestEnv(t)
+	rt := NewRuntime()
+
+	workspaceA := t.TempDir()
+	workspaceB := t.TempDir()
+	messagesA := []SessionMessage{
+		{Role: "user", Type: "text", Content: "hello a"},
+		{Role: "assistant", Type: "text", Content: "reply a"},
+	}
+	messagesB := []SessionMessage{
+		{Role: "user", Type: "text", Content: "hello b"},
+		{Role: "assistant", Type: "text", Content: "reply b-1"},
+		{Role: "assistant", Type: "text", Content: "reply b-2"},
+	}
+
+	metaA, err := rt.CreateWorkspaceSession(workspaceA, "thread-a", messagesA)
+	if err != nil {
+		t.Fatalf("CreateWorkspaceSession(workspaceA) error = %v", err)
+	}
+	metaB, err := rt.CreateWorkspaceSession(workspaceB, "thread-b", messagesB)
+	if err != nil {
+		t.Fatalf("CreateWorkspaceSession(workspaceB) error = %v", err)
+	}
+	if err := rt.SetForegroundWorkspace(workspaceA); err != nil {
+		t.Fatalf("SetForegroundWorkspace(workspaceA) error = %v", err)
+	}
+
+	snapshot := rt.RuntimeSnapshot()
+	if got := filepath.Clean(snapshot.ForegroundWorkspace); got != filepath.Clean(workspaceA) {
+		t.Fatalf("snapshot.ForegroundWorkspace=%q, want %q", got, workspaceA)
+	}
+	if snapshot.CurrentSession == nil || snapshot.CurrentSession.ID != metaA.ID {
+		t.Fatalf("snapshot.CurrentSession=%+v, want %q", snapshot.CurrentSession, metaA.ID)
+	}
+	if len(snapshot.Messages) != len(messagesA) {
+		t.Fatalf("len(snapshot.Messages)=%d, want %d", len(snapshot.Messages), len(messagesA))
+	}
+
+	var sessionA *SessionSnapshot
+	var sessionB *SessionSnapshot
+	for index := range snapshot.Sessions {
+		item := &snapshot.Sessions[index]
+		switch item.ID {
+		case metaA.ID:
+			sessionA = item
+		case metaB.ID:
+			sessionB = item
+		}
+	}
+	if sessionA == nil || sessionB == nil {
+		t.Fatalf("snapshot sessions missing foreground/background entries: %+v", snapshot.Sessions)
+	}
+	if !sessionA.Active {
+		t.Fatal("foreground session should be active in snapshot")
+	}
+	if sessionA.MessageCount != len(messagesA) {
+		t.Fatalf("foreground MessageCount=%d, want %d", sessionA.MessageCount, len(messagesA))
+	}
+	if sessionB.Active {
+		t.Fatal("background session should not be active in snapshot")
+	}
+	if sessionB.MessageCount != metaB.Rounds {
+		t.Fatalf("background MessageCount=%d, want metadata rounds %d", sessionB.MessageCount, metaB.Rounds)
 	}
 }
 

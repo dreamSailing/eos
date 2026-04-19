@@ -1,12 +1,14 @@
 package runtime
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/cloudwego/eino/schema"
 	"github.com/dreamSailing/eos/internal/ai"
 	"github.com/dreamSailing/eos/internal/session"
-	"github.com/cloudwego/eino/schema"
 )
 
 func TestBuildHistoryMessages_MergesLeadingSystemMessages(t *testing.T) {
@@ -58,5 +60,21 @@ func TestBuildHistoryMessages_PreservesTrailingSystemMessages(t *testing.T) {
 	}
 	if msgs[2].Role != schema.System || strings.TrimSpace(msgs[2].Content) != "STOP_HOOK: retry" {
 		t.Fatalf("unexpected trailing system message: role=%v content=%q", msgs[2].Role, msgs[2].Content)
+	}
+}
+
+func TestBuildProjectPromptAdditionsUsesEOSGuideNaming(t *testing.T) {
+	dir := t.TempDir()
+	legacyGuideName := "VB" + ".md"
+	if err := os.WriteFile(filepath.Join(dir, "EOS.md"), []byte("# EOS.md\n\nRules"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	prompt := BuildProjectPromptAdditions(dir)
+	if !strings.Contains(prompt, "EOS.md") {
+		t.Fatalf("expected prompt to mention EOS.md, got %q", prompt)
+	}
+	if strings.Contains(prompt, legacyGuideName) {
+		t.Fatalf("expected prompt to drop the legacy guide naming, got %q", prompt)
 	}
 }

@@ -5,7 +5,6 @@ package runtime
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"strconv"
 	"strings"
@@ -20,13 +19,13 @@ const SystemPromptDynamicBoundary = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__"
 
 // PromptConfig 系统提示词配置
 type PromptConfig struct {
-	Language         string            // 语言偏好，如 "中文"
-	OutputStyle      string            // 输出风格
-	EnabledTools     map[string]bool   // 启用的工具
-	MCPServers       []string          // MCP 服务器列表
-	WorkingDirectory string            // 工作目录
-	SessionStartTime string            // 会话开始时间
-	GitEnabled       bool              // 是否启用 Git
+	Language         string          // 语言偏好，如 "中文"
+	OutputStyle      string          // 输出风格
+	EnabledTools     map[string]bool // 启用的工具
+	MCPServers       []string        // MCP 服务器列表
+	WorkingDirectory string          // 工作目录
+	SessionStartTime string          // 会话开始时间
+	GitEnabled       bool            // 是否启用 Git
 }
 
 // GetSystemPrompt 返回完整的系统提示词（中文版）
@@ -115,7 +114,7 @@ func getExecutingActionsSection() string {
 
 仔细考虑行动的可逆性和影响范围。一般来说，你可以自由地进行本地、可逆的操作，如编辑文件或运行测试。但对于难以逆转的操作、影响本地环境以外共享系统的操作，或可能有风险或破坏性的操作，先检查用户再进行。暂停确认的成本很低，而不需要操作的成本（丢失工作、意外消息发送、删除分支）可能非常高。对于这类操作，考虑上下文、行动和用户指令，默认情况下透明沟通行动并在继续之前要求确认。如果明确要求更自主地操作，可以不确认，但仍需注意风险。
 
-用户一次批准操作（如 git push）并不意味他们批准所有上下文中的该操作。除非在 VB.md 等持久指令中预先授权，否则始终先确认。授权范围仅限于指定范围，不超过。
+用户一次批准操作（如 git push）并不意味他们批准所有上下文中的该操作。除非在 EOS.md 等持久指令中预先授权，否则始终先确认。授权范围仅限于指定范围，不超过。
 
 **需要确认的操作类型**：
 - 破坏性操作：删除文件/分支、删除数据库表、终止进程、rm -rf、覆盖未提交的更改

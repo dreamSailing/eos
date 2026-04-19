@@ -5,7 +5,6 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"encoding/json"
@@ -65,10 +64,7 @@ func (rc *RuntimeCore) AutoSaveSession(ctx context.Context) {
 
 func (rc *RuntimeCore) sessionsDir() string {
 	root := rc.workingRoot()
-	if strings.TrimSpace(root) == "" {
-		return filepath.Join(".eos", "sessions")
-	}
-	return filepath.Join(root, ".eos", "sessions")
+	return sessionsDirForRoot(root)
 }
 
 func (rc *RuntimeCore) SessionsDir() string {
@@ -77,10 +73,7 @@ func (rc *RuntimeCore) SessionsDir() string {
 
 func (rc *RuntimeCore) sessionStatePath() string {
 	root := rc.workingRoot()
-	if strings.TrimSpace(root) == "" {
-		return filepath.Join(".eos", "session_state.json")
-	}
-	return filepath.Join(root, ".eos", "session_state.json")
+	return sessionStatePathForRoot(root)
 }
 
 func (rc *RuntimeCore) SaveSession(ctx context.Context, id string) (string, error) {
@@ -177,67 +170,11 @@ func (rc *RuntimeCore) SaveSessionMessages(ctx context.Context, id string, messa
 }
 
 func (rc *RuntimeCore) ListSessions() ([]PersistedSessionMeta, error) {
-	dir := rc.sessionsDir()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	out := make([]PersistedSessionMeta, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if !strings.HasSuffix(name, ".json") {
-			continue
-		}
-		p := filepath.Join(dir, name)
-		b, err := os.ReadFile(p)
-		if err != nil {
-			continue
-		}
-		var ps PersistedSession
-		if err := json.Unmarshal(b, &ps); err != nil {
-			continue
-		}
-		if strings.TrimSpace(ps.ID) == "" {
-			ps.ID = strings.TrimSuffix(name, ".json")
-		}
-		out = append(out, PersistedSessionMeta{
-			ID:      ps.ID,
-			SavedAt: ps.SavedAt,
-			Model:   ps.Model,
-			Summary: strings.TrimSpace(ps.Summary),
-			Preview: bestEffortPersistedPreview(ps),
-			Title:   strings.TrimSpace(ps.Title),
-			Rounds:  ps.Rounds,
-			Tokens:  ps.Tokens,
-		})
-	}
-
-	sort.Slice(out, func(i, j int) bool { return out[i].SavedAt > out[j].SavedAt })
-	return out, nil
+	return listSessionsInDir(rc.sessionsDir())
 }
 
 func (rc *RuntimeCore) LoadSessionWorkspaceState() (SessionWorkspaceState, error) {
-	path := rc.sessionStatePath()
-	b, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return SessionWorkspaceState{}, nil
-		}
-		return SessionWorkspaceState{}, err
-	}
-	var state SessionWorkspaceState
-	if err := json.Unmarshal(b, &state); err != nil {
-		return SessionWorkspaceState{}, err
-	}
-	state.CurrentSessionID = strings.TrimSpace(state.CurrentSessionID)
-	return state, nil
+	return loadSessionWorkspaceStateFromPath(rc.sessionStatePath())
 }
 
 func (rc *RuntimeCore) SaveSessionWorkspaceState(state SessionWorkspaceState) error {
@@ -351,21 +288,7 @@ func (rc *RuntimeCore) LoadSessionMessages(id string) ([]SessionTranscriptMessag
 	if err != nil {
 		return nil, err
 	}
-	if len(ps.Transcript) > 0 {
-		return copySessionTranscript(ps.Transcript), nil
-	}
-	preview := sessionPreviewFromState(ps.Context)
-	out := make([]SessionTranscriptMessage, 0, len(preview))
-	for _, msg := range preview {
-		role := normalizedTranscriptRole(msg.Role)
-		out = append(out, SessionTranscriptMessage{
-			Role:       role,
-			Type:       role,
-			Content:    strings.TrimSpace(msg.Content),
-			ImagePaths: append([]string{}, msg.ImagePaths...),
-		})
-	}
-	return out, nil
+	return sessionMessagesFromPersisted(ps), nil
 }
 
 func (rc *RuntimeCore) UpdateSessionTitle(id, title string) error {
@@ -721,6 +644,38 @@ func (rc *RuntimeCore) loadSessionFromDisk(id string) (PersistedSession, error) 
 	return loadSessionFromDiskInDir(rc.sessionsDir(), id)
 }
 
+func sessionsDirForRoot(root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return filepath.Join(".eos", "sessions")
+	}
+	return filepath.Join(root, ".eos", "sessions")
+}
+
+func sessionStatePathForRoot(root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return filepath.Join(".eos", "session_state.json")
+	}
+	return filepath.Join(root, ".eos", "session_state.json")
+}
+
+func loadSessionWorkspaceStateFromPath(path string) (SessionWorkspaceState, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return SessionWorkspaceState{}, nil
+		}
+		return SessionWorkspaceState{}, err
+	}
+	var state SessionWorkspaceState
+	if err := json.Unmarshal(b, &state); err != nil {
+		return SessionWorkspaceState{}, err
+	}
+	state.CurrentSessionID = strings.TrimSpace(state.CurrentSessionID)
+	return state, nil
+}
+
 func listSessionsInDir(dir string) ([]PersistedSessionMeta, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -739,31 +694,73 @@ func listSessionsInDir(dir string) ([]PersistedSessionMeta, error) {
 		if err != nil {
 			continue
 		}
-		var meta struct {
-			ID      string `json:"id"`
-			SavedAt int64  `json:"saved_at"`
-			Model   string `json:"model"`
-			Summary string `json:"summary"`
-			Rounds  int    `json:"rounds"`
-			Tokens  int    `json:"tokens"`
-		}
-		if err := json.Unmarshal(b, &meta); err != nil {
+		var ps PersistedSession
+		if err := json.Unmarshal(b, &ps); err != nil {
 			continue
 		}
-		if meta.ID == "" {
-			meta.ID = strings.TrimSuffix(e.Name(), ".json")
+		if strings.TrimSpace(ps.ID) == "" {
+			ps.ID = strings.TrimSuffix(e.Name(), ".json")
 		}
 		out = append(out, PersistedSessionMeta{
-			ID:      meta.ID,
-			SavedAt: meta.SavedAt,
-			Model:   meta.Model,
-			Summary: meta.Summary,
-			Rounds:  meta.Rounds,
-			Tokens:  meta.Tokens,
+			ID:      ps.ID,
+			SavedAt: ps.SavedAt,
+			Model:   ps.Model,
+			Summary: strings.TrimSpace(ps.Summary),
+			Preview: bestEffortPersistedPreview(ps),
+			Title:   strings.TrimSpace(ps.Title),
+			Rounds:  ps.Rounds,
+			Tokens:  ps.Tokens,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].SavedAt > out[j].SavedAt })
 	return out, nil
+}
+
+func sessionMessagesFromPersisted(ps PersistedSession) []SessionTranscriptMessage {
+	if len(ps.Transcript) > 0 {
+		return copySessionTranscript(ps.Transcript)
+	}
+	preview := sessionPreviewFromState(ps.Context)
+	out := make([]SessionTranscriptMessage, 0, len(preview))
+	for _, msg := range preview {
+		role := normalizedTranscriptRole(msg.Role)
+		out = append(out, SessionTranscriptMessage{
+			Role:       role,
+			Type:       role,
+			Content:    strings.TrimSpace(msg.Content),
+			ImagePaths: append([]string{}, msg.ImagePaths...),
+		})
+	}
+	return out
+}
+
+func (rc *RuntimeCore) ListSessionsForWorkspaceRoot(root string) ([]PersistedSessionMeta, error) {
+	return listSessionsInDir(sessionsDirForRoot(root))
+}
+
+func (rc *RuntimeCore) CurrentSessionIDForWorkspaceRoot(root string) (string, error) {
+	state, err := loadSessionWorkspaceStateFromPath(sessionStatePathForRoot(root))
+	if err != nil {
+		return "", err
+	}
+	if state.CurrentSessionID == "" {
+		return "", nil
+	}
+	if _, err := loadSessionFromDiskInDir(sessionsDirForRoot(root), state.CurrentSessionID); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return state.CurrentSessionID, nil
+}
+
+func (rc *RuntimeCore) LoadSessionMessagesForWorkspaceRoot(root, id string) ([]SessionTranscriptMessage, error) {
+	ps, err := loadSessionFromDiskInDir(sessionsDirForRoot(root), id)
+	if err != nil {
+		return nil, err
+	}
+	return sessionMessagesFromPersisted(ps), nil
 }
 
 func cleanupOldSessions(dir string, keep int) error {

@@ -8,6 +8,7 @@ package tools
 
 import (
 	"context"
+	"os/exec"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,9 @@ import (
 )
 
 func TestSkillBangCommandPreprocess(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skipf("bash not available on PATH: %v", err)
+	}
 	root := t.TempDir()
 	skillDir := filepath.Join(root, "bang-skill")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {

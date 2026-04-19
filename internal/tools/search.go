@@ -5,7 +5,6 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
@@ -101,7 +100,7 @@ func (m *Manager) searchGlob(_ context.Context, root, relRoot, pattern string, m
 		".idea": true, ".vscode": true, "vendor": true,
 	}
 
-	// Load .vbignore patterns
+	// Load .eosignore patterns.
 	di := NewDotIgnore(root)
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -115,7 +114,7 @@ func (m *Manager) searchGlob(_ context.Context, root, relRoot, pattern string, m
 			if defaultExcludeDirs[base] {
 				return filepath.SkipDir
 			}
-			// Check .vbignore for directories
+			// Check .eosignore for directories.
 			if di.Match(path) {
 				return filepath.SkipDir
 			}
@@ -152,7 +151,7 @@ func (m *Manager) searchGlob(_ context.Context, root, relRoot, pattern string, m
 			return nil
 		}
 
-		// Check .vbignore for files
+		// Check .eosignore for files.
 		if di.Match(path) {
 			return nil
 		}
@@ -196,6 +195,7 @@ func (m *Manager) searchRegex(_ context.Context, root, relRoot, pattern string, 
 		MaxFileSize:  2 * 1024 * 1024,
 	}
 	res, trunc, err := search.DirRegex(pattern, opts)
+	res = filterIgnoredResults(root, res)
 	return searchResult("regex", relRoot, res, trunc, err)
 }
 
@@ -210,6 +210,7 @@ func (m *Manager) searchText(_ context.Context, root, relRoot, pattern string, _
 		MaxFileSize:     2 * 1024 * 1024,
 	}
 	res, trunc, err := search.DirText(pattern, opts)
+	res = filterIgnoredResults(root, res)
 	return searchResult("text", relRoot, res, trunc, err)
 }
 
@@ -234,6 +235,25 @@ func searchResult(mode, relRoot string, res []search.Result, trunc bool, err err
 			return ""
 		}()),
 	}
+}
+
+func filterIgnoredResults(root string, results []search.Result) []search.Result {
+	di := NewDotIgnore(root)
+	if len(di.Load()) == 0 || len(results) == 0 {
+		return results
+	}
+	filtered := make([]search.Result, 0, len(results))
+	for _, item := range results {
+		path := item.File
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(root, path)
+		}
+		if di.Match(path) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
 }
 
 func (m *Manager) searchCode(_ context.Context, root, relRoot, query string, k int) ToolResult {

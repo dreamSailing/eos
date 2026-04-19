@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -27,31 +28,7 @@ func NewNativeExecutor() Executor {
 }
 
 func (e *NativeExecutor) Execute(ctx context.Context, command string, workingDir string) (stdout, stderr string, err error) {
-	var cmd *exec.Cmd
-
-	if runtime.GOOS == "windows" {
-		psCmd := "[Console]::InputEncoding=[System.Text.UTF8Encoding]::new();" +
-			" [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();" +
-			" $OutputEncoding=[System.Text.UTF8Encoding]::new();" +
-			" chcp 65001 > $null;" +
-			" $ErrorActionPreference='SilentlyContinue'; " + command
-		cmd = exec.CommandContext(ctx, "powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
-	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-c", command)
-	}
-
-	if workingDir != "" {
-		cmd.Dir = workingDir
-	}
-	cmd.Env = envFromContext(ctx)
-
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
-	err = cmd.Run()
-	stdoutStr := stdoutBuf.String()
-	stderrStr := stderrBuf.String()
+	stdoutStr, stderrStr, _, err := executeNativeShellCommand(ctx, ShellTypeDefault, command, workingDir, "", nil)
 
 	if err != nil {
 		slog.Error("shell.native.execute.error", "component", utils.ComponentTool,
@@ -97,6 +74,95 @@ func (e *NativeExecutor) ExecuteDirect(ctx context.Context, name string, args []
 
 	err = cmd.Run()
 	return stdoutBuf.String(), stderrBuf.String(), err
+}
+
+func executeNativeShellCommand(ctx context.Context, shellType ShellType, command string, workingDir string, stdin string, extraEnv []string) (stdout, stderr string, exitCode int, err error) {
+	cmd, err := buildNativeShellCommand(ctx, shellType, command, workingDir)
+	if err != nil {
+		return "", "", 1, err
+	}
+
+	cmd.Env = mergeEnv(envFromContext(ctx), extraEnv)
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	err = cmd.Run()
+	stdoutStr := stdoutBuf.String()
+	stderrStr := stderrBuf.String()
+	exitCode = 0
+	if err != nil {
+		exitCode = 1
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			exitCode = ee.ExitCode()
+		}
+	}
+	if st := cmd.ProcessState; st != nil && exitCode == 0 {
+		exitCode = st.ExitCode()
+	}
+	if exitCode < 0 {
+		exitCode = 0
+	}
+	return stdoutStr, stderrStr, exitCode, err
+}
+
+func buildNativeShellCommand(ctx context.Context, shellType ShellType, command string, workingDir string) (*exec.Cmd, error) {
+	name, args, err := resolveShellCommand(shellType, command)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
+	if workingDir != "" {
+		cmd.Dir = workingDir
+	}
+	return cmd, nil
+}
+
+func resolveShellCommand(shellType ShellType, command string) (string, []string, error) {
+	switch shellType {
+	case ShellTypeBash:
+		bashPath, err := exec.LookPath("bash")
+		if err != nil {
+			if runtime.GOOS == "windows" {
+				return "", nil, fmt.Errorf("bash.exe not found; please install Git Bash, WSL bash, or add bash.exe to PATH")
+			}
+			return "", nil, fmt.Errorf("bash not found in PATH")
+		}
+		return bashPath, []string{"-lc", command}, nil
+	case ShellTypePowerShell:
+		name, args := resolvePowerShellCommand(command)
+		return name, args, nil
+	default:
+		if runtime.GOOS == "windows" {
+			name, args := resolvePowerShellCommand(withPowerShellUTF8Preamble(command))
+			return name, args, nil
+		}
+		return "sh", []string{"-c", command}, nil
+	}
+}
+
+func resolvePowerShellCommand(command string) (string, []string) {
+	psCmd := "pwsh"
+	args := []string{"-NoLogo", "-NoProfile", "-NonInteractive"}
+	if runtime.GOOS == "windows" {
+		psCmd = "powershell"
+		args = append(args, "-ExecutionPolicy", "Bypass")
+	}
+	args = append(args, "-Command", command)
+	return psCmd, args
+}
+
+func withPowerShellUTF8Preamble(command string) string {
+	return "[Console]::InputEncoding=[System.Text.UTF8Encoding]::new();" +
+		" [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();" +
+		" $OutputEncoding=[System.Text.UTF8Encoding]::new();" +
+		" chcp 65001 > $null;" +
+		" $ErrorActionPreference='SilentlyContinue'; " + command
 }
 
 type FallbackExecutor struct {

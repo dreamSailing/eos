@@ -8,6 +8,7 @@ package tools
 
 import (
 	"context"
+	"os/exec"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,6 +78,9 @@ func TestManager_ExecuteStructuredCacheAddsMarker(t *testing.T) {
 }
 
 func TestManager_ExecuteBashDirect_UsesWorkspaceRootFromContext(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skipf("bash not available on PATH: %v", err)
+	}
 	dir := t.TempDir()
 	m := NewManager()
 	out, err := m.ExecuteBashDirect(WithWorkspaceRoot(context.Background(), dir), "pwd")

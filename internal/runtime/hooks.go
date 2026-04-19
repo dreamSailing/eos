@@ -5,21 +5,20 @@ package runtime
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	stdhttp "net/http"
-	"io"
 	ai "github.com/dreamSailing/eos/internal/ai"
 	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/hooks"
 	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
 	"github.com/dreamSailing/eos/internal/tools"
 	"github.com/dreamSailing/eos/internal/tools/shell"
+	"io"
+	stdhttp "net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -113,14 +112,14 @@ func (hm *HookManager) SessionStart(ctx context.Context, source string, model st
 
 func (hm *HookManager) SessionEnd(ctx context.Context, reason string, durationMs int64) (hooks.Decision, error) {
 	return hm.runWithExtra(ctx, "SessionEnd", strings.TrimSpace(reason), nil, nil, map[string]any{
-		"reason":       strings.TrimSpace(reason),
-		"duration_ms":  durationMs,
+		"reason":      strings.TrimSpace(reason),
+		"duration_ms": durationMs,
 	})
 }
 
 func (hm *HookManager) StopFailure(ctx context.Context, reason string, lastAssistantMessage string) (hooks.Decision, error) {
 	return hm.runWithExtra(ctx, "StopFailure", strings.TrimSpace(reason), nil, nil, map[string]any{
-		"reason":                strings.TrimSpace(reason),
+		"reason":                 strings.TrimSpace(reason),
 		"last_assistant_message": strings.TrimSpace(lastAssistantMessage),
 	})
 }
@@ -134,9 +133,9 @@ func (hm *HookManager) SubagentStart(ctx context.Context, agentType string, task
 
 func (hm *HookManager) TaskCreated(ctx context.Context, taskID string, taskType string, description string) (hooks.Decision, error) {
 	return hm.runWithExtra(ctx, "TaskCreated", "", nil, nil, map[string]any{
-		"task_id":      strings.TrimSpace(taskID),
-		"task_type":    strings.TrimSpace(taskType),
-		"description":  strings.TrimSpace(description),
+		"task_id":     strings.TrimSpace(taskID),
+		"task_type":   strings.TrimSpace(taskType),
+		"description": strings.TrimSpace(description),
 	})
 }
 
@@ -150,15 +149,15 @@ func (hm *HookManager) Elicitation(ctx context.Context, elicitationType string, 
 
 func (hm *HookManager) ElicitationResult(ctx context.Context, elicitationType string, selectedOption string, responseText string) (hooks.Decision, error) {
 	return hm.runWithExtra(ctx, "ElicitationResult", strings.TrimSpace(elicitationType), nil, nil, map[string]any{
-		"elicitation_type":  strings.TrimSpace(elicitationType),
-		"selected_option":   strings.TrimSpace(selectedOption),
-		"response_text":     strings.TrimSpace(responseText),
+		"elicitation_type": strings.TrimSpace(elicitationType),
+		"selected_option":  strings.TrimSpace(selectedOption),
+		"response_text":    strings.TrimSpace(responseText),
 	})
 }
 
 func (hm *HookManager) InstructionsLoaded(ctx context.Context, source string, instructionCount int) (hooks.Decision, error) {
 	return hm.runWithExtra(ctx, "InstructionsLoaded", strings.TrimSpace(source), nil, nil, map[string]any{
-		"source":           strings.TrimSpace(source),
+		"source":            strings.TrimSpace(source),
 		"instruction_count": instructionCount,
 	})
 }
@@ -1176,9 +1175,9 @@ func loadHookConfig(workspaceRoot string) (hooks.Config, error) {
 	}
 
 	if home != "" {
-		vbUser := filepath.Join(home, ".eos", "settings.json")
-		if fileExists(vbUser) {
-			addIfExists(vbUser, "user_settings")
+		eosUser := filepath.Join(home, ".eos", "settings.json")
+		if fileExists(eosUser) {
+			addIfExists(eosUser, "user_settings")
 		} else {
 			addIfExists(filepath.Join(home, ".claude", "settings.json"), "user_settings")
 			addIfExists(filepath.Join(home, ".trae", "settings.json"), "user_settings")
@@ -1186,13 +1185,13 @@ func loadHookConfig(workspaceRoot string) (hooks.Config, error) {
 	}
 
 	if wd := strings.TrimSpace(workspaceRoot); wd != "" {
-		vbProject := filepath.Join(wd, ".eos", "settings.json")
-		vbLocal := filepath.Join(wd, ".eos", "settings.local.json")
-		workspaceUsesVB := fileExists(vbProject) || fileExists(vbLocal)
+		eosProject := filepath.Join(wd, ".eos", "settings.json")
+		eosLocal := filepath.Join(wd, ".eos", "settings.local.json")
+		workspaceUsesEOS := fileExists(eosProject) || fileExists(eosLocal)
 
-		if workspaceUsesVB {
-			addIfExists(vbProject, "project_settings")
-			addIfExists(vbLocal, "local_settings")
+		if workspaceUsesEOS {
+			addIfExists(eosProject, "project_settings")
+			addIfExists(eosLocal, "local_settings")
 		} else {
 			addIfExists(filepath.Join(wd, ".claude", "settings.json"), "project_settings")
 			addIfExists(filepath.Join(wd, ".claude", "settings.local.json"), "local_settings")
@@ -1200,13 +1199,13 @@ func loadHookConfig(workspaceRoot string) (hooks.Config, error) {
 			addIfExists(filepath.Join(wd, ".trae", "settings.local.json"), "local_settings")
 		}
 	} else if wd, err := os.Getwd(); err == nil {
-		vbProject := filepath.Join(wd, ".eos", "settings.json")
-		vbLocal := filepath.Join(wd, ".eos", "settings.local.json")
-		workspaceUsesVB := fileExists(vbProject) || fileExists(vbLocal)
+		eosProject := filepath.Join(wd, ".eos", "settings.json")
+		eosLocal := filepath.Join(wd, ".eos", "settings.local.json")
+		workspaceUsesEOS := fileExists(eosProject) || fileExists(eosLocal)
 
-		if workspaceUsesVB {
-			addIfExists(vbProject, "project_settings")
-			addIfExists(vbLocal, "local_settings")
+		if workspaceUsesEOS {
+			addIfExists(eosProject, "project_settings")
+			addIfExists(eosLocal, "local_settings")
 		} else {
 			addIfExists(filepath.Join(wd, ".claude", "settings.json"), "project_settings")
 			addIfExists(filepath.Join(wd, ".claude", "settings.local.json"), "local_settings")

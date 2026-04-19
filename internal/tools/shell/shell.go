@@ -63,6 +63,10 @@ func (s *Shell) ExecuteCtx(ctx context.Context, command string) (string, error) 
 	return stdout, nil
 }
 
+func (s *Shell) ExecuteTypedCtx(ctx context.Context, shellType ShellType, command string) (string, error) {
+	return s.ExecuteTypedWithWorkingDirCtx(ctx, shellType, command, "")
+}
+
 func (s *Shell) StartAsyncWithWorkingDir(command, workingDir string) (string, error) {
 	sid := fmt.Sprintf("%d", time.Now().UnixNano())
 	ctx, cancel := context.WithCancel(context.Background())
@@ -115,6 +119,18 @@ func (s *Shell) ExecuteWithWorkingDir(command, workingDir string) (string, error
 func (s *Shell) ExecuteWithWorkingDirCtx(ctx context.Context, command, workingDir string) (string, error) {
 	ctx = withPluginEnv(ctx, workingDir)
 	stdout, stderr, err := s.executor.Execute(ctx, command, workingDir)
+	if err != nil {
+		if stderr != "" {
+			return stdout, fmt.Errorf("%v: %s", err, stderr)
+		}
+		return stdout, err
+	}
+	return stdout, nil
+}
+
+func (s *Shell) ExecuteTypedWithWorkingDirCtx(ctx context.Context, shellType ShellType, command, workingDir string) (string, error) {
+	ctx = withPluginEnv(ctx, workingDir)
+	stdout, stderr, _, err := executeNativeShellCommand(ctx, shellType, command, workingDir, "", nil)
 	if err != nil {
 		if stderr != "" {
 			return stdout, fmt.Errorf("%v: %s", err, stderr)

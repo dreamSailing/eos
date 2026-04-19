@@ -12,6 +12,14 @@ import (
 	"time"
 )
 
+type ShellType string
+
+const (
+	ShellTypeDefault    ShellType = "default"
+	ShellTypeBash       ShellType = "bash"
+	ShellTypePowerShell ShellType = "powershell"
+)
+
 type Executor interface {
 	Execute(ctx context.Context, command string, workingDir string) (stdout, stderr string, err error)
 }
