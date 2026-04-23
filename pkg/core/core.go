@@ -196,12 +196,17 @@ func NewRuntime() *Runtime {
 }
 
 func (r *Runtime) Invoke(ctx context.Context, input string) (<-chan Event, error) {
+	return r.InvokeWithImages(ctx, input, nil)
+}
+
+func (r *Runtime) InvokeWithImages(ctx context.Context, input string, imagePaths []string) (<-chan Event, error) {
+	imagePaths = compactCoreImagePaths(imagePaths)
 	out := make(chan Event, 64)
 	go func() {
 		defer close(out)
 		done := make(chan error, 1)
 		go func() {
-			_, err := r.core.GraphInvokePlanWithImages(ctx, input, r.core.ExecutionMode(), nil)
+			_, err := r.core.GraphInvokePlanWithImages(ctx, input, r.core.ExecutionMode(), imagePaths)
 			done <- err
 		}()
 		for {
@@ -240,33 +245,40 @@ func (r *Runtime) RunBash(ctx context.Context, input string) (<-chan Event, erro
 }
 
 func (r *Runtime) InvokeProtocol(ctx context.Context, input string) (<-chan protocol.Envelope, error) {
+	return r.InvokeProtocolWithImages(ctx, input, nil)
+}
+
+func (r *Runtime) InvokeProtocolWithImages(ctx context.Context, input string, imagePaths []string) (<-chan protocol.Envelope, error) {
 	sessionID, _ := r.CurrentSessionID()
 	sessionID = strings.TrimSpace(sessionID)
 	threadID := sessionID
 	requestID := newCoreRequestID("req")
 	input = strings.TrimSpace(input)
+	imagePaths = compactCoreImagePaths(imagePaths)
 	out := make(chan protocol.Envelope, 64)
 	go func() {
 		defer close(out)
 		out <- newCoreRequestEvent(protocol.EventTypeRequestStarted, sessionID, threadID, requestID, map[string]any{
-			"input":      input,
-			"mode":       r.ExecutionMode(),
-			"input_kind": "prompt",
+			"input":       input,
+			"mode":        r.ExecutionMode(),
+			"input_kind":  "prompt",
+			"image_count": len(imagePaths),
 		})
 		done := make(chan error, 1)
 		go func() {
-			_, err := r.core.GraphInvokePlanWithImages(ctx, input, r.core.ExecutionMode(), nil)
+			_, err := r.core.GraphInvokePlanWithImages(ctx, input, r.core.ExecutionMode(), imagePaths)
 			done <- err
 		}()
 		for {
 			select {
 			case <-ctx.Done():
 				out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
-					"error":      ctx.Err().Error(),
-					"input":      input,
-					"mode":       r.ExecutionMode(),
-					"input_kind": "prompt",
-					"summary":    ctx.Err().Error(),
+					"error":       ctx.Err().Error(),
+					"input":       input,
+					"mode":        r.ExecutionMode(),
+					"input_kind":  "prompt",
+					"image_count": len(imagePaths),
+					"summary":     ctx.Err().Error(),
 				})
 				return
 			case ev := <-r.core.Events():
@@ -276,20 +288,22 @@ func (r *Runtime) InvokeProtocol(ctx context.Context, input string) (<-chan prot
 			case err := <-done:
 				if err != nil {
 					out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
-						"error":      err.Error(),
-						"input":      input,
-						"mode":       r.ExecutionMode(),
-						"input_kind": "prompt",
-						"summary":    err.Error(),
+						"error":       err.Error(),
+						"input":       input,
+						"mode":        r.ExecutionMode(),
+						"input_kind":  "prompt",
+						"image_count": len(imagePaths),
+						"summary":     err.Error(),
 					})
 				} else {
 					out <- newCoreRequestEvent(protocol.EventTypeRequestDone, sessionID, threadID, requestID, map[string]any{
-						"input":      input,
-						"mode":       r.ExecutionMode(),
-						"input_kind": "prompt",
-						"message":    "request completed",
-						"status":     "success",
-						"summary":    "request completed",
+						"input":       input,
+						"mode":        r.ExecutionMode(),
+						"input_kind":  "prompt",
+						"image_count": len(imagePaths),
+						"message":     "request completed",
+						"status":      "success",
+						"summary":     "request completed",
 					})
 				}
 				return
@@ -297,6 +311,24 @@ func (r *Runtime) InvokeProtocol(ctx context.Context, input string) (<-chan prot
 		}
 	}()
 	return out, nil
+}
+
+func compactCoreImagePaths(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	seen := map[string]struct{}{}
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		key := strings.ToLower(filepath.Clean(path))
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, path)
+	}
+	return out
 }
 
 func (r *Runtime) RunBashProtocol(ctx context.Context, input string) (<-chan protocol.Envelope, error) {
