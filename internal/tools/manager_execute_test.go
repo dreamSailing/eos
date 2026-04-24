@@ -5,11 +5,10 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
-	"os/exec"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -74,6 +73,38 @@ func TestManager_ExecuteStructuredCacheAddsMarker(t *testing.T) {
 	}
 	if len(res2[0].Display) < 8 || res2[0].Display[:8] != "[cached]" {
 		t.Fatalf("expected cached marker, display=%q", res2[0].Display)
+	}
+}
+
+func TestManager_ExecuteStructuredAllowsSafeMetaToolsInReadOnlyContext(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello"), 0644); err != nil {
+		t.Fatalf("write readme: %v", err)
+	}
+
+	m := NewManager()
+	ctx := WithWorkspaceRoot(context.Background(), dir)
+	ctx = WithAllowedTools(ctx, map[string]bool{
+		ToolRead:                              true,
+		ToolSearch:                            true,
+		ToolTodoRead:                          true,
+		strings.ToLower(ToolProjectStructure): true,
+	})
+
+	res := m.ExecuteStructured(ctx, []ToolCall{
+		{Tool: ToolTodoRead, Parameters: map[string]interface{}{}},
+		{Tool: ToolProjectStructure, Parameters: map[string]interface{}{"path": "."}},
+	})
+	if len(res) != 2 {
+		t.Fatalf("unexpected result count: %d", len(res))
+	}
+	for _, r := range res {
+		if r.Status != "success" {
+			t.Fatalf("expected %s to succeed, got status=%s error=%q display=%q", r.Tool, r.Status, r.Error, r.Display)
+		}
+		if strings.Contains(r.Error, "permission denied") || strings.Contains(r.Display, "工具未授权") {
+			t.Fatalf("expected %s not to be blocked, got error=%q display=%q", r.Tool, r.Error, r.Display)
+		}
 	}
 }
 

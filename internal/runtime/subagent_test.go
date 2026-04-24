@@ -5,12 +5,12 @@ package runtime
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"testing"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 func TestSubAgentManager_RequestContextReuseAndClear(t *testing.T) {
@@ -65,5 +65,26 @@ func TestSubAgentManager_ClearRequestCancelsRunningAgents(t *testing.T) {
 
 	if !cancelled {
 		t.Fatalf("expected ClearRequest to cancel running agent")
+	}
+}
+
+func TestSubAgentAllowedTools_ReadOnlyAgentsIncludeSafeMetaTools(t *testing.T) {
+	for _, agentType := range []SubAgentType{
+		SubAgentTypeExplore,
+		SubAgentTypeReviewer,
+		SubAgentTypeSecurity,
+		SubAgentTypeArchitect,
+	} {
+		allowed := buildAllowedToolsMap(agentType.AllowedTools())
+		for _, want := range []string{
+			tools.ToolRead,
+			tools.ToolSearch,
+			tools.ToolTodoRead,
+			"projectstructure",
+		} {
+			if !allowed[want] {
+				t.Fatalf("agent %s missing allowed tool %q in %#v", agentType, want, allowed)
+			}
+		}
 	}
 }

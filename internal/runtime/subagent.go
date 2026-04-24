@@ -5,7 +5,6 @@ package runtime
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 // SubAgentType 子代理类型
@@ -96,15 +96,15 @@ func (t SubAgentType) ContextStrategy() ContextStrategy {
 func (t SubAgentType) AllowedTools() []string {
 	switch t {
 	case SubAgentTypeExplore:
-		return []string{"glob", "grep", "read", "search"}
+		return []string{"glob", "grep", tools.ToolRead, tools.ToolSearch, tools.ToolTodoRead, tools.ToolProjectStructure}
 	case SubAgentTypeReviewer:
-		return []string{"read", "diff", "glob", "grep", "search"}
+		return []string{tools.ToolRead, "diff", "glob", "grep", tools.ToolSearch, tools.ToolTodoRead, tools.ToolProjectStructure}
 	case SubAgentTypeTester:
 		return []string{"read", "write", "glob", "grep"}
 	case SubAgentTypeSecurity:
-		return []string{"glob", "grep", "read", "search"}
+		return []string{"glob", "grep", tools.ToolRead, tools.ToolSearch, tools.ToolTodoRead, tools.ToolProjectStructure}
 	case SubAgentTypeArchitect:
-		return []string{"glob", "grep", "read", "search", "diff"}
+		return []string{"glob", "grep", tools.ToolRead, tools.ToolSearch, "diff", tools.ToolTodoRead, tools.ToolProjectStructure}
 	default:
 		return nil // 使用默认工具集
 	}
