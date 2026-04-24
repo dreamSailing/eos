@@ -6,6 +6,17 @@ Go 语言实现的终端 AI 编码助手，基于 CloudWeGo Eino 做多代理编
 - 问题反馈：https://github.com/dreamSailing/eos/issues
 - 版本发布：https://github.com/dreamSailing/eos/releases
 
+## 为什么不用 Claude Code？
+
+| 痛点 | EOS |
+|---|---|
+| 国内需要梯子 | 开箱即用 |
+| 只支持 Claude | 主流模型全支持 |
+| 安装依赖 Node | Go 开发，零依赖 |
+| 配置复杂 | 填 Key 就能用 |
+| Claude Code MCP + 视觉不支持 | 已修复此痛点 |
+| Claude Code 无网络搜索 | 已集成 |
+
 ## 核心能力
 
 - 交互式 TUI：AI/Bash 双模式、面板系统、流式输出与 Markdown 渲染
