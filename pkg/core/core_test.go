@@ -661,6 +661,65 @@ func TestRuntimeSnapshotLoadsOnlyForegroundMessages(t *testing.T) {
 	}
 }
 
+func TestRuntimeWorkspaceSessionMessagesPreserveMetadata(t *testing.T) {
+	configureCoreWorkspaceTestEnv(t)
+	rt := NewRuntime()
+	workspace := t.TempDir()
+	metadata := map[string]any{
+		"eos_gui": map[string]any{
+			"state":          "failed",
+			"updatedAt":      "2026-04-24T20:00:00+08:00",
+			"runtimeSummary": "失败 · 最近一步：请求超时",
+			"runtimeEvents": []any{
+				map[string]any{"title": "请求超时", "status": "failed", "durationMs": int64(30000)},
+			},
+		},
+	}
+
+	meta, err := rt.CreateWorkspaceSession(workspace, "thread-runtime", []SessionMessage{
+		{Role: "assistant", Type: "text", Content: "请求超时", Metadata: metadata},
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkspaceSession() error = %v", err)
+	}
+	loaded, err := rt.LoadWorkspaceSessionMessages(workspace, meta.ID)
+	if err != nil {
+		t.Fatalf("LoadWorkspaceSessionMessages() error = %v", err)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("len(loaded)=%d, want 1", len(loaded))
+	}
+	gui, ok := loaded[0].Metadata["eos_gui"].(map[string]any)
+	if !ok {
+		t.Fatalf("metadata=%#v, want eos_gui map", loaded[0].Metadata)
+	}
+	if got := gui["runtimeSummary"]; got != "失败 · 最近一步：请求超时" {
+		t.Fatalf("runtimeSummary=%#v, want persisted summary", got)
+	}
+
+	if err := rt.SetForegroundWorkspace(workspace); err != nil {
+		t.Fatalf("SetForegroundWorkspace() error = %v", err)
+	}
+	snapshot := rt.RuntimeSnapshot()
+	if len(snapshot.Messages) != 1 {
+		t.Fatalf("len(snapshot.Messages)=%d, want 1", len(snapshot.Messages))
+	}
+	snapshotGUI := snapshot.Messages[0].Metadata["eos_gui"].(map[string]any)
+	if got := snapshotGUI["runtimeSummary"]; got != "失败 · 最近一步：请求超时" {
+		t.Fatalf("snapshot runtimeSummary=%#v, want persisted summary", got)
+	}
+
+	snapshotGUI["runtimeSummary"] = "mutated"
+	reloaded, err := rt.LoadWorkspaceSessionMessages(workspace, meta.ID)
+	if err != nil {
+		t.Fatalf("LoadWorkspaceSessionMessages() second error = %v", err)
+	}
+	reloadedGUI := reloaded[0].Metadata["eos_gui"].(map[string]any)
+	if got := reloadedGUI["runtimeSummary"]; got != "失败 · 最近一步：请求超时" {
+		t.Fatalf("metadata was aliased after snapshot, runtimeSummary=%#v", got)
+	}
+}
+
 func configureCoreWorkspaceTestEnv(t *testing.T) {
 	t.Helper()
 	root := t.TempDir()

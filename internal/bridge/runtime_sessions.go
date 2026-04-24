@@ -51,11 +51,12 @@ type SessionWorkspaceState struct {
 }
 
 type SessionTranscriptMessage struct {
-	Role       string   `json:"role,omitempty"`
-	Type       string   `json:"type,omitempty"`
-	Content    string   `json:"content"`
-	Timestamp  int64    `json:"timestamp,omitempty"`
-	ImagePaths []string `json:"image_paths,omitempty"`
+	Role       string         `json:"role,omitempty"`
+	Type       string         `json:"type,omitempty"`
+	Content    string         `json:"content"`
+	Timestamp  int64          `json:"timestamp,omitempty"`
+	ImagePaths []string       `json:"image_paths,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
 }
 
 func (rc *RuntimeCore) AutoSaveSession(ctx context.Context) {
@@ -105,7 +106,7 @@ func (rc *RuntimeCore) SaveSession(ctx context.Context, id string) (string, erro
 	}
 	if existing, err := rc.loadSessionFromDisk(id); err == nil {
 		if len(existing.Transcript) > 0 {
-			ps.Transcript = append([]SessionTranscriptMessage{}, existing.Transcript...)
+			ps.Transcript = copySessionTranscript(existing.Transcript)
 		}
 		ps.Title = strings.TrimSpace(existing.Title)
 	}
@@ -345,9 +346,52 @@ func copySessionTranscript(messages []SessionTranscriptMessage) []SessionTranscr
 			Content:    content,
 			Timestamp:  msg.Timestamp,
 			ImagePaths: append([]string{}, msg.ImagePaths...),
+			Metadata:   cloneSessionTranscriptMetadata(msg.Metadata),
 		})
 	}
 	return out
+}
+
+func cloneSessionTranscriptMetadata(metadata map[string]any) map[string]any {
+	if len(metadata) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(metadata))
+	for key, value := range metadata {
+		out[key] = cloneSessionTranscriptMetadataValue(value)
+	}
+	return out
+}
+
+func cloneSessionTranscriptMetadataValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return cloneSessionTranscriptMetadata(typed)
+	case []any:
+		out := make([]any, len(typed))
+		for index := range typed {
+			out[index] = cloneSessionTranscriptMetadataValue(typed[index])
+		}
+		return out
+	case []map[string]any:
+		out := make([]map[string]any, len(typed))
+		for index := range typed {
+			out[index] = cloneSessionTranscriptMetadata(typed[index])
+		}
+		return out
+	case []string:
+		return append([]string{}, typed...)
+	case []int:
+		return append([]int{}, typed...)
+	case []int64:
+		return append([]int64{}, typed...)
+	case []float64:
+		return append([]float64{}, typed...)
+	case []bool:
+		return append([]bool{}, typed...)
+	default:
+		return value
+	}
 }
 
 func sessionPreviewFromState(st session.ContextState) []ai.Message {

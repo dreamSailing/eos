@@ -106,6 +106,7 @@ type SessionMessage struct {
 	Content    string
 	Time       time.Time
 	ImagePaths []string
+	Metadata   map[string]any `json:"metadata,omitempty"`
 }
 
 type RuntimeSnapshot struct {
@@ -933,7 +934,7 @@ func (r *Runtime) RuntimeSnapshot() RuntimeSnapshot {
 			if snapshot.Active {
 				current := snapshot
 				out.CurrentSession = &current
-				out.Messages = append([]SessionMessage(nil), messages...)
+				out.Messages = cloneSessionMessages(messages)
 			}
 		}
 	}
@@ -975,6 +976,7 @@ func (r *Runtime) SaveSessionMessages(id string, messages []SessionMessage) (str
 			Content:    content,
 			Timestamp:  ts,
 			ImagePaths: append([]string{}, msg.ImagePaths...),
+			Metadata:   cloneSessionMessageMetadata(msg.Metadata),
 		})
 	}
 	return r.core.SaveSessionMessages(context.Background(), strings.TrimSpace(id), items)
@@ -997,6 +999,7 @@ func (r *Runtime) LoadSessionMessages(id string) ([]SessionMessage, error) {
 			Content:    item.Content,
 			Time:       ts,
 			ImagePaths: append([]string{}, item.ImagePaths...),
+			Metadata:   cloneSessionMessageMetadata(item.Metadata),
 		})
 	}
 	return out, nil
@@ -1796,7 +1799,63 @@ func sessionMessagesFromBridge(items []bridge.SessionTranscriptMessage) []Sessio
 			Content:    item.Content,
 			Time:       ts,
 			ImagePaths: append([]string{}, item.ImagePaths...),
+			Metadata:   cloneSessionMessageMetadata(item.Metadata),
 		})
+	}
+	return out
+}
+
+func cloneSessionMessageMetadata(metadata map[string]any) map[string]any {
+	if len(metadata) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(metadata))
+	for key, value := range metadata {
+		out[key] = cloneSessionMessageMetadataValue(value)
+	}
+	return out
+}
+
+func cloneSessionMessageMetadataValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return cloneSessionMessageMetadata(typed)
+	case []any:
+		out := make([]any, len(typed))
+		for index := range typed {
+			out[index] = cloneSessionMessageMetadataValue(typed[index])
+		}
+		return out
+	case []map[string]any:
+		out := make([]map[string]any, len(typed))
+		for index := range typed {
+			out[index] = cloneSessionMessageMetadata(typed[index])
+		}
+		return out
+	case []string:
+		return append([]string{}, typed...)
+	case []int:
+		return append([]int{}, typed...)
+	case []int64:
+		return append([]int64{}, typed...)
+	case []float64:
+		return append([]float64{}, typed...)
+	case []bool:
+		return append([]bool{}, typed...)
+	default:
+		return value
+	}
+}
+
+func cloneSessionMessages(messages []SessionMessage) []SessionMessage {
+	if len(messages) == 0 {
+		return nil
+	}
+	out := make([]SessionMessage, len(messages))
+	copy(out, messages)
+	for index := range out {
+		out[index].ImagePaths = append([]string{}, out[index].ImagePaths...)
+		out[index].Metadata = cloneSessionMessageMetadata(out[index].Metadata)
 	}
 	return out
 }
