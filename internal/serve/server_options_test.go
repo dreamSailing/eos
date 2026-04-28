@@ -5,7 +5,6 @@ package serve
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"bufio"
 	"context"
@@ -29,6 +28,7 @@ func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {
 		Transport:             "stdio",
 		DefaultWorkspacePath:  workspace,
 		DefaultAllowedTools:   []string{"bash"},
+		DefaultSandboxMode:    "full_access",
 		RequireApprovalDigest: false,
 	}, inR, outW, io.Discard, toolapiimpl.NewServices())
 	if err != nil {
@@ -155,6 +155,7 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 		Transport:             "stdio",
 		DefaultWorkspacePath:  workspace,
 		DefaultAllowedTools:   []string{"bash", "read"},
+		DefaultSandboxMode:    "full_access",
 		RequireApprovalDigest: false,
 	}, inR, outW, io.Discard, toolapiimpl.NewServices())
 	if err != nil {
@@ -246,6 +247,7 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 				"requireApprovalDigest":  false,
 				"maxConcurrentToolCalls": 1,
 				"executionMode":          "bypass",
+				"sandboxMode":            "full_access",
 				"trustedWorkspace":       true,
 				"confirmPolicyID":        "",
 			},

@@ -5,7 +5,6 @@ package serve
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"os"
 	"path/filepath"
@@ -49,9 +48,10 @@ func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
 		Transport:             "stdio",
 		DefaultWorkspacePath:  workspace,
 		DefaultAllowedTools:   []string{"read", "skills_list", "mcp_status", "echo_plugin"},
+		DefaultSandboxMode:    "full_access",
 		RequireApprovalDigest: true,
 	}, BridgeManifestOptions{
-		LaunchCommand: "eos",
+		LaunchCommand:       "eos",
 		Services:            toolapiimpl.NewServices(),
 		IncludeTools:        true,
 		IncludeCapabilities: true,
@@ -84,6 +84,9 @@ func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
 	}
 	if manifest.SessionDefaults.ExecutionMode != "auto" {
 		t.Fatalf("ExecutionMode=%q, want auto", manifest.SessionDefaults.ExecutionMode)
+	}
+	if manifest.SessionDefaults.SandboxMode != "full_access" {
+		t.Fatalf("SandboxMode=%q, want full_access", manifest.SessionDefaults.SandboxMode)
 	}
 	if len(manifest.ExecutionModes) == 0 {
 		t.Fatalf("ExecutionModes should not be empty")

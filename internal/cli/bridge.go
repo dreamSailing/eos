@@ -5,7 +5,6 @@ package cli
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"encoding/json"
 	"fmt"
@@ -22,6 +21,7 @@ func newBridgeCmd() *cobra.Command {
 	var transport string
 	var workspace string
 	var allowedTools string
+	var sandboxMode string
 	var policyPath string
 	var outputPath string
 	var launchCommand string
@@ -53,6 +53,7 @@ func newBridgeCmd() *cobra.Command {
 				Transport:             transport,
 				DefaultWorkspacePath:  workspace,
 				DefaultAllowedTools:   splitCommaList(allowedTools),
+				DefaultSandboxMode:    sandboxMode,
 				PolicyPath:            policyPath,
 				RequireApprovalDigest: requireApprovalDigest,
 			}, serve.BridgeManifestOptions{
@@ -91,6 +92,7 @@ func newBridgeCmd() *cobra.Command {
 	manifestCmd.Flags().StringVar(&transport, "transport", "stdio", "bridge transport: stdio")
 	manifestCmd.Flags().StringVar(&workspace, "workspace", "", "workspace path (required)")
 	manifestCmd.Flags().StringVar(&allowedTools, "allowed-tools", "", "comma-separated allowed tools (optional)")
+	manifestCmd.Flags().StringVar(&sandboxMode, "sandbox-mode", "workspace", "sandbox mode: workspace or full_access")
 	manifestCmd.Flags().StringVar(&policyPath, "policy", "", "policy json file path (optional)")
 	manifestCmd.Flags().BoolVar(&requireApprovalDigest, "require-approval-digest", true, "require approvalDigest for medium/high risk tools")
 	manifestCmd.Flags().StringVar(&launchCommand, "command", "", "launch command for hosts (defaults to current executable)")

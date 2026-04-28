@@ -5,7 +5,6 @@ package serve
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"bufio"
 	"context"
@@ -23,13 +22,18 @@ import (
 
 func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 	workspace := t.TempDir()
+	targetFile := filepath.Join(workspace, "x.txt")
+	if err := os.WriteFile(targetFile, []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 
 	srv, err := NewServer(Options{
 		Transport:             "stdio",
 		DefaultWorkspacePath:  workspace,
-		DefaultAllowedTools:   []string{"read", "bash"},
+		DefaultAllowedTools:   []string{"read", "edit"},
+		DefaultSandboxMode:    "full_access",
 		RequireApprovalDigest: true,
 	}, inR, outW, io.Discard, toolapiimpl.NewServices())
 	if err != nil {
@@ -185,8 +189,9 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 		"params": map[string]any{
 			"workspacePath": workspace,
 			"options": map[string]any{
-				"allowedTools":          []any{"read", "bash"},
+				"allowedTools":          []any{"read", "edit"},
 				"requireApprovalDigest": true,
+				"sandboxMode":           "full_access",
 			},
 		},
 	})
@@ -282,9 +287,12 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 			"sessionID": sessionID,
 			"call": map[string]any{
 				"id":   "c_1",
-				"tool": "bash",
+				"tool": "edit",
 				"parameters": map[string]any{
-					"command": "echo hi",
+					"mode":    "single",
+					"file":    targetFile,
+					"find":    "hello",
+					"replace": "hi",
 				},
 			},
 		},
@@ -329,8 +337,8 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 	if got, _ := sessionObj["status"].(string); got != "waiting_input" {
 		t.Fatalf("expected waiting_input status after preflight, got: %v", sessionObj)
 	}
-	if got, _ := sessionObj["preview"].(string); !strings.Contains(got, "echo hi") {
-		t.Fatalf("expected session preview to mention pending command, got: %v", sessionObj)
+	if got, _ := sessionObj["preview"].(string); !strings.Contains(got, "edit:") {
+		t.Fatalf("expected session preview to mention pending edit, got: %v", sessionObj)
 	}
 	pendingApprovals, ok := sessionObj["pending_approvals"].([]any)
 	if !ok || len(pendingApprovals) == 0 {
@@ -373,9 +381,12 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 			"sessionID": sessionID,
 			"call": map[string]any{
 				"id":   "c_1",
-				"tool": "bash",
+				"tool": "edit",
 				"parameters": map[string]any{
-					"command": "echo hi",
+					"mode":    "single",
+					"file":    targetFile,
+					"find":    "hello",
+					"replace": "hi",
 				},
 			},
 		},
@@ -397,9 +408,10 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 	if status != "success" {
 		t.Fatalf("expected success status, got: %v", resp)
 	}
-	display, _ := resObj["display"].(string)
-	if !strings.Contains(display, "hi") {
-		t.Fatalf("expected output contains hi, got: %v", resp)
+	if body, err := os.ReadFile(targetFile); err != nil {
+		t.Fatalf("read updated file: %v", err)
+	} else if !strings.Contains(string(body), "hi") {
+		t.Fatalf("expected file content to be updated, got %q", string(body))
 	}
 
 	write(map[string]any{
@@ -420,8 +432,8 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 	if got, _ := sessionObj["status"].(string); got != "idle" {
 		t.Fatalf("expected idle session status after request, got: %v", sessionObj)
 	}
-	if got, _ := sessionObj["preview"].(string); !strings.Contains(got, "hi") {
-		t.Fatalf("expected session preview to include latest result, got: %v", sessionObj)
+	if got, _ := sessionObj["preview"].(string); !strings.Contains(got, "已编辑") {
+		t.Fatalf("expected session preview to include edit summary, got: %v", sessionObj)
 	}
 
 	f := filepath.Join(workspace, "x.txt")
@@ -437,13 +449,18 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 
 func TestStdioFlow_RequestStartReturnsApprovalDigestAndLifecycleEvents(t *testing.T) {
 	workspace := t.TempDir()
+	targetFile := filepath.Join(workspace, "request-start.txt")
+	if err := os.WriteFile(targetFile, []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 
 	srv, err := NewServer(Options{
 		Transport:             "stdio",
 		DefaultWorkspacePath:  workspace,
-		DefaultAllowedTools:   []string{"bash"},
+		DefaultAllowedTools:   []string{"edit"},
+		DefaultSandboxMode:    "full_access",
 		RequireApprovalDigest: true,
 	}, inR, outW, io.Discard, toolapiimpl.NewServices())
 	if err != nil {
@@ -562,8 +579,9 @@ func TestStdioFlow_RequestStartReturnsApprovalDigestAndLifecycleEvents(t *testin
 		"params": map[string]any{
 			"workspacePath": workspace,
 			"options": map[string]any{
-				"allowedTools":          []any{"bash"},
+				"allowedTools":          []any{"edit"},
 				"requireApprovalDigest": true,
+				"sandboxMode":           "full_access",
 			},
 		},
 	})
@@ -585,9 +603,12 @@ func TestStdioFlow_RequestStartReturnsApprovalDigestAndLifecycleEvents(t *testin
 			"sessionID": sessionID,
 			"call": map[string]any{
 				"id":   "req_1",
-				"tool": "bash",
+				"tool": "edit",
 				"parameters": map[string]any{
-					"command": "echo hi",
+					"mode":    "single",
+					"file":    targetFile,
+					"find":    "hello",
+					"replace": "hi",
 				},
 			},
 		},
@@ -645,9 +666,12 @@ func TestStdioFlow_RequestStartReturnsApprovalDigestAndLifecycleEvents(t *testin
 			"sessionID": sessionID,
 			"call": map[string]any{
 				"id":   "req_1",
-				"tool": "bash",
+				"tool": "edit",
 				"parameters": map[string]any{
-					"command": "echo hi",
+					"mode":    "single",
+					"file":    targetFile,
+					"find":    "hello",
+					"replace": "hi",
 				},
 			},
 		},
@@ -667,6 +691,11 @@ func TestStdioFlow_RequestStartReturnsApprovalDigestAndLifecycleEvents(t *testin
 	if got, _ := result["status"].(string); got != "success" {
 		t.Fatalf("expected success status, got: %v", resp)
 	}
+	if body, err := os.ReadFile(targetFile); err != nil {
+		t.Fatalf("read updated file: %v", err)
+	} else if !strings.Contains(string(body), "hi") {
+		t.Fatalf("expected file content to be updated, got %q", string(body))
+	}
 
 	_ = inW.Close()
 	_ = outW.Close()
@@ -683,6 +712,7 @@ func TestStdioFlow_RequestCancelEmitsRequestFailed(t *testing.T) {
 		Transport:            "stdio",
 		DefaultWorkspacePath: workspace,
 		DefaultAllowedTools:  []string{"bash"},
+		DefaultSandboxMode:   "full_access",
 	}, inR, outW, io.Discard, toolapiimpl.NewServices())
 	if err != nil {
 		t.Fatal(err)
@@ -827,6 +857,7 @@ func TestStdioFlow_RequestCancelEmitsRequestFailed(t *testing.T) {
 			"options": map[string]any{
 				"allowedTools":  []any{"bash"},
 				"executionMode": "bypass",
+				"sandboxMode":   "full_access",
 			},
 		},
 	})

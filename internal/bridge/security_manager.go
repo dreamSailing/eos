@@ -5,7 +5,6 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/runtime"
@@ -22,18 +21,20 @@ type SecurityManager struct {
 	pendingDiff       string
 	pendingDiffPath   string
 	executionMode     string
+	sandboxMode       string
 	previousMode      string // 进入 plan 前保存的模式
 	permMu            sync.RWMutex
 	hooks             runtime.SafetyGate
 	onModeChange      func(oldMode, newMode string) // 模式切换回调
-	deniedTools       map[string]bool                // fine-grained: denied tool names
-	allowedTools      map[string]bool                // fine-grained: allowed tool names (if non-empty, whitelist)
-	skipPermissions   bool                           // --dangerously-skip-permissions bypass
-	rules             []settings.PermissionRule       // pattern-based permission rules
+	deniedTools       map[string]bool               // fine-grained: denied tool names
+	allowedTools      map[string]bool               // fine-grained: allowed tool names (if non-empty, whitelist)
+	skipPermissions   bool                          // --dangerously-skip-permissions bypass
+	rules             []settings.PermissionRule     // pattern-based permission rules
 }
 
 type PermissionSnapshot struct {
 	ExecutionMode     string
+	SandboxMode       string
 	AllowAll          bool
 	AllowedCategories []string
 	HasPendingDiff    bool
@@ -45,6 +46,7 @@ func NewSecurityManager() *SecurityManager {
 	return &SecurityManager{
 		permsAllowSession: make(map[string]bool),
 		executionMode:     "auto",
+		sandboxMode:       "workspace",
 	}
 }
 
@@ -112,6 +114,20 @@ func (s *SecurityManager) ExecutionMode() string {
 	v := s.executionMode
 	s.permMu.RUnlock()
 	return v
+}
+
+func (s *SecurityManager) SetSandboxMode(mode string) {
+	mode = toolapi.NormalizeSandboxMode(mode)
+	s.permMu.Lock()
+	s.sandboxMode = mode
+	s.permMu.Unlock()
+}
+
+func (s *SecurityManager) SandboxMode() string {
+	s.permMu.RLock()
+	v := s.sandboxMode
+	s.permMu.RUnlock()
+	return toolapi.NormalizeSandboxMode(v)
 }
 
 // GetHooks 获取安全钩子
@@ -191,6 +207,8 @@ func (s *SecurityManager) Snapshot() PermissionSnapshot {
 
 	snap := PermissionSnapshot{
 		ExecutionMode:   s.executionMode,
+		SandboxMode:     toolapi.NormalizeSandboxMode(s.sandboxMode),
+		AllowAll:        toolapi.NormalizeSandboxMode(s.sandboxMode) == "full_access",
 		HasPendingDiff:  strings.TrimSpace(s.pendingDiff) != "",
 		PendingDiffPath: strings.TrimSpace(s.pendingDiffPath),
 	}

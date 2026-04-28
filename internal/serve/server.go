@@ -5,7 +5,6 @@ package serve
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"bufio"
 	"context"
@@ -51,6 +50,7 @@ type session struct {
 	preview                string
 	allowedTools           map[string]bool
 	executionMode          string
+	sandboxMode            string
 	trustedWorkspace       bool
 	maxConcurrentToolCalls int
 	requireApprovalDigest  bool
@@ -264,6 +264,7 @@ func (s *Server) handleSessionCreate(req rpcRequest) {
 	requireDigest := s.opts.RequireApprovalDigest
 	confirmPolicyID := ""
 	executionMode := "auto"
+	sandboxMode := toolapi.NormalizeSandboxMode(s.opts.DefaultSandboxMode)
 	trustedWorkspace := false
 	maxConcurrent := 1
 	title := defaultSessionTitle(abs)
@@ -275,6 +276,9 @@ func (s *Server) handleSessionCreate(req rpcRequest) {
 		}
 		if v, ok := p.Options["executionMode"].(string); ok {
 			executionMode = toolapi.NormalizeExecutionMode(v)
+		}
+		if v, ok := p.Options["sandboxMode"].(string); ok {
+			sandboxMode = toolapi.NormalizeSandboxMode(v)
 		}
 		if v, ok := p.Options["trustedWorkspace"].(bool); ok {
 			trustedWorkspace = v
@@ -323,6 +327,7 @@ func (s *Server) handleSessionCreate(req rpcRequest) {
 		title:                  title,
 		allowedTools:           allowed,
 		executionMode:          executionMode,
+		sandboxMode:            sandboxMode,
 		trustedWorkspace:       trustedWorkspace,
 		maxConcurrentToolCalls: maxConcurrent,
 		requireApprovalDigest:  requireDigest,
@@ -496,6 +501,7 @@ func (s *Server) handleToolList(req rpcRequest) {
 		"tools":          defsToDTOsForSession(defs, execSess),
 		"catalog":        catalog,
 		"mode":           execSess.ExecutionMode,
+		"sandboxMode":    execSess.SandboxMode,
 		"modeProfile":    modeDTO(execSess.ExecutionMode),
 		"executionModes": modeDTOs(toolapi.SupportedExecutionModes()),
 		"summary":        buildCatalogSummary(catalog),
@@ -523,6 +529,7 @@ func (s *Server) handleCapabilityList(req rpcRequest) {
 		"tools":          items,
 		"catalog":        catalog,
 		"mode":           execSess.ExecutionMode,
+		"sandboxMode":    execSess.SandboxMode,
 		"modeProfile":    modeDTO(execSess.ExecutionMode),
 		"executionModes": modeDTOs(toolapi.SupportedExecutionModes()),
 		"summary":        buildCatalogSummary(catalog),
@@ -558,12 +565,7 @@ func (s *Server) handleToolPreflight(req rpcRequest) {
 		s.reply(req.ID, nil, &rpcError{Code: -32003, Message: "ToolNotAllowed"})
 		return
 	}
-	access := toolapi.EvaluateToolAccess(def, toolapi.ExecSession{
-		AllowedTools:          sess.allowedTools,
-		ExecutionMode:         sess.executionMode,
-		RequireApprovalDigest: sess.requireApprovalDigest,
-		WorkspaceRoot:         sess.workspaceAbs,
-	})
+	access := toolapi.EvaluateToolAccess(def, sessionExecSession(sess))
 	if !access.Visible || !access.Executable {
 		s.reply(req.ID, nil, &rpcError{Code: -32003, Message: "ToolNotAllowed"})
 		return
@@ -841,12 +843,7 @@ func (s *Server) executeTool(ctx context.Context, sess *session, call toolCallDT
 	if !ok {
 		return nil, &rpcError{Code: -32003, Message: "ToolNotAllowed"}
 	}
-	access := toolapi.EvaluateToolAccess(def, toolapi.ExecSession{
-		AllowedTools:          sess.allowedTools,
-		ExecutionMode:         sess.executionMode,
-		RequireApprovalDigest: sess.requireApprovalDigest,
-		WorkspaceRoot:         sess.workspaceAbs,
-	})
+	access := toolapi.EvaluateToolAccess(def, sessionExecSession(sess))
 	if !access.Visible || !access.Executable {
 		return nil, &rpcError{Code: -32003, Message: "ToolNotAllowed", Data: map[string]any{
 			"reason":    access.Reason,
@@ -1542,6 +1539,7 @@ func (s *Server) sessionInfoLocked(sess *session) protocol.SessionInfo {
 			"trusted_workspace":         sess.trustedWorkspace,
 			"require_approval_digest":   sess.requireApprovalDigest,
 			"max_concurrent_tool_calls": sess.maxConcurrentToolCalls,
+			"sandbox_mode":              strings.TrimSpace(sess.sandboxMode),
 		},
 	}
 }
@@ -1907,23 +1905,25 @@ func buildToolDefinitions(defs []toolapi.ToolDefinition, sess *toolapi.ExecSessi
 			})
 		}
 		item := toolDefinitionDTO{
-			Name:        d.Name,
-			Description: d.Description,
-			RiskLevel:   string(d.RiskLevel),
-			Params:      params,
-			Examples:    examples,
-			Source:      string(d.Source),
-			Category:    d.Category,
-			VisibleIn:   append([]string(nil), d.VisibleIn...),
-			ReadOnly:    d.ReadOnly,
-			Invocable:   d.Invocable,
-			Tags:        append([]string(nil), d.Tags...),
-			Metadata:    cloneMap(d.Metadata),
+			Name:               d.Name,
+			Description:        d.Description,
+			RiskLevel:          string(d.RiskLevel),
+			Params:             params,
+			Examples:           examples,
+			Source:             string(d.Source),
+			Category:           d.Category,
+			VisibleIn:          append([]string(nil), d.VisibleIn...),
+			ReadOnly:           d.ReadOnly,
+			Invocable:          d.Invocable,
+			RequiresFullAccess: d.RequiresFullAccess,
+			Tags:               append([]string(nil), d.Tags...),
+			Metadata:           cloneMap(d.Metadata),
 		}
 		if sess != nil {
 			access := toolapi.EvaluateToolAccess(d, *sess)
 			item.Access = &toolAccessDTO{
 				Mode:          access.Mode,
+				SandboxMode:   toolapi.NormalizeSandboxMode(sess.SandboxMode),
 				Visible:       access.Visible,
 				Executable:    access.Executable,
 				NeedsApproval: access.NeedsApproval,
@@ -1946,6 +1946,7 @@ func sessionExecSession(sess *session) toolapi.ExecSession {
 	return toolapi.ExecSession{
 		AllowedTools:          sess.allowedTools,
 		ExecutionMode:         toolapi.NormalizeExecutionMode(sess.executionMode),
+		SandboxMode:           toolapi.NormalizeSandboxMode(sess.sandboxMode),
 		RequireApprovalDigest: sess.requireApprovalDigest,
 		WorkspaceRoot:         sess.workspaceAbs,
 	}
@@ -1960,6 +1961,7 @@ func buildCatalogSummary(items []toolDefinitionDTO) map[string]any {
 		"hidden":           0,
 		"capabilityOnly":   0,
 		"blockedByMode":    0,
+		"blockedBySandbox": 0,
 		"blockedByAllow":   0,
 		"blockedByDontAsk": 0,
 	}
@@ -1983,6 +1985,8 @@ func buildCatalogSummary(items []toolDefinitionDTO) map[string]any {
 			summary["capabilityOnly"] = summary["capabilityOnly"].(int) + 1
 		case "execution_mode":
 			summary["blockedByMode"] = summary["blockedByMode"].(int) + 1
+		case "sandbox_mode":
+			summary["blockedBySandbox"] = summary["blockedBySandbox"].(int) + 1
 		case "allowed_tools":
 			summary["blockedByAllow"] = summary["blockedByAllow"].(int) + 1
 		case "dont_ask":

@@ -5,7 +5,6 @@ package toolapi
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import "time"
 
 type RiskLevel string
@@ -33,6 +32,7 @@ type ExecSession struct {
 	AllowedTools          map[string]bool
 	TraceID               string
 	ExecutionMode         string
+	SandboxMode           string
 	RequireApprovalDigest bool
 }
 
@@ -65,18 +65,19 @@ type ToolExample struct {
 }
 
 type ToolDefinition struct {
-	Name        string
-	Description string
-	RiskLevel   RiskLevel
-	Params      map[string]ParameterInfo
-	Examples    []ToolExample
-	Source      CapabilitySource
-	Category    string
-	VisibleIn   []string
-	ReadOnly    bool
-	Invocable   bool
-	Tags        []string
-	Metadata    map[string]any
+	Name               string
+	Description        string
+	RiskLevel          RiskLevel
+	Params             map[string]ParameterInfo
+	Examples           []ToolExample
+	Source             CapabilitySource
+	Category           string
+	VisibleIn          []string
+	ReadOnly           bool
+	Invocable          bool
+	RequiresFullAccess bool
+	Tags               []string
+	Metadata           map[string]any
 }
 
 type TaskInfo struct {

@@ -5,13 +5,13 @@ package serve
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import "encoding/json"
 
 type Options struct {
 	Transport             string
 	DefaultWorkspacePath  string
 	DefaultAllowedTools   []string
+	DefaultSandboxMode    string
 	PolicyPath            string
 	SessionStorePath      string
 	RequireApprovalDigest bool
@@ -137,19 +137,20 @@ type toolCallDTO struct {
 }
 
 type toolDefinitionDTO struct {
-	Name        string                      `json:"name"`
-	Description string                      `json:"description"`
-	RiskLevel   string                      `json:"riskLevel"`
-	Params      map[string]parameterInfoDTO `json:"params,omitempty"`
-	Examples    []map[string]any            `json:"examples,omitempty"`
-	Source      string                      `json:"source,omitempty"`
-	Category    string                      `json:"category,omitempty"`
-	VisibleIn   []string                    `json:"visibleIn,omitempty"`
-	ReadOnly    bool                        `json:"readOnly,omitempty"`
-	Invocable   bool                        `json:"invocable"`
-	Tags        []string                    `json:"tags,omitempty"`
-	Metadata    map[string]any              `json:"metadata,omitempty"`
-	Access      *toolAccessDTO              `json:"access,omitempty"`
+	Name               string                      `json:"name"`
+	Description        string                      `json:"description"`
+	RiskLevel          string                      `json:"riskLevel"`
+	Params             map[string]parameterInfoDTO `json:"params,omitempty"`
+	Examples           []map[string]any            `json:"examples,omitempty"`
+	Source             string                      `json:"source,omitempty"`
+	Category           string                      `json:"category,omitempty"`
+	VisibleIn          []string                    `json:"visibleIn,omitempty"`
+	ReadOnly           bool                        `json:"readOnly,omitempty"`
+	Invocable          bool                        `json:"invocable"`
+	RequiresFullAccess bool                        `json:"requiresFullAccess,omitempty"`
+	Tags               []string                    `json:"tags,omitempty"`
+	Metadata           map[string]any              `json:"metadata,omitempty"`
+	Access             *toolAccessDTO              `json:"access,omitempty"`
 }
 
 type parameterInfoDTO struct {
@@ -160,6 +161,7 @@ type parameterInfoDTO struct {
 
 type toolAccessDTO struct {
 	Mode          string `json:"mode"`
+	SandboxMode   string `json:"sandboxMode,omitempty"`
 	Visible       bool   `json:"visible"`
 	Executable    bool   `json:"executable"`
 	NeedsApproval bool   `json:"needsApproval"`

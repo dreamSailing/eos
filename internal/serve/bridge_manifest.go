@@ -5,7 +5,6 @@ package serve
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
@@ -52,6 +51,7 @@ type BridgeSessionDefaults struct {
 	WorkspacePath          string   `json:"workspacePath"`
 	AllowedTools           []string `json:"allowedTools,omitempty"`
 	ExecutionMode          string   `json:"executionMode"`
+	SandboxMode            string   `json:"sandboxMode"`
 	RequireApprovalDigest  bool     `json:"requireApprovalDigest"`
 	MaxConcurrentToolCalls int      `json:"maxConcurrentToolCalls"`
 }
@@ -116,10 +116,11 @@ func BuildBridgeManifest(opts Options, manifestOpts BridgeManifestOptions) (Brid
 		}
 		args = append(args, "--policy", policyAbs)
 	}
+	args = append(args, "--sandbox-mode", toolapi.NormalizeSandboxMode(opts.DefaultSandboxMode))
 
 	manifest := BridgeManifest{
 		SchemaVersion:   bridgeSchemaVersion,
-		Name: "eos-stdio-bridge",
+		Name:            "eos-stdio-bridge",
 		Version:         version.AppVersion,
 		BuildCommit:     version.BuildCommit,
 		BuildDate:       version.BuildDate,
@@ -134,6 +135,7 @@ func BuildBridgeManifest(opts Options, manifestOpts BridgeManifestOptions) (Brid
 			WorkspacePath:          workspaceAbs,
 			AllowedTools:           append([]string(nil), allowedTools...),
 			ExecutionMode:          "auto",
+			SandboxMode:            toolapi.NormalizeSandboxMode(opts.DefaultSandboxMode),
 			RequireApprovalDigest:  opts.RequireApprovalDigest,
 			MaxConcurrentToolCalls: 1,
 		},
@@ -156,6 +158,7 @@ func BuildBridgeManifest(opts Options, manifestOpts BridgeManifestOptions) (Brid
 		WorkspaceRoot:         workspaceAbs,
 		AllowedTools:          allowedToolsMap(allowedTools),
 		ExecutionMode:         manifest.SessionDefaults.ExecutionMode,
+		SandboxMode:           manifest.SessionDefaults.SandboxMode,
 		RequireApprovalDigest: manifest.SessionDefaults.RequireApprovalDigest,
 	}
 	if manifestOpts.IncludeTools {

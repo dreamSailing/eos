@@ -5,7 +5,6 @@ package serve
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"bufio"
 	"context"
@@ -163,10 +162,15 @@ func findEventByType(events []map[string]any, target string) map[string]any {
 func TestServeSessionStore_RestoresPendingApprovalAcrossRestart(t *testing.T) {
 	workspace := t.TempDir()
 	storePath := filepath.Join(workspace, ".eos", "serve", "sessions.json")
+	targetFile := filepath.Join(workspace, "persist.txt")
+	if err := os.WriteFile(targetFile, []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
 	opts := Options{
 		Transport:             "stdio",
 		DefaultWorkspacePath:  workspace,
-		DefaultAllowedTools:   []string{"bash"},
+		DefaultAllowedTools:   []string{"edit"},
+		DefaultSandboxMode:    "full_access",
 		RequireApprovalDigest: true,
 	}
 
@@ -190,9 +194,10 @@ func TestServeSessionStore_RestoresPendingApprovalAcrossRestart(t *testing.T) {
 			"workspacePath": workspace,
 			"options": map[string]any{
 				"title":                  "Persistent Session",
-				"allowedTools":           []any{"bash"},
+				"allowedTools":           []any{"edit"},
 				"requireApprovalDigest":  true,
 				"maxConcurrentToolCalls": 1,
+				"sandboxMode":            "full_access",
 			},
 		},
 	})
@@ -215,9 +220,12 @@ func TestServeSessionStore_RestoresPendingApprovalAcrossRestart(t *testing.T) {
 			"sessionID": sessionID,
 			"call": map[string]any{
 				"id":   "c_restart_1",
-				"tool": "bash",
+				"tool": "edit",
 				"parameters": map[string]any{
-					"command": "echo persisted",
+					"mode":    "single",
+					"file":    targetFile,
+					"find":    "hello",
+					"replace": "persisted",
 				},
 			},
 		},
@@ -287,8 +295,8 @@ func TestServeSessionStore_RestoresPendingApprovalAcrossRestart(t *testing.T) {
 	if got, _ := restored["status"].(string); got != "waiting_input" {
 		t.Fatalf("status=%q, want waiting_input", got)
 	}
-	if got, _ := restored["preview"].(string); !strings.Contains(got, "echo persisted") {
-		t.Fatalf("preview=%q, want command summary", got)
+	if got, _ := restored["preview"].(string); !strings.Contains(got, "edit:") {
+		t.Fatalf("preview=%q, want edit summary", got)
 	}
 
 	second.write(map[string]any{
@@ -316,9 +324,12 @@ func TestServeSessionStore_RestoresPendingApprovalAcrossRestart(t *testing.T) {
 			"sessionID": sessionID,
 			"call": map[string]any{
 				"id":   "c_restart_1",
-				"tool": "bash",
+				"tool": "edit",
 				"parameters": map[string]any{
-					"command": "echo persisted",
+					"mode":    "single",
+					"file":    targetFile,
+					"find":    "hello",
+					"replace": "persisted",
 				},
 			},
 		},
@@ -341,8 +352,8 @@ func TestServeSessionStore_RestoresPendingApprovalAcrossRestart(t *testing.T) {
 		t.Fatalf("expected request.completed after restart, got: %v", events)
 	}
 	completedPayload, _ := completed["payload"].(map[string]any)
-	if got, _ := completedPayload["summary"].(string); !strings.Contains(got, "persisted") {
-		t.Fatalf("request.completed summary=%q, want persisted output", got)
+	if got, _ := completedPayload["summary"].(string); !strings.Contains(got, "已编辑") {
+		t.Fatalf("request.completed summary=%q, want edit summary", got)
 	}
 	result, ok = resp["result"].(map[string]any)
 	if !ok {
@@ -351,7 +362,9 @@ func TestServeSessionStore_RestoresPendingApprovalAcrossRestart(t *testing.T) {
 	if got, _ := result["status"].(string); got != "success" {
 		t.Fatalf("status=%q, want success", got)
 	}
-	if got, _ := result["display"].(string); !strings.Contains(got, "persisted") {
-		t.Fatalf("display=%q, want persisted output", got)
+	if body, err := os.ReadFile(targetFile); err != nil {
+		t.Fatalf("read updated file: %v", err)
+	} else if !strings.Contains(string(body), "persisted") {
+		t.Fatalf("expected file content to be updated, got %q", string(body))
 	}
 }

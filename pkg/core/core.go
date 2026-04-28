@@ -146,6 +146,7 @@ type LSPServer struct {
 
 type PermissionSnapshot struct {
 	ExecutionMode     string
+	SandboxMode       string
 	AllowAll          bool
 	AllowedCategories []string
 	HasPendingDiff    bool
@@ -396,6 +397,14 @@ func (r *Runtime) SetExecutionMode(mode string) {
 
 func (r *Runtime) ExecutionMode() string {
 	return fromRuntimeMode(r.core.ExecutionMode())
+}
+
+func (r *Runtime) SetSandboxMode(mode string) {
+	r.core.SetSandboxMode(toolapi.NormalizeSandboxMode(mode))
+}
+
+func (r *Runtime) SandboxMode() string {
+	return toolapi.NormalizeSandboxMode(r.core.SandboxMode())
 }
 
 func (r *Runtime) ResolveConfirmation(requestID string, approve bool) {
@@ -1340,6 +1349,7 @@ func (r *Runtime) PermissionSnapshot() PermissionSnapshot {
 	snap := r.core.PermissionSnapshot()
 	return PermissionSnapshot{
 		ExecutionMode:     strings.TrimSpace(snap.ExecutionMode),
+		SandboxMode:       toolapi.NormalizeSandboxMode(snap.SandboxMode),
 		AllowAll:          snap.AllowAll,
 		AllowedCategories: append([]string(nil), snap.AllowedCategories...),
 		HasPendingDiff:    snap.HasPendingDiff,

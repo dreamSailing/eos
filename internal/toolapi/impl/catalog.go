@@ -5,7 +5,6 @@ package impl
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
@@ -92,17 +91,18 @@ func builtinToolDefinitions() []toolapi.ToolDefinition {
 		}
 		level := toRiskLevel(d.RiskLevel)
 		out = append(out, toolapi.ToolDefinition{
-			Name:        d.Name,
-			Description: d.Description,
-			RiskLevel:   level,
-			Params:      params,
-			Examples:    examples,
-			Source:      toolapi.SourceBuiltin,
-			Category:    inferCategory(d.Name),
-			VisibleIn:   inferVisibleModes(level),
-			ReadOnly:    level == toolapi.RiskLow,
-			Invocable:   true,
-			Tags:        inferTags(d.Name, level, true, level == toolapi.RiskLow),
+			Name:               d.Name,
+			Description:        d.Description,
+			RiskLevel:          level,
+			Params:             params,
+			Examples:           examples,
+			Source:             toolapi.SourceBuiltin,
+			Category:           inferCategory(d.Name),
+			VisibleIn:          inferVisibleModes(level),
+			ReadOnly:           level == toolapi.RiskLow,
+			Invocable:          true,
+			RequiresFullAccess: requiresFullAccessByName(d.Name),
+			Tags:               inferTags(d.Name, level, true, level == toolapi.RiskLow),
 		})
 	}
 	return out
@@ -111,13 +111,14 @@ func builtinToolDefinitions() []toolapi.ToolDefinition {
 func runtimeCapabilityDefinitions() []toolapi.ToolDefinition {
 	return []toolapi.ToolDefinition{
 		capabilityDefinition(toolapi.ToolDefinition{
-			Name:        "duckduckgo_search",
-			Description: "通过 DuckDuckGo 搜索公开网页信息。",
-			RiskLevel:   toolapi.RiskLow,
-			Source:      toolapi.SourceRuntime,
-			Category:    "web",
-			ReadOnly:    true,
-			VisibleIn:   allModes(),
+			Name:               "duckduckgo_search",
+			Description:        "通过 DuckDuckGo 搜索公开网页信息。",
+			RiskLevel:          toolapi.RiskLow,
+			Source:             toolapi.SourceRuntime,
+			Category:           "web",
+			ReadOnly:           true,
+			RequiresFullAccess: true,
+			VisibleIn:          allModes(),
 			Params: map[string]toolapi.ParameterInfo{
 				"query": {Type: "string", Required: true, Desc: "搜索关键词"},
 			},
@@ -127,13 +128,14 @@ func runtimeCapabilityDefinitions() []toolapi.ToolDefinition {
 			},
 		}),
 		capabilityDefinition(toolapi.ToolDefinition{
-			Name:        "wikipedia_search",
-			Description: "通过 Wikipedia 查询百科信息。",
-			RiskLevel:   toolapi.RiskLow,
-			Source:      toolapi.SourceRuntime,
-			Category:    "web",
-			ReadOnly:    true,
-			VisibleIn:   allModes(),
+			Name:               "wikipedia_search",
+			Description:        "通过 Wikipedia 查询百科信息。",
+			RiskLevel:          toolapi.RiskLow,
+			Source:             toolapi.SourceRuntime,
+			Category:           "web",
+			ReadOnly:           true,
+			RequiresFullAccess: true,
+			VisibleIn:          allModes(),
 			Params: map[string]toolapi.ParameterInfo{
 				"query": {Type: "string", Required: true, Desc: "查询关键词"},
 			},
@@ -143,26 +145,28 @@ func runtimeCapabilityDefinitions() []toolapi.ToolDefinition {
 			},
 		}),
 		capabilityDefinition(toolapi.ToolDefinition{
-			Name:        "http_get",
-			Description: "通过 HTTP GET 拉取 URL 的文本响应。",
-			RiskLevel:   toolapi.RiskLow,
-			Source:      toolapi.SourceRuntime,
-			Category:    "web",
-			ReadOnly:    true,
-			VisibleIn:   allModes(),
+			Name:               "http_get",
+			Description:        "通过 HTTP GET 拉取 URL 的文本响应。",
+			RiskLevel:          toolapi.RiskLow,
+			Source:             toolapi.SourceRuntime,
+			Category:           "web",
+			ReadOnly:           true,
+			RequiresFullAccess: true,
+			VisibleIn:          allModes(),
 			Params: map[string]toolapi.ParameterInfo{
 				"url": {Type: "string", Required: true, Desc: "目标 URL"},
 			},
 			Metadata: map[string]any{"scope": "runtime_only"},
 		}),
 		capabilityDefinition(toolapi.ToolDefinition{
-			Name:        "http_post",
-			Description: "通过 HTTP POST 发送请求并返回响应内容。",
-			RiskLevel:   toolapi.RiskHigh,
-			Source:      toolapi.SourceRuntime,
-			Category:    "web",
-			ReadOnly:    false,
-			VisibleIn:   inferVisibleModes(toolapi.RiskHigh),
+			Name:               "http_post",
+			Description:        "通过 HTTP POST 发送请求并返回响应内容。",
+			RiskLevel:          toolapi.RiskHigh,
+			Source:             toolapi.SourceRuntime,
+			Category:           "web",
+			ReadOnly:           false,
+			RequiresFullAccess: true,
+			VisibleIn:          inferVisibleModes(toolapi.RiskHigh),
 			Params: map[string]toolapi.ParameterInfo{
 				"url":  {Type: "string", Required: true, Desc: "目标 URL"},
 				"body": {Type: "string", Required: false, Desc: "请求体"},
@@ -170,13 +174,14 @@ func runtimeCapabilityDefinitions() []toolapi.ToolDefinition {
 			Metadata: map[string]any{"scope": "runtime_only"},
 		}),
 		capabilityDefinition(toolapi.ToolDefinition{
-			Name:        "http_put",
-			Description: "通过 HTTP PUT 发送请求并返回响应内容。",
-			RiskLevel:   toolapi.RiskHigh,
-			Source:      toolapi.SourceRuntime,
-			Category:    "web",
-			ReadOnly:    false,
-			VisibleIn:   inferVisibleModes(toolapi.RiskHigh),
+			Name:               "http_put",
+			Description:        "通过 HTTP PUT 发送请求并返回响应内容。",
+			RiskLevel:          toolapi.RiskHigh,
+			Source:             toolapi.SourceRuntime,
+			Category:           "web",
+			ReadOnly:           false,
+			RequiresFullAccess: true,
+			VisibleIn:          inferVisibleModes(toolapi.RiskHigh),
 			Params: map[string]toolapi.ParameterInfo{
 				"url":  {Type: "string", Required: true, Desc: "目标 URL"},
 				"body": {Type: "string", Required: false, Desc: "请求体"},
@@ -184,13 +189,14 @@ func runtimeCapabilityDefinitions() []toolapi.ToolDefinition {
 			Metadata: map[string]any{"scope": "runtime_only"},
 		}),
 		capabilityDefinition(toolapi.ToolDefinition{
-			Name:        "http_delete",
-			Description: "通过 HTTP DELETE 发送请求并返回响应内容。",
-			RiskLevel:   toolapi.RiskHigh,
-			Source:      toolapi.SourceRuntime,
-			Category:    "web",
-			ReadOnly:    false,
-			VisibleIn:   inferVisibleModes(toolapi.RiskHigh),
+			Name:               "http_delete",
+			Description:        "通过 HTTP DELETE 发送请求并返回响应内容。",
+			RiskLevel:          toolapi.RiskHigh,
+			Source:             toolapi.SourceRuntime,
+			Category:           "web",
+			ReadOnly:           false,
+			RequiresFullAccess: true,
+			VisibleIn:          inferVisibleModes(toolapi.RiskHigh),
 			Params: map[string]toolapi.ParameterInfo{
 				"url": {Type: "string", Required: true, Desc: "目标 URL"},
 			},
@@ -292,15 +298,16 @@ func pluginCapabilityDefinitions(workspaceRoot string, cfg *config.Config) []too
 			tags = append(tags, "source:"+strings.ToLower(strings.TrimSpace(meta.Source)))
 		}
 		out = append(out, toolapi.ToolDefinition{
-			Name:        name,
-			Description: strings.TrimSpace(plugin.Description()),
-			RiskLevel:   level,
-			Source:      toolapi.SourcePlugin,
-			Category:    "extension",
-			VisibleIn:   inferVisibleModes(level),
-			ReadOnly:    false,
-			Invocable:   enabled,
-			Tags:        uniqueStrings(tags),
+			Name:               name,
+			Description:        strings.TrimSpace(plugin.Description()),
+			RiskLevel:          level,
+			Source:             toolapi.SourcePlugin,
+			Category:           "extension",
+			VisibleIn:          inferVisibleModes(level),
+			ReadOnly:           false,
+			Invocable:          enabled,
+			RequiresFullAccess: true,
+			Tags:               uniqueStrings(tags),
 			Metadata: map[string]any{
 				"origin":  "plugin_registry",
 				"enabled": enabled,
@@ -333,14 +340,15 @@ func pluginCapabilityDefinitions(workspaceRoot string, cfg *config.Config) []too
 			tags = append(tags, "component:"+strings.ToLower(strings.TrimSpace(component)))
 		}
 		out = append(out, capabilityDefinition(toolapi.ToolDefinition{
-			Name:        name,
-			Description: strings.TrimSpace(plugin.Description),
-			RiskLevel:   toolapi.RiskLow,
-			Source:      toolapi.SourcePlugin,
-			Category:    "extension",
-			VisibleIn:   allModes(),
-			ReadOnly:    true,
-			Tags:        uniqueStrings(tags),
+			Name:               name,
+			Description:        strings.TrimSpace(plugin.Description),
+			RiskLevel:          toolapi.RiskLow,
+			Source:             toolapi.SourcePlugin,
+			Category:           "extension",
+			VisibleIn:          allModes(),
+			ReadOnly:           true,
+			RequiresFullAccess: true,
+			Tags:               uniqueStrings(tags),
 			Metadata: map[string]any{
 				"origin":        "plugin_manifest",
 				"enabled":       enabled,
@@ -440,14 +448,15 @@ func mcpCapabilityDefinitions(workspaceRoot string, cfg *config.Config) []toolap
 			tags = append(tags, "type:"+strings.ToLower(string(entry.Type)))
 		}
 		out = append(out, capabilityDefinition(toolapi.ToolDefinition{
-			Name:        "mcp:" + strings.TrimSpace(entry.Name),
-			Description: describeMCPEntry(entry),
-			RiskLevel:   toolapi.RiskHigh,
-			Source:      toolapi.SourceMCP,
-			Category:    "mcp",
-			VisibleIn:   allModes(),
-			ReadOnly:    true,
-			Tags:        tags,
+			Name:               "mcp:" + strings.TrimSpace(entry.Name),
+			Description:        describeMCPEntry(entry),
+			RiskLevel:          toolapi.RiskHigh,
+			Source:             toolapi.SourceMCP,
+			Category:           "mcp",
+			VisibleIn:          allModes(),
+			ReadOnly:           true,
+			RequiresFullAccess: true,
+			Tags:               tags,
 			Metadata: map[string]any{
 				"server":   entry.Name,
 				"enabled":  entry.Enabled,
@@ -616,6 +625,18 @@ func inferTags(name string, level toolapi.RiskLevel, invocable bool, readOnly bo
 		tags = append(tags, "invocable")
 	}
 	return uniqueStrings(tags)
+}
+
+func requiresFullAccessByName(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case strings.ToLower(tools.ToolBash),
+		strings.ToLower(tools.ToolBashSession),
+		strings.ToLower(tools.ToolBGTask),
+		strings.ToLower(tools.ToolPowerShell):
+		return true
+	default:
+		return false
+	}
 }
 
 func ensureCapabilityTags(name string, level toolapi.RiskLevel, readOnly bool, tags []string) []string {
