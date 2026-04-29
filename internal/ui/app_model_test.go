@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -151,5 +153,43 @@ func TestSlashHintsNavigationKeepsPanelAndInsertsCanonicalCommand(t *testing.T) 
 				t.Fatalf("expected accepted command %q, got %q", tc.wantInput, got)
 			}
 		})
+	}
+}
+
+func TestHandlePlanStyleSlashShowsCurrentAndSavesWorkspaceSetting(t *testing.T) {
+	setTestHome(t)
+	workspace := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(wd)
+	})
+	if err := os.Chdir(workspace); err != nil {
+		t.Fatalf("chdir workspace: %v", err)
+	}
+	app := newTestAppModel(t)
+
+	app.handlePlanStyleSlash(nil)
+	if len(app.history) == 0 || !strings.Contains(app.history[len(app.history)-1].content, "concise") {
+		t.Fatalf("expected current plan style message to mention concise, history=%+v", app.history)
+	}
+
+	app.handlePlanStyleSlash([]string{"detailed"})
+	if got := app.adapter.GetCore().GetSettings().PlanPromptStyle; got != "detailed" {
+		t.Fatalf("runtime PlanPromptStyle=%q, want detailed", got)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(workspace, ".eos", "settings.json"))
+	if err != nil {
+		t.Fatalf("read workspace settings: %v", err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("unmarshal workspace settings: %v", err)
+	}
+	if got := doc["plan_prompt_style"]; got != "detailed" {
+		t.Fatalf("plan_prompt_style=%v, want detailed", got)
 	}
 }

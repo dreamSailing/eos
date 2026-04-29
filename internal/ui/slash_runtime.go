@@ -5,7 +5,6 @@ package ui
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"encoding/json"
@@ -997,6 +996,45 @@ func (m *AppModel) handleThemeSlash(args []string) tea.Cmd {
 	m.state.Theme = theme
 	m.applyTheme(theme)
 	m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已切换主题", "Switched theme to"), theme), "success")
+	return nil
+}
+
+func (m *AppModel) handlePlanStyleSlash(args []string) tea.Cmd {
+	core := m.adapter.GetCore()
+	s := core.GetSettings()
+	current := runtime.NormalizePlanPromptStyle(s.PlanPromptStyle)
+	if len(args) == 0 {
+		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("当前计划提示风格", "Current plan prompt style"), current), "info")
+		return nil
+	}
+
+	raw := strings.TrimSpace(strings.Join(args, " "))
+	if strings.EqualFold(strings.TrimSpace(args[0]), "custom") {
+		if len(args) == 1 {
+			m.appendSystem(m.localize("用法: /plan-style [concise|detailed|custom:<text>]", "Usage: /plan-style [concise|detailed|custom:<text>]"), "warning")
+			return nil
+		}
+		raw = "custom:" + strings.TrimSpace(strings.Join(args[1:], " "))
+	}
+	normalized := runtime.NormalizePlanPromptStyle(raw)
+	s.PlanPromptStyle = normalized
+
+	root := m.currentWorkspaceRoot()
+	if strings.TrimSpace(root) == "" {
+		m.appendSystem(m.localize("没有可用工作区，无法保存计划提示风格。", "No workspace is available; cannot save plan prompt style."), "warning")
+		return nil
+	}
+	settingsPath := filepath.Join(normalizeWorkspacePath(root), ".eos", "settings.json")
+	m.adapter.GetSettings().SetPath(settingsPath)
+	if err := core.SaveSettings(settingsPath, &s); err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("保存计划提示风格失败", "Failed to save plan prompt style"), err), "error")
+		return nil
+	}
+	if settingsPanel, ok := m.panels["settings"].(*panels.SettingsPanel); ok && settingsPanel != nil {
+		settingsPanel.SetSettings(&s)
+	}
+
+	m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已设置计划提示风格", "Set plan prompt style to"), normalized), "success")
 	return nil
 }
 

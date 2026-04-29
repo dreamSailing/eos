@@ -5,7 +5,6 @@ package panels
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"fmt"
 	"strconv"
@@ -24,17 +23,17 @@ import (
 // SettingsPanel 设置面板
 type SettingsPanel struct {
 	BasePanel
-	styles       *styles.Styles
-	table        table.Model
-	manager      *settings.Manager
-	settings     *settings.Settings
-	actionOps    []string
-	actionIndex  int
-	language     string
-	editMode     bool
-	editInput    textinput.Model
-	editKey      string
-	editValue    string
+	styles      *styles.Styles
+	table       table.Model
+	manager     *settings.Manager
+	settings    *settings.Settings
+	actionOps   []string
+	actionIndex int
+	language    string
+	editMode    bool
+	editInput   textinput.Model
+	editKey     string
+	editValue   string
 }
 
 // SettingItem 设置项
@@ -106,13 +105,14 @@ func (p *SettingsPanel) LoadSettings() {
 			tn := true
 			// 使用默认设置
 			p.settings = &settings.Settings{
-				AutoContext:     true,
+				AutoContext:          true,
 				DesktopNotifications: &tn,
-				MaxInjectKB:     48,
-				WatchDebounceMs: 500,
-				PollIntervalSec: 5,
-				Language:        "zh",
-				Theme:           "dark",
+				MaxInjectKB:          48,
+				WatchDebounceMs:      500,
+				PollIntervalSec:      5,
+				Language:             "zh",
+				Theme:                "dark",
+				PlanPromptStyle:      "concise",
 			}
 		}
 	}
@@ -146,9 +146,11 @@ func (p *SettingsPanel) updateTable() {
 		rows = append(rows, table.Row{"PollIntervalSec", fmt.Sprintf("%d", s.PollIntervalSec)})
 		rows = append(rows, table.Row{"Language", s.Language})
 		rows = append(rows, table.Row{"Theme", s.Theme})
-		if s.PlanPromptStyle != "" {
-			rows = append(rows, table.Row{"PlanPromptStyle", s.PlanPromptStyle})
+		planPromptStyle := strings.TrimSpace(s.PlanPromptStyle)
+		if planPromptStyle == "" {
+			planPromptStyle = "concise"
 		}
+		rows = append(rows, table.Row{"PlanPromptStyle", planPromptStyle})
 		if s.PlanBubbleColor != "" {
 			rows = append(rows, table.Row{"PlanBubbleColor", s.PlanBubbleColor})
 		}

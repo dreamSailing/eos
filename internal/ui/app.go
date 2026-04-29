@@ -1190,6 +1190,8 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 		return m.handleReviewSlash(args)
 	case "/plan":
 		return m.handlePlanSlash(args)
+	case "/plan-style":
+		return m.handlePlanStyleSlash(args)
 	case "/git":
 		return m.handleGitSlash(args)
 	case "/status":

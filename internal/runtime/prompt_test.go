@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,5 +77,41 @@ func TestBuildProjectPromptAdditionsUsesEOSGuideNaming(t *testing.T) {
 	}
 	if strings.Contains(prompt, legacyGuideName) {
 		t.Fatalf("expected prompt to drop the legacy guide naming, got %q", prompt)
+	}
+}
+
+func TestBuildPlanPromptForStyleVariants(t *testing.T) {
+	concise := BuildPlanPromptForStyle("")
+	if concise != PlanPrompt {
+		t.Fatalf("empty style should use base plan prompt")
+	}
+
+	detailed := BuildPlanPromptForStyle("detailed")
+	if detailed == PlanPrompt || !strings.Contains(detailed, "计划提示风格：详细") {
+		t.Fatalf("detailed style did not append detailed instructions:\n%s", detailed)
+	}
+
+	custom := BuildPlanPromptForStyle("custom:先给出风险排序")
+	if !strings.Contains(custom, "计划提示风格：自定义") || !strings.Contains(custom, "先给出风险排序") {
+		t.Fatalf("custom style missing custom instructions:\n%s", custom)
+	}
+
+	legacy := BuildPlanPromptForStyle("structured")
+	if !strings.Contains(legacy, "计划提示风格：自定义") || !strings.Contains(legacy, "structured") {
+		t.Fatalf("legacy free-form style should be treated as custom:\n%s", legacy)
+	}
+}
+
+func TestBuildRoleSystemPromptUsesPlanPromptStyleOnlyForPlanner(t *testing.T) {
+	ctx := WithPlanPromptStyle(context.Background(), "detailed")
+
+	plannerPrompt := buildRoleSystemPrompt(ctx, "planner", "")
+	if !strings.Contains(plannerPrompt, "计划提示风格：详细") {
+		t.Fatalf("planner prompt missing detailed style:\n%s", plannerPrompt)
+	}
+
+	seniorPrompt := buildRoleSystemPrompt(ctx, "senior-dev", "")
+	if strings.Contains(seniorPrompt, "计划提示风格：详细") {
+		t.Fatalf("senior-dev prompt should not receive planner style:\n%s", seniorPrompt)
 	}
 }

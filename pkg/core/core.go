@@ -7,9 +7,11 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -65,6 +67,15 @@ type Workspace struct {
 	Path    string
 	Trusted bool
 	Active  bool
+}
+
+type Worktree struct {
+	Name      string
+	Path      string
+	Branch    string
+	Head      string
+	Active    bool
+	Removable bool
 }
 
 type WorkspaceSnapshot struct {
@@ -766,6 +777,84 @@ func (r *Runtime) SetForegroundWorkspace(path string) error {
 	return r.UseWorkspace(path)
 }
 
+func (r *Runtime) ListWorktrees() []Worktree {
+	root := r.workingRoot()
+	items, err := listGitWorktrees(root)
+	if err != nil {
+		return nil
+	}
+	active := normalizeWorkspacePath(root)
+	for index := range items {
+		items[index].Active = pathsEqual(items[index].Path, active)
+		items[index].Removable = !items[index].Active
+	}
+	return items
+}
+
+func (r *Runtime) CreateWorktree(name string) (Worktree, error) {
+	root := r.workingRoot()
+	if strings.TrimSpace(root) == "" {
+		return Worktree{}, errors.New("workspace path required")
+	}
+	name, err := sanitizeWorktreeName(name)
+	if err != nil {
+		return Worktree{}, err
+	}
+	baseDir := filepath.Join(root, ".eos", "worktrees")
+	target := filepath.Join(baseDir, name)
+	if err := ensurePathWithin(baseDir, target); err != nil {
+		return Worktree{}, err
+	}
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		return Worktree{}, err
+	}
+	if _, err := runGitCommand(root, "worktree", "add", target); err != nil {
+		return Worktree{}, err
+	}
+	for _, item := range r.ListWorktrees() {
+		if pathsEqual(item.Path, target) {
+			return item, nil
+		}
+	}
+	return Worktree{
+		Name:      name,
+		Path:      normalizeWorkspacePath(target),
+		Branch:    name,
+		Active:    false,
+		Removable: true,
+	}, nil
+}
+
+func (r *Runtime) RemoveWorktree(path string, force bool) error {
+	target, err := resolveWorkspacePath(path)
+	if err != nil {
+		return err
+	}
+	found := false
+	active := false
+	for _, item := range r.ListWorktrees() {
+		if !pathsEqual(item.Path, target) {
+			continue
+		}
+		found = true
+		active = item.Active
+		break
+	}
+	if !found {
+		return errors.New("worktree not found")
+	}
+	if active {
+		return errors.New("active worktree cannot be removed")
+	}
+	args := []string{"worktree", "remove"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, target)
+	_, err = runGitCommand(r.workingRoot(), args...)
+	return err
+}
+
 func (r *Runtime) ListWorkspaceSessions(workspacePath string) ([]SessionMeta, error) {
 	resolved, err := resolveWorkspacePath(workspacePath)
 	if err != nil {
@@ -1075,6 +1164,168 @@ func (r *Runtime) UpsertMCP(name, kind, target string, enabled bool) error {
 		return r.core.AddMCPServers([]config.MCPEntry{entry})
 	}
 	return nil
+}
+
+func (r *Runtime) ImportMCPJSON(raw string) error {
+	entries, err := parseMCPImportJSON(raw)
+	if err != nil {
+		return err
+	}
+	return r.core.AddMCPServers(entries)
+}
+
+func parseMCPImportJSON(raw string) ([]config.MCPEntry, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, errors.New("empty config")
+	}
+
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &top); err == nil {
+		if body, ok := top["mcp"]; ok {
+			return parseMCPEntriesJSON(body)
+		}
+		if _, ok := top["mcpServers"]; ok {
+			entries, err := config.ParseLegacyMCPServersJSON([]byte(raw))
+			if err != nil {
+				return nil, err
+			}
+			return validateMCPImportEntries(entries)
+		}
+	} else {
+		var probe []json.RawMessage
+		if arrayErr := json.Unmarshal([]byte(raw), &probe); arrayErr != nil {
+			return nil, fmt.Errorf("invalid JSON: %w", err)
+		}
+	}
+
+	return parseMCPEntriesJSON(json.RawMessage(raw))
+}
+
+func parseMCPEntriesJSON(raw json.RawMessage) ([]config.MCPEntry, error) {
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, fmt.Errorf("mcp must be an array: %w", err)
+	}
+	if len(items) == 0 {
+		return nil, errors.New("empty config")
+	}
+
+	entries := make([]config.MCPEntry, 0, len(items))
+	for _, item := range items {
+		var entry config.MCPEntry
+		if err := json.Unmarshal(item, &entry); err != nil {
+			return nil, fmt.Errorf("invalid mcp entry: %w", err)
+		}
+
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(item, &obj); err == nil {
+			if _, ok := obj["enabled"]; !ok {
+				entry.Enabled = true
+			}
+			if len(entry.Envs) == 0 {
+				if envRaw, ok := obj["env"]; ok {
+					entry.Envs = parseMCPStringMap(envRaw)
+				}
+			}
+			if entry.BaseURL == "" {
+				if urlRaw, ok := obj["url"]; ok {
+					entry.BaseURL = parseMCPString(urlRaw)
+				}
+			}
+		}
+
+		entries = append(entries, normalizeMCPEntry(entry))
+	}
+	return validateMCPImportEntries(entries)
+}
+
+func normalizeMCPEntry(entry config.MCPEntry) config.MCPEntry {
+	entry.Name = strings.TrimSpace(entry.Name)
+	entry.Type = config.MCPClientType(strings.ToLower(strings.TrimSpace(string(entry.Type))))
+	entry.Command = strings.TrimSpace(entry.Command)
+	entry.BaseURL = strings.TrimSpace(entry.BaseURL)
+
+	args := make([]string, 0, len(entry.Args))
+	for _, arg := range entry.Args {
+		if arg = strings.TrimSpace(arg); arg != "" {
+			args = append(args, arg)
+		}
+	}
+	entry.Args = args
+
+	if len(entry.Envs) > 0 {
+		envs := make(map[string]string, len(entry.Envs))
+		for key, value := range entry.Envs {
+			if key = strings.TrimSpace(key); key != "" {
+				envs[key] = value
+			}
+		}
+		entry.Envs = envs
+	}
+
+	if entry.Type == "" {
+		if entry.BaseURL != "" {
+			entry.Type = config.MCPTypeSSE
+		} else {
+			entry.Type = config.MCPTypeStdio
+		}
+	}
+	return entry
+}
+
+func validateMCPImportEntries(entries []config.MCPEntry) ([]config.MCPEntry, error) {
+	if len(entries) == 0 {
+		return nil, errors.New("empty config")
+	}
+	seen := make(map[string]struct{}, len(entries))
+	for i := range entries {
+		entries[i] = normalizeMCPEntry(entries[i])
+		entry := entries[i]
+		if entry.Name == "" {
+			return nil, errors.New("missing server name")
+		}
+		if _, ok := seen[entry.Name]; ok {
+			return nil, fmt.Errorf("duplicate server name: %s", entry.Name)
+		}
+		seen[entry.Name] = struct{}{}
+
+		switch entry.Type {
+		case config.MCPTypeStdio:
+			if entry.Command == "" {
+				return nil, fmt.Errorf("missing command for server: %s", entry.Name)
+			}
+		case config.MCPTypeSSE, config.MCPTypeStreamableHTTP:
+			if entry.BaseURL == "" {
+				return nil, fmt.Errorf("missing base_url for server: %s", entry.Name)
+			}
+		default:
+			return nil, fmt.Errorf("unsupported mcp type for server %s: %s", entry.Name, entry.Type)
+		}
+	}
+	return entries, nil
+}
+
+func parseMCPString(raw json.RawMessage) string {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+func parseMCPStringMap(raw json.RawMessage) map[string]string {
+	var values map[string]string
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		if key = strings.TrimSpace(key); key != "" {
+			out[key] = value
+		}
+	}
+	return out
 }
 
 func (r *Runtime) DeleteMCP(name string) error {
@@ -1682,6 +1933,129 @@ func (r *Runtime) findVersionByID(id string) (VersionItem, error) {
 		}
 	}
 	return VersionItem{}, errors.New("version not found")
+}
+
+func listGitWorktrees(root string) ([]Worktree, error) {
+	out, err := runGitCommand(root, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n")
+	items := make([]Worktree, 0)
+	current := Worktree{}
+	flush := func() {
+		if strings.TrimSpace(current.Path) == "" {
+			return
+		}
+		current.Path = normalizeWorkspacePath(current.Path)
+		if strings.TrimSpace(current.Name) == "" {
+			current.Name = filepath.Base(current.Path)
+		}
+		if strings.TrimSpace(current.Branch) == "" {
+			current.Branch = "detached"
+		}
+		items = append(items, current)
+		current = Worktree{}
+	}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			flush()
+			current.Path = strings.TrimSpace(strings.TrimPrefix(line, "worktree "))
+		case strings.HasPrefix(line, "HEAD "):
+			current.Head = strings.TrimSpace(strings.TrimPrefix(line, "HEAD "))
+			if len(current.Head) > 12 {
+				current.Head = current.Head[:12]
+			}
+		case strings.HasPrefix(line, "branch "):
+			current.Branch = shortGitRef(strings.TrimSpace(strings.TrimPrefix(line, "branch ")))
+		case line == "detached":
+			current.Branch = "detached"
+		case line == "bare":
+			current.Branch = "bare"
+		}
+	}
+	flush()
+	slices.SortFunc(items, func(a, b Worktree) int {
+		if a.Active != b.Active {
+			if a.Active {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+	return items, nil
+}
+
+func runGitCommand(root string, args ...string) (string, error) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return "", errors.New("workspace path required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", root}, args...)...)
+	out, err := cmd.CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if err != nil {
+		if text != "" {
+			return "", fmt.Errorf("%w: %s", err, text)
+		}
+		return "", err
+	}
+	return text, nil
+}
+
+func shortGitRef(value string) string {
+	value = strings.TrimSpace(value)
+	for _, prefix := range []string{"refs/heads/", "refs/remotes/"} {
+		if strings.HasPrefix(value, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(value, prefix))
+		}
+	}
+	return value
+}
+
+func sanitizeWorktreeName(raw string) (string, error) {
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		name = fmt.Sprintf("worktree-%d", time.Now().Unix())
+	}
+	name = strings.ReplaceAll(name, " ", "-")
+	if name == "." || name == ".." || strings.Contains(name, "..") {
+		return "", errors.New("invalid worktree name")
+	}
+	for _, ch := range name {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' || ch == '.' {
+			continue
+		}
+		return "", errors.New("worktree name can only contain letters, numbers, dot, dash, and underscore")
+	}
+	return name, nil
+}
+
+func ensurePathWithin(base, target string) error {
+	baseAbs, err := filepath.Abs(base)
+	if err != nil {
+		return err
+	}
+	targetAbs, err := filepath.Abs(target)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(baseAbs, targetAbs)
+	if err != nil {
+		return err
+	}
+	if rel == "." || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return errors.New("worktree path escapes workspace worktree directory")
+	}
+	return nil
 }
 
 func resultToError(s string) error {

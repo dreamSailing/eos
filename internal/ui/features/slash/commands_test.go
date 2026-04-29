@@ -5,7 +5,6 @@ package slash
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import "testing"
 
 func TestNormalizeCommandResolvesAliases(t *testing.T) {
@@ -51,5 +50,11 @@ func TestGroupedVisibleCommandsPreservesExpectedGroups(t *testing.T) {
 func TestVisibleCommandsIncludesReloadPlugins(t *testing.T) {
 	if NormalizeCommand("/reload-plugins") != "/reload-plugins" {
 		t.Fatalf("expected /reload-plugins to be a visible slash command")
+	}
+}
+
+func TestVisibleCommandsIncludesPlanStyle(t *testing.T) {
+	if NormalizeCommand("/plan-style") != "/plan-style" {
+		t.Fatalf("expected /plan-style to be a visible slash command")
 	}
 }

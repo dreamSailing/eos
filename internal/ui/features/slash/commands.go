@@ -5,7 +5,6 @@ package slash
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import "strings"
 
 type Group string
@@ -57,6 +56,7 @@ var Commands = []Command{
 	{Name: "/memory", Aliases: []string{"/ctx", "/context"}, Group: GroupRuntime, DescriptionZH: "打开上下文与记忆面板", DescriptionEN: "Open the context and memory panel"},
 	{Name: "/tasks", Group: GroupRuntime, DescriptionZH: "打开任务面板", DescriptionEN: "Open the tasks panel"},
 	{Name: "/plan", Group: GroupRuntime, Usage: "/plan [auto|plan]", DescriptionZH: "查看当前计划/待办，或切换计划执行模式", DescriptionEN: "Inspect plan/todos or switch planning mode"},
+	{Name: "/plan-style", Group: GroupRuntime, Usage: "/plan-style [concise|detailed|custom:<text>]", DescriptionZH: "查看或设置计划提示风格", DescriptionEN: "Inspect or change the planner prompt style"},
 	{Name: "/permissions", Group: GroupRuntime, Usage: "/permissions [auto|plan]", DescriptionZH: "查看或切换权限/审批模式", DescriptionEN: "Inspect or change permission/approval mode"},
 	{Name: "/doctor", Group: GroupRuntime, DescriptionZH: "输出运行时、工具和诊断摘要", DescriptionEN: "Print a runtime, tools, and diagnostics summary"},
 	{Name: "/stats", Group: GroupRuntime, DescriptionZH: "显示 Token 用量和工具调用统计", DescriptionEN: "Show token usage and tool call statistics"},

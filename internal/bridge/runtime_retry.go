@@ -5,7 +5,6 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"errors"
@@ -29,6 +28,8 @@ func (rc *RuntimeCore) graphInvokeWithRetry(ctx context.Context, rt *einoruntime
 	if rt == nil {
 		return nil, ErrRuntimeLoopUnavailable
 	}
+	settings := rc.GetSettings()
+	ctx = einoruntime.WithPlanPromptStyle(ctx, settings.PlanPromptStyle)
 
 	timeout := 7 * 24 * time.Hour
 	if cfg, _ := config.Load(); cfg.Agent.InvokeTimeoutSeconds > 0 {
