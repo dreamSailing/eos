@@ -18,6 +18,7 @@ func envInfoForContext(ctx context.Context) utils.EnvInfo {
 	info := utils.GetEnvInfo()
 	if root := strings.TrimSpace(tools.WorkspaceRootFromContext(ctx)); root != "" {
 		info.CWD = root
+		info.IsGitRepo = utils.IsGitRepo(root)
 	}
 	return info
 }
