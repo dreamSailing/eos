@@ -40,8 +40,11 @@ type Event struct {
 }
 
 type Runtime struct {
-	core        *bridge.RuntimeCore
-	workspaceMu sync.Mutex
+	core                   *bridge.RuntimeCore
+	workspaceMu            sync.Mutex
+	stateChangesMu         sync.RWMutex
+	stateChangeSubscribers map[int]chan StateChangeEvent
+	nextStateSubscriberID  int
 }
 
 type Model struct {
@@ -404,6 +407,7 @@ func (r *Runtime) RunBashProtocol(ctx context.Context, input string) (<-chan pro
 
 func (r *Runtime) SetExecutionMode(mode string) {
 	r.core.SetExecutionMode(toRuntimeMode(mode))
+	r.notifyStateChanged(StateTopicSettings, "execution_mode")
 }
 
 func (r *Runtime) ExecutionMode() string {
@@ -412,6 +416,7 @@ func (r *Runtime) ExecutionMode() string {
 
 func (r *Runtime) SetSandboxMode(mode string) {
 	r.core.SetSandboxMode(toolapi.NormalizeSandboxMode(mode))
+	r.notifyStateChanged(StateTopicSettings, "sandbox_mode")
 }
 
 func (r *Runtime) SandboxMode() string {
@@ -436,6 +441,7 @@ func (r *Runtime) ResolveInquiry(requestID string, option, text string) {
 
 func (r *Runtime) Close() {
 	r.core.Shutdown()
+	r.closeStateChangeSubscribers()
 }
 
 func (r *Runtime) ListModels() []Model {
@@ -473,6 +479,7 @@ func (r *Runtime) UpsertModel(name, base, key, model string) error {
 	if !r.core.UpdateModel(entry) && !r.core.AddModel(entry) {
 		return errors.New("upsert model failed")
 	}
+	r.notifyStateChanged(StateTopicModels, "model.upsert")
 	return nil
 }
 
@@ -480,7 +487,11 @@ func (r *Runtime) ActivateModel(name string) error {
 	if !r.core.SetActiveModel(strings.TrimSpace(name)) {
 		return errors.New("model not found")
 	}
-	return r.core.Reload()
+	if err := r.core.Reload(); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicModels, "model.activate")
+	return nil
 }
 
 func (r *Runtime) ReasoningLevel() string {
@@ -555,13 +566,18 @@ func (r *Runtime) SetReasoningLevel(level string) error {
 		state.SetThinking(false)
 	}
 
-	return r.core.Reload()
+	if err := r.core.Reload(); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicSettings, "reasoning_level")
+	return nil
 }
 
 func (r *Runtime) DeleteModel(name string) error {
 	if !r.core.DeleteModel(strings.TrimSpace(name)) {
 		return errors.New("model not found")
 	}
+	r.notifyStateChanged(StateTopicModels, "model.delete")
 	return nil
 }
 
@@ -612,11 +628,19 @@ func (r *Runtime) KillTask(taskID string) error {
 		return errors.New("task id required")
 	}
 	_, err := bg.Default().Kill(taskID)
-	return err
+	if err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicTasks, "task.kill")
+	return nil
 }
 
 func (r *Runtime) CleanupTasks() int {
-	return bg.Default().CleanupFinished()
+	n := bg.Default().CleanupFinished()
+	if n > 0 {
+		r.notifyStateChanged(StateTopicTasks, "task.cleanup")
+	}
+	return n
 }
 
 func (r *Runtime) ListWorkspaces() []Workspace {
@@ -666,6 +690,7 @@ func (r *Runtime) AddWorkspace(path string) error {
 		return err
 	}
 	r.core.AddWorkspaceRoot(p)
+	r.notifyStateChanged(StateTopicWorkspace, "workspace.add")
 	return nil
 }
 
@@ -684,6 +709,7 @@ func (r *Runtime) RemoveWorkspace(path string) error {
 		return err
 	}
 	r.core.RemoveWorkspaceRoot(p)
+	r.notifyStateChanged(StateTopicWorkspace, "workspace.remove")
 	return nil
 }
 
@@ -699,7 +725,11 @@ func (r *Runtime) UseWorkspace(path string) error {
 	if r.core.SetActiveWorkspaceRoot(p) == nil {
 		return errors.New("workspace not found")
 	}
-	return r.ReloadSkills()
+	if err := r.ReloadSkills(); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicWorkspace, "workspace.use")
+	return nil
 }
 
 func (r *Runtime) RememberWorkspace(path string, foreground bool) error {
@@ -711,6 +741,7 @@ func (r *Runtime) RememberWorkspace(path string, foreground bool) error {
 		return err
 	}
 	r.core.AddWorkspaceRoot(p)
+	r.notifyStateChanged(StateTopicWorkspace, "workspace.remember")
 	return nil
 }
 
@@ -726,7 +757,11 @@ func (r *Runtime) ForgetWorkspace(path string) error {
 		return err
 	}
 	r.core.RemoveWorkspaceRoot(p)
-	return removeTrustedWorkspace(p)
+	if err := removeTrustedWorkspace(p); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicWorkspace, "workspace.forget")
+	return nil
 }
 
 func (r *Runtime) LastWorkspace() string {
@@ -770,7 +805,11 @@ func (r *Runtime) TrustWorkspace(path string) error {
 		}
 	}
 	cfg.TrustedWorkspaces = append(cfg.TrustedWorkspaces, want)
-	return config.Save(cfg, cfgPath)
+	if err := config.Save(cfg, cfgPath); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicWorkspace, "workspace.trust")
+	return nil
 }
 
 func (r *Runtime) SetForegroundWorkspace(path string) error {
@@ -813,16 +852,19 @@ func (r *Runtime) CreateWorktree(name string) (Worktree, error) {
 	}
 	for _, item := range r.ListWorktrees() {
 		if pathsEqual(item.Path, target) {
+			r.notifyStateChanged(StateTopicWorkspace, "worktree.create")
 			return item, nil
 		}
 	}
-	return Worktree{
+	item := Worktree{
 		Name:      name,
 		Path:      normalizeWorkspacePath(target),
 		Branch:    name,
 		Active:    false,
 		Removable: true,
-	}, nil
+	}
+	r.notifyStateChanged(StateTopicWorkspace, "worktree.create")
+	return item, nil
 }
 
 func (r *Runtime) RemoveWorktree(path string, force bool) error {
@@ -852,7 +894,11 @@ func (r *Runtime) RemoveWorktree(path string, force bool) error {
 	}
 	args = append(args, target)
 	_, err = runGitCommand(r.workingRoot(), args...)
-	return err
+	if err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicWorkspace, "worktree.remove")
+	return nil
 }
 
 func (r *Runtime) ListWorkspaceSessions(workspacePath string) ([]SessionMeta, error) {
@@ -1054,7 +1100,12 @@ func (r *Runtime) ListSessions() []SessionMeta {
 }
 
 func (r *Runtime) SaveSession(id string) (string, error) {
-	return r.core.SaveSession(context.Background(), strings.TrimSpace(id))
+	sessionID, err := r.core.SaveSession(context.Background(), strings.TrimSpace(id))
+	if err != nil {
+		return "", err
+	}
+	r.notifyStateChanged(StateTopicSessions, "session.save")
+	return sessionID, nil
 }
 
 func (r *Runtime) SaveSessionMessages(id string, messages []SessionMessage) (string, error) {
@@ -1077,7 +1128,12 @@ func (r *Runtime) SaveSessionMessages(id string, messages []SessionMessage) (str
 			Metadata:   cloneSessionMessageMetadata(msg.Metadata),
 		})
 	}
-	return r.core.SaveSessionMessages(context.Background(), strings.TrimSpace(id), items)
+	sessionID, err := r.core.SaveSessionMessages(context.Background(), strings.TrimSpace(id), items)
+	if err != nil {
+		return "", err
+	}
+	r.notifyStateChanged(StateTopicSessions, "session.messages.save")
+	return sessionID, nil
 }
 
 func (r *Runtime) LoadSessionMessages(id string) ([]SessionMessage, error) {
@@ -1108,19 +1164,35 @@ func (r *Runtime) CurrentSessionID() (string, error) {
 }
 
 func (r *Runtime) SetCurrentSession(id string) error {
-	return r.core.SetCurrentSession(strings.TrimSpace(id))
+	if err := r.core.SetCurrentSession(strings.TrimSpace(id)); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicSessions, "session.current")
+	return nil
 }
 
 func (r *Runtime) UpdateSessionTitle(id, title string) error {
-	return r.core.UpdateSessionTitle(strings.TrimSpace(id), strings.TrimSpace(title))
+	if err := r.core.UpdateSessionTitle(strings.TrimSpace(id), strings.TrimSpace(title)); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicSessions, "session.title")
+	return nil
 }
 
 func (r *Runtime) ResumeSession(id string) error {
-	return r.core.ResumeSession(context.Background(), strings.TrimSpace(id))
+	if err := r.core.ResumeSession(context.Background(), strings.TrimSpace(id)); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicSessions, "session.resume")
+	return nil
 }
 
 func (r *Runtime) DeleteSession(id string) error {
-	return r.core.DeleteSession(strings.TrimSpace(id))
+	if err := r.core.DeleteSession(strings.TrimSpace(id)); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicSessions, "session.delete")
+	return nil
 }
 
 func (r *Runtime) ListMCP() []MCPServer {
@@ -1161,8 +1233,13 @@ func (r *Runtime) UpsertMCP(name, kind, target string, enabled bool) error {
 		entry.Command = target
 	}
 	if !r.core.UpdateMCPServer(entry) {
-		return r.core.AddMCPServers([]config.MCPEntry{entry})
+		if err := r.core.AddMCPServers([]config.MCPEntry{entry}); err != nil {
+			return err
+		}
+		r.notifyStateChanged(StateTopicMCP, "mcp.add")
+		return nil
 	}
+	r.notifyStateChanged(StateTopicMCP, "mcp.update")
 	return nil
 }
 
@@ -1171,7 +1248,11 @@ func (r *Runtime) ImportMCPJSON(raw string) error {
 	if err != nil {
 		return err
 	}
-	return r.core.AddMCPServers(entries)
+	if err := r.core.AddMCPServers(entries); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicMCP, "mcp.import")
+	return nil
 }
 
 func parseMCPImportJSON(raw string) ([]config.MCPEntry, error) {
@@ -1332,6 +1413,7 @@ func (r *Runtime) DeleteMCP(name string) error {
 	if !r.core.DeleteMCPServer(strings.TrimSpace(name)) {
 		return errors.New("mcp server not found")
 	}
+	r.notifyStateChanged(StateTopicMCP, "mcp.delete")
 	return nil
 }
 
@@ -1349,6 +1431,7 @@ func (r *Runtime) SetMCPEnabled(name string, enabled bool) error {
 			return nil
 		}
 		if r.core.ToggleMCPServer(name) {
+			r.notifyStateChanged(StateTopicMCP, "mcp.enabled")
 			return nil
 		}
 		return errors.New("toggle mcp server failed")
@@ -1378,7 +1461,11 @@ func (r *Runtime) SaveRules(v string) error {
 	if content == "" {
 		content = sharedruntime.RulesMdTemplate()
 	}
-	return os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicRules, "rules.save")
+	return nil
 }
 
 func (r *Runtime) ResetRules() error {
@@ -1408,7 +1495,11 @@ func (r *Runtime) SaveSettings(v Settings) error {
 	if strings.TrimSpace(v.Theme) != "" {
 		cur.Theme = strings.TrimSpace(v.Theme)
 	}
-	return r.core.SaveSettings(path, &cur)
+	if err := r.core.SaveSettings(path, &cur); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicSettings, "settings.save")
+	return nil
 }
 
 func (r *Runtime) ListVersions() []VersionItem {
@@ -1461,6 +1552,7 @@ func (r *Runtime) RollbackVersion(id string) error {
 	if e := resultToError(res); e != nil {
 		return e
 	}
+	r.notifyStateChanged(StateTopicVersions, "version.rollback")
 	return nil
 }
 
@@ -1477,6 +1569,7 @@ func (r *Runtime) DeleteVersion(id string) error {
 	if e := resultToError(res); e != nil {
 		return e
 	}
+	r.notifyStateChanged(StateTopicVersions, "version.delete")
 	return nil
 }
 
@@ -1498,6 +1591,7 @@ func (r *Runtime) DeleteFileVersions(file string) int {
 	if resultToError(res) != nil {
 		return 0
 	}
+	r.notifyStateChanged(StateTopicVersions, "version.file.clear")
 	return count
 }
 
@@ -1510,6 +1604,7 @@ func (r *Runtime) ClearVersions() int {
 	if resultToError(res) != nil {
 		return 0
 	}
+	r.notifyStateChanged(StateTopicVersions, "versions.clear")
 	return len(items)
 }
 
@@ -1548,10 +1643,13 @@ func (r *Runtime) DetectLSP(language string) string {
 			continue
 		}
 		if !it.Found {
+			r.notifyStateChanged(StateTopicLSP, "lsp.detect")
 			return it.Language + " server not found"
 		}
+		r.notifyStateChanged(StateTopicLSP, "lsp.detect")
 		return it.Language + ": " + strings.TrimSpace(it.Command)
 	}
+	r.notifyStateChanged(StateTopicLSP, "lsp.detect")
 	return "language not supported: " + language
 }
 
@@ -1565,6 +1663,7 @@ func (r *Runtime) StartLSP(language string) string {
 	}
 	st := r.core.LSPStatus()
 	if strings.EqualFold(strings.TrimSpace(st.ActiveLanguage), lang) && strings.TrimSpace(st.ActiveServer) != "" {
+		r.notifyStateChanged(StateTopicLSP, "lsp.start")
 		return st.ActiveLanguage + " already running"
 	}
 	for _, it := range st.Servers {
@@ -1572,10 +1671,13 @@ func (r *Runtime) StartLSP(language string) string {
 			continue
 		}
 		if !it.Found {
+			r.notifyStateChanged(StateTopicLSP, "lsp.start")
 			return it.Language + " server not found"
 		}
+		r.notifyStateChanged(StateTopicLSP, "lsp.start")
 		return "LSP auto-starts when needed: " + it.Language
 	}
+	r.notifyStateChanged(StateTopicLSP, "lsp.start")
 	return "language not supported: " + language
 }
 
@@ -1620,6 +1722,7 @@ func (r *Runtime) PendingReview() PendingReview {
 
 func (r *Runtime) ClearPendingReview() {
 	r.core.ClearPendingDiff()
+	r.notifyStateChanged(StateTopicReview, "review.clear")
 }
 
 func (r *Runtime) ListSkills() []SkillInfo {
@@ -1680,12 +1783,21 @@ func (r *Runtime) ReloadSkills() error {
 			loader.SetSkillsDirs(skillDirs)
 		}
 		sm.SetDisabledSkills(cfg.DisabledSkills)
-		return sm.ReloadPreserveActive()
+		if err := sm.ReloadPreserveActive(); err != nil {
+			return err
+		}
+		r.notifyStateChanged(StateTopicSkills, "skills.reload")
+		return nil
 	}
 	if loader := r.core.GetSkillsLoader(); loader != nil {
 		loader.SetSkillsDirs(skillDirs)
-		return loader.Reload()
+		if err := loader.Reload(); err != nil {
+			return err
+		}
+		r.notifyStateChanged(StateTopicSkills, "skills.reload")
+		return nil
 	}
+	r.notifyStateChanged(StateTopicSkills, "skills.reload")
 	return nil
 }
 
@@ -1725,6 +1837,7 @@ func (r *Runtime) SetSkillEnabled(name string, enabled bool) error {
 	if sm := r.core.GetSkillManager(); sm != nil {
 		sm.SetDisabled(name, !enabled)
 	}
+	r.notifyStateChanged(StateTopicSkills, "skill.enabled")
 	return nil
 }
 
@@ -1814,7 +1927,11 @@ func (r *Runtime) SetPluginEnabled(name string, enabled bool) error {
 		return err
 	}
 	pluginpkg.DefaultRegistry().SetEnabled(name, enabled)
-	return r.ReloadSkills()
+	if err := r.ReloadSkills(); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicPlugins, "plugin.enabled")
+	return nil
 }
 
 func (r *Runtime) ContextPreview() []string {
@@ -1843,11 +1960,13 @@ func (r *Runtime) CompactContext() string {
 	beforeCount, beforeTokens := r.ContextStats()
 	r.core.CompactContext()
 	afterCount, afterTokens := r.ContextStats()
+	r.notifyStateChanged(StateTopicContext, "context.compact")
 	return fmt.Sprintf("context compacted: messages %d→%d, tokens %d→%d", beforeCount, afterCount, beforeTokens, afterTokens)
 }
 
 func (r *Runtime) ClearContext() {
 	r.core.ClearContext()
+	r.notifyStateChanged(StateTopicContext, "context.clear")
 }
 
 func (r *Runtime) ExportContext(path string) error {

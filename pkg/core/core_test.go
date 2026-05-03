@@ -82,6 +82,35 @@ func TestFromRuntimeMode(t *testing.T) {
 	}
 }
 
+func TestRuntimeStateChangesNotifySubscribers(t *testing.T) {
+	configureCoreWorkspaceTestEnv(t)
+	rt := NewRuntime()
+	defer rt.Close()
+
+	events, unsubscribe := rt.SubscribeStateChanges(1)
+	rt.SetExecutionMode("plan")
+
+	select {
+	case event := <-events:
+		if event.Topic != StateTopicSettings {
+			t.Fatalf("event.Topic=%q, want %q", event.Topic, StateTopicSettings)
+		}
+		if event.Source != "execution_mode" {
+			t.Fatalf("event.Source=%q, want execution_mode", event.Source)
+		}
+		if event.At.IsZero() {
+			t.Fatal("event.At should be set")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for state change event")
+	}
+
+	unsubscribe()
+	if _, ok := <-events; ok {
+		t.Fatal("expected subscription channel to close after unsubscribe")
+	}
+}
+
 func TestFilterTrustedWorkspaces(t *testing.T) {
 	target := filepath.Join("C:", "Users", "tester", "demo")
 	trusted := []string{

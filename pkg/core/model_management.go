@@ -5,7 +5,6 @@ package core
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"errors"
 	"fmt"
@@ -180,7 +179,11 @@ func (r *Runtime) SaveModel(req ModelSaveRequest) error {
 		if err := config.Save(cfg, cfgPath); err != nil {
 			return err
 		}
-		return r.core.Reload()
+		if err := r.core.Reload(); err != nil {
+			return err
+		}
+		r.notifyStateChanged(StateTopicModels, "model.save")
+		return nil
 	}
 
 	index := -1
@@ -222,8 +225,11 @@ func (r *Runtime) SaveModel(req ModelSaveRequest) error {
 		return err
 	}
 	if wasActive {
-		return r.core.Reload()
+		if err := r.core.Reload(); err != nil {
+			return err
+		}
 	}
+	r.notifyStateChanged(StateTopicModels, "model.save")
 	return nil
 }
 
