@@ -18,6 +18,27 @@ import (
 	"time"
 )
 
+func (rc *RuntimeCore) versionFilesDirForPath(absPath string) (string, string, error) {
+	rel, err := rc.relWithinRoot(absPath)
+	if err != nil {
+		return "", "", filepath.SkipDir
+	}
+	root := rc.workingRoot()
+	currentDir := filepath.Join(fileops.VersionFilesRoot(root), filepath.FromSlash(rel))
+	legacyDir := filepath.Join(fileops.LegacyVersionFilesRoot(root), filepath.FromSlash(rel))
+	return chooseRuntimeVersionDir(currentDir, legacyDir), rel, nil
+}
+
+func chooseRuntimeVersionDir(currentDir, legacyDir string) string {
+	if info, err := os.Stat(currentDir); err == nil && info.IsDir() {
+		return currentDir
+	}
+	if info, err := os.Stat(legacyDir); err == nil && info.IsDir() {
+		return legacyDir
+	}
+	return currentDir
+}
+
 // ListVersionFiles 列出所有有版本的文件
 func (rc *RuntimeCore) ListVersionFiles() ([]fileops.VersionFileEntry, error) {
 	versionsDir := rc.versionsRoot()
@@ -47,6 +68,9 @@ func (rc *RuntimeCore) ListVersionFiles() ([]fileops.VersionFileEntry, error) {
 			if e == nil && strings.HasPrefix(rel, "_") {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if d.Name() == "meta.json" || d.Name() == "_index.jsonl" {
 			return nil
 		}
 		if !strings.HasSuffix(d.Name(), ".content") {
@@ -94,12 +118,10 @@ func (rc *RuntimeCore) ListVersionFiles() ([]fileops.VersionFileEntry, error) {
 
 // ListVersionsForPath 列出指定文件的所有版本
 func (rc *RuntimeCore) ListVersionsForPath(absPath string) ([]fileops.VersionMeta, error) {
-	rel, err := rc.relWithinRoot(absPath)
+	versionsDir, rel, err := rc.versionFilesDirForPath(absPath)
 	if err != nil {
-		return nil, filepath.SkipDir
+		return nil, err
 	}
-
-	versionsDir := filepath.Join(rc.versionsRoot(), filepath.FromSlash(rel))
 	entries, err := os.ReadDir(versionsDir)
 	if err != nil {
 		return nil, err

@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dreamSailing/eos/internal/tools/fileops"
 )
 
 func (rc *RuntimeCore) workingRoot() string {
@@ -25,10 +27,7 @@ func (rc *RuntimeCore) workingRoot() string {
 
 func (rc *RuntimeCore) versionsRoot() string {
 	root := rc.workingRoot()
-	if root == "" {
-		return filepath.Join(".eos", "versions")
-	}
-	return filepath.Join(root, ".eos", "versions")
+	return fileops.ExistingVersionFilesRoot(root)
 }
 
 func (rc *RuntimeCore) resolveWithinRoot(path string) string {

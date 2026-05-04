@@ -149,14 +149,10 @@ func (rc *RuntimeCore) SaveSessionMessages(ctx context.Context, id string, messa
 		return "", err
 	}
 	ps.Transcript = copySessionTranscript(messages)
-	if len(sessionPreviewFromState(ps.Context)) == 0 && len(ps.Transcript) > 0 {
-		ps.Context = contextStateFromTranscript(ps.Transcript, ps.Model)
-	}
+	ps.Context = contextStateFromTranscript(ps.Transcript, ps.Model)
 	ps.Summary = bestEffortTranscriptSummary(ps.Transcript, ps.Summary)
 	ps.Preview = bestEffortTranscriptPreview(ps.Transcript, ps.Preview)
-	if ps.Rounds == 0 && len(ps.Transcript) > 0 {
-		ps.Rounds = transcriptRoundCount(ps.Transcript)
-	}
+	ps.Rounds = transcriptRoundCount(ps.Transcript)
 
 	dir := rc.sessionsDir()
 	path := filepath.Join(dir, savedID+".json")

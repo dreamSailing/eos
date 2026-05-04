@@ -215,6 +215,12 @@ func recentVersionedFilesList(root string, limit int) []string {
 			return nil
 		}
 		if d.IsDir() {
+			if path != root {
+				rel, err := filepath.Rel(root, path)
+				if err == nil && strings.HasPrefix(filepath.ToSlash(rel), "_") {
+					return filepath.SkipDir
+				}
+			}
 			return nil
 		}
 		seen++
@@ -222,19 +228,20 @@ func recentVersionedFilesList(root string, limit int) []string {
 			return fs.SkipAll
 		}
 		name := d.Name()
-		if !strings.HasSuffix(name, ".meta") && !strings.HasSuffix(name, ".content") {
-			return nil
-		}
-		id := strings.TrimSuffix(strings.TrimSuffix(name, ".meta"), ".content")
-		ts, err := time.Parse("20060102-150405", id)
-		if err != nil {
+		if !strings.HasSuffix(name, ".content") {
 			return nil
 		}
 		dir := filepath.Dir(path)
 		relDir, err := filepath.Rel(root, dir)
-		if err != nil || strings.HasPrefix(relDir, "..") {
+		relDir = filepath.ToSlash(relDir)
+		if err != nil || strings.HasPrefix(relDir, "..") || relDir == "." || strings.HasPrefix(relDir, "_") {
 			return nil
 		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		ts := info.ModTime()
 		existing, ok := latest[relDir]
 		if !ok || ts.After(existing) {
 			latest[relDir] = ts

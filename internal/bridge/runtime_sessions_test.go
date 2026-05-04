@@ -161,6 +161,60 @@ func TestRuntimeCore_SaveSessionMessagesAndDeleteSession(t *testing.T) {
 	}
 }
 
+func TestRuntimeCore_SaveSessionMessagesRebuildsContextFromShorterTranscript(t *testing.T) {
+	dir := t.TempDir()
+	old, _ := os.Getwd()
+	_ = os.Chdir(dir)
+	t.Cleanup(func() { _ = os.Chdir(old) })
+
+	cm := session.NewContextManager()
+	cm.AddUser("keep this turn")
+	cm.AddAssistant("keep reply")
+	cm.AddUser("stale turn")
+	cm.AddAssistant("stale reply")
+	rc := &RuntimeCore{cm: cm}
+
+	if _, err := rc.SaveSessionMessages(context.Background(), "thread-rollback", []SessionTranscriptMessage{
+		{Role: "user", Type: "user", Content: "keep this turn"},
+		{Role: "assistant", Type: "assistant", Content: "keep reply"},
+	}); err != nil {
+		t.Fatalf("SaveSessionMessages() error = %v", err)
+	}
+
+	metas, err := rc.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+	if len(metas) != 1 {
+		t.Fatalf("len(ListSessions())=%d, want 1", len(metas))
+	}
+	if metas[0].Summary != "keep this turn" {
+		t.Fatalf("summary=%q, want keep this turn", metas[0].Summary)
+	}
+	if metas[0].Preview != "keep reply" {
+		t.Fatalf("preview=%q, want keep reply", metas[0].Preview)
+	}
+	if metas[0].Rounds != 1 {
+		t.Fatalf("rounds=%d, want 1", metas[0].Rounds)
+	}
+
+	cm2 := session.NewContextManager()
+	rc2 := &RuntimeCore{cm: cm2}
+	if err := rc2.ResumeSession(context.Background(), "thread-rollback"); err != nil {
+		t.Fatalf("ResumeSession() error = %v", err)
+	}
+	preview := cm2.BuildPreview()
+	if len(preview) != 2 {
+		t.Fatalf("len(BuildPreview())=%d, want 2", len(preview))
+	}
+	if preview[0].Content != "keep this turn" {
+		t.Fatalf("preview[0].Content=%q, want keep this turn", preview[0].Content)
+	}
+	if preview[1].Content != "keep reply" {
+		t.Fatalf("preview[1].Content=%q, want keep reply", preview[1].Content)
+	}
+}
+
 func TestRuntimeCore_CurrentSessionControlsResumeDefault(t *testing.T) {
 	dir := t.TempDir()
 	old, _ := os.Getwd()

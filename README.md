@@ -1,5 +1,7 @@
 # EOS
 
+[中文](./README.md) | [English](./README.en.md)
+
 Go 语言实现的终端 AI 编码助手，基于 CloudWeGo Eino 做多代理编排，提供可交互 TUI、工具调用、安全门禁与工作区上下文能力。
 
 - 项目仓库：https://github.com/dreamSailing/eos
