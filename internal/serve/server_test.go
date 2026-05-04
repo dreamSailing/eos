@@ -856,7 +856,7 @@ func TestStdioFlow_RequestCancelEmitsRequestFailed(t *testing.T) {
 			"workspacePath": workspace,
 			"options": map[string]any{
 				"allowedTools":  []any{"bash"},
-				"executionMode": "bypass",
+				"executionMode": "auto",
 				"sandboxMode":   "full_access",
 			},
 		},
@@ -1095,7 +1095,7 @@ func TestStdioFlow_InquiryResolveAliasCompletesRequest(t *testing.T) {
 				"tool": "ask_user_question",
 				"parameters": map[string]any{
 					"question": "选择模式",
-					"options":  []any{"auto", "manual"},
+					"options":  []any{"auto", "plan"},
 				},
 			},
 		},
@@ -1128,8 +1128,8 @@ func TestStdioFlow_InquiryResolveAliasCompletesRequest(t *testing.T) {
 		"params": map[string]any{
 			"sessionID": sessionID,
 			"inquiryID": requestID,
-			"option":    "manual",
-			"text":      "需要人工确认",
+			"option":    "plan",
+			"text":      "先给出方案",
 		},
 	})
 	resp, events = readResponseAndEvents(4, 2*time.Second)
@@ -1149,7 +1149,7 @@ func TestStdioFlow_InquiryResolveAliasCompletesRequest(t *testing.T) {
 				"tool": "ask_user_question",
 				"parameters": map[string]any{
 					"question": "选择模式",
-					"options":  []any{"auto", "manual"},
+					"options":  []any{"auto", "plan"},
 				},
 			},
 		},
@@ -1167,8 +1167,8 @@ func TestStdioFlow_InquiryResolveAliasCompletesRequest(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected result data, got: %v", resp)
 	}
-	if got, _ := data["option"].(string); got != "manual" {
-		t.Fatalf("expected resolved option manual, got: %v", resp)
+	if got, _ := data["option"].(string); got != "plan" {
+		t.Fatalf("expected resolved option plan, got: %v", resp)
 	}
 
 	_ = inW.Close()

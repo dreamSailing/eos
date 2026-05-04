@@ -13,7 +13,7 @@ func TestBridgePromptEventInquiry(t *testing.T) {
 		ID:        "inq-1",
 		Kind:      "inquiry",
 		Question:  "请选择执行模式",
-		Options:   []string{"auto", "manual"},
+		Options:   []string{"auto", "plan"},
 		AllowText: true,
 	})
 

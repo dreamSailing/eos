@@ -22,7 +22,7 @@ Go 语言实现的终端 AI 编码助手，基于 CloudWeGo Eino 做多代理编
 ## 核心能力
 
 - 交互式 TUI：AI/Bash 双模式、面板系统、流式输出与 Markdown 渲染
-- 三种执行模式：`manual` / `plan` / `auto`（可在界面中循环切换）
+- 两种执行模式：`plan` / `auto`（可在界面中切换）
 - 多代理协同：planner、developer、tester、reviewer 等子代理分工
 - 工具体系：文件读写/编辑、搜索、Git、Shell、后台任务、MCP 调用等
 - 安全控制：高风险工具调用分级与确认，支持会话级授权
@@ -99,7 +99,7 @@ export EOS_MODEL="gpt-4o-mini"
 ### 快捷键
 
 - `F2`：切换 AI / Bash 模式
-- `Alt+M`：切换执行模式（manual → plan → auto）
+- `Alt+M`：切换执行模式（plan ↔ auto）
 - `Alt+V`：粘贴剪贴板图片
 - `Alt+H`：展开/折叠思考内容
 - `?`：打开帮助面板

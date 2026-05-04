@@ -40,11 +40,7 @@ var executionModeDescriptors = []ExecutionModeDescriptor{
 	{
 		Name: "auto",
 		Aliases: []string{
-			"default", "manual",
-			"acceptEdits", "accept_edits", "accept-edits",
-			"dontAsk", "dont_ask", "dont-ask",
-			"bypassPermissions", "bypass_permissions", "bypass-permissions", "bypass",
-			"默认只读", "手动确认", "接受编辑", "自动无人值守", "拒绝询问", "绕过审批", "内部绕过",
+			"自动", "auto_mode", "auto-mode",
 		},
 		Description:      "Balanced mode: low/medium risk tools run directly, high risk tools still prompt.",
 		ApprovalBehavior: "prompt_high_only",

@@ -246,7 +246,7 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 				"allowedTools":           []any{"bash", "read"},
 				"requireApprovalDigest":  false,
 				"maxConcurrentToolCalls": 1,
-				"executionMode":          "bypass",
+				"executionMode":          "auto",
 				"sandboxMode":            "full_access",
 				"trustedWorkspace":       true,
 				"confirmPolicyID":        "",

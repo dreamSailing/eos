@@ -32,25 +32,10 @@ func (p *coreTestPlugin) Description() string { return p.desc }
 func (p *coreTestPlugin) Execute(context.Context, map[string]any) (any, error) { return "ok", nil }
 
 func TestToRuntimeMode(t *testing.T) {
-	if got := toRuntimeMode("手动确认"); got != "auto" {
-		t.Fatalf("unexpected mode: %s", got)
-	}
-	if got := toRuntimeMode("default"); got != "auto" {
-		t.Fatalf("unexpected mode: %s", got)
-	}
 	if got := toRuntimeMode("计划优先"); got != "plan" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
-	if got := toRuntimeMode("acceptEdits"); got != "auto" {
-		t.Fatalf("unexpected mode: %s", got)
-	}
-	if got := toRuntimeMode("自动无人值守"); got != "auto" {
-		t.Fatalf("unexpected mode: %s", got)
-	}
-	if got := toRuntimeMode("dontAsk"); got != "auto" {
-		t.Fatalf("unexpected mode: %s", got)
-	}
-	if got := toRuntimeMode("bypassPermissions"); got != "auto" {
+	if got := toRuntimeMode("auto"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
 	if got := toRuntimeMode("unknown"); got != "auto" {
@@ -59,22 +44,10 @@ func TestToRuntimeMode(t *testing.T) {
 }
 
 func TestFromRuntimeMode(t *testing.T) {
-	if got := fromRuntimeMode("default"); got != "auto" {
-		t.Fatalf("unexpected mode: %s", got)
-	}
-	if got := fromRuntimeMode("acceptEdits"); got != "auto" {
-		t.Fatalf("unexpected mode: %s", got)
-	}
 	if got := fromRuntimeMode("plan"); got != "plan" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
 	if got := fromRuntimeMode("auto"); got != "auto" {
-		t.Fatalf("unexpected mode: %s", got)
-	}
-	if got := fromRuntimeMode("dontAsk"); got != "auto" {
-		t.Fatalf("unexpected mode: %s", got)
-	}
-	if got := fromRuntimeMode("bypassPermissions"); got != "auto" {
 		t.Fatalf("unexpected mode: %s", got)
 	}
 	if got := fromRuntimeMode("unknown"); got != "auto" {

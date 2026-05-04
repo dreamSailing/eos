@@ -26,7 +26,7 @@ func TestFilterVisibleTools_PlanModeOnlyKeepsLowRisk(t *testing.T) {
 	}
 }
 
-func TestEvaluateToolAccess_LegacyDefaultNormalizesToAuto(t *testing.T) {
+func TestEvaluateToolAccess_AutoModeAllowsMediumRiskWithoutApprovalByDefault(t *testing.T) {
 	access := EvaluateToolAccess(ToolDefinition{
 		Name:      "edit",
 		Category:  "filesystem",
@@ -35,30 +35,30 @@ func TestEvaluateToolAccess_LegacyDefaultNormalizesToAuto(t *testing.T) {
 		Invocable: true,
 	}, ExecSession{
 		AllowedTools:  map[string]bool{"edit": true},
-		ExecutionMode: "default",
+		ExecutionMode: "auto",
 	})
 
 	if access.Mode != "auto" {
 		t.Fatalf("mode=%q, want auto", access.Mode)
 	}
 	if !access.Visible || !access.Executable {
-		t.Fatalf("legacy default should allow edit through auto mode, got %+v", access)
+		t.Fatalf("auto mode should allow edit, got %+v", access)
 	}
 	if access.NeedsApproval {
-		t.Fatalf("legacy default should inherit auto approval behavior, got %+v", access)
+		t.Fatalf("auto mode should not require approval here, got %+v", access)
 	}
 }
 
-func TestEvaluateToolAccess_LegacyModeRequiresDigestForMediumRisk(t *testing.T) {
+func TestEvaluateToolAccess_AutoModeRequiresDigestForMediumRiskWhenEnabled(t *testing.T) {
 	def := ToolDefinition{Name: "edit", Category: "filesystem", RiskLevel: RiskMedium, VisibleIn: testAllModes, Invocable: true}
 
 	access := EvaluateToolAccess(def, ExecSession{
 		AllowedTools:          map[string]bool{"edit": true},
-		ExecutionMode:         "acceptEdits",
+		ExecutionMode:         "auto",
 		RequireApprovalDigest: true,
 	})
 	if !access.NeedsApproval {
-		t.Fatalf("acceptEdits alias should normalize to auto and require digest approval, got %+v", access)
+		t.Fatalf("auto mode with digest approval should require confirmation, got %+v", access)
 	}
 }
 
@@ -83,7 +83,7 @@ func TestEvaluateToolAccess_AutoModeOnlyPromptsHighRiskByDefault(t *testing.T) {
 	}
 }
 
-func TestEvaluateToolAccess_PlanRejectsMutatingToolsEvenForLegacyAliases(t *testing.T) {
+func TestEvaluateToolAccess_PlanRejectsMutatingTools(t *testing.T) {
 	def := ToolDefinition{Name: "bash", RiskLevel: RiskHigh, VisibleIn: []string{"auto"}, Invocable: true}
 
 	access := EvaluateToolAccess(def, ExecSession{
@@ -118,20 +118,14 @@ func TestEvaluateToolAccess_PlanAllowsReadOnlyTools(t *testing.T) {
 	}
 }
 
-func TestNormalizeExecutionModeAcceptsClaudeAliases(t *testing.T) {
+func TestNormalizeExecutionModeAcceptsCurrentModesOnly(t *testing.T) {
 	tests := map[string]string{
-		"default":            "auto",
-		"manual":             "auto",
-		"acceptEdits":        "auto",
-		"accept_edits":       "auto",
-		"dontAsk":            "auto",
-		"dont_ask":           "auto",
-		"bypassPermissions":  "auto",
-		"bypass_permissions": "auto",
-		"bypass":             "auto",
-		"手动确认":               "auto",
-		"计划优先":               "plan",
-		"unknown":            "auto",
+		"auto":     "auto",
+		"自动":       "auto",
+		"plan":     "plan",
+		"计划优先":     "plan",
+		"先出计划":     "plan",
+		"unknown":  "auto",
 	}
 
 	for input, want := range tests {
@@ -142,19 +136,19 @@ func TestNormalizeExecutionModeAcceptsClaudeAliases(t *testing.T) {
 }
 
 func TestExecutionModeDescriptorForReturnsAliases(t *testing.T) {
-	desc := ExecutionModeDescriptorFor("acceptEdits")
+	desc := ExecutionModeDescriptorFor("auto")
 	if desc.Name != "auto" {
 		t.Fatalf("Name=%q, want auto", desc.Name)
 	}
 	found := false
 	for _, alias := range desc.Aliases {
-		if alias == "accept-edits" {
+		if alias == "auto-mode" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("Aliases=%v, want accept-edits alias", desc.Aliases)
+		t.Fatalf("Aliases=%v, want auto-mode alias", desc.Aliases)
 	}
 }
 

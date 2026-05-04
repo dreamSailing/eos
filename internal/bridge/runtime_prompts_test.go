@@ -69,12 +69,12 @@ func TestPromptPermissionAutoStillPromptsHighRisk(t *testing.T) {
 	}
 }
 
-func TestPromptPermissionLegacyAcceptEditsNormalizesToAuto(t *testing.T) {
+func TestPromptPermissionAutoModeAllowsMediumRiskWithoutPrompt(t *testing.T) {
 	rc := &RuntimeCore{
 		securityMgr: NewSecurityManager(),
 		eventsCh:    make(chan Event, 1),
 	}
-	rc.securityMgr.SetExecutionMode("acceptEdits")
+	rc.securityMgr.SetExecutionMode("auto")
 
 	if got := rc.promptPermission(context.Background(), "file_write", "fs write ./README.md"); got != "allow" {
 		t.Fatalf("promptPermission() = %q, want allow", got)

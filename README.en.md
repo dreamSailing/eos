@@ -22,7 +22,7 @@ EOS is a Go-based terminal AI coding assistant built on CloudWeGo Eino. It provi
 ## Core Capabilities
 
 - Interactive TUI: AI/Bash dual mode, panel system, streaming output, and Markdown rendering
-- Three execution modes: `manual` / `plan` / `auto` (switchable in the interface)
+- Two execution modes: `plan` / `auto` (switchable in the interface)
 - Multi-agent collaboration: planner, developer, tester, reviewer, and other specialized agents
 - Tooling system: file read/write/edit, search, Git, Shell, background tasks, MCP calls, and more
 - Safety controls: tiered confirmation for high-risk actions with session-level authorization support
@@ -99,7 +99,7 @@ The repository includes gopls embedding scripts: `scripts/embed_gopls.sh` and `s
 ### Keyboard Shortcuts
 
 - `F2`: switch between AI and Bash mode
-- `Alt+M`: switch execution mode (`manual → plan → auto`)
+- `Alt+M`: switch execution mode (`plan ↔ auto`)
 - `Alt+V`: paste an image from the clipboard
 - `Alt+H`: expand or collapse thinking content
 - `?`: open the help panel

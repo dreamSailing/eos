@@ -41,7 +41,7 @@ func TestNormalizeRuntimeEventMapsInquiryPrompt(t *testing.T) {
 		Content: "请选择模式",
 		Data: map[string]any{
 			"kind":    "inquiry",
-			"options": []string{"auto", "manual"},
+			"options": []string{"auto", "plan"},
 		},
 	})
 

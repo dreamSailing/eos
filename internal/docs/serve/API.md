@@ -137,7 +137,7 @@ eos bridge manifest --workspace "/abs/workspace" --allowed-tools "read,bash"
 - 作用：创建会话并绑定工作区和执行策略
 - 请求参数：
   - `workspacePath` string（可省略；省略时使用启动参数 `--workspace`）
-  - `options.executionMode` string：`manual` / `plan` / `auto`
+  - `options.executionMode` string：`plan` / `auto`
   - `options.trustedWorkspace` bool
   - `options.maxConcurrentToolCalls` int
   - `options.requireApprovalDigest` bool
@@ -277,8 +277,8 @@ eos bridge manifest --workspace "/abs/workspace" --allowed-tools "read,bash"
 
 ## 5.1 默认原则
 
-- `executionMode=plan` 时，非低风险工具会被拒绝执行
-- `executionMode=manual` 时，工具执行默认需要审批
+- `executionMode=plan` 时，非只读工具会被拒绝执行
+- `executionMode=auto` 时，高风险工具默认需要审批
 - `requireApprovalDigest=true` 时，中/高风险工具需要审批
 
 ## 5.2 审批摘要
