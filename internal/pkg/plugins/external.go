@@ -7,10 +7,10 @@ package plugins
 
 
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
 )
 
@@ -51,7 +51,7 @@ func (p *ExternalToolPlugin) Execute(ctx context.Context, params map[string]any)
 
 	// 构造命令，将参数作为最后一个参数传递
 	args := append(p.Args, string(paramJSON))
-	cmd := exec.CommandContext(ctx, p.Command, args...)
+	cmd := utils.CommandContext(ctx, p.Command, args...)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

@@ -7,9 +7,9 @@ package tools
 
 
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -59,7 +59,7 @@ func extractWithPdftotext(path, pages string) (string, error) {
 	}
 	args = append(args, "-layout", path, "-")
 
-	cmd := exec.Command("pdftotext", args...)
+	cmd := utils.Command("pdftotext", args...)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -100,7 +100,7 @@ except ImportError:
 `
 	script = fmt.Sprintf(script, first, first, last, last, first, first, last, last)
 
-	cmd := exec.Command("python3", "-c", script, path)
+	cmd := utils.Command("python3", "-c", script, path)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err

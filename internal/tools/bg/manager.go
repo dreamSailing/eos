@@ -7,6 +7,7 @@ package bg
 
 
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"bufio"
 	"context"
 	"fmt"
@@ -137,7 +138,7 @@ func (m *Manager) Start(command string, opts *StartOptions) (TaskInfo, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	execName, execArgs := shellCommand(command)
-	cmd := exec.CommandContext(ctx, execName, execArgs...)
+	cmd := utils.CommandContext(ctx, execName, execArgs...)
 	if opts != nil {
 		if strings.TrimSpace(opts.WorkingDir) != "" {
 			cmd.Dir = opts.WorkingDir

@@ -9,6 +9,7 @@ package lsp
 
 
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"context"
 	"fmt"
 	"os"
@@ -228,7 +229,7 @@ func (d *Detector) findPythonServer() (*ServerInfo, error) {
 	// 测试是否可以运行 pylsp
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, pythonCmd, "-m", "pylsp", "--help")
+	cmd := utils.CommandContext(ctx, pythonCmd, "-m", "pylsp", "--help")
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("pylsp not available")
 	}

@@ -7,10 +7,10 @@ package tools
 
 
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 )
 
 // exitWorktreeStructured handles the exit_worktree tool
@@ -44,7 +44,7 @@ func (m *Manager) exitWorktreeStructured(ctx context.Context, params map[string]
 
 	if remove {
 		// Remove git worktree
-		cmd := exec.Command("git", "worktree", "remove", "--force", path)
+		cmd := utils.Command("git", "worktree", "remove", "--force", path)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			return ToolResult{
@@ -73,7 +73,7 @@ func (m *Manager) exitWorktreeStructured(ctx context.Context, params map[string]
 	}
 
 	// Just detach (prune) without removing
-	cmd := exec.Command("git", "worktree", "prune")
+	cmd := utils.Command("git", "worktree", "prune")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return ToolResult{

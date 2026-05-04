@@ -6,12 +6,12 @@ package core
 // 商业使用请联系版权人获得商业授权。
 
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -2118,7 +2118,7 @@ func runGitCommand(root string, args ...string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", root}, args...)...)
+	cmd := utils.CommandContext(ctx, "git", append([]string{"-C", root}, args...)...)
 	out, err := cmd.CombinedOutput()
 	text := strings.TrimSpace(string(out))
 	if err != nil {

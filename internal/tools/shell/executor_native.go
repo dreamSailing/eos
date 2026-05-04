@@ -54,7 +54,7 @@ func (e *NativeExecutor) Execute(ctx context.Context, command string, workingDir
 }
 
 func (e *NativeExecutor) ExecuteDirect(ctx context.Context, name string, args []string, opts *ExecuteOptions) (stdout, stderr string, err error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := utils.CommandContext(ctx, name, args...)
 
 	workingDir := ""
 	if opts != nil {
@@ -116,7 +116,7 @@ func buildNativeShellCommand(ctx context.Context, shellType ShellType, command s
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := utils.CommandContext(ctx, name, args...)
 	if workingDir != "" {
 		cmd.Dir = workingDir
 	}

@@ -7,6 +7,7 @@ package tools
 
 
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"context"
 	"fmt"
 	"os"
@@ -51,7 +52,7 @@ func (m *Manager) enterWorktreeStructured(ctx context.Context, params map[string
 	targetPath := filepath.Join(worktreesDir, name)
 
 	// Create git worktree
-	cmd := exec.Command("git", "worktree", "add", targetPath)
+	cmd := utils.Command("git", "worktree", "add", targetPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return ToolResult{
@@ -87,7 +88,7 @@ var OnWorktreeChange func(event, path string)
 
 // IsGitRepo checks if the current directory is inside a git repository
 func IsGitRepo() bool {
-	cmd := exec.Command("git", "rev-parse", "--is-inside-work-tree")
+	cmd := utils.Command("git", "rev-parse", "--is-inside-work-tree")
 	output, err := cmd.Output()
 	if err != nil {
 		return false

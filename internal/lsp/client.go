@@ -101,7 +101,7 @@ func (c *Client) Start(ctx context.Context) error {
 		"args", c.cmdArgs)
 
 	// 启动服务器进程
-	c.cmd = exec.CommandContext(ctx, c.cmdPath, c.cmdArgs...)
+	c.cmd = utils.CommandContext(ctx, c.cmdPath, c.cmdArgs...)
 
 	// 创建管道
 	stdin, err := c.cmd.StdinPipe()

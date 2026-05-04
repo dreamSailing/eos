@@ -7,10 +7,10 @@ package bridge
 
 
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"bytes"
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -89,7 +89,7 @@ func findGitRoot(startRoot string) string {
 func runGit(dir string, args ...string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := utils.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	var out bytes.Buffer
 	cmd.Stdout = &out

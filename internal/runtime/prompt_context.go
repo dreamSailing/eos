@@ -7,9 +7,9 @@ package runtime
 
 
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -112,13 +112,13 @@ func loadCodingStyle(rootDir string) string {
 
 // CollectRecentFiles 通过 git 获取最近修改的文件列表
 func CollectRecentFiles(rootDir string) []string {
-	cmd := exec.Command("git", "diff", "--name-only", "HEAD")
+	cmd := utils.Command("git", "diff", "--name-only", "HEAD")
 	cmd.Dir = rootDir
 
 	out, err := cmd.Output()
 	if err != nil {
 		// 非 git 目录或无更改，尝试获取最近 commit 的文件
-		cmd2 := exec.Command("git", "diff", "--name-only", "HEAD~1", "HEAD")
+		cmd2 := utils.Command("git", "diff", "--name-only", "HEAD~1", "HEAD")
 		cmd2.Dir = rootDir
 		out, err = cmd2.Output()
 		if err != nil {

@@ -7,12 +7,12 @@ package git
 
 
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -78,7 +78,7 @@ func (o *Ops) Status() ([]Change, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
+	cmd := utils.CommandContext(ctx, "git", "status", "--porcelain")
 	cmd.Dir = o.Root
 	out, err := cmd.Output()
 	if err != nil {
@@ -649,7 +649,7 @@ func (o *Ops) runGitWithTimeout(timeout time.Duration, args ...string) (string, 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := utils.CommandContext(ctx, "git", args...)
 	cmd.Dir = o.Root
 	out, err := cmd.CombinedOutput()
 	txt := strings.TrimRight(string(out), "\r\n")

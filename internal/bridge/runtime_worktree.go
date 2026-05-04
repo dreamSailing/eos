@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/dreamSailing/eos/internal/pkg/utils"
@@ -26,7 +25,7 @@ func (rc *RuntimeCore) EnterWorktree(ctx context.Context, name string) (string, 
 	worktreesDir := ".eos/worktrees"
 	targetPath := filepath.Join(worktreesDir, name)
 
-	cmd := exec.CommandContext(ctx, "git", "worktree", "add", targetPath)
+	cmd := utils.CommandContext(ctx, "git", "worktree", "add", targetPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.Error("bridge.worktree.create_failed",
@@ -56,12 +55,12 @@ func (rc *RuntimeCore) EnterWorktree(ctx context.Context, name string) (string, 
 // ExitWorktree removes a git worktree
 func (rc *RuntimeCore) ExitWorktree(ctx context.Context, path string, remove bool) error {
 	if remove {
-		cmd := exec.CommandContext(ctx, "git", "worktree", "remove", path)
+		cmd := utils.CommandContext(ctx, "git", "worktree", "remove", path)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("git worktree remove failed: %s", string(output))
 		}
 	} else {
-		cmd := exec.CommandContext(ctx, "git", "worktree", "remove", "--force", path)
+		cmd := utils.CommandContext(ctx, "git", "worktree", "remove", "--force", path)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			slog.Warn("bridge.worktree.force_remove",
 				"component", utils.ComponentSystem,

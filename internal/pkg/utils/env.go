@@ -8,7 +8,6 @@ package utils
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -79,7 +78,7 @@ func IsGitRepo(cwd string) bool {
 // GetOSVersion 获取系统版本信息
 func GetOSVersion() string {
 	if runtime.GOOS == "windows" {
-		out, err := exec.Command("cmd", "/c", "ver").Output()
+		out, err := Command("cmd", "/c", "ver").Output()
 		if err != nil {
 			return ""
 		}
@@ -88,7 +87,7 @@ func GetOSVersion() string {
 		return strings.TrimPrefix(v, "Microsoft Windows ")
 	}
 	// Linux / macOS
-	out, err := exec.Command("uname", "-sr").Output()
+	out, err := Command("uname", "-sr").Output()
 	if err != nil {
 		return ""
 	}
