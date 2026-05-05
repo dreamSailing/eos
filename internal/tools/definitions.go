@@ -112,11 +112,11 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolTimeNow,
-			Description: "获取本机当前日期时间（本地时区），并返回常用格式（本地/UTC、Unix 时间戳等）。",
+			Description: "获取权威日期时间（NTP 校准，国内外通用）。返回本地/UTC时间、Unix时间戳、星期、ISO周数、季度等丰富信息。time_source 标识时间来源(ntp/system)。",
 			Params:      map[string]*schema.ParameterInfo{},
 			RiskLevel:   RiskLevelLow,
 			Examples: []ToolExample{
-				{Description: "获取本地日期时间", Input: map[string]any{}},
+				{Description: "获取权威日期时间（NTP 校准）", Input: map[string]any{}},
 			},
 		},
 		{

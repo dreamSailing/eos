@@ -235,6 +235,17 @@ func (r *Runtime) InvokeWithImages(ctx context.Context, input string, imagePaths
 					out <- mapped
 				}
 			case err := <-done:
+			drain:
+				for {
+					select {
+					case ev := <-r.core.Events():
+						if mapped, ok := mapBridgeEvent(ev); ok {
+							out <- mapped
+						}
+					default:
+						break drain
+					}
+				}
 				if err != nil {
 					out <- Event{Type: "Error", Message: err.Error()}
 				}
@@ -302,6 +313,17 @@ func (r *Runtime) InvokeProtocolWithImages(ctx context.Context, input string, im
 					out <- mapped
 				}
 			case err := <-done:
+				drain:
+					for {
+						select {
+						case ev := <-r.core.Events():
+							if mapped, ok := bridgeEventToProtocol(ev, sessionID, threadID, requestID, time.Now()); ok {
+								out <- mapped
+							}
+						default:
+							break drain
+						}
+					}
 				if err != nil {
 					out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
 						"error":       err.Error(),
