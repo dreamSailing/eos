@@ -118,6 +118,21 @@ export EOS_MODEL="gpt-4o-mini"
 
 - CLI 对外 API（`eos serve`）：[internal/docs/serve/API.md](./internal/docs/serve/API.md)
 - IDE bridge 最小接入：先生成桥接清单 `eos bridge manifest --workspace "/abs/workspace"`，详见 [internal/docs/serve/IDE_BRIDGE.md](./internal/docs/serve/IDE_BRIDGE.md)
+- 标准 MCP Server：`eos mcp serve --transport stdio --workspace "/abs/workspace"`，详见 [internal/docs/mcp/SERVER.md](./internal/docs/mcp/SERVER.md)
+
+### MCP Server 示例
+
+stdio:
+
+```bash
+eos mcp serve --transport stdio --workspace "/abs/workspace"
+```
+
+SSE:
+
+```bash
+eos mcp serve --transport sse --listen 127.0.0.1:8765 --workspace "/abs/workspace"
+```
 
 ## 项目结构（简版）
 

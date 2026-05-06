@@ -118,6 +118,21 @@ The repository includes gopls embedding scripts: `scripts/embed_gopls.sh` and `s
 
 - Public CLI API (`eos serve`): [internal/docs/serve/API.md](./internal/docs/serve/API.md)
 - Minimal IDE bridge integration: first generate a bridge manifest with `eos bridge manifest --workspace "/abs/workspace"`, then see [internal/docs/serve/IDE_BRIDGE.md](./internal/docs/serve/IDE_BRIDGE.md)
+- Standard MCP Server: `eos mcp serve --transport stdio --workspace "/abs/workspace"`; see [internal/docs/mcp/SERVER.md](./internal/docs/mcp/SERVER.md)
+
+### MCP Server Examples
+
+stdio:
+
+```bash
+eos mcp serve --transport stdio --workspace "/abs/workspace"
+```
+
+SSE:
+
+```bash
+eos mcp serve --transport sse --listen 127.0.0.1:8765 --workspace "/abs/workspace"
+```
 
 ## Project Structure (Short Version)
 
