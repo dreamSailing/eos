@@ -20,6 +20,7 @@ import (
 	"github.com/dreamSailing/eos/internal/ui/components/hints"
 	"github.com/dreamSailing/eos/internal/ui/components/input"
 	"github.com/dreamSailing/eos/internal/ui/features/slash"
+	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -348,6 +349,13 @@ func (m *Model) SetWelcomeInfo(modelName, apiInfo, workDir string) {
 	}
 }
 
+
+	// SetUpdateInfo sets version update info on the welcome card
+	func (m *Model) SetUpdateInfo(info *update.CheckResult) {
+		if m.welcome != nil {
+			m.welcome.SetUpdateInfo(info)
+		}
+	}
 // AppendContent 追加内容
 func (m *Model) AppendContent(text string) {
 	m.content.Append(text)

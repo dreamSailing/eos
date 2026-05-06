@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dreamSailing/eos/internal/bridge"
+	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/pkg/protocol"
 )
 
@@ -317,6 +318,11 @@ type ErrorMsg struct {
 	Fatal bool
 }
 
+// VersionCheckMsg 版本检查结果
+type VersionCheckMsg struct {
+	Result *update.CheckResult
+}
+
 // 实现 msgType 方法以满足接口要求
 func (WindowSizeMsg) msgType()     {}
 func (TickMsg) msgType()           {}
@@ -336,4 +342,5 @@ func (PanelOpenMsg) msgType()      {}
 func (PanelCloseMsg) msgType()     {}
 func (PanelActionMsg) msgType()    {}
 func (SettingsUpdateMsg) msgType() {}
+func (VersionCheckMsg) msgType() {}
 func (ErrorMsg) msgType()          {}

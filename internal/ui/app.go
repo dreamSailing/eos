@@ -13,6 +13,7 @@ import (
 
 	"github.com/dreamSailing/eos/internal/ai"
 	"github.com/dreamSailing/eos/internal/bridge"
+	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/i18n"
 	"github.com/dreamSailing/eos/internal/pkg/clip"
@@ -383,7 +384,24 @@ func (m *AppModel) Init() tea.Cmd {
 	)
 }
 
-// Update 更新应用状态
+// checkForUpdates checks for updates in the background
+	func (m *AppModel) checkForUpdates() tea.Cmd {
+		return func() tea.Msg {
+			result, err := update.CheckLatest(context.Background())
+			if err != nil || result == nil {
+				return nil
+			}
+			return VersionCheckMsg{Result: result}
+		}
+	}
+
+	func (m *AppModel) handleVersionCheck(msg VersionCheckMsg) {
+		if msg.Result != nil && msg.Result.HasUpdate {
+			m.shell.SetUpdateInfo(msg.Result)
+		}
+	}
+
+	// Update 更新应用状态
 func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 

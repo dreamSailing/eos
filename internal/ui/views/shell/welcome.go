@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/version"
 	"github.com/dreamSailing/eos/internal/ui/styles"
 
@@ -18,25 +19,26 @@ import (
 
 // WelcomeCard 欢迎卡片组件
 type WelcomeCard struct {
-	width     int
-	height    int
-	styles    *styles.Styles
-	modelName string
-	apiInfo   string
-	workDir   string
+	width      int
+	height     int
+	styles     *styles.Styles
+	modelName  string
+	apiInfo    string
+	workDir    string
 	appVersion string
+	updateInfo *update.CheckResult
 }
 
 // NewWelcomeCard 创建新的欢迎卡片
 func NewWelcomeCard(s *styles.Styles) *WelcomeCard {
 	wd, _ := os.Getwd()
 	return &WelcomeCard{
-		width:     80,
-		height:    24,
-		styles:    s,
-		modelName: "AI Assistant",
-		apiInfo:   "Ready",
-		workDir:   wd,
+		width:      80,
+		height:     24,
+		styles:     s,
+		modelName:  "AI Assistant",
+		apiInfo:    "Ready",
+		workDir:    wd,
 		appVersion: version.AppVersion,
 	}
 }
@@ -58,6 +60,11 @@ func (w *WelcomeCard) SetInfo(modelName, apiInfo, workDir string) {
 	if workDir != "" {
 		w.workDir = workDir
 	}
+}
+
+// SetUpdateInfo 设置版本更新信息
+func (w *WelcomeCard) SetUpdateInfo(info *update.CheckResult) {
+	w.updateInfo = info
 }
 
 // View 渲染欢迎卡片
@@ -129,6 +136,14 @@ func (w *WelcomeCard) View() string {
 		content.WriteString(subtitleStyle.Render("build " + buildInfo))
 	}
 	content.WriteString("\n\n")
+
+	if w.updateInfo != nil && w.updateInfo.HasUpdate {
+		updateStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#f59e0b")).
+			PaddingLeft(4)
+		content.WriteString(updateStyle.Render("⬆ 新版本 " + w.updateInfo.LatestVersion + " 可用！运行 'eos update' 更新。"))
+		content.WriteString("\n\n")
+	}
 
 	// 信息行
 	content.WriteString(infoStyle.Render("🧠 Model: " + w.modelName))
