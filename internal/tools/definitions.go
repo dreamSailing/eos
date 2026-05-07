@@ -54,6 +54,7 @@ const (
 	ToolTodoRead         = "todo_read"
 	ToolTodoWrite        = "todo_write"
 	ToolMCPStatus        = "mcp_status"
+	ToolBrowserStatus    = "browser_status"
 	ToolGitStatus        = "git_status"
 	ToolGitAdd           = "git_add"
 	ToolGitCommit        = "git_commit"
@@ -177,6 +178,15 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Examples: []ToolExample{
 				{Description: "查询所有 MCP 状态", Input: map[string]any{}},
 				{Description: "查询单个 MCP 状态", Input: map[string]any{"name": "http-proxy"}},
+			},
+		},
+		{
+			Name:        ToolBrowserStatus,
+			Description: "查询浏览器 MCP（推荐 Playwright）是否已配置、启用和成功加载。",
+			Params:      map[string]*schema.ParameterInfo{},
+			RiskLevel:   RiskLevelLow,
+			Examples: []ToolExample{
+				{Description: "检查浏览器能力是否可用", Input: map[string]any{}},
 			},
 		},
 		{

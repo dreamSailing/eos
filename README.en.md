@@ -134,6 +134,36 @@ SSE:
 eos mcp serve --transport sse --listen 127.0.0.1:8765 --workspace "/abs/workspace"
 ```
 
+### Browser Automation
+
+EOS does not ship an internal browser driver. The recommended production path is to connect a mature Playwright MCP server. Once enabled, the agent can click, type, select, wait for page changes, and capture screenshots in a real browser session.
+
+Minimum working configuration:
+
+```json
+[
+  {
+    "name": "playwright",
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp@latest"],
+    "envs": {},
+    "enabled": true
+  }
+]
+```
+
+How to enable:
+
+- Press `B` in the `/mcp` panel to insert the Playwright preset
+- Or edit the `mcp` section in `~/.eos.json` manually
+
+Usage boundaries:
+
+- `web_fetch` is for read-only page fetching
+- Browser MCP is for real page interaction and behavior verification
+- Use `browser_status`, `/status`, or `/doctor` for diagnostics
+
 ## Project Structure (Short Version)
 
 ```text

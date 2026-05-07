@@ -16,6 +16,7 @@ import (
 	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/i18n"
 	"github.com/dreamSailing/eos/internal/memory"
+	mcppkg "github.com/dreamSailing/eos/internal/mcp"
 	"github.com/dreamSailing/eos/internal/pkg/clip"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/state"
@@ -968,6 +969,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.handleMCPToggle(msg))
 	case panels.MCPAddMsg:
 		m.handleMCPAdd()
+	case panels.MCPAddBrowserMsg:
+		m.handleMCPAddBrowser()
 	case panels.MCPEditMsg:
 		m.handleMCPEdit(msg)
 	case panels.MCPDeleteMsg:
@@ -2498,6 +2501,13 @@ func (m *AppModel) handleMCPAdd() {
 	m.setupView = editor
 }
 
+func (m *AppModel) handleMCPAddBrowser() {
+	m.activeView = "setup"
+	editor := setup.NewMCPConfigEditorView(m.styles, m.state.Language, mcppkg.RecommendedBrowserPresetJSON(), false, "")
+	editor.SetSize(m.width, m.height)
+	m.setupView = editor
+}
+
 // handleMCPEdit 处理编辑 MCP 服务器
 func (m *AppModel) handleMCPEdit(msg panels.MCPEditMsg) {
 	var entry *config.MCPEntry
@@ -2560,6 +2570,14 @@ func (m *AppModel) refreshMCPPanel() {
 		})
 	}
 	mcpPanel.SetServers(out)
+	browser := m.adapter.GetCore().BrowserStatus()
+	mcpPanel.SetBrowserSummary(panels.BrowserSummary{
+		Configured: browser.Configured,
+		Enabled:    browser.Enabled,
+		Loaded:     browser.Loaded,
+		ServerName: browser.ServerName,
+		Hint:       browser.InstallHint,
+	})
 }
 
 func (m *AppModel) refreshLSPPanel() {

@@ -14,7 +14,10 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/memory"
+	mcppkg "github.com/dreamSailing/eos/internal/mcp"
+	plugpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
 )
 
 func BuildProjectPromptAdditions(cwd string) string {
@@ -61,6 +64,19 @@ func buildProjectPromptAdditions(cwd string, dispatchOnly bool) string {
 		sb.WriteString("- 跨项目稳定适用的用户偏好 -> 全局记忆 `~/.eos/memory/user.md`\n")
 		sb.WriteString("- 仅当前仓库适用的约定、结论、排障经验 -> 项目记忆 `.eos/memory/project.md`\n")
 		sb.WriteString("- 临时任务状态、一次性计划、短期上下文不要写入长期记忆\n")
+	}
+
+	cfg, _ := config.Load()
+	cfg.MCP = plugpkg.MergeMCPEntries(&cfg, cwd)
+	browserStatus := mcppkg.DetectBrowserStatus(&cfg, nil)
+	if !dispatchOnly {
+		sb.WriteString("\n\n## 浏览器能力\n")
+		if browserStatus.Configured && browserStatus.Enabled {
+			sb.WriteString("- 已配置浏览器 MCP（推荐 Playwright）；涉及网页点击、输入、选择、截图、等待页面变化时，优先使用浏览器工具，而不是只依赖 web_fetch\n")
+		} else {
+			sb.WriteString("- 当前未确认可用的浏览器 MCP；如果任务需要真实网页交互，先用 browser_status 检查，并建议用户在 /mcp 中启用 Playwright 预设\n")
+		}
+		sb.WriteString("- web_fetch 适合只读抓取网页内容；浏览器 MCP 适合真实页面交互与行为验证\n")
 	}
 
 	addSnippet(filepath.Join(".eos", "Rules.md"), 8000)

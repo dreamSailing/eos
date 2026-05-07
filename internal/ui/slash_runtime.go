@@ -19,6 +19,7 @@ import (
 
 	"github.com/dreamSailing/eos/internal/bridge"
 	"github.com/dreamSailing/eos/internal/config"
+	mcppkg "github.com/dreamSailing/eos/internal/mcp"
 	plugpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
 	"github.com/dreamSailing/eos/internal/runtime"
 	"github.com/dreamSailing/eos/internal/toolapi"
@@ -526,6 +527,7 @@ func (m *AppModel) handleDoctorSlash() tea.Cmd {
 	todos := tools.DefaultTodoStore().List()
 	traces := m.adapter.GetTools().GetToolTraces()
 	stats := m.adapter.GetTools().GetToolStats()
+	browser := core.BrowserStatus()
 	skillsCount := 0
 	if sm := core.GetSkillManager(); sm != nil {
 		skillsCount = len(sm.List())
@@ -561,6 +563,10 @@ func (m *AppModel) handleDoctorSlash() tea.Cmd {
 		fmt.Sprintf("%s: %d", m.localize("可用 skills", "Available skills"), skillsCount),
 		fmt.Sprintf("%s: %d", m.localize("已注册插件", "Registered plugins"), pluginsCount),
 		fmt.Sprintf("%s: %d", m.localize("工具追踪数", "Tool traces"), len(traces)),
+		fmt.Sprintf("%s: %s", m.localize("浏览器 MCP", "Browser MCP"), m.browserStatusLabel(browser)),
+	}
+	if strings.TrimSpace(browser.LastError) != "" {
+		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("浏览器错误", "Browser error"), browser.LastError))
 	}
 	if len(stats) > 0 {
 		lines = append(lines, m.localize("工具统计:", "Tool stats:"))
@@ -891,6 +897,7 @@ func (m *AppModel) handleStatusSlash() tea.Cmd {
 	}
 	snap := core.PermissionSnapshot()
 	currentSessionID, _ := core.CurrentSessionID()
+	browser := core.BrowserStatus()
 
 	lines := []string{
 		m.localize("当前状态", "Status"),
@@ -898,6 +905,10 @@ func (m *AppModel) handleStatusSlash() tea.Cmd {
 		fmt.Sprintf("%s: %s (%s)", m.localize("模型", "Model"), strings.TrimSpace(modelName), strings.TrimSpace(modelBase)),
 		fmt.Sprintf("%s: %s", m.localize("执行模式", "Mode"), m.executionModeLabel(snap.ExecutionMode)),
 		fmt.Sprintf("%s: %s", m.localize("当前会话", "Session"), blankFallback(currentSessionID, m.localize("无", "none"))),
+		fmt.Sprintf("%s: %s", m.localize("浏览器 MCP", "Browser MCP"), m.browserStatusLabel(browser)),
+	}
+	if strings.TrimSpace(browser.LastError) != "" {
+		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("浏览器错误", "Browser error"), browser.LastError))
 	}
 
 	// Context usage
@@ -908,6 +919,19 @@ func (m *AppModel) handleStatusSlash() tea.Cmd {
 
 	m.appendSystem(strings.Join(lines, "\n"), "info")
 	return nil
+}
+
+func (m *AppModel) browserStatusLabel(status mcppkg.BrowserStatus) string {
+	switch {
+	case status.Configured && status.Enabled && status.Loaded:
+		return m.localize("已可用", "ready")
+	case status.Configured && status.Enabled:
+		return m.localize("已配置，待加载", "configured, pending load")
+	case status.Configured:
+		return m.localize("已配置，未启用", "configured, disabled")
+	default:
+		return m.localize("未配置", "not configured")
+	}
 }
 
 func (m *AppModel) handleFastSlash() tea.Cmd {
