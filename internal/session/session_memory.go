@@ -16,6 +16,7 @@ import (
 	"time"
 
 	ai "github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/memory"
 	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
@@ -389,19 +390,36 @@ func GetDefaultSessionMemoryUpdatePrompt() string {
 // ============================================================================
 
 // ExtractSessionMemory triggers session memory extraction
-// This would typically be called from a post-sampling hook
 func (c *ContextManager) ExtractSessionMemory(ctx context.Context) error {
-	// Implementation would:
-	// 1. Check if extraction should happen (thresholds)
-	// 2. Setup memory file
-	// 3. Build update prompt
-	// 4. Run extraction (could use a subagent or inline)
+	_ = ctx
+	rootDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	memoryPath, _, err := SetupMemoryFile(rootDir)
+	if err != nil {
+		return err
+	}
 
-	// For now, this is a placeholder that logs the intent
+	msgs := filterMemoryConversation(c.BuildPreview())
+	sessionDoc := buildSessionMemoryDocument(msgs)
+	if err := os.WriteFile(memoryPath, []byte(sessionDoc), 0o600); err != nil {
+		return err
+	}
+
+	store := memory.NewStore(rootDir)
+	written := 0
+	for _, entry := range deriveLongTermMemoryEntries(msgs) {
+		if _, err := store.Upsert(entry); err == nil {
+			written++
+		}
+	}
+
 	slog.Info("session.memory.extract.triggered",
 		"component", utils.ComponentSystem,
-		"recent_count", len(c.recent),
-		"current_full_count", len(c.currentFull),
+		"messages", len(msgs),
+		"memory_path", memoryPath,
+		"written_long_term", written,
 	)
 
 	return nil
@@ -412,4 +430,291 @@ func (c *ContextManager) ExtractSessionMemory(ctx context.Context) error {
 func (c *ContextManager) IsSessionMemoryEnabled() bool {
 	// Could be controlled by config
 	return true
+}
+
+func filterMemoryConversation(messages []ai.Message) []ai.Message {
+	filtered := make([]ai.Message, 0, len(messages))
+	for _, msg := range messages {
+		role := strings.TrimSpace(msg.Role)
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		if strings.HasPrefix(content, "DOC:") || strings.HasPrefix(content, "CONVERSATION_SUMMARY_AI:") {
+			continue
+		}
+		filtered = append(filtered, ai.Message{Role: role, Content: content})
+	}
+	if len(filtered) > 12 {
+		filtered = filtered[len(filtered)-12:]
+	}
+	return filtered
+}
+
+func buildSessionMemoryDocument(messages []ai.Message) string {
+	title := fallbackString(summarizeUserIntent(messages), "会话记忆更新")
+	currentState := fallbackString(summarizeCurrentState(messages), "正在根据最近对话更新会话记忆，并同步长期记忆候选。")
+	task := fallbackString(summarizeUserIntent(messages), "最近的用户请求主要围绕当前工作区中的开发任务。")
+	files := fallbackString(extractFileRefs(messages), "未识别到稳定的文件/函数引用。")
+	workflow := fallbackString(extractCommandRefs(messages), "未识别到稳定工作流命令。")
+	errors := fallbackString(extractErrorRefs(messages), "最近对话中未出现明确错误，或错误尚未稳定复现。")
+	systemDocs := fallbackString(summarizeSystemDocs(messages), "长期记忆与规则由 EOS.md、Rules.md、独立 memory 文件共同提供。")
+	lessons := fallbackString(extractLessons(messages), "优先保留长期有效的约定，避免把一次性任务状态写入长期记忆。")
+	keyResults := fallbackString(summarizeAssistantResult(messages), "最近暂无可稳定复用的最终结果。")
+	workLog := fallbackString(buildWorkLog(messages), "最近暂无可记录的步骤。")
+
+	var sb strings.Builder
+	writeSection := func(title string, hint string, body string) {
+		sb.WriteString("# ")
+		sb.WriteString(title)
+		sb.WriteString("\n")
+		sb.WriteString(hint)
+		sb.WriteString("\n")
+		if strings.TrimSpace(body) != "" {
+			sb.WriteString(trimToChars(body, defaultMaxSectionLength*4))
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	writeSection("会话标题", "_简短且有特色的 5-10 个词描述会话标题。信息密集，无填充词_", title)
+	writeSection("当前状态", "_当前正在积极做什么？未完成的待处理任务。下一步immediate的步骤_", currentState)
+	writeSection("任务说明", "_用户要求构建什么？任何设计决策或其他解释性上下文_", task)
+	writeSection("文件和函数", "_重要的文件有哪些？简而言之，它们包含什么，为什么相关？_", files)
+	writeSection("工作流", "_通常运行哪些 bash 命令，顺序如何？如果不明显，如何解释它们的输出？_", workflow)
+	writeSection("错误与修正", "_遇到的错误以及如何修复。用户纠正了什么？哪些方法失败了，不应该再试？_", errors)
+	writeSection("代码库和系统文档", "_重要的系统组件有哪些？它们如何工作/组合在一起？_", systemDocs)
+	writeSection("经验总结", "_什么效果好？什么不好？应该避免什么？不要与其他部分重复_", lessons)
+	writeSection("关键结果", "_如果用户要求特定输出（如问题的答案、表格或其他文档），在此重复精确结果_", keyResults)
+	writeSection("工作日志", "_分步骤，尝试了什么，做了什么？每一步非常简洁的总结_", workLog)
+	return strings.TrimRight(sb.String(), "\n") + "\n"
+}
+
+func deriveLongTermMemoryEntries(messages []ai.Message) []memory.MemoryEntry {
+	entries := make([]memory.MemoryEntry, 0, 4)
+	seen := make(map[string]struct{})
+	appendEntry := func(memType memory.MemoryType, section string, content string, source string) {
+		content = memory.NormalizeContent(content)
+		if content == "" {
+			return
+		}
+		key := string(memType) + "\n" + section + "\n" + content
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		entries = append(entries, memory.MemoryEntry{
+			Type:    memType,
+			Section: section,
+			Content: content,
+			Source:  source,
+		})
+	}
+
+	for _, msg := range messages {
+		text := strings.TrimSpace(msg.Content)
+		if text == "" {
+			continue
+		}
+		if msg.Role == "user" && looksLikeGlobalPreference(text) {
+			appendEntry(memory.MemoryTypeGlobal, "用户偏好", text, "session_extract:user")
+		}
+		if looksLikeProjectConvention(text) {
+			appendEntry(memory.MemoryTypeProject, "项目约定", text, "session_extract:"+msg.Role)
+		}
+		if looksLikeProjectConclusion(text) {
+			appendEntry(memory.MemoryTypeProject, "任务结论", text, "session_extract:"+msg.Role)
+		}
+	}
+	return entries
+}
+
+func summarizeUserIntent(messages []ai.Message) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			return trimToChars(messages[i].Content, 120)
+		}
+	}
+	return ""
+}
+
+func summarizeCurrentState(messages []ai.Message) string {
+	if len(messages) == 0 {
+		return ""
+	}
+	last := messages[len(messages)-1]
+	return trimToChars(last.Role+": "+last.Content, 220)
+}
+
+func summarizeAssistantResult(messages []ai.Message) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "assistant" {
+			return trimToChars(messages[i].Content, 240)
+		}
+	}
+	return ""
+}
+
+func extractFileRefs(messages []ai.Message) string {
+	seen := make(map[string]struct{})
+	refs := make([]string, 0, 8)
+	for _, msg := range messages {
+		for _, token := range strings.Fields(strings.ReplaceAll(msg.Content, "\n", " ")) {
+			token = strings.Trim(token, "`'\",.:;()[]{}")
+			if token == "" {
+				continue
+			}
+			if strings.Contains(token, "/") || strings.Contains(token, ".go") || strings.Contains(token, ".md") || strings.Contains(token, ".json") {
+				if _, ok := seen[token]; ok {
+					continue
+				}
+				seen[token] = struct{}{}
+				refs = append(refs, token)
+				if len(refs) >= 8 {
+					return strings.Join(refs, "\n")
+				}
+			}
+		}
+	}
+	return strings.Join(refs, "\n")
+}
+
+func extractCommandRefs(messages []ai.Message) string {
+	lines := make([]string, 0, 6)
+	seen := make(map[string]struct{})
+	for _, msg := range messages {
+		for _, line := range strings.Split(msg.Content, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			if strings.HasPrefix(line, "/") || strings.HasPrefix(line, "go ") || strings.HasPrefix(line, "npm ") || strings.HasPrefix(line, "pnpm ") || strings.HasPrefix(line, "git ") {
+				if _, ok := seen[line]; ok {
+					continue
+				}
+				seen[line] = struct{}{}
+				lines = append(lines, line)
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func extractErrorRefs(messages []ai.Message) string {
+	lines := make([]string, 0, 4)
+	for _, msg := range messages {
+		text := strings.TrimSpace(msg.Content)
+		if text == "" {
+			continue
+		}
+		lower := strings.ToLower(text)
+		if strings.Contains(lower, "error") || strings.Contains(text, "报错") || strings.Contains(lower, "failed") || strings.Contains(lower, "panic") {
+			lines = append(lines, trimToChars(text, 240))
+		}
+		if len(lines) >= 4 {
+			break
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func summarizeSystemDocs(messages []ai.Message) string {
+	parts := []string{
+		"- 项目指导：EOS.md",
+		"- 项目规则：.eos/Rules.md",
+		"- 全局规则：~/.eos/Rules.md",
+		"- 项目记忆：.eos/memory/project.md",
+		"- 全局用户记忆：~/.eos/memory/user.md",
+	}
+	if refs := extractFileRefs(messages); strings.TrimSpace(refs) != "" {
+		parts = append(parts, "- 最近提到的相关文件：\n"+refs)
+	}
+	return strings.Join(parts, "\n")
+}
+
+func extractLessons(messages []ai.Message) string {
+	lessons := make([]string, 0, 4)
+	for _, msg := range messages {
+		text := strings.TrimSpace(msg.Content)
+		if looksLikeGlobalPreference(text) || looksLikeProjectConvention(text) {
+			lessons = append(lessons, trimToChars(text, 200))
+		}
+		if len(lessons) >= 4 {
+			break
+		}
+	}
+	return strings.Join(lessons, "\n")
+}
+
+func buildWorkLog(messages []ai.Message) string {
+	lines := make([]string, 0, len(messages))
+	for _, msg := range messages {
+		prefix := "用户"
+		if msg.Role == "assistant" {
+			prefix = "助手"
+		}
+		lines = append(lines, "- "+prefix+"："+trimToChars(msg.Content, 120))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func looksLikeGlobalPreference(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	lower := strings.ToLower(text)
+	keywords := []string{"默认", "优先", "请用", "使用中文", "不要", "尽量", "习惯", "偏好"}
+	for _, keyword := range keywords {
+		if strings.Contains(lower, strings.ToLower(keyword)) {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikeProjectConvention(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	keywords := []string{"约定", "规范", "固定", "必须", "统一", "工作流", "命令", "目录结构"}
+	for _, keyword := range keywords {
+		if strings.Contains(text, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikeProjectConclusion(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	keywords := []string{"结论", "最终", "支持", "实现", "新增", "修复", "方案"}
+	for _, keyword := range keywords {
+		if strings.Contains(text, keyword) && (strings.Contains(text, "项目") || strings.Contains(text, "记忆") || strings.Contains(text, "功能")) {
+			return true
+		}
+	}
+	return false
+}
+
+func trimToChars(text string, max int) string {
+	text = strings.TrimSpace(strings.Join(strings.Fields(strings.TrimSpace(text)), " "))
+	if max <= 0 || len(text) <= max {
+		return text
+	}
+	return text[:max] + "…"
+}
+
+func fallbackString(value string, fallback string) string {
+	if strings.TrimSpace(value) != "" {
+		return value
+	}
+	return fallback
 }

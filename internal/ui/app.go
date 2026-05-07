@@ -13,13 +13,15 @@ import (
 
 	"github.com/dreamSailing/eos/internal/ai"
 	"github.com/dreamSailing/eos/internal/bridge"
-	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/memory"
+	mcppkg "github.com/dreamSailing/eos/internal/mcp"
 	"github.com/dreamSailing/eos/internal/pkg/clip"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/state"
 	"github.com/dreamSailing/eos/internal/tools/bg"
+	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/ui/adapter"
 	"github.com/dreamSailing/eos/internal/ui/components/messages"
 	"github.com/dreamSailing/eos/internal/ui/features/slash"
@@ -271,6 +273,7 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 	// 创建面板
 	panelMap := make(map[string]panels.Panel)
 	panelMap["context"] = panels.NewContextPanel(styles, lang)
+	panelMap["memory"] = panels.NewMemoryPanel(styles, lang)
 	panelMap["rules"] = panels.NewRulesPanel(styles, lang)
 	panelMap["workspace"] = panels.NewWorkspacePanel(styles, lang)
 	lspPanel := panels.NewLSPPanel(styles, lang)
@@ -409,6 +412,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ctxUsageTickMsg:
 		if m.activeView == "panel" && m.activePanel == "context" {
 			m.refreshContextPanel()
+		} else if m.activeView == "panel" && m.activePanel == "memory" {
+			m.refreshMemoryPanel()
 		}
 		cmds = append(cmds, m.ctxUsageTick())
 
@@ -515,6 +520,13 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if m.activePanel == "rules" {
 					if p, ok := m.panels[m.activePanel].(*panels.RulesPanel); ok && p != nil && p.IsEditing() {
+						p.CancelEdit()
+						m.panels[m.activePanel] = p
+						return m, nil
+					}
+				}
+				if m.activePanel == "memory" {
+					if p, ok := m.panels[m.activePanel].(*panels.MemoryPanel); ok && p != nil && p.IsEditing() {
 						p.CancelEdit()
 						m.panels[m.activePanel] = p
 						return m, nil
@@ -932,6 +944,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appendSystem("工作区已切换并完成重载", "success")
 		}
 		m.refreshWorkspacePanel()
+		m.refreshMemoryPanel()
 		m.refreshRulesPanel()
 
 	case MCPReloadDoneMsg:
@@ -956,6 +969,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.handleMCPToggle(msg))
 	case panels.MCPAddMsg:
 		m.handleMCPAdd()
+	case panels.MCPAddBrowserMsg:
+		m.handleMCPAddBrowser()
 	case panels.MCPEditMsg:
 		m.handleMCPEdit(msg)
 	case panels.MCPDeleteMsg:
@@ -977,6 +992,13 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case panels.ContextExportMsg:
 		// TODO: 实现上下文导出
 		m.appendSystem("Export context: Not implemented yet", "info")
+
+	case panels.MemoryRefreshMsg:
+		m.refreshMemoryPanel()
+	case panels.MemoryRebuildIndexMsg:
+		m.handleMemoryRebuildIndex()
+	case panels.MemorySaveMsg:
+		m.handleMemorySave(msg)
 
 	// Cost 消息处理
 	case panels.CostClearMsg:
@@ -1140,8 +1162,10 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 		m.activePanel = "mcp"
 		m.shell.ClearInput()
 		m.refreshMCPPanel()
-	case "/memory":
+	case "/context":
 		m.openContextPanel()
+	case "/memory":
+		m.openMemoryPanel()
 	case "/cost":
 		m.activeView = "panel"
 		m.activePanel = "cost"
@@ -1760,6 +1784,27 @@ func (m *AppModel) refreshContextPanel() {
 	}
 
 	panel.SetMessages(msgs)
+}
+
+func (m *AppModel) refreshMemoryPanel() {
+	if m == nil || m.adapter == nil {
+		return
+	}
+	panel, ok := m.panels["memory"].(*panels.MemoryPanel)
+	if !ok || panel == nil {
+		return
+	}
+	root := strings.TrimSpace(m.adapter.GetCore().GetActiveRoot())
+	if root == "" {
+		if wd, err := os.Getwd(); err == nil {
+			root = wd
+		}
+	}
+	if strings.TrimSpace(root) != "" {
+		_ = memory.EnsureWorkspaceMemory(root)
+	}
+	snap := memory.LoadSnapshot(root)
+	panel.SetData(root, snap.GlobalPath, snap.GlobalContent, snap.GlobalExists, snap.ProjectPath, snap.ProjectContent, snap.ProjectExists, snap.SessionPath, snap.SessionContent, snap.SessionExists, snap.IndexPath, snap.IndexContent, snap.IndexExists)
 }
 
 // handleBridgeEvent 处理 bridge.Event 消息
@@ -2456,6 +2501,13 @@ func (m *AppModel) handleMCPAdd() {
 	m.setupView = editor
 }
 
+func (m *AppModel) handleMCPAddBrowser() {
+	m.activeView = "setup"
+	editor := setup.NewMCPConfigEditorView(m.styles, m.state.Language, mcppkg.RecommendedBrowserPresetJSON(), false, "")
+	editor.SetSize(m.width, m.height)
+	m.setupView = editor
+}
+
 // handleMCPEdit 处理编辑 MCP 服务器
 func (m *AppModel) handleMCPEdit(msg panels.MCPEditMsg) {
 	var entry *config.MCPEntry
@@ -2518,6 +2570,14 @@ func (m *AppModel) refreshMCPPanel() {
 		})
 	}
 	mcpPanel.SetServers(out)
+	browser := m.adapter.GetCore().BrowserStatus()
+	mcpPanel.SetBrowserSummary(panels.BrowserSummary{
+		Configured: browser.Configured,
+		Enabled:    browser.Enabled,
+		Loaded:     browser.Loaded,
+		ServerName: browser.ServerName,
+		Hint:       browser.InstallHint,
+	})
 }
 
 func (m *AppModel) refreshLSPPanel() {
@@ -2648,6 +2708,80 @@ func (m *AppModel) handleRulesSave(msg panels.RulesSaveMsg) {
 		m.appendSystem("已保存项目 Rules.md", "success")
 	}
 	m.refreshRulesPanel()
+}
+
+func (m *AppModel) handleMemorySave(msg panels.MemorySaveMsg) {
+	if m == nil || m.adapter == nil || m.adapter.GetCore() == nil {
+		return
+	}
+	scope := strings.ToLower(strings.TrimSpace(msg.Scope))
+	root := strings.TrimSpace(m.adapter.GetCore().GetActiveRoot())
+	if root == "" {
+		if wd, err := os.Getwd(); err == nil {
+			root = wd
+		}
+	}
+
+	dst := ""
+	docID := ""
+	switch scope {
+	case "global":
+		dst = memory.GlobalMemoryPath()
+		docID = memory.GlobalMemoryDocID
+	case "session":
+		dst = filepath.Join(root, ".eos", "session-memory", "session.md")
+	case "index":
+		dst = memory.ProjectMemoryIndexPath(root)
+		docID = memory.ProjectIndexDocID
+	default:
+		dst = memory.ProjectMemoryPath(root)
+		docID = memory.ProjectMemoryDocID
+		scope = "project"
+	}
+	if strings.TrimSpace(dst) == "" {
+		m.appendSystem("Memory 保存失败: 路径为空", "error")
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		m.appendSystem(fmt.Sprintf("Memory 保存失败: %v", err), "error")
+		return
+	}
+	if err := os.WriteFile(dst, []byte(msg.Content), 0o644); err != nil {
+		m.appendSystem(fmt.Sprintf("Memory 保存失败: %v", err), "error")
+		return
+	}
+	if scope == "global" || scope == "project" || scope == "index" {
+		_ = memory.NewStore(root).RebuildIndex()
+	}
+	if cm := m.adapter.GetCore().GetContext(); cm != nil && strings.TrimSpace(docID) != "" {
+		cm.SetPinnedDoc(docID, msg.Content, 20000)
+	}
+	m.appendSystem("已保存 "+scope+" memory", "success")
+	m.refreshMemoryPanel()
+}
+
+func (m *AppModel) handleMemoryRebuildIndex() {
+	if m == nil || m.adapter == nil || m.adapter.GetCore() == nil {
+		return
+	}
+	root := strings.TrimSpace(m.adapter.GetCore().GetActiveRoot())
+	if root == "" {
+		if wd, err := os.Getwd(); err == nil {
+			root = wd
+		}
+	}
+	if err := memory.NewStore(root).RebuildIndex(); err != nil {
+		m.appendSystem(fmt.Sprintf("Memory 索引重建失败: %v", err), "error")
+		return
+	}
+	if cm := m.adapter.GetCore().GetContext(); cm != nil {
+		snap := memory.LoadSnapshot(root)
+		if snap.IndexExists && strings.TrimSpace(snap.IndexContent) != "" {
+			cm.SetPinnedDoc(memory.ProjectIndexDocID, snap.IndexContent, 8000)
+		}
+	}
+	m.appendSystem("已重建 memory 索引", "success")
+	m.refreshMemoryPanel()
 }
 
 func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {

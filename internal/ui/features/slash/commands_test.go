@@ -10,8 +10,7 @@ import "testing"
 func TestNormalizeCommandResolvesAliases(t *testing.T) {
 	tests := map[string]string{
 		"/models":   "/model",
-		"/ctx":      "/memory",
-		"/context":  "/memory",
+		"/ctx":      "/context",
 		"/sessions": "/session",
 		"/worktree": "/workspace",
 		"/settings": "/config",

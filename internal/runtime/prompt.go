@@ -149,6 +149,7 @@ const RoleSeniorDevPrompt = `你是高级开发工程师，负责执行具体的
 **能力发现（按需查询）**：
 - 需要 skills 时：先 skills_list，再 skill 启用
 - 需要排查/确认 MCP 是否可用时：mcp_status
+- 需要确认浏览器自动化是否可用时：browser_status
 
 **Skills 目录约定**：
 - 当用户要求“生成/创建 skills”时，默认写入当前工作区的 .eos/skills/ 下（这是主目录）

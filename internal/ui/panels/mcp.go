@@ -32,8 +32,17 @@ type MCPPanel struct {
 	table    table.Model
 	servers  []MCPServer
 	language string
-	actionOps   []string
-	actionIndex int
+	actionOps      []string
+	actionIndex    int
+	browserSummary BrowserSummary
+}
+
+type BrowserSummary struct {
+	Configured bool
+	Enabled    bool
+	Loaded     bool
+	ServerName string
+	Hint       string
 }
 
 // NewMCPPanel 创建新的MCP面板
@@ -65,7 +74,7 @@ func NewMCPPanel(styles *styles.Styles, lang string) *MCPPanel {
 		table:     t,
 		servers:   make([]MCPServer, 0),
 		language:  lang,
-		actionOps: []string{"Toggle", "Add", "Edit", "Delete", "Reload"},
+		actionOps: []string{"Toggle", "Browser", "Add", "Edit", "Delete", "Reload"},
 		actionIndex: 0,
 	}
 
@@ -109,6 +118,10 @@ func (p *MCPPanel) SetServers(servers []MCPServer) {
 		rows[i] = table.Row{s.Name, serverType, status}
 	}
 	p.table.SetRows(rows)
+}
+
+func (p *MCPPanel) SetBrowserSummary(summary BrowserSummary) {
+	p.browserSummary = summary
 }
 
 // Init 初始化
@@ -157,6 +170,10 @@ func (p *MCPPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 				return p, func() tea.Msg {
 					return MCPAddMsg{}
 				}
+			case "Browser":
+				return p, func() tea.Msg {
+					return MCPAddBrowserMsg{}
+				}
 			case "Edit":
 				if i := p.table.Cursor(); i >= 0 && i < len(p.servers) {
 					return p, func() tea.Msg {
@@ -178,6 +195,10 @@ func (p *MCPPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 			// 添加服务器
 			return p, func() tea.Msg {
 				return MCPAddMsg{}
+			}
+		case "b":
+			return p, func() tea.Msg {
+				return MCPAddBrowserMsg{}
 			}
 		case "t", "space", " ":
 			// 快捷切换启用/禁用
@@ -230,6 +251,22 @@ func (p *MCPPanel) View() string {
 		content.WriteString("\n\n")
 	}
 
+	statusLine := i18n.T("mcp.browser.missing", p.language)
+	switch {
+	case p.browserSummary.Configured && p.browserSummary.Enabled && p.browserSummary.Loaded:
+		statusLine = fmt.Sprintf(i18n.T("mcp.browser.ready", p.language), blankOr(p.browserSummary.ServerName, "playwright"))
+	case p.browserSummary.Configured && p.browserSummary.Enabled:
+		statusLine = fmt.Sprintf(i18n.T("mcp.browser.configured", p.language), blankOr(p.browserSummary.ServerName, "playwright"))
+	case p.browserSummary.Configured:
+		statusLine = fmt.Sprintf(i18n.T("mcp.browser.disabled", p.language), blankOr(p.browserSummary.ServerName, "playwright"))
+	}
+	content.WriteString(statusLine)
+	if strings.TrimSpace(p.browserSummary.Hint) != "" {
+		content.WriteString("\n")
+		content.WriteString(p.styles.TextMuted.Render(p.browserSummary.Hint))
+	}
+	content.WriteString("\n\n")
+
 	var opStrs []string
 	for i, op := range p.actionOps {
 		key := ""
@@ -238,6 +275,8 @@ func (p *MCPPanel) View() string {
 			key = "mcp.action.toggle"
 		case "Add":
 			key = "mcp.action.add"
+		case "Browser":
+			key = "mcp.action.browser"
 		case "Edit":
 			key = "mcp.action.edit"
 		case "Delete":
@@ -277,6 +316,9 @@ type MCPToggleMsg struct {
 // MCPAddMsg 添加MCP服务器消息
 type MCPAddMsg struct{}
 
+// MCPAddBrowserMsg 添加浏览器 MCP 预设消息
+type MCPAddBrowserMsg struct{}
+
 // MCPEditMsg 编辑MCP服务器消息
 type MCPEditMsg struct {
 	Name string
@@ -289,3 +331,10 @@ type MCPDeleteMsg struct {
 
 // MCPSaveMsg 保存MCP配置消息
 type MCPSaveMsg struct{}
+
+func blankOr(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return strings.TrimSpace(value)
+}

@@ -9,10 +9,10 @@ package tools
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/dreamSailing/eos/internal/memory"
 )
 
 // PendingMemorySuggestion holds a pending memory suggestion awaiting user confirmation
@@ -37,6 +37,7 @@ func (m *Manager) suggestMemoryStructured(ctx context.Context, params map[string
 	file, _ := params["file"].(string)
 	content, _ := params["content"].(string)
 	section, _ := params["section"].(string)
+	memType, _ := params["type"].(string)
 
 	if strings.TrimSpace(content) == "" {
 		return ToolResult{
@@ -48,136 +49,44 @@ func (m *Manager) suggestMemoryStructured(ctx context.Context, params map[string
 		}
 	}
 
-	// Default file
-	if file == "" {
-		file = "EOS.md"
-	}
-
-	// Validate file name
-	allowedFiles := map[string]bool{
-		"EOS.md":         true,
-		".eos/Rules.md":  true,
-	}
-	if !allowedFiles[file] {
-		return ToolResult{
-			Type:   "tool_result",
-			Tool:   ToolSuggestMemory,
-			Status: "error",
-			Error:  fmt.Sprintf("file must be one of: EOS.md, .eos/Rules.md (got: %s)", file),
-			Display: fmt.Sprintf("错误：无效的文件名 '%s'", file),
-		}
-	}
-
-	// If OnMemorySuggestion callback is set, delegate to the UI for confirmation
-	if OnMemorySuggestion != nil {
-		suggestion := &PendingMemorySuggestion{
-			ID:      fmt.Sprintf("mem-%d", len(pendingSuggestions)+1),
-			File:    file,
-			Content: content,
-			Section: section,
-			done:    make(chan struct{}),
-		}
-
-		pendingSuggestionsMu.Lock()
-		pendingSuggestions[suggestion.ID] = suggestion
-		pendingSuggestionsMu.Unlock()
-
-		// Call the UI callback
-		accepted := OnMemorySuggestion(suggestion.ID, file, content, section)
-
-		if accepted {
-			err := writeMemoryToFile(file, content, section)
-			if err != nil {
-				return ToolResult{
-					Type:   "tool_result",
-					Tool:   ToolSuggestMemory,
-					Status: "error",
-					Error:  err.Error(),
-					Display: fmt.Sprintf("错误：写入 %s 失败：%s", file, err.Error()),
-				}
-			}
-			return ToolResult{
-				Type:   "tool_result",
-				Tool:   ToolSuggestMemory,
-				Status: "success",
-				Data:   map[string]interface{}{"file": file, "content_length": len(content)},
-				Display: fmt.Sprintf("记忆建议已接受并保存到 %s", file),
-			}
-		}
-
-		return ToolResult{
-			Type:   "tool_result",
-			Tool:   ToolSuggestMemory,
-			Status: "success",
-			Data:   map[string]interface{}{"rejected": true},
-			Display: "记忆建议已被用户拒绝",
-		}
-	}
-
-	// No callback set — auto-accept (for headless/CI mode)
-	err := writeMemoryToFile(file, content, section)
+	rootDir := workspaceRootOrPWD(ctx)
+	store := memory.NewStore(rootDir)
+	targetType := inferMemoryType(file, memType)
+	writeRes, err := store.Upsert(memory.MemoryEntry{
+		Type:    targetType,
+		File:    resolveLegacyMemoryTarget(rootDir, file, targetType),
+		Content: content,
+		Section: section,
+		Source:  "suggest_memory",
+	})
 	if err != nil {
 		return ToolResult{
-			Type:   "tool_result",
-			Tool:   ToolSuggestMemory,
-			Status: "error",
-			Error:  err.Error(),
-			Display: fmt.Sprintf("错误：写入 %s 失败：%s", file, err.Error()),
+			Type:    "tool_result",
+			Tool:    ToolSuggestMemory,
+			Status:  "error",
+			Error:   err.Error(),
+			Display: fmt.Sprintf("错误：写入记忆失败：%s", err.Error()),
 		}
+	}
+
+	display := fmt.Sprintf("记忆已写入 %s", writeRes.Path)
+	if writeRes.Deduped {
+		display = fmt.Sprintf("记忆已存在，跳过重复写入：%s", writeRes.Path)
 	}
 
 	return ToolResult{
 		Type:   "tool_result",
 		Tool:   ToolSuggestMemory,
 		Status: "success",
-		Data:   map[string]interface{}{"file": file, "content_length": len(content), "auto_accepted": true},
-		Display: fmt.Sprintf("记忆已保存到 %s（自动接受，无 UI）", file),
+		Data: map[string]interface{}{
+			"file":           writeRes.Path,
+			"content_length": len(content),
+			"type":           string(targetType),
+			"deduped":        writeRes.Deduped,
+			"index_file":     writeRes.IndexPath,
+		},
+		Display: display,
 	}
-}
-
-// writeMemoryToFile appends content to the specified memory file
-func writeMemoryToFile(file, content, section string) error {
-	// Determine path relative to working directory
-	path := file
-	if !filepath.IsAbs(path) {
-		dir, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-		path = filepath.Join(dir, path)
-	}
-
-	// Ensure directory exists
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
-	}
-
-	var sb strings.Builder
-
-	// If file exists, read existing content
-	existing, err := os.ReadFile(path)
-	if err == nil && len(existing) > 0 {
-		sb.WriteString("\n\n")
-	}
-
-	// Add section header if specified
-	if section != "" {
-		sb.WriteString("## " + section + "\n\n")
-	}
-
-	sb.WriteString(content)
-	sb.WriteString("\n")
-
-	// Append to file
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
-	}
-	defer f.Close()
-
-	_, err = f.WriteString(sb.String())
-	return err
 }
 
 // OnMemorySuggestion is called when the AI suggests adding to a memory file.
@@ -201,14 +110,17 @@ func (m *Manager) typedMemoryStructured(ctx context.Context, params map[string]i
 		}
 	}
 
-	// Import the memory types package logic inline
+	rootDir := workspaceRootOrPWD(ctx)
+	store := memory.NewStore(rootDir)
 	mt := parseMemoryType(memType)
-	if file == "" {
-		file = mt.defaultFile()
-	}
-
-	// Delegate to the existing write logic
-	err := writeMemoryToFile(file, content, section)
+	resolvedType := memory.ParseMemoryType(string(mt))
+	result, err := store.Upsert(memory.MemoryEntry{
+		Type:    resolvedType,
+		File:    resolveLegacyMemoryTarget(rootDir, file, resolvedType),
+		Content: content,
+		Section: section,
+		Source:  "typed_memory",
+	})
 	if err != nil {
 		return ToolResult{
 			Type:    "tool_result",
@@ -223,8 +135,14 @@ func (m *Manager) typedMemoryStructured(ctx context.Context, params map[string]i
 		Type:    "tool_result",
 		Tool:    "typed_memory",
 		Status:  "success",
-		Data:    map[string]interface{}{"type": string(mt), "file": file, "content_length": len(content)},
-		Display: fmt.Sprintf("记忆已保存到 %s（类型：%s）", file, mt),
+		Data: map[string]interface{}{
+			"type":           string(resolvedType),
+			"file":           result.Path,
+			"content_length": len(content),
+			"deduped":        result.Deduped,
+			"index_file":     result.IndexPath,
+		},
+		Display: fmt.Sprintf("记忆已保存到 %s（类型：%s）", result.Path, resolvedType),
 	}
 }
 
@@ -245,17 +163,45 @@ func parseMemoryType(s string) memoryType {
 type memoryType string
 
 const (
-	memoryTypeUser      memoryType = "user"
-	memoryTypeFeedback  memoryType = "feedback"
+	memoryTypeUser      memoryType = "global"
+	memoryTypeFeedback  memoryType = "global"
 	memoryTypeProject   memoryType = "project"
-	memoryTypeReference memoryType = "reference"
+	memoryTypeReference memoryType = "global"
 )
 
-func (t memoryType) defaultFile() string {
-	switch t {
-	case memoryTypeProject:
-		return ".eos/Rules.md"
-	default:
-		return "EOS.md"
+func inferMemoryType(file string, requested string) memory.MemoryType {
+	if mt := strings.ToLower(strings.TrimSpace(requested)); mt != "" {
+		return memory.ParseMemoryType(mt)
 	}
+	file = strings.ToLower(strings.TrimSpace(file))
+	switch file {
+	case ".eos/rules.md", ".eos/memory/project.md", "project", "project.md":
+		return memory.MemoryTypeProject
+	case "eos.md", "~/.eos/rules.md", "~/.eos/memory/user.md", "global", "user", "user.md":
+		return memory.MemoryTypeGlobal
+	default:
+		return memory.MemoryTypeProject
+	}
+}
+
+func resolveLegacyMemoryTarget(rootDir string, file string, memType memory.MemoryType) string {
+	file = strings.TrimSpace(file)
+	switch strings.ToLower(file) {
+	case "", "project", "project.md", ".eos/rules.md", ".eos/memory/project.md":
+		return memory.ProjectMemoryPath(rootDir)
+	case "global", "user", "user.md", "eos.md", "~/.eos/rules.md", "~/.eos/memory/user.md":
+		return memory.GlobalMemoryPath()
+	default:
+		if strings.TrimSpace(file) != "" && strings.HasPrefix(file, "/") {
+			return file
+		}
+		return memType.DefaultPath(rootDir)
+	}
+}
+
+func workspaceRootOrPWD(ctx context.Context) string {
+	if root := WorkspaceRootFromContext(ctx); strings.TrimSpace(root) != "" {
+		return strings.TrimSpace(root)
+	}
+	return "."
 }

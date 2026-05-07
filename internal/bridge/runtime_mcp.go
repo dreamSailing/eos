@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/mcp"
 	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
 	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
@@ -20,6 +21,12 @@ import (
 func (rc *RuntimeCore) ListMCPServers() []config.MCPEntry {
 	cfg, _ := config.Load()
 	return pluginpkg.MergeMCPEntries(&cfg, rc.workingRoot())
+}
+
+func (rc *RuntimeCore) BrowserStatus() mcp.BrowserStatus {
+	cfg, _ := config.Load()
+	cfg.MCP = pluginpkg.MergeMCPEntries(&cfg, rc.workingRoot())
+	return mcp.DetectBrowserStatus(&cfg, rc.mcpMgr)
 }
 
 // UpdateMCPServer 更新 MCP 服务器

@@ -18,6 +18,7 @@ import (
 	"github.com/dreamSailing/eos/internal/bridge"
 	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/memory"
 	"github.com/dreamSailing/eos/internal/session"
 	"github.com/dreamSailing/eos/internal/tools"
 
@@ -65,6 +66,7 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 			}
 		}
 		injectProjectConventions(cm, p)
+		_ = memory.EnsureWorkspaceMemory(p)
 		if raw, err := os.ReadFile(filepath.Join(p, "EOS.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
 			cm.SetPinnedDoc("EOS.md", string(raw), 20000)
 		}
@@ -76,6 +78,7 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 				cm.SetPinnedDoc("~/.eos/Rules.md", string(raw), 20000)
 			}
 		}
+		injectMemoryDocs(cm, p)
 		m := NewAppModel(core)
 		slog.Info("ui.startup.app.run")
 		if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
@@ -117,6 +120,8 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 			cm.SetPinnedDoc("~/.eos/Rules.md", string(raw), 20000)
 		}
 	}
+	_ = memory.EnsureWorkspaceMemory(".")
+	injectMemoryDocs(cm, ".")
 	m := NewAppModel(core)
 	slog.Info("ui.startup.app.run")
 	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
@@ -153,5 +158,21 @@ func applyTUIOptions(core *bridge.RuntimeCore, cm *session.ContextManager, opts 
 	}
 	if opts.SessionID != "" {
 		slog.Info("ui.startup.session", "session_id", opts.SessionID)
+	}
+}
+
+func injectMemoryDocs(cm *session.ContextManager, root string) {
+	if cm == nil {
+		return
+	}
+	snap := memory.LoadSnapshot(root)
+	if snap.GlobalExists && strings.TrimSpace(snap.GlobalContent) != "" {
+		cm.SetPinnedDoc(memory.GlobalMemoryDocID, snap.GlobalContent, 12000)
+	}
+	if snap.ProjectExists && strings.TrimSpace(snap.ProjectContent) != "" {
+		cm.SetPinnedDoc(memory.ProjectMemoryDocID, snap.ProjectContent, 12000)
+	}
+	if snap.IndexExists && strings.TrimSpace(snap.IndexContent) != "" {
+		cm.SetPinnedDoc(memory.ProjectIndexDocID, snap.IndexContent, 8000)
 	}
 }

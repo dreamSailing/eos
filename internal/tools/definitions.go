@@ -54,6 +54,7 @@ const (
 	ToolTodoRead         = "todo_read"
 	ToolTodoWrite        = "todo_write"
 	ToolMCPStatus        = "mcp_status"
+	ToolBrowserStatus    = "browser_status"
 	ToolGitStatus        = "git_status"
 	ToolGitAdd           = "git_add"
 	ToolGitCommit        = "git_commit"
@@ -177,6 +178,15 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Examples: []ToolExample{
 				{Description: "查询所有 MCP 状态", Input: map[string]any{}},
 				{Description: "查询单个 MCP 状态", Input: map[string]any{"name": "http-proxy"}},
+			},
+		},
+		{
+			Name:        ToolBrowserStatus,
+			Description: "查询浏览器 MCP（推荐 Playwright）是否已配置、启用和成功加载。",
+			Params:      map[string]*schema.ParameterInfo{},
+			RiskLevel:   RiskLevelLow,
+			Examples: []ToolExample{
+				{Description: "检查浏览器能力是否可用", Input: map[string]any{}},
 			},
 		},
 		{
@@ -754,16 +764,18 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolSuggestMemory,
-			Description: "Suggest adding content to a project memory file (EOS.md or .eos/Rules.md). The suggestion will be presented to the user for confirmation. Use this when you discover important user preferences, project conventions, or recurring patterns.",
+			Description: "将长期有效的信息写入独立记忆体系。优先写项目记忆；只有跨项目适用的用户偏好才写全局记忆。避免写入临时任务噪声、一次性状态或短期上下文。",
 			Params: map[string]*schema.ParameterInfo{
-				"file":    {Type: schema.String, Required: true, Desc: "Target file: 'EOS.md' or '.eos/Rules.md'"},
-				"content": {Type: schema.String, Required: true, Desc: "Content to add"},
-				"section": {Type: schema.String, Required: false, Desc: "Optional section header"},
+				"file":    {Type: schema.String, Required: false, Desc: "可选：遗留兼容字段。留空时自动路由到全局或项目记忆文件"},
+				"type":    {Type: schema.String, Required: false, Desc: "记忆类型：global 或 project；若省略则默认 project"},
+				"content": {Type: schema.String, Required: true, Desc: "要沉淀的长期记忆内容"},
+				"section": {Type: schema.String, Required: false, Desc: "可选：逻辑分组标题，如“用户偏好”“任务结论”"},
 			},
 			RiskLevel:       RiskLevelMedium,
 			ConcurrencySafe: true,
 			Examples: []ToolExample{
-				{Description: "Suggest adding a project convention", Input: map[string]any{"file": "EOS.md", "content": "Always use bun as package manager", "section": "Conventions"}},
+				{Description: "沉淀项目约定", Input: map[string]any{"type": "project", "content": "变更前先查看相关测试与现有配置约束", "section": "项目约定"}},
+				{Description: "沉淀全局用户偏好", Input: map[string]any{"type": "global", "content": "默认使用中文回答，优先给出最小改动方案", "section": "用户偏好"}},
 			},
 		},
 		{

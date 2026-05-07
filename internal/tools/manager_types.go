@@ -98,6 +98,7 @@ func NewManager() *Manager {
 		ToolTodoWrite:        m.todoWriteStructured,
 		ToolProjectStructure: m.projectStructureStructured,
 		ToolMCPStatus:        m.mcpStatusStructured,
+		ToolBrowserStatus:    m.browserStatusStructured,
 		ToolSkillsList:       m.skillsListStructured,
 		ToolAskUserQuestion:  m.askUserQuestionStructured,
 		ToolEnterPlanMode:    m.enterPlanModeStructured,

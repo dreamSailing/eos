@@ -14,6 +14,10 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/memory"
+	mcppkg "github.com/dreamSailing/eos/internal/mcp"
+	plugpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
 )
 
 func BuildProjectPromptAdditions(cwd string) string {
@@ -43,8 +47,10 @@ func buildProjectPromptAdditions(cwd string, dispatchOnly bool) string {
 	}
 
 	addSnippet("EOS.md", 8000)
+	addSnippetPath(memory.GlobalMemoryDocID, memory.GlobalMemoryPath(), 6000)
+	addSnippetPath(memory.ProjectMemoryDocID, memory.ProjectMemoryPath(cwd), 6000)
+	addSnippetPath(memory.ProjectIndexDocID, memory.ProjectMemoryIndexPath(cwd), 4000)
 
-	// Fix 4.5: Inject session memory content if available
 	sessionMemPath := filepath.Join(cwd, ".eos", "session-memory", "session.md")
 	if memContent, ok := readTextFileBestEffort(sessionMemPath, 4000); ok {
 		sb.WriteString("\n\n**会话记忆**：\n```\n")
@@ -53,7 +59,24 @@ func buildProjectPromptAdditions(cwd string, dispatchOnly bool) string {
 	}
 
 	if !dispatchOnly {
-		sb.WriteString("\n\n## 自动记忆指南\n当你在对话中发现重要的用户偏好、项目约定或反复出现的模式时，使用 suggest_memory 工具将它们建议添加到 EOS.md 或 .eos/Rules.md 中。")
+		sb.WriteString("\n\n## 自动记忆指南\n")
+		sb.WriteString("当你在对话中发现长期有效的信息时，使用 suggest_memory 工具沉淀到独立 memory 文件体系。\n")
+		sb.WriteString("- 跨项目稳定适用的用户偏好 -> 全局记忆 `~/.eos/memory/user.md`\n")
+		sb.WriteString("- 仅当前仓库适用的约定、结论、排障经验 -> 项目记忆 `.eos/memory/project.md`\n")
+		sb.WriteString("- 临时任务状态、一次性计划、短期上下文不要写入长期记忆\n")
+	}
+
+	cfg, _ := config.Load()
+	cfg.MCP = plugpkg.MergeMCPEntries(&cfg, cwd)
+	browserStatus := mcppkg.DetectBrowserStatus(&cfg, nil)
+	if !dispatchOnly {
+		sb.WriteString("\n\n## 浏览器能力\n")
+		if browserStatus.Configured && browserStatus.Enabled {
+			sb.WriteString("- 已配置浏览器 MCP（推荐 Playwright）；涉及网页点击、输入、选择、截图、等待页面变化时，优先使用浏览器工具，而不是只依赖 web_fetch\n")
+		} else {
+			sb.WriteString("- 当前未确认可用的浏览器 MCP；如果任务需要真实网页交互，先用 browser_status 检查，并建议用户在 /mcp 中启用 Playwright 预设\n")
+		}
+		sb.WriteString("- web_fetch 适合只读抓取网页内容；浏览器 MCP 适合真实页面交互与行为验证\n")
 	}
 
 	addSnippet(filepath.Join(".eos", "Rules.md"), 8000)
@@ -64,10 +87,12 @@ func buildProjectPromptAdditions(cwd string, dispatchOnly bool) string {
 
 	if !dispatchOnly {
 		sb.WriteString("\n**规范文件约定**：\n")
-		sb.WriteString("- 项目规范文件：.eos/Rules.md（默认写这里）\n")
-		sb.WriteString("- 全局规范文件：~/.eos/Rules.md（仅用户明确要求“全局规则”时写这里）\n")
+		sb.WriteString("- 项目记忆文件：.eos/memory/project.md\n")
+		sb.WriteString("- 全局用户记忆文件：~/.eos/memory/user.md\n")
+		sb.WriteString("- 项目规范文件：.eos/Rules.md\n")
+		sb.WriteString("- 全局规范文件：~/.eos/Rules.md\n")
 		sb.WriteString("- 项目指导文件只使用 EOS.md，不使用 CLAUDE.md\n")
-		sb.WriteString("- 用户要求“写/更新规则”时，直接更新对应 Rules.md 文件内容\n")
+		sb.WriteString("- 用户要求“写/更新规则”时，直接更新对应 Rules.md 文件内容；不要把规则和记忆混写\n")
 		sb.WriteString("- 生成/更新规范时使用固定模板；若文件已存在，更新其对应章节，不要整文件重写或重复追加标题\n")
 		sb.WriteString("```\n")
 		sb.WriteString(strings.TrimSpace(RulesMdTemplate()))

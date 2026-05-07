@@ -134,6 +134,36 @@ SSE:
 eos mcp serve --transport sse --listen 127.0.0.1:8765 --workspace "/abs/workspace"
 ```
 
+### 浏览器自动化
+
+EOS 当前不内置浏览器驱动，推荐通过成熟的 Playwright MCP 接入浏览器能力。接入后，agent 可以执行网页点击、输入、选择、等待页面变化和截图等真实浏览器操作。
+
+最小可用配置：
+
+```json
+[
+  {
+    "name": "playwright",
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp@latest"],
+    "envs": {},
+    "enabled": true
+  }
+]
+```
+
+启用方式：
+
+- 在 `/mcp` 面板中按 `B` 一键插入 Playwright 预设
+- 或手动编辑 `~/.eos.json` 中的 `mcp` 配置
+
+使用边界：
+
+- `web_fetch` 适合只读抓取网页内容
+- 浏览器 MCP 适合真实页面交互与行为验证
+- 可用性排查可使用 `browser_status` 或 `/status`、`/doctor`
+
 ## 项目结构（简版）
 
 ```text
