@@ -5,18 +5,34 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	codectx "github.com/dreamSailing/eos/internal/context"
 	"github.com/dreamSailing/eos/internal/session"
 )
 
+func setRuntimeSessionTestHome(t *testing.T) string {
+	t.Helper()
+	home := filepath.Join(t.TempDir(), "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("MkdirAll(home) error = %v", err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if volume := filepath.VolumeName(home); volume != "" {
+		t.Setenv("HOMEDRIVE", volume)
+		t.Setenv("HOMEPATH", strings.TrimPrefix(home, volume))
+	}
+	return home
+}
+
 func TestRuntimeCore_SaveAndResumeSession(t *testing.T) {
+	setRuntimeSessionTestHome(t)
 	dir := t.TempDir()
 	old, _ := os.Getwd()
 	_ = os.Chdir(dir)
@@ -52,6 +68,7 @@ func TestRuntimeCore_SaveAndResumeSession(t *testing.T) {
 }
 
 func TestRuntimeCore_SaveAndResumeSession_UsesActiveRoot(t *testing.T) {
+	setRuntimeSessionTestHome(t)
 	dir := t.TempDir()
 	other := t.TempDir()
 
@@ -92,6 +109,7 @@ func TestRuntimeCore_SaveAndResumeSession_UsesActiveRoot(t *testing.T) {
 }
 
 func TestRuntimeCore_SaveSessionMessagesAndDeleteSession(t *testing.T) {
+	setRuntimeSessionTestHome(t)
 	dir := t.TempDir()
 	old, _ := os.Getwd()
 	_ = os.Chdir(dir)
@@ -162,6 +180,7 @@ func TestRuntimeCore_SaveSessionMessagesAndDeleteSession(t *testing.T) {
 }
 
 func TestRuntimeCore_SaveSessionMessagesRebuildsContextFromShorterTranscript(t *testing.T) {
+	setRuntimeSessionTestHome(t)
 	dir := t.TempDir()
 	old, _ := os.Getwd()
 	_ = os.Chdir(dir)
@@ -216,6 +235,7 @@ func TestRuntimeCore_SaveSessionMessagesRebuildsContextFromShorterTranscript(t *
 }
 
 func TestRuntimeCore_CurrentSessionControlsResumeDefault(t *testing.T) {
+	setRuntimeSessionTestHome(t)
 	dir := t.TempDir()
 	old, _ := os.Getwd()
 	_ = os.Chdir(dir)

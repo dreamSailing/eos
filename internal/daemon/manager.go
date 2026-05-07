@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -54,7 +53,7 @@ func (m *Manager) StartBackground() (State, error) {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.Stdin = nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	configureDaemonCommand(cmd)
 	if err := cmd.Start(); err != nil {
 		return State{}, err
 	}
@@ -63,10 +62,13 @@ func (m *Manager) StartBackground() (State, error) {
 		state, err := LoadState(opts.StateFile)
 		if err == nil && state.PID > 0 {
 			if healthy(state.WebBaseURL) {
+				_ = cmd.Process.Release()
 				return state, nil
 			}
 		}
 	}
+	cleanupStartedCommand(cmd)
+	_ = RemoveState(opts.StateFile)
 	return State{}, fmt.Errorf("daemon did not become ready")
 }
 
@@ -105,7 +107,7 @@ func Stop(stateFile string) error {
 	if err != nil {
 		return err
 	}
-	if err := proc.Signal(syscall.SIGTERM); err != nil {
+	if err := stopProcess(proc); err != nil {
 		return err
 	}
 	for i := 0; i < 50; i++ {
@@ -118,15 +120,25 @@ func Stop(stateFile string) error {
 	return fmt.Errorf("daemon stop timeout")
 }
 
-func processAlive(pid int) bool {
-	if pid <= 0 {
-		return false
+func cleanupStartedCommand(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
 	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
+	_ = stopProcess(cmd.Process)
+	done := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		_ = cmd.Process.Kill()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+		}
 	}
-	return proc.Signal(syscall.Signal(0)) == nil
 }
 
 func healthy(baseURL string) bool {

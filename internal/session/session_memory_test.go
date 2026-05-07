@@ -18,7 +18,7 @@ func TestExtractSessionMemoryWritesSessionAndLongTermMemory(t *testing.T) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HOME", home)
+	setSessionMemoryTestHome(t, home)
 
 	oldWD, err := os.Getwd()
 	if err != nil {
@@ -63,5 +63,15 @@ func TestExtractSessionMemoryWritesSessionAndLongTermMemory(t *testing.T) {
 	}
 	if !strings.Contains(string(projectContent), "项目约定：长期记忆统一写入 .eos/memory/project.md") {
 		t.Fatalf("project memory missing extracted convention")
+	}
+}
+
+func setSessionMemoryTestHome(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if volume := filepath.VolumeName(home); volume != "" {
+		t.Setenv("HOMEDRIVE", volume)
+		t.Setenv("HOMEPATH", strings.TrimPrefix(home, volume))
 	}
 }

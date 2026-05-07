@@ -7,6 +7,7 @@ import (
 	"time"
 
 	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
+	"github.com/dreamSailing/eos/internal/tools/bg"
 )
 
 func TestServiceCreateUpdateDelete(t *testing.T) {
@@ -46,13 +47,15 @@ func TestServiceCreateUpdateDelete(t *testing.T) {
 }
 
 func TestServiceTriggerNowShell(t *testing.T) {
-	service := NewService(filepath.Join(t.TempDir(), "schedules.json"), toolapiimpl.NewServices(), t.TempDir())
+	workspace := t.TempDir()
+	before := taskIDs(bg.Default().List())
+	service := NewService(filepath.Join(t.TempDir(), "schedules.json"), toolapiimpl.NewServices(), workspace)
 	item, err := service.Create(Schedule{
 		Name:    "trigger shell",
 		Enabled: true,
 		Cron:    "*/5 * * * *",
 		Kind:    TaskKindShell,
-		Payload: map[string]any{"command": "printf hi"},
+		Payload: map[string]any{"command": "echo hi"},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -68,4 +71,40 @@ func TestServiceTriggerNowShell(t *testing.T) {
 	if got.ID != item.ID {
 		t.Fatalf("unexpected schedule: %+v", got)
 	}
+	waitForNewBackgroundTaskExit(t, before, workspace)
+}
+
+func taskIDs(items []bg.TaskInfo) map[string]struct{} {
+	ids := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		ids[item.ID] = struct{}{}
+	}
+	return ids
+}
+
+func waitForNewBackgroundTaskExit(t *testing.T, before map[string]struct{}, workspace string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	seen := ""
+	for time.Now().Before(deadline) {
+		for _, item := range bg.Default().List() {
+			if _, ok := before[item.ID]; ok {
+				continue
+			}
+			if item.WorkingDir != workspace {
+				continue
+			}
+			seen = item.ID
+			if item.Status != bg.StatusRunning {
+				bg.Default().CleanupFinished()
+				return
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if seen != "" {
+		_, _ = bg.Default().Kill(seen)
+		bg.Default().CleanupFinished()
+	}
+	t.Fatalf("background shell task did not exit before cleanup")
 }

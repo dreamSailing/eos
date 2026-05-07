@@ -113,12 +113,15 @@ func TestManager_ExecuteBashDirect_UsesWorkspaceRootFromContext(t *testing.T) {
 		t.Skipf("bash not available on PATH: %v", err)
 	}
 	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".workspace-root-sentinel"), []byte("ok"), 0644); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
 	m := NewManager()
-	out, err := m.ExecuteBashDirect(WithWorkspaceRoot(context.Background(), dir), "pwd")
+	out, err := m.ExecuteBashDirect(WithWorkspaceRoot(context.Background(), dir), "test -f .workspace-root-sentinel && printf found")
 	if err != nil {
 		t.Fatalf("ExecuteBashDirect error: %v", err)
 	}
-	if !strings.Contains(strings.ReplaceAll(out, "\\", "/"), strings.ReplaceAll(dir, "\\", "/")) {
-		t.Fatalf("expected output %q to contain workspace root %q", out, dir)
+	if strings.TrimSpace(out) != "found" {
+		t.Fatalf("expected bash command to run in workspace root, got %q", out)
 	}
 }

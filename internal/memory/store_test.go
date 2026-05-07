@@ -17,7 +17,7 @@ func TestStoreUpsertRoutesDedupesAndBuildsIndex(t *testing.T) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HOME", home)
+	setMemoryTestHome(t, home)
 
 	store := NewStore(root)
 	globalRes, err := store.Upsert(MemoryEntry{
@@ -79,5 +79,15 @@ func TestStoreUpsertRoutesDedupesAndBuildsIndex(t *testing.T) {
 	indexText := string(indexContent)
 	if !strings.Contains(indexText, "## global") || !strings.Contains(indexText, "## project") {
 		t.Fatalf("memory index missing expected sections: %s", indexText)
+	}
+}
+
+func setMemoryTestHome(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if volume := filepath.VolumeName(home); volume != "" {
+		t.Setenv("HOMEDRIVE", volume)
+		t.Setenv("HOMEPATH", strings.TrimPrefix(home, volume))
 	}
 }
