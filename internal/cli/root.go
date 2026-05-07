@@ -128,6 +128,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&cliSkipPermissions, "dangerously-skip-permissions", false, "Skip all permission checks (use with caution)")
 
 	rootCmd.AddCommand(newBridgeCmd())
+	rootCmd.AddCommand(newDaemonCmd())
 	rootCmd.AddCommand(newMCPCmd())
 	rootCmd.AddCommand(newServeCmd())
 	rootCmd.AddCommand(newUpdateCmd())
