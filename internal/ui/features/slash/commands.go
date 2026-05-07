@@ -53,7 +53,8 @@ var Commands = []Command{
 	{Name: "/rename", Group: GroupProject, Usage: "/rename <title>", DescriptionZH: "重命名当前会话", DescriptionEN: "Rename the current session"},
 	{Name: "/share", Group: GroupProject, DescriptionZH: "分享会话到剪贴板或文件", DescriptionEN: "Share session to clipboard or file"},
 
-	{Name: "/memory", Aliases: []string{"/ctx", "/context"}, Group: GroupRuntime, DescriptionZH: "打开上下文与记忆面板", DescriptionEN: "Open the context and memory panel"},
+	{Name: "/memory", Group: GroupRuntime, DescriptionZH: "打开记忆面板", DescriptionEN: "Open the memory panel"},
+	{Name: "/context", Aliases: []string{"/ctx"}, Group: GroupRuntime, DescriptionZH: "打开上下文面板", DescriptionEN: "Open the context panel"},
 	{Name: "/tasks", Group: GroupRuntime, DescriptionZH: "打开任务面板", DescriptionEN: "Open the tasks panel"},
 	{Name: "/plan", Group: GroupRuntime, Usage: "/plan [auto|plan]", DescriptionZH: "查看当前计划/待办，或切换计划执行模式", DescriptionEN: "Inspect plan/todos or switch planning mode"},
 	{Name: "/plan-style", Group: GroupRuntime, Usage: "/plan-style [concise|detailed|custom:<text>]", DescriptionZH: "查看或设置计划提示风格", DescriptionEN: "Inspect or change the planner prompt style"},

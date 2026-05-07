@@ -8,6 +8,7 @@ package runtime
 
 import (
 	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/memory"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -108,6 +109,16 @@ func loadCodingStyle(rootDir string) string {
 		}
 	}
 	return ""
+}
+
+// LoadProjectMemory 读取项目长期记忆文件，与规则文件职责分离。
+func LoadProjectMemory(rootDir string) string {
+	return readFileTruncated(memory.ProjectMemoryPath(rootDir), maxCodingStyleBytes)
+}
+
+// LoadGlobalMemory 读取全局用户记忆文件。
+func LoadGlobalMemory() string {
+	return readFileTruncated(memory.GlobalMemoryPath(), maxCodingStyleBytes)
 }
 
 // CollectRecentFiles 通过 git 获取最近修改的文件列表

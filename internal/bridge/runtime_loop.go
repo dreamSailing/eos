@@ -497,13 +497,17 @@ func (rc *RuntimeCore) loop() {
 							messages := rc.cm.Build()
 							tokenCount := rc.cm.EstimateCurrentTokens()
 							if smMgr.ShouldExtractMemory(messages, tokenCount) {
+								lastMessageContent := ""
+								if len(messages) > 0 {
+									lastMessageContent = messages[len(messages)-1].Content
+								}
 								go func() {
 									smMgr.SetExtractionInProgress(true)
 									defer smMgr.SetExtractionInProgress(false)
 									if extractErr := rc.cm.ExtractSessionMemory(context.Background()); extractErr != nil {
 										slog.Warn("runtime.session_memory.extract_failed", "component", utils.ComponentSystem, "error", extractErr.Error())
 									} else {
-										smMgr.RecordExtraction(tokenCount, "")
+										smMgr.RecordExtraction(tokenCount, lastMessageContent)
 									}
 								}()
 							}

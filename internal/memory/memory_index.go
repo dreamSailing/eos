@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -27,65 +28,23 @@ const (
 type MemoryIndex struct {
 	mu      sync.RWMutex
 	rootDir string
+	homeDir string
 }
 
 // NewMemoryIndex creates a new memory index manager
 func NewMemoryIndex(rootDir string) *MemoryIndex {
-	return &MemoryIndex{rootDir: rootDir}
+	homeDir, _ := os.UserHomeDir()
+	return &MemoryIndex{rootDir: rootDir, homeDir: homeDir}
 }
 
 // indexPath returns the full path to the MEMORY.md index file
 func (idx *MemoryIndex) indexPath() string {
-	return filepath.Join(idx.rootDir, IndexFile)
+	return ProjectMemoryIndexPath(idx.rootDir)
 }
 
-// AddEntry adds an entry to the MEMORY.md index
+// AddEntry refreshes the workspace index after a memory update.
 func (idx *MemoryIndex) AddEntry(entry MemoryEntry) error {
-	idx.mu.Lock()
-	defer idx.mu.Unlock()
-
-	path := idx.indexPath()
-
-	// Read existing content
-	var lines []string
-	existing, err := os.ReadFile(path)
-	if err == nil {
-		lines = strings.Split(string(existing), "\n")
-	}
-
-	// Build the new entry line
-	entryLine := formatIndexEntry(entry)
-
-	// Find the section for this type
-	sectionHeader := "## " + string(entry.Type)
-	sectionIdx := -1
-
-	for i, l := range lines {
-		if strings.TrimSpace(l) == sectionHeader {
-			sectionIdx = i
-			break
-		}
-	}
-
-	// Insert the entry
-	if sectionIdx >= 0 {
-		// Insert after section header
-		lines = append(lines[:sectionIdx+1], append([]string{entryLine}, lines[sectionIdx+1:]...)...)
-	} else {
-		// Add new section
-		if len(lines) > 0 && lines[len(lines)-1] != "" {
-			lines = append(lines, "")
-		}
-		lines = append(lines, sectionHeader, "", entryLine, "")
-	}
-
-	// Enforce line limit
-	if len(lines) > IndexMaxLines {
-		lines = truncateToLimit(lines, IndexMaxLines)
-	}
-
-	// Write back
-	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644)
+	return idx.RebuildIndexFromDisk()
 }
 
 // RemoveEntry removes an entry from the index by ID
@@ -156,7 +115,19 @@ func (idx *MemoryIndex) RebuildIndex(entries []MemoryEntry) error {
 		content = strings.Join(lines, "\n")
 	}
 
+	if err := ensureDir(idx.indexPath()); err != nil {
+		return err
+	}
 	return os.WriteFile(idx.indexPath(), []byte(content), 0644)
+}
+
+// RebuildIndexFromDisk regenerates the workspace index from the global and project memory files.
+func (idx *MemoryIndex) RebuildIndexFromDisk() error {
+	entries, err := ScanMemoryFiles(idx.rootDir)
+	if err != nil {
+		return err
+	}
+	return idx.RebuildIndex(entries)
 }
 
 // formatIndexEntry formats a memory entry for the index
@@ -165,7 +136,11 @@ func formatIndexEntry(e MemoryEntry) string {
 	if len(preview) > 100 {
 		preview = preview[:97] + "..."
 	}
-	return fmt.Sprintf("- [%s] %s (in %s)", e.ID, preview, e.File)
+	section := strings.TrimSpace(e.Section)
+	if section != "" {
+		return fmt.Sprintf("- [%s] %s (%s, %s)", e.ID, preview, e.File, section)
+	}
+	return fmt.Sprintf("- [%s] %s (%s)", e.ID, preview, e.File)
 }
 
 // truncateToLimit truncates lines to fit within the limit, keeping the header
@@ -195,46 +170,92 @@ func ensureDir(path string) error {
 	return os.MkdirAll(dir, 0755)
 }
 
-// ScanMemoryFiles scans the workspace for memory files and returns their entries
+// ScanMemoryFiles scans the workspace and home memory files and returns their entries.
 func ScanMemoryFiles(rootDir string) ([]MemoryEntry, error) {
 	var entries []MemoryEntry
 
 	type fileInfo struct {
 		file    string
+		label   string
 		memType MemoryType
 	}
 
-	files := []fileInfo{
-		{"EOS.md", MemoryTypeUser},
-		{".eos/Rules.md", MemoryTypeProject},
+	homeDir, _ := os.UserHomeDir()
+	files := make([]fileInfo, 0, 2)
+	if strings.TrimSpace(homeDir) != "" {
+		files = append(files, fileInfo{
+			file:    GlobalMemoryPath(),
+			label:   filepath.ToSlash(GlobalMemoryDocID),
+			memType: MemoryTypeGlobal,
+		})
 	}
+	files = append(files, fileInfo{
+		file:    ProjectMemoryPath(rootDir),
+		label:   filepath.ToSlash(ProjectMemoryDocID),
+		memType: MemoryTypeProject,
+	})
 
+	now := timeNow()
 	for _, fi := range files {
-		path := filepath.Join(rootDir, fi.file)
-		f, err := os.Open(path)
+		if strings.TrimSpace(fi.file) == "" {
+			continue
+		}
+		fileEntries, err := scanSingleMemoryFile(fi.file, fi.label, fi.memType, now)
 		if err != nil {
 			continue
 		}
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		for scanner.Scan() {
-			line := scanner.Text()
-			lineNum++
-			if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
-				continue
-			}
-			entries = append(entries, MemoryEntry{
-				ID:        fmt.Sprintf("%s-L%d", fi.file, lineNum),
-				Type:      fi.memType,
-				Content:   strings.TrimSpace(line),
-				File:      fi.file,
-				CreatedAt: timeNow(),
-			})
-		}
-		f.Close()
+		entries = append(entries, fileEntries...)
 	}
 
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Type == entries[j].Type {
+			return entries[i].ID < entries[j].ID
+		}
+		return entries[i].Type < entries[j].Type
+	})
 	return entries, nil
+}
+
+func scanSingleMemoryFile(path string, label string, memType MemoryType, now time.Time) ([]MemoryEntry, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	entries := make([]MemoryEntry, 0)
+	lineNum := 0
+	currentSection := ""
+	for scanner.Scan() {
+		line := scanner.Text()
+		lineNum++
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case trimmed == "":
+			continue
+		case strings.HasPrefix(trimmed, "# "):
+			continue
+		case strings.HasPrefix(trimmed, "## "):
+			currentSection = strings.TrimSpace(strings.TrimPrefix(trimmed, "## "))
+			continue
+		case strings.HasPrefix(trimmed, "<!--"):
+			continue
+		}
+
+		trimmed = strings.TrimPrefix(trimmed, "- ")
+		entry := MemoryEntry{
+			Type:      memType,
+			Content:   NormalizeContent(trimmed),
+			File:      label,
+			Section:   NormalizeSection(currentSection, memType),
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		entry.ID = fmt.Sprintf("%s-L%d", entry.ensureFingerprint(), lineNum)
+		entries = append(entries, entry)
+	}
+	return entries, scanner.Err()
 }
 
 // timeNow returns the current time (extracted for testability)

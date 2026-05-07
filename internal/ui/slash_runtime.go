@@ -95,6 +95,18 @@ func (m *AppModel) openContextPanel() {
 	m.refreshContextPanel()
 }
 
+func (m *AppModel) openMemoryPanel() {
+	m.activeView = "panel"
+	m.activePanel = "memory"
+	m.shell.ClearInput()
+	if panel, ok := m.panels["memory"].(*panels.MemoryPanel); ok && panel != nil {
+		if panel.IsEditing() {
+			panel.CancelEdit()
+		}
+	}
+	m.refreshMemoryPanel()
+}
+
 func (m *AppModel) openSettingsPanel() {
 	m.activeView = "panel"
 	m.activePanel = "settings"

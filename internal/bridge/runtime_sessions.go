@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/memory"
 	"github.com/dreamSailing/eos/internal/session"
 )
 
@@ -265,6 +266,7 @@ func (rc *RuntimeCore) ResumeSession(ctx context.Context, id string) error {
 	if strings.TrimSpace(ps.Model) != "" {
 		rc.cm.SetModel(ps.Model)
 	}
+	rc.rehydrateMemoryDocs(ps.Cwd)
 	rc.tokenMu.Lock()
 	rc.tokenHistory = append([]TokenRecord{}, ps.TokenHistory...)
 	rc.tokenMu.Unlock()
@@ -853,4 +855,20 @@ func (rc *RuntimeCore) SaveSessionMarkdown(id string, outputPath string) error {
 		return fmt.Errorf("outputPath is empty")
 	}
 	return os.WriteFile(outputPath, []byte(md), 0644)
+}
+
+func (rc *RuntimeCore) rehydrateMemoryDocs(root string) {
+	if rc == nil || rc.cm == nil {
+		return
+	}
+	snap := memory.LoadSnapshot(root)
+	if snap.GlobalExists && strings.TrimSpace(snap.GlobalContent) != "" {
+		rc.cm.SetPinnedDoc(memory.GlobalMemoryDocID, snap.GlobalContent, 12000)
+	}
+	if snap.ProjectExists && strings.TrimSpace(snap.ProjectContent) != "" {
+		rc.cm.SetPinnedDoc(memory.ProjectMemoryDocID, snap.ProjectContent, 12000)
+	}
+	if snap.IndexExists && strings.TrimSpace(snap.IndexContent) != "" {
+		rc.cm.SetPinnedDoc(memory.ProjectIndexDocID, snap.IndexContent, 8000)
+	}
 }
