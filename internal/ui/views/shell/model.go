@@ -20,8 +20,8 @@ import (
 	"github.com/dreamSailing/eos/internal/ui/components/hints"
 	"github.com/dreamSailing/eos/internal/ui/components/input"
 	"github.com/dreamSailing/eos/internal/ui/features/slash"
-	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/update"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -279,6 +279,7 @@ func (m *Model) SetMode(mode Mode) {
 	if mode == ModeAI {
 		m.input.SetPlaceholder("Enter message... (Press ? for help)")
 	} else {
+		m.input.ClearPrediction()
 		m.input.SetPlaceholder("Enter bash command...")
 	}
 }
@@ -349,13 +350,13 @@ func (m *Model) SetWelcomeInfo(modelName, apiInfo, workDir string) {
 	}
 }
 
-
-	// SetUpdateInfo sets version update info on the welcome card
-	func (m *Model) SetUpdateInfo(info *update.CheckResult) {
-		if m.welcome != nil {
-			m.welcome.SetUpdateInfo(info)
-		}
+// SetUpdateInfo sets version update info on the welcome card
+func (m *Model) SetUpdateInfo(info *update.CheckResult) {
+	if m.welcome != nil {
+		m.welcome.SetUpdateInfo(info)
 	}
+}
+
 // AppendContent 追加内容
 func (m *Model) AppendContent(text string) {
 	m.content.Append(text)
@@ -396,6 +397,18 @@ func (m *Model) SetInputValue(text string) {
 // ClearInput 清空输入
 func (m *Model) ClearInput() {
 	m.input.Clear()
+}
+
+func (m *Model) SetPrediction(text string) {
+	m.input.SetPrediction(text)
+}
+
+func (m *Model) ClearPrediction() {
+	m.input.ClearPrediction()
+}
+
+func (m *Model) HasPrediction() bool {
+	return m.input.HasPrediction()
 }
 
 // AddToHistory 添加到历史
@@ -873,6 +886,10 @@ func (m *Model) HandleKey(msg tea.KeyMsg) (handled bool, cmd tea.Cmd) {
 		// 清空输入或取消
 		m.input.Clear()
 		return true, nil
+	case "right":
+		if strings.TrimSpace(m.input.Value()) == "" && m.input.AcceptPrediction() {
+			return true, nil
+		}
 	}
 	return false, nil
 }

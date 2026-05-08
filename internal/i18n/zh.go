@@ -5,7 +5,6 @@ package i18n
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 var zhText = map[string]string{
 	"cli.root.short":               "powered by EOS 的 AI 命令行界面",
 	"cli.root.long":                "eos 是一个基于终端的 AI 助手，帮助你完成编码、文件操作和命令执行等任务，通过自然语言进行交互。",
@@ -472,6 +471,7 @@ var zhText = map[string]string{
 	"help.key.alt_m":      "Agent 模式默认开启",
 	"help.key.alt_h":      "切换思考折叠",
 	"help.key.alt_v":      "粘贴图片",
+	"help.key.right":      "接受下一步预测",
 	"help.key.ctrl_o":     "切换详细模式",
 	"help.key.ctrl_j":     "换行（Ctrl+J）",
 	"help.key.esc_esc":    "停止当前流程",

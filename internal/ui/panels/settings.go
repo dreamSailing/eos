@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/i18n"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/ui/styles"
@@ -34,6 +35,8 @@ type SettingsPanel struct {
 	editInput   textinput.Model
 	editKey     string
 	editValue   string
+
+	globalPredictionEnabled bool
 }
 
 // SettingItem 设置项
@@ -116,6 +119,8 @@ func (p *SettingsPanel) LoadSettings() {
 			}
 		}
 	}
+	cfg, _ := config.Load()
+	p.globalPredictionEnabled = config.NextMessagePredictionEnabled(&cfg)
 	p.updateTable()
 }
 
@@ -146,6 +151,7 @@ func (p *SettingsPanel) updateTable() {
 		rows = append(rows, table.Row{"PollIntervalSec", fmt.Sprintf("%d", s.PollIntervalSec)})
 		rows = append(rows, table.Row{"Language", s.Language})
 		rows = append(rows, table.Row{"Theme", s.Theme})
+		rows = append(rows, table.Row{"NextMessagePrediction(Global)", fmt.Sprintf("%v", p.globalPredictionEnabled)})
 		planPromptStyle := strings.TrimSpace(s.PlanPromptStyle)
 		if planPromptStyle == "" {
 			planPromptStyle = "concise"
@@ -227,8 +233,9 @@ func (p *SettingsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 			return p.enterEditMode()
 		case "s":
 			// 直接执行保存操作
+			enabled := p.globalPredictionEnabled
 			return p, func() tea.Msg {
-				return SettingsSaveMsg{Settings: p.settings}
+				return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled}
 			}
 		case "r":
 			// 直接执行重置操作
@@ -252,8 +259,9 @@ func (p *SettingsPanel) handleAction() (Panel, tea.Cmd) {
 	case "Edit":
 		return p.enterEditMode()
 	case "Save":
+		enabled := p.globalPredictionEnabled
 		return p, func() tea.Msg {
-			return SettingsSaveMsg{Settings: p.settings}
+			return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled}
 		}
 	case "Reset":
 		p.LoadSettings()
@@ -296,8 +304,9 @@ func (p *SettingsPanel) handleEditMode(msg tea.Msg) (Panel, tea.Cmd) {
 			p.saveEditValue()
 			p.editMode = false
 			p.editInput.Blur()
+			enabled := p.globalPredictionEnabled
 			return p, func() tea.Msg {
-				return SettingsSaveMsg{Settings: p.settings}
+				return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled}
 			}
 		}
 	}
@@ -336,6 +345,8 @@ func (p *SettingsPanel) saveEditValue() {
 		p.settings.Language = value
 	case "Theme":
 		p.settings.Theme = value
+	case "NextMessagePrediction(Global)":
+		p.globalPredictionEnabled = value == "true" || value == "True" || value == "1"
 	case "PlanPromptStyle":
 		p.settings.PlanPromptStyle = value
 	case "PlanBubbleColor":
@@ -430,7 +441,8 @@ func (p *SettingsPanel) SetSize(width, height int) {
 
 // SettingsSaveMsg 保存设置消息
 type SettingsSaveMsg struct {
-	Settings *settings.Settings
+	Settings                *settings.Settings
+	GlobalPredictionEnabled *bool
 }
 
 // SettingsResetMsg 重置设置消息

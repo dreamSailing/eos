@@ -5,7 +5,6 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"log/slog"
@@ -22,10 +21,10 @@ import (
 	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"github.com/dreamSailing/eos/internal/pkg/workspace"
 	einoruntime "github.com/dreamSailing/eos/internal/runtime"
-	"github.com/dreamSailing/eos/pkg/protocol"
 	"github.com/dreamSailing/eos/internal/session"
 	"github.com/dreamSailing/eos/internal/skills"
 	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/pkg/protocol"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -149,6 +148,7 @@ type RuntimeCore struct {
 	pendingGraph  map[chan graphInvokeRes]struct{}
 	pendingTools  map[chan toolsNodeRes]struct{}
 	pendingSumm   map[chan summarizeRes]struct{}
+	pendingPred   map[chan predictNextRes]struct{}
 
 	panicMu   sync.Mutex
 	panicAt   time.Time
@@ -443,6 +443,17 @@ type summarizeRes struct {
 	err  error
 }
 
+type predictNextReq struct {
+	ctx   context.Context
+	text  string
+	resCh chan predictNextRes
+}
+
+type predictNextRes struct {
+	text string
+	err  error
+}
+
 type finalizeTaskReq struct {
 	traceID       string
 	userText      string
@@ -504,11 +515,12 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 		done:                     make(chan struct{}),
 		conversationSummaryEvery: 6,
 		pendingReload:            make(map[chan error]struct{}),
-		pendingGraph:            make(map[chan graphInvokeRes]struct{}),
-		pendingTools:            make(map[chan toolsNodeRes]struct{}),
-		pendingSumm:             make(map[chan summarizeRes]struct{}),
-		modelName:               modelName,
-		modelBase:               modelBase,
+		pendingGraph:             make(map[chan graphInvokeRes]struct{}),
+		pendingTools:             make(map[chan toolsNodeRes]struct{}),
+		pendingSumm:              make(map[chan summarizeRes]struct{}),
+		pendingPred:              make(map[chan predictNextRes]struct{}),
+		modelName:                modelName,
+		modelBase:                modelBase,
 	}
 	rc.parser = NewStreamParser(rc.eventsCh)
 

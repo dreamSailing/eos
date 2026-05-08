@@ -5,7 +5,6 @@ package i18n
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 var enText = map[string]string{
 	"cli.root.short":               "An AI-powered command line interface powered by EOS",
 	"cli.root.long":                "eos is a terminal-based AI assistant that helps you with coding tasks, file operations, and command execution through natural language conversation.",
@@ -470,6 +469,7 @@ var enText = map[string]string{
 	"help.key.alt_m":      "Agent mode is enabled by default",
 	"help.key.alt_h":      "Toggle thinking collapse",
 	"help.key.alt_v":      "Paste image",
+	"help.key.right":      "Accept next-message prediction",
 	"help.key.ctrl_o":     "Toggle verbose mode",
 	"help.key.ctrl_j":     "New line (Ctrl+J)",
 	"help.key.esc_esc":    "Stop current flow",

@@ -5,7 +5,6 @@ package help
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"strings"
 
@@ -121,6 +120,7 @@ func (h *HelpView) View() string {
 	b.WriteString(h.renderKey("F2", i18n.T("help.key.f2", lang)) + "\n")
 	b.WriteString(h.renderKey("Tab", i18n.T("help.key.tab", lang)) + "\n")
 	b.WriteString(h.renderKey("Alt+V", i18n.T("help.key.alt_v", lang)) + "\n")
+	b.WriteString(h.renderKey("→", i18n.T("help.key.right", lang)) + "\n")
 	b.WriteString(h.renderKey("Ctrl+J", i18n.T("help.key.ctrl_j", lang)) + "\n")
 	b.WriteString(h.renderKey("Esc", i18n.T("help.key.esc_esc", lang)) + "\n")
 	b.WriteString(h.renderKey("Ctrl+C", i18n.T("help.key.ctrl_c", lang)) + "\n")

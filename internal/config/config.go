@@ -5,7 +5,6 @@ package config
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"encoding/json"
 	"errors"
@@ -58,8 +57,8 @@ type PluginEntry struct {
 type MCPClientType string
 
 const (
-	MCPTypeStdio          MCPClientType = "stdio"          // 本地命令行工具
-	MCPTypeSSE            MCPClientType = "sse"            // 远程SSE服务
+	MCPTypeStdio          MCPClientType = "stdio"           // 本地命令行工具
+	MCPTypeSSE            MCPClientType = "sse"             // 远程SSE服务
 	MCPTypeStreamableHTTP MCPClientType = "streamable-http" // Streamable HTTP MCP transport
 )
 
@@ -77,9 +76,9 @@ type MCPEntry struct {
 
 // MCPAuth defines authentication configuration for MCP servers
 type MCPAuth struct {
-	Type    string            `json:"type"`               // "bearer", "basic", "api_key"
-	Token   string            `json:"token,omitempty"`    // Bearer token or API key value
-	Headers map[string]string `json:"headers,omitempty"`  // Custom headers to inject
+	Type       string            `json:"type"`                  // "bearer", "basic", "api_key"
+	Token      string            `json:"token,omitempty"`       // Bearer token or API key value
+	Headers    map[string]string `json:"headers,omitempty"`     // Custom headers to inject
 	HeadersEnv map[string]string `json:"headers_env,omitempty"` // Header names whose values come from env vars
 }
 
@@ -120,21 +119,29 @@ type PermissionsConfig struct {
 }
 
 type Config struct {
-	Models            []ModelEntry       `json:"models,omitempty"`
-	Active            string             `json:"active_model,omitempty"`
-	Thinking          ThinkingConfig     `json:"thinking,omitempty"` // 思考模式配置
-	Agent             AgentConfig        `json:"agent,omitempty"`
-	MCP               []MCPEntry         `json:"mcp,omitempty"`                // MCP服务配置
-	Skills            []SkillsDirEntry   `json:"skills,omitempty"`             // Skills 目录配置
-	DisabledSkills    []string           `json:"disabled_skills,omitempty"`    // 被禁用的 skill 名称
-	Plugins           []PluginEntry      `json:"plugins,omitempty"`            // 插件启停覆盖配置
-	LSP               LSPConfig          `json:"lsp,omitempty"`                // LSP 配置
-	KnownWorkspaces   []string           `json:"known_workspaces,omitempty"`   // 已知工作区（绝对路径）
-	LastWorkspace     string             `json:"last_workspace,omitempty"`     // 上次前台工作区（绝对路径）
-	TrustedWorkspaces []string           `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
-	Language          string             `json:"language,omitempty"`           // 语言设置 (zh, en)
-	FastModel         string             `json:"fast_model,omitempty"`         // Fast mode model name
-	Permissions       *PermissionsConfig `json:"permissions,omitempty"`        // Tool permissions
+	Models                       []ModelEntry       `json:"models,omitempty"`
+	Active                       string             `json:"active_model,omitempty"`
+	Thinking                     ThinkingConfig     `json:"thinking,omitempty"` // 思考模式配置
+	NextMessagePredictionEnabled *bool              `json:"next_message_prediction_enabled,omitempty"`
+	Agent                        AgentConfig        `json:"agent,omitempty"`
+	MCP                          []MCPEntry         `json:"mcp,omitempty"`                // MCP服务配置
+	Skills                       []SkillsDirEntry   `json:"skills,omitempty"`             // Skills 目录配置
+	DisabledSkills               []string           `json:"disabled_skills,omitempty"`    // 被禁用的 skill 名称
+	Plugins                      []PluginEntry      `json:"plugins,omitempty"`            // 插件启停覆盖配置
+	LSP                          LSPConfig          `json:"lsp,omitempty"`                // LSP 配置
+	KnownWorkspaces              []string           `json:"known_workspaces,omitempty"`   // 已知工作区（绝对路径）
+	LastWorkspace                string             `json:"last_workspace,omitempty"`     // 上次前台工作区（绝对路径）
+	TrustedWorkspaces            []string           `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
+	Language                     string             `json:"language,omitempty"`           // 语言设置 (zh, en)
+	FastModel                    string             `json:"fast_model,omitempty"`         // Fast mode model name
+	Permissions                  *PermissionsConfig `json:"permissions,omitempty"`        // Tool permissions
+}
+
+func NextMessagePredictionEnabled(cfg *Config) bool {
+	if cfg == nil || cfg.NextMessagePredictionEnabled == nil {
+		return true
+	}
+	return *cfg.NextMessagePredictionEnabled
 }
 
 func Path() string {

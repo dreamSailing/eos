@@ -5,7 +5,6 @@ package input
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"strings"
 
@@ -28,14 +27,15 @@ type Model struct {
 	focusStyle lipgloss.Style
 
 	// 历史
-	history     []string
-	historyIdx  int
-	historyMax  int
-	historyDraft string
+	history            []string
+	historyIdx         int
+	historyMax         int
+	historyDraft       string
 	historyDraftActive bool
 
 	// 占位符
-	placeholder string
+	basePlaceholder string
+	prediction      string
 }
 
 // New 创建新的输入模型
@@ -84,8 +84,41 @@ func (m *Model) SetStyle(style, focusStyle lipgloss.Style) {
 
 // SetPlaceholder 设置占位符
 func (m *Model) SetPlaceholder(text string) {
-	m.placeholder = text
-	m.textarea.Placeholder = text
+	m.basePlaceholder = text
+	m.refreshPlaceholder()
+}
+
+func (m *Model) SetPrediction(text string) {
+	m.prediction = strings.TrimSpace(text)
+	m.refreshPlaceholder()
+}
+
+func (m *Model) ClearPrediction() {
+	if m.prediction == "" {
+		m.refreshPlaceholder()
+		return
+	}
+	m.prediction = ""
+	m.refreshPlaceholder()
+}
+
+func (m *Model) HasPrediction() bool {
+	return m.prediction != ""
+}
+
+func (m *Model) Prediction() string {
+	return m.prediction
+}
+
+func (m *Model) AcceptPrediction() bool {
+	if strings.TrimSpace(m.textarea.Value()) != "" || strings.TrimSpace(m.prediction) == "" {
+		return false
+	}
+	m.textarea.SetValue(m.prediction)
+	m.prediction = ""
+	m.refreshPlaceholder()
+	m.adjustHeight()
+	return true
 }
 
 // Focus 聚焦
@@ -113,13 +146,16 @@ func (m *Model) Value() string {
 // SetValue 设置输入值
 func (m *Model) SetValue(text string) {
 	m.textarea.SetValue(text)
+	m.refreshPlaceholder()
 }
 
 // Clear 清空输入
 func (m *Model) Clear() {
 	m.textarea.SetValue("")
+	m.prediction = ""
 	m.historyDraft = ""
 	m.historyDraftActive = false
+	m.refreshPlaceholder()
 	m.adjustHeight()
 }
 
@@ -206,9 +242,24 @@ func (m Model) Init() tea.Cmd {
 // Update 更新
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
+	before := m.textarea.Value()
+	hadPrediction := m.prediction != ""
 	m.textarea, cmd = m.textarea.Update(msg)
+	after := m.textarea.Value()
+	if hadPrediction && before == "" && after != "" {
+		m.prediction = ""
+	}
+	m.refreshPlaceholder()
 	m.adjustHeight()
 	return m, cmd
+}
+
+func (m *Model) refreshPlaceholder() {
+	if strings.TrimSpace(m.textarea.Value()) == "" && m.prediction != "" {
+		m.textarea.Placeholder = m.prediction
+		return
+	}
+	m.textarea.Placeholder = m.basePlaceholder
 }
 
 func (m *Model) adjustHeight() {

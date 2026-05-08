@@ -5,7 +5,6 @@ package runtime
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"encoding/base64"
@@ -472,6 +471,19 @@ func (rt *EinoRuntime) Summarize(ctx context.Context, text string) (string, erro
 	}
 	sys := ai.Message{Role: "system", Content: SummarizeToolOutputPrompt}
 	usr := ai.Message{Role: "user", Content: text}
+	out, err := rt.model.Chat(ctx, []ai.Message{sys, usr})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+func (rt *EinoRuntime) PredictNextUserMessage(ctx context.Context, transcript string) (string, error) {
+	if rt.model == nil {
+		return "", nil
+	}
+	sys := ai.Message{Role: "system", Content: PredictNextUserMessagePrompt}
+	usr := ai.Message{Role: "user", Content: strings.TrimSpace(transcript)}
 	out, err := rt.model.Chat(ctx, []ai.Message{sys, usr})
 	if err != nil {
 		return "", err

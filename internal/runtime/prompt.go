@@ -51,6 +51,8 @@ const PlanPrompt = `你是软件架构师，请制定可执行的实施计划。
 
 const SummarizeToolOutputPrompt = "你是代码总结助手。请将下面的工具输出（可能是完整文件内容或命令结果）压缩为不超过800字的要点摘要：\n- 文件/路径信息\n- 主要结构/函数/类\n- 关键逻辑/入口点\n- 可能的风险或注意点\n不要包含冗长原文，尽量精练。"
 
+const PredictNextUserMessagePrompt = "你是对话预测助手。根据给出的最近几轮用户与助手对话，预测用户接下来最可能发送的一句话。\n要求：\n- 只输出一行纯文本\n- 不要解释，不要前缀，不要项目符号，不要 markdown\n- 不要加引号\n- 尽量自然、具体、可直接作为用户下一条消息发送\n- 如果把握很低，返回空字符串"
+
 // RoleArchitectPrompt 调度 Agent 的系统提示词
 // 包含占位符：{model_name}, {available_tools}, {cwd}，在运行时动态替换
 const RoleArchitectPrompt = `你是智能编程助手的调度中心，帮助用户完成编程和开发任务。

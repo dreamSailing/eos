@@ -15,13 +15,12 @@ import (
 	"github.com/dreamSailing/eos/internal/bridge"
 	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/memory"
 	mcppkg "github.com/dreamSailing/eos/internal/mcp"
+	"github.com/dreamSailing/eos/internal/memory"
 	"github.com/dreamSailing/eos/internal/pkg/clip"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/state"
 	"github.com/dreamSailing/eos/internal/tools/bg"
-	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/ui/adapter"
 	"github.com/dreamSailing/eos/internal/ui/components/messages"
 	"github.com/dreamSailing/eos/internal/ui/features/slash"
@@ -31,6 +30,7 @@ import (
 	"github.com/dreamSailing/eos/internal/ui/views/help"
 	"github.com/dreamSailing/eos/internal/ui/views/setup"
 	"github.com/dreamSailing/eos/internal/ui/views/shell"
+	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/version"
 
 	"github.com/atotto/clipboard"
@@ -90,6 +90,10 @@ type AppModel struct {
 
 	pendingImagePaths []string
 
+	predictionText    string
+	predictionSeq     int
+	predictionEnabled bool
+
 	trustPendingPath   string
 	trustPendingAction string
 	activeCancel       context.CancelFunc
@@ -130,6 +134,45 @@ func (m *AppModel) updateBGTaskCountUI() {
 		return
 	}
 	m.shell.SetBGTaskCount(len(bg.Default().List()))
+}
+
+func (m *AppModel) clearPrediction() {
+	if m == nil {
+		return
+	}
+	m.predictionText = ""
+	if m.shell != nil {
+		m.shell.ClearPrediction()
+	}
+}
+
+func (m *AppModel) syncPredictionState() {
+	if m == nil || m.shell == nil {
+		return
+	}
+	if !m.shell.HasPrediction() {
+		m.predictionText = ""
+	}
+}
+
+func (m *AppModel) requestPrediction() tea.Cmd {
+	if m == nil || m.adapter == nil || m.shell == nil {
+		return nil
+	}
+	if !m.predictionEnabled || m.activeView != "shell" || m.state.Mode != "ai" || m.state.Processing {
+		m.clearPrediction()
+		return nil
+	}
+	m.predictionSeq++
+	seq := m.predictionSeq
+	m.clearPrediction()
+	return func() tea.Msg {
+		text, err := m.adapter.GetCore().PredictNextUserMessage(context.Background())
+		if err != nil {
+			return PredictionUpdateMsg{Seq: seq}
+		}
+		return PredictionUpdateMsg{Seq: seq, Text: text}
+	}
 }
 
 func (m *AppModel) refreshShellWelcomeInfo() {
@@ -261,6 +304,7 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 	if lang == "" {
 		lang = "zh"
 	}
+	predictionEnabled := config.NextMessagePredictionEnabled(&cfg)
 
 	// 创建Shell视图
 	shellModel := shell.New(80, 24, styles, lang)
@@ -323,18 +367,19 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 			Theme:         "dark",
 			ExecutionMode: "auto",
 		},
-		adapter:          adapter,
-		styles:           styles,
-		msgRenderer:      messages.NewRenderer(styles, 80),
-		shell:            &shellModel,
-		panels:           panelMap,
-		helpView:         help.NewHelpView(styles, lang),
-		setupView:        setupView,
-		activeView:       activeView,
-		initialSetupFlow: initialSetupFlow,
-		activePanel:      "",
-		toolInflight:     make(map[string]toolTrack),
-		history:          make([]historyEntry, 0, 128),
+		adapter:           adapter,
+		styles:            styles,
+		msgRenderer:       messages.NewRenderer(styles, 80),
+		shell:             &shellModel,
+		panels:            panelMap,
+		helpView:          help.NewHelpView(styles, lang),
+		setupView:         setupView,
+		activeView:        activeView,
+		initialSetupFlow:  initialSetupFlow,
+		activePanel:       "",
+		toolInflight:      make(map[string]toolTrack),
+		history:           make([]historyEntry, 0, 128),
+		predictionEnabled: predictionEnabled,
 	}
 }
 
@@ -388,23 +433,23 @@ func (m *AppModel) Init() tea.Cmd {
 }
 
 // checkForUpdates checks for updates in the background
-	func (m *AppModel) checkForUpdates() tea.Cmd {
-		return func() tea.Msg {
-			result, err := update.CheckLatest(context.Background())
-			if err != nil || result == nil {
-				return nil
-			}
-			return VersionCheckMsg{Result: result}
+func (m *AppModel) checkForUpdates() tea.Cmd {
+	return func() tea.Msg {
+		result, err := update.CheckLatest(context.Background())
+		if err != nil || result == nil {
+			return nil
 		}
+		return VersionCheckMsg{Result: result}
 	}
+}
 
-	func (m *AppModel) handleVersionCheck(msg VersionCheckMsg) {
-		if msg.Result != nil && msg.Result.HasUpdate {
-			m.shell.SetUpdateInfo(msg.Result)
-		}
+func (m *AppModel) handleVersionCheck(msg VersionCheckMsg) {
+	if msg.Result != nil && msg.Result.HasUpdate {
+		m.shell.SetUpdateInfo(msg.Result)
 	}
+}
 
-	// Update 更新应用状态
+// Update 更新应用状态
 func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
@@ -569,6 +614,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
+			m.syncPredictionState()
 
 			// 如果 Shell 处理了非 Enter 键，不需要后续处理
 			// 如果按 Enter 且 hints 显示，隐藏 hints 不发送
@@ -613,6 +659,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if shouldUpdateShell {
 				updatedShell, shellCmd := m.shell.Update(msg)
 				*m.shell = updatedShell
+				m.syncPredictionState()
 				if shellCmd != nil {
 					cmds = append(cmds, shellCmd)
 				}
@@ -654,6 +701,25 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+	case PredictionUpdateMsg:
+		if msg.Seq != m.predictionSeq {
+			return m, nil
+		}
+		if !m.predictionEnabled || m.activeView != "shell" || m.state.Mode != "ai" || m.state.Processing {
+			m.clearPrediction()
+			return m, nil
+		}
+		if strings.TrimSpace(m.shell.GetInputValue()) != "" {
+			m.clearPrediction()
+			return m, nil
+		}
+		text := strings.TrimSpace(msg.Text)
+		if text == "" {
+			m.clearPrediction()
+			return m, nil
+		}
+		m.predictionText = text
+		m.shell.SetPrediction(text)
 
 	case ErrorMsg:
 		m.appendHistory(historyEntry{kind: "system", content: msg.Err.Error(), level: "error"})
@@ -1013,7 +1079,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Settings 消息处理
 	case panels.SettingsSaveMsg:
-		m.handleSettingsSave(msg.Settings)
+		m.handleSettingsSave(msg.Settings, msg.GlobalPredictionEnabled)
 	case panels.SettingsResetMsg:
 		m.appendSystem(i18n.T("settings.reset", m.state.Language), "warning")
 
@@ -1071,6 +1137,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.activeView == "shell" {
 			updatedShell, shellCmd := m.shell.Update(msg)
 			*m.shell = updatedShell
+			m.syncPredictionState()
 			if shellCmd != nil {
 				cmds = append(cmds, shellCmd)
 			}
@@ -1136,6 +1203,7 @@ func (m *AppModel) shouldSendMessage() (bool, tea.Cmd) {
 func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 	switch cmd {
 	case "/help":
+		m.clearPrediction()
 		m.activeView = "help"
 		if m.helpView != nil {
 			m.helpView.ResetScroll()
@@ -1151,6 +1219,7 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 		m.shell.ClearInput()
 		return m.initEOSMD()
 	case "/history":
+		m.clearPrediction()
 		m.activeView = "panel"
 		m.activePanel = "versions"
 		m.shell.ClearInput()
@@ -1158,6 +1227,7 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 	case "/model":
 		return m.handleModelSlash(args)
 	case "/mcp":
+		m.clearPrediction()
 		m.activeView = "panel"
 		m.activePanel = "mcp"
 		m.shell.ClearInput()
@@ -1167,12 +1237,14 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 	case "/memory":
 		m.openMemoryPanel()
 	case "/cost":
+		m.clearPrediction()
 		m.activeView = "panel"
 		m.activePanel = "cost"
 		m.shell.ClearInput()
 		// 刷新成本统计数据
 		m.refreshCostPanel()
 	case "/tasks":
+		m.clearPrediction()
 		m.activeView = "panel"
 		m.activePanel = "tasks"
 		m.shell.ClearInput()
@@ -1185,11 +1257,13 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 	case "/config":
 		m.openSettingsPanel()
 	case "/lsp":
+		m.clearPrediction()
 		m.activeView = "panel"
 		m.activePanel = "lsp"
 		m.shell.ClearInput()
 		m.refreshLSPPanel()
 	case "/rules":
+		m.clearPrediction()
 		m.activeView = "panel"
 		m.activePanel = "rules"
 		m.shell.ClearInput()
@@ -1536,6 +1610,7 @@ func (m *AppModel) openConfirm(req confirm.Request) {
 	if m.confirmView == nil {
 		m.prevView = m.activeView
 	}
+	m.clearPrediction()
 	m.confirmView = confirm.New(m.styles, m.state.Language, req)
 	m.confirmView.SetSize(m.width, m.height)
 	m.activeView = "confirm"
@@ -1631,6 +1706,7 @@ func (m *AppModel) sendMessage() tea.Cmd {
 		}
 	}
 	m.shell.AddToHistory(value)
+	m.clearPrediction()
 	m.shell.ClearInput()
 	m.state.Processing = true
 	m.shell.SetProcessing(true)
@@ -1693,6 +1769,7 @@ func (m *AppModel) sendMessage() tea.Cmd {
 func (m *AppModel) sendBashCommand() tea.Cmd {
 	value := strings.TrimSpace(m.shell.GetInputValue())
 	m.shell.AddToHistory(value)
+	m.clearPrediction()
 	m.shell.ClearInput()
 	m.state.Processing = true
 	m.shell.SetProcessing(true)
@@ -2165,6 +2242,7 @@ func (m *AppModel) handleGlobalKey(msg tea.KeyMsg) tea.Cmd {
 
 	case "?":
 		// 打开帮助面板
+		m.clearPrediction()
 		m.activeView = "help"
 		if m.helpView != nil {
 			m.helpView.ResetScroll()
@@ -2182,6 +2260,7 @@ func (m *AppModel) handleGlobalKey(msg tea.KeyMsg) tea.Cmd {
 			}
 		}
 		m.shell.HideHints()
+		m.clearPrediction()
 		m.shell.ClearInput()
 		return func() tea.Msg { return nil } // 返回非nil阻止进入else分支
 
@@ -2256,6 +2335,7 @@ func (m *AppModel) updateHintsBasedOnInput() {
 func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 	switch msg.Type {
 	case "delta":
+		m.clearPrediction()
 		m.aiLive.WriteString(msg.Content)
 		m.currentAITokens += len(msg.Content) / 4
 		m.refreshAILive()
@@ -2273,7 +2353,9 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 		}
 		m.state.Processing = false
 		m.shell.SetProcessing(false)
+		return m.requestPrediction()
 	case "error":
+		m.clearPrediction()
 		m.shell.ClearLive()
 		m.aiLive.Reset()
 		m.thinkingLive.Reset()
@@ -2883,7 +2965,7 @@ func (m *AppModel) refreshCostPanel() {
 }
 
 // handleSettingsSave 处理保存设置
-func (m *AppModel) handleSettingsSave(settings *settings.Settings) {
+func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredictionEnabled *bool) {
 	if settings == nil {
 		return
 	}
@@ -2895,6 +2977,10 @@ func (m *AppModel) handleSettingsSave(settings *settings.Settings) {
 	cfg, path := config.Load()
 	if path != "" {
 		cfg.Language = settings.Language
+		if globalPredictionEnabled != nil {
+			enabled := *globalPredictionEnabled
+			cfg.NextMessagePredictionEnabled = &enabled
+		}
 		// 保存配置
 		if err := config.Save(cfg, path); err != nil {
 			m.appendSystem(fmt.Sprintf("Failed to save settings: %v", err), "error")
@@ -2916,6 +3002,12 @@ func (m *AppModel) handleSettingsSave(settings *settings.Settings) {
 		m.state.Language = settings.Language
 		m.shell.SetLanguage(settings.Language)
 		m.Update(panels.LanguageChangeMsg{Language: settings.Language})
+	}
+	if globalPredictionEnabled != nil {
+		m.predictionEnabled = *globalPredictionEnabled
+		if !m.predictionEnabled {
+			m.clearPrediction()
+		}
 	}
 
 	m.appendSystem(i18n.T("settings.saved", m.state.Language), "success")
