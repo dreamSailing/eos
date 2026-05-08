@@ -5,8 +5,15 @@ package input
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
+import (
+	"testing"
 
-import "testing"
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+func keyRunesMsg(r rune) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+}
 
 func TestHistoryDraftRestore(t *testing.T) {
 	m := New()
@@ -41,3 +48,47 @@ func TestIsMultiLine(t *testing.T) {
 	}
 }
 
+func TestAcceptPredictionPromotesPlaceholderToValue(t *testing.T) {
+	m := New()
+	m.SetSize(40, 0)
+	m.SetPlaceholder("base")
+	m.SetPrediction("下一句预测")
+
+	if !m.HasPrediction() {
+		t.Fatalf("expected prediction to exist")
+	}
+	if !m.AcceptPrediction() {
+		t.Fatalf("expected accept prediction to succeed")
+	}
+	if got := m.Value(); got != "下一句预测" {
+		t.Fatalf("value=%q, want 下一句预测", got)
+	}
+	if m.HasPrediction() {
+		t.Fatalf("expected prediction to clear after accept")
+	}
+}
+
+func TestTypingClearsPrediction(t *testing.T) {
+	m := New()
+	m.SetSize(40, 0)
+	m.SetPrediction("下一句预测")
+
+	updated, _ := m.Update(keyRunesMsg('你'))
+	if updated.HasPrediction() {
+		t.Fatalf("expected prediction to clear after typing")
+	}
+	if got := updated.Value(); got != "你" {
+		t.Fatalf("value=%q, want 你", got)
+	}
+}
+
+func TestClearRemovesPrediction(t *testing.T) {
+	m := New()
+	m.SetSize(40, 0)
+	m.SetPrediction("下一句预测")
+
+	m.Clear()
+	if m.HasPrediction() {
+		t.Fatalf("expected prediction to clear")
+	}
+}

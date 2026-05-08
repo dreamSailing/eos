@@ -19,17 +19,20 @@ func TestRuntimeCore_CleanupPendingRequestsDeliversErrors(t *testing.T) {
 		pendingGraph:  make(map[chan graphInvokeRes]struct{}),
 		pendingTools:  make(map[chan toolsNodeRes]struct{}),
 		pendingSumm:   make(map[chan summarizeRes]struct{}),
+		pendingPred:   make(map[chan predictNextRes]struct{}),
 	}
 
 	rch := make(chan error, 1)
 	gch := make(chan graphInvokeRes, 1)
 	tch := make(chan toolsNodeRes, 1)
 	sch := make(chan summarizeRes, 1)
+	pch := make(chan predictNextRes, 1)
 
 	rc.addPendingReload(rch)
 	rc.addPendingGraph(gch)
 	rc.addPendingTools(tch)
 	rc.addPendingSummarize(sch)
+	rc.addPendingPredict(pch)
 
 	rc.cleanupPendingRequests()
 
@@ -67,6 +70,15 @@ func TestRuntimeCore_CleanupPendingRequestsDeliversErrors(t *testing.T) {
 		}
 	default:
 		t.Fatalf("expected summarize error")
+	}
+
+	select {
+	case res := <-pch:
+		if !errors.Is(res.err, ErrRuntimeLoopUnavailable) {
+			t.Fatalf("unexpected err: %v", res.err)
+		}
+	default:
+		t.Fatalf("expected predict error")
 	}
 }
 

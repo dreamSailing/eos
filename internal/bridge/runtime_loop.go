@@ -5,7 +5,6 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"encoding/json"
@@ -564,6 +563,31 @@ func (rc *RuntimeCore) loop() {
 					out, err := tRT.Summarize(tReq.ctx, tReq.text)
 					tReq.resCh <- summarizeRes{text: out, err: err}
 				}(currentRT, r)
+			case predictNextReq:
+				rc.addPendingPredict(r.resCh)
+				if rt == nil {
+					if err := initRuntime(); err != nil {
+						rc.removePendingPredict(r.resCh)
+						r.resCh <- predictNextRes{text: "", err: err}
+						continue
+					}
+				}
+				currentRT := rt
+				if rc.fastRT != nil {
+					currentRT = rc.fastRT
+				}
+				rc.wg.Add(1)
+				go func(tRT *einoruntime.EinoRuntime, tReq predictNextReq) {
+					defer rc.wg.Done()
+					defer rc.removePendingPredict(tReq.resCh)
+					defer func() {
+						if rr := recover(); rr != nil {
+							tReq.resCh <- predictNextRes{text: "", err: ErrRuntimeLoopUnavailable}
+						}
+					}()
+					out, err := tRT.PredictNextUserMessage(tReq.ctx, tReq.text)
+					tReq.resCh <- predictNextRes{text: out, err: err}
+				}(currentRT, r)
 			case finalizeTaskReq:
 				rc.finalizeTask(rt, r.traceID, r.userText, r.assistantText, r.success, r.errorMsg)
 				r.resCh <- struct{}{}
@@ -831,10 +855,15 @@ func (rc *RuntimeCore) cleanupPendingRequests() {
 	for ch := range rc.pendingSumm {
 		sumChs = append(sumChs, ch)
 	}
+	predChs := make([]chan predictNextRes, 0, len(rc.pendingPred))
+	for ch := range rc.pendingPred {
+		predChs = append(predChs, ch)
+	}
 	rc.pendingReload = make(map[chan error]struct{})
 	rc.pendingGraph = make(map[chan graphInvokeRes]struct{})
 	rc.pendingTools = make(map[chan toolsNodeRes]struct{})
 	rc.pendingSumm = make(map[chan summarizeRes]struct{})
+	rc.pendingPred = make(map[chan predictNextRes]struct{})
 	rc.pendingMu.Unlock()
 
 	for _, ch := range reloadChs {
@@ -858,6 +887,12 @@ func (rc *RuntimeCore) cleanupPendingRequests() {
 	for _, ch := range sumChs {
 		select {
 		case ch <- summarizeRes{text: "", err: ErrRuntimeLoopUnavailable}:
+		default:
+		}
+	}
+	for _, ch := range predChs {
+		select {
+		case ch <- predictNextRes{text: "", err: ErrRuntimeLoopUnavailable}:
 		default:
 		}
 	}

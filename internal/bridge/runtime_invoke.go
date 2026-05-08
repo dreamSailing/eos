@@ -5,7 +5,6 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
@@ -155,6 +154,21 @@ func (rc *RuntimeCore) Summarize(ctx context.Context, text string) (string, erro
 	return res.text, res.err
 }
 
+func (rc *RuntimeCore) PredictNextUserMessage(ctx context.Context) (string, error) {
+	ctx = rc.withWorkspaceRoot(ctx)
+	transcript := buildPredictionTranscript(rc.cm)
+	if transcript == "" {
+		return "", nil
+	}
+	ch := make(chan predictNextRes, 1)
+	rc.reqCh <- predictNextReq{ctx: ctx, text: transcript, resCh: ch}
+	res := <-ch
+	if res.err != nil {
+		return "", res.err
+	}
+	return cleanPredictionText(res.text), nil
+}
+
 func (rc *RuntimeCore) FinalizeTask(traceID string, userText string, assistantText string, success bool, errorMsg string) {
 	ch := make(chan struct{}, 1)
 	rc.reqCh <- finalizeTaskReq{traceID: traceID, userText: userText, assistantText: assistantText, success: success, errorMsg: errorMsg, resCh: ch}
@@ -266,6 +280,81 @@ func (rc *RuntimeCore) DemoteFullWithAISummary(ctx context.Context) {
 			"success_count", success,
 			"total_count", len(full))
 	}
+}
+
+func buildPredictionTranscript(cm *session.ContextManager) string {
+	if cm == nil {
+		return ""
+	}
+	st := cm.ExportState()
+	msgs := st.Recent
+	if len(msgs) == 0 {
+		msgs = st.CurrentFull
+	}
+	if len(msgs) == 0 {
+		return ""
+	}
+	relevant := make([]string, 0, 6)
+	hasUser := false
+	hasAssistant := false
+	for i := len(msgs) - 1; i >= 0 && len(relevant) < 6; i-- {
+		msg := msgs[i]
+		role := strings.TrimSpace(strings.ToLower(msg.Role))
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		switch role {
+		case "user":
+			hasUser = true
+			relevant = append(relevant, "用户: "+content)
+		case "assistant":
+			hasAssistant = true
+			relevant = append(relevant, "助手: "+content)
+		}
+	}
+	if !hasUser || !hasAssistant || len(relevant) < 2 {
+		return ""
+	}
+	for i, j := 0, len(relevant)-1; i < j; i, j = i+1, j-1 {
+		relevant[i], relevant[j] = relevant[j], relevant[i]
+	}
+	return "请基于以下最近对话，预测用户接下来最可能发送的一句话：\n\n" + strings.Join(relevant, "\n\n")
+}
+
+func cleanPredictionText(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	lines := strings.FieldsFunc(text, func(r rune) bool { return r == '\n' })
+	text = strings.TrimSpace(strings.Join(lines, " "))
+	for _, prefix := range []string{
+		"用户可能会说：",
+		"用户可能会发送：",
+		"预测：",
+		"下一句：",
+		"Next:",
+		"Prediction:",
+	} {
+		if strings.HasPrefix(text, prefix) {
+			text = strings.TrimSpace(strings.TrimPrefix(text, prefix))
+		}
+	}
+	text = strings.Trim(text, `"'“”‘’`)
+	if text == "" {
+		return ""
+	}
+	rs := []rune(text)
+	if len(rs) > 120 {
+		text = strings.TrimSpace(string(rs[:120]))
+	}
+	return text
 }
 
 // ProcessContextHints 处理上下文提示

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dreamSailing/eos/internal/bridge"
+	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/session"
 	"github.com/dreamSailing/eos/internal/tools"
 	"github.com/dreamSailing/eos/internal/ui/views/setup"
@@ -191,5 +192,72 @@ func TestHandlePlanStyleSlashShowsCurrentAndSavesWorkspaceSetting(t *testing.T) 
 	}
 	if got := doc["plan_prompt_style"]; got != "detailed" {
 		t.Fatalf("plan_prompt_style=%v, want detailed", got)
+	}
+}
+
+func TestPredictionUpdateMsgShowsPredictionAndTypingClearsIt(t *testing.T) {
+	setTestHome(t)
+	t.Setenv("EOS_API_BASE", "https://example.com/v1")
+	t.Setenv("EOS_API_KEY", "secret")
+	t.Setenv("EOS_MODEL", "demo-model")
+
+	app := newTestAppModel(t)
+	app.predictionEnabled = true
+	app.predictionSeq = 1
+
+	next, _ := app.Update(PredictionUpdateMsg{Seq: 1, Text: "继续帮我拆一下这个方案"})
+	updated := next.(*AppModel)
+	if !updated.shell.HasPrediction() {
+		t.Fatalf("expected prediction to be visible")
+	}
+
+	updated = sendAppKey(t, updated, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'我'}})
+	if updated.shell.HasPrediction() {
+		t.Fatalf("expected prediction to clear after typing")
+	}
+	if got := updated.shell.GetInputValue(); got != "我" {
+		t.Fatalf("input=%q, want 我", got)
+	}
+}
+
+func TestHandleSettingsSavePersistsGlobalPredictionFlag(t *testing.T) {
+	home := setTestHome(t)
+	workspace := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(wd)
+	})
+	if err := os.Chdir(workspace); err != nil {
+		t.Fatalf("chdir workspace: %v", err)
+	}
+
+	app := newTestAppModel(t)
+	app.predictionEnabled = true
+	app.predictionText = "继续帮我拆一下这个方案"
+	app.shell.SetPrediction(app.predictionText)
+
+	disabled := false
+	app.handleSettingsSave(&settings.Settings{Language: "zh"}, &disabled)
+
+	if app.predictionEnabled {
+		t.Fatalf("expected prediction to be disabled")
+	}
+	if app.shell.HasPrediction() {
+		t.Fatalf("expected visible prediction to clear after disabling")
+	}
+
+	raw, err := os.ReadFile(filepath.Join(home, ".eos.json"))
+	if err != nil {
+		t.Fatalf("read global config: %v", err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("unmarshal global config: %v", err)
+	}
+	if got := doc["next_message_prediction_enabled"]; got != false {
+		t.Fatalf("next_message_prediction_enabled=%v, want false", got)
 	}
 }

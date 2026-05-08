@@ -5,7 +5,6 @@ package ui
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"strings"
 	"time"
@@ -239,6 +238,11 @@ type InvokeDoneMsg struct {
 	Content string
 }
 
+type PredictionUpdateMsg struct {
+	Text string
+	Seq  int
+}
+
 type ThinkingMsg struct {
 	RID     string
 	Content string
@@ -324,23 +328,24 @@ type VersionCheckMsg struct {
 }
 
 // 实现 msgType 方法以满足接口要求
-func (WindowSizeMsg) msgType()     {}
-func (TickMsg) msgType()           {}
-func (KeyMsg) msgType()            {}
-func (MouseMsg) msgType()          {}
-func (AIRequestMsg) msgType()      {}
-func (AIResponseMsg) msgType()     {}
-func (InvokeDoneMsg) msgType()     {}
-func (ThinkingMsg) msgType()       {}
-func (ToolCallMsg) msgType()       {}
-func (ToolResultMsg) msgType()     {}
-func (AgentTaskMsg) msgType()      {}
-func (AgentFinalMsg) msgType()     {}
-func (PromptRequestMsg) msgType()  {}
-func (PromptResultMsg) msgType()   {}
-func (PanelOpenMsg) msgType()      {}
-func (PanelCloseMsg) msgType()     {}
-func (PanelActionMsg) msgType()    {}
-func (SettingsUpdateMsg) msgType() {}
-func (VersionCheckMsg) msgType() {}
-func (ErrorMsg) msgType()          {}
+func (WindowSizeMsg) msgType()       {}
+func (TickMsg) msgType()             {}
+func (KeyMsg) msgType()              {}
+func (MouseMsg) msgType()            {}
+func (AIRequestMsg) msgType()        {}
+func (AIResponseMsg) msgType()       {}
+func (InvokeDoneMsg) msgType()       {}
+func (PredictionUpdateMsg) msgType() {}
+func (ThinkingMsg) msgType()         {}
+func (ToolCallMsg) msgType()         {}
+func (ToolResultMsg) msgType()       {}
+func (AgentTaskMsg) msgType()        {}
+func (AgentFinalMsg) msgType()       {}
+func (PromptRequestMsg) msgType()    {}
+func (PromptResultMsg) msgType()     {}
+func (PanelOpenMsg) msgType()        {}
+func (PanelCloseMsg) msgType()       {}
+func (PanelActionMsg) msgType()      {}
+func (SettingsUpdateMsg) msgType()   {}
+func (VersionCheckMsg) msgType()     {}
+func (ErrorMsg) msgType()            {}
