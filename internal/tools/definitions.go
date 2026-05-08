@@ -5,7 +5,6 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import "github.com/cloudwego/eino/schema"
 
 // ToolExample 工具使用示例
@@ -16,12 +15,12 @@ type ToolExample struct {
 
 // ToolDefinition 工具定义，包含工具的名称、描述和参数信息
 type ToolDefinition struct {
-	Name             string                           // 工具名称
-	Description      string                           // 工具描述
-	Params           map[string]*schema.ParameterInfo // 参数定义
-	RiskLevel        ToolRiskLevel                    // 风险等级：low/medium/high
-	Examples         []ToolExample                    // 使用示例（提升模型理解复杂参数的准确率）
-	ConcurrencySafe  bool                             // 标记工具是否可安全并行执行
+	Name            string                           // 工具名称
+	Description     string                           // 工具描述
+	Params          map[string]*schema.ParameterInfo // 参数定义
+	RiskLevel       ToolRiskLevel                    // 风险等级：low/medium/high
+	Examples        []ToolExample                    // 使用示例（提升模型理解复杂参数的准确率）
+	ConcurrencySafe bool                             // 标记工具是否可安全并行执行
 }
 
 // ToolRiskLevel 工具风险等级
@@ -82,6 +81,8 @@ const (
 	ToolEnterWorktree    = "enter_worktree"
 	ToolExitWorktree     = "exit_worktree"
 	ToolNotebookEdit     = "notebook_edit"
+	ToolDocumentGenerate = "document_generate"
+	ToolDocumentConvert  = "document_convert"
 	ToolMCPListResources = "mcp_list_resources"
 	ToolMCPReadResource  = "mcp_read_resource"
 	ToolMCPListPrompts   = "mcp_list_prompts"
@@ -224,6 +225,37 @@ func GetAllToolDefinitions() []ToolDefinition {
 					Description: "检查文件是否存在",
 					Input:       map[string]any{"mode": "exists", "path": "README.md"},
 				},
+			},
+		},
+		{
+			Name:        ToolDocumentGenerate,
+			Description: "生成 DOCX/XLSX/PDF 文档。支持纯文本内容和结构化内容输入。",
+			Params: map[string]*schema.ParameterInfo{
+				"format":             {Type: schema.String, Required: true, Desc: "输出格式：docx、xlsx 或 pdf"},
+				"path":               {Type: schema.String, Required: true, Desc: "输出文件路径"},
+				"title":              {Type: schema.String, Required: false, Desc: "文档标题"},
+				"content":            {Type: schema.String, Required: false, Desc: "纯文本正文"},
+				"structured_content": {Type: schema.Object, Required: false, Desc: "结构化内容，可传入文档块/工作表 JSON"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "生成 DOCX", Input: map[string]any{"format": "docx", "path": "out/report.docx", "title": "周报", "content": "第一段\n\n第二段"}},
+				{Description: "生成 XLSX", Input: map[string]any{"format": "xlsx", "path": "out/table.xlsx", "structured_content": map[string]any{"sheets": []map[string]any{{"name": "Sheet1", "rows": [][]string{{"A", "B"}, {"1", "2"}}}}}}},
+			},
+		},
+		{
+			Name:        ToolDocumentConvert,
+			Description: "在 DOCX/XLSX/PDF 之间进行文档转换。默认优先高保真转换，必要时回退为内容级转换并附带告警。",
+			Params: map[string]*schema.ParameterInfo{
+				"source_path":      {Type: schema.String, Required: true, Desc: "源文件路径"},
+				"target_format":    {Type: schema.String, Required: true, Desc: "目标格式：docx、xlsx 或 pdf"},
+				"destination_path": {Type: schema.String, Required: false, Desc: "输出文件路径；为空时自动推导"},
+				"fidelity":         {Type: schema.String, Required: false, Desc: "转换保真度：high（默认）或 content"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "高保真转换为 PDF", Input: map[string]any{"source_path": "report.docx", "target_format": "pdf", "fidelity": "high"}},
+				{Description: "内容级转换为 XLSX", Input: map[string]any{"source_path": "notes.pdf", "target_format": "xlsx", "fidelity": "content"}},
 			},
 		},
 		{
@@ -604,9 +636,9 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Name:        ToolGitStash,
 			Description: "Git stash 操作（save/list/pop/apply/drop）",
 			Params: map[string]*schema.ParameterInfo{
-				"action":           {Type: schema.String, Required: true, Desc: "动作: save, list, pop, apply, drop"},
-				"message":          {Type: schema.String, Required: false, Desc: "save 时可选：stash message"},
-				"index":            {Type: schema.Integer, Required: false, Desc: "pop/apply/drop 时可选：stash 序号（默认 0）"},
+				"action":            {Type: schema.String, Required: true, Desc: "动作: save, list, pop, apply, drop"},
+				"message":           {Type: schema.String, Required: false, Desc: "save 时可选：stash message"},
+				"index":             {Type: schema.Integer, Required: false, Desc: "pop/apply/drop 时可选：stash 序号（默认 0）"},
 				"include_untracked": {Type: schema.Boolean, Required: false, Desc: "save 时可选：是否包含未跟踪文件（默认 false）"},
 			},
 			RiskLevel: RiskLevelHigh,
@@ -750,11 +782,11 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Name:        ToolAgent,
 			Description: "委派任务给子代理执行。子代理可以在隔离的上下文中独立运行，支持同步和异步两种模式。\n\n可用子代理类型:\n- explore: 只读探索代理，用于搜索和阅读代码\n- general-purpose: 通用代理，拥有完整工具集\n- plan: 规划专用代理\n- verification: 验证专用代理",
 			Params: map[string]*schema.ParameterInfo{
-				"prompt":          {Type: schema.String, Required: true, Desc: "子代理任务描述"},
-				"subagent_type":   {Type: schema.String, Required: false, Desc: "子代理类型: explore, general-purpose, plan, verification (默认 general-purpose)"},
+				"prompt":            {Type: schema.String, Required: true, Desc: "子代理任务描述"},
+				"subagent_type":     {Type: schema.String, Required: false, Desc: "子代理类型: explore, general-purpose, plan, verification (默认 general-purpose)"},
 				"run_in_background": {Type: schema.Boolean, Required: false, Desc: "是否异步执行 (默认 false)"},
-				"description":     {Type: schema.String, Required: false, Desc: "任务简短描述 (用于显示)"},
-				"model":           {Type: schema.String, Required: false, Desc: "可选：指定模型"},
+				"description":       {Type: schema.String, Required: false, Desc: "任务简短描述 (用于显示)"},
+				"model":             {Type: schema.String, Required: false, Desc: "可选：指定模型"},
 			},
 			RiskLevel: RiskLevelLow,
 			Examples: []ToolExample{
@@ -909,10 +941,10 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Name:        ToolTeamSendMsg,
 			Description: "在 team 内的 agent 之间发送消息。",
 			Params: map[string]*schema.ParameterInfo{
-				"team":        {Type: schema.String, Required: true, Desc: "Team 名称"},
-				"from_agent":  {Type: schema.String, Required: true, Desc: "发送方 agent 角色"},
-				"to_agent":    {Type: schema.String, Required: true, Desc: "接收方 agent 角色"},
-				"message":     {Type: schema.String, Required: true, Desc: "消息内容"},
+				"team":       {Type: schema.String, Required: true, Desc: "Team 名称"},
+				"from_agent": {Type: schema.String, Required: true, Desc: "发送方 agent 角色"},
+				"to_agent":   {Type: schema.String, Required: true, Desc: "接收方 agent 角色"},
+				"message":    {Type: schema.String, Required: true, Desc: "消息内容"},
 			},
 			RiskLevel: RiskLevelLow,
 		},

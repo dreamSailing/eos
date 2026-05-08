@@ -233,6 +233,8 @@ func isBinaryByExtension(path string) bool {
 		".db":     true,
 		".sqlite": true,
 		".pdf":    true,
+		".docx":   true,
+		".xlsx":   true,
 		".zip":    true,
 		".tar":    true,
 		".gz":     true,

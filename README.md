@@ -25,6 +25,7 @@ Go 语言实现的终端 AI 编码助手，基于 CloudWeGo Eino 做多代理编
 - 两种执行模式：`plan` / `auto`（可在界面中切换）
 - 多代理协同：planner、developer、tester、reviewer 等子代理分工
 - 工具体系：文件读写/编辑、搜索、Git、Shell、后台任务、MCP 调用等
+- Office 文档能力：内置 `DOCX/XLSX/PDF` 读取、生成与转换，复杂格式默认优先高保真转换
 - 安全控制：高风险工具调用分级与确认，支持会话级授权
 - 上下文索引：代码索引、文件监听、上下文压缩与会话持久化
 - 可选 LSP 能力：支持 `without_lsp`、默认 LSP、`with_gopls` 嵌入版本
@@ -113,6 +114,22 @@ export EOS_MODEL="gpt-4o-mini"
 - `/workspace list|add|remove|use <path>`
 - `/settings` `/lsp` `/rules` `/lang` `/compact`
 - `/init`：在当前工作区初始化 `EOS.md`
+
+## 文档能力
+
+- 读取：`read` 工具现在可直接读取 `DOCX`、`XLSX`、`PDF`
+- 生成：内置 `document_generate` 工具，以及 CLI `eos doc generate`
+- 转换：内置 `document_convert` 工具，以及 CLI `eos doc convert`
+- 高保真：`DOCX <-> PDF`、`XLSX <-> PDF` 默认优先使用 `soffice` 高保真转换；环境不可用时回退到内容级转换并返回告警
+- 边界：`DOCX <-> XLSX` 首版偏向表格/结构化内容转换，不承诺复杂版式完全无损
+
+CLI 示例：
+
+```bash
+eos doc read ./report.docx
+eos doc generate --format pdf --output ./out/report.pdf --title "周报" --content "第一段\n\n第二段"
+eos doc convert ./report.docx --to pdf --output ./out/report.pdf --fidelity high
+```
 
 ## 服务模式 API
 

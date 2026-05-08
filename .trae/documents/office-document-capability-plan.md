@@ -9,7 +9,8 @@
 - Agent 可直接调用的内置工具能力。
 - 软件自带的 CLI 入口，便于用户显式执行文档读取、生成、转换。
 - 文档读取与生成为纯 Go 内置实现。
-- 复杂格式互转采用“软件内统一封装 + 高保真引擎优先 + 内容级 fallback”的混合方案。
+- 文档转换以“高保真优先”为硬要求，尽量保留版式、分页、样式和表格。
+- 复杂格式互转采用“软件内统一封装 + 高保真引擎主路径 + 内容级 fallback”的混合方案。
 
 ## Current State Analysis
 
@@ -49,13 +50,13 @@
 
 ## Assumptions & Decisions
 
-由于你没有继续选择转换保真度和入口范围，本计划锁定以下默认决策，执行阶段直接按此实现：
+基于你刚补充的“希望是高保真”，本计划锁定以下决策，执行阶段直接按此实现：
 
 - 能力范围：本次直接规划 `DOCX/XLSX/PDF` 三类格式的读取、生成、转换能力，不做“只读不写”的半成品方案。
 - 暴露范围：首期同时提供内置工具能力和 CLI 入口；不在本轮强行做独立 UI 面板。
-- 架构策略：读取/生成优先纯 Go；复杂互转走“软件统一封装的转换引擎”。
-- 高保真策略：`DOCX <-> PDF`、`XLSX <-> PDF` 优先调用内置封装的 `LibreOffice/soffice` 转换适配器；若环境不可用，则回退到内容级转换，并在结果里显式标注降级。
-- 语义边界：`DOCX <-> XLSX` 不承诺任意复杂文档的样式级无损互转；首版限定为“表格/结构化内容优先”的内容级转换。
+- 架构策略：读取/生成优先纯 Go；转换层走“软件统一封装的高保真引擎”。
+- 高保真要求：`DOCX <-> PDF`、`XLSX <-> PDF` 默认必须先走内置封装的 `LibreOffice/soffice` 适配器，只有在引擎不可用或源文件异常时才允许回退到内容级转换，并必须在结果中显式标注“降级”。
+- 语义边界：`DOCX <-> XLSX` 不承诺任意复杂文档的样式级无损互转；首版限定为“表格/结构化内容优先”的转换，并在接口文档中明确限制。
 - 依赖选择：
   - `XLSX` 读写使用 `github.com/xuri/excelize/v2`
   - `DOCX` 读写使用 `baliance.com/gooxml/document`
@@ -96,8 +97,8 @@
 5. 在 `convert.go` 实现统一编排：
    - `Convert(path, targetFormat, options) (ConversionResult, error)`
    - 优先判断是否可使用 `soffice`
-   - `DOCX <-> PDF`、`XLSX <-> PDF` 使用高保真引擎优先
-   - 引擎不可用时回退到中间模型转换
+   - `DOCX <-> PDF`、`XLSX <-> PDF` 必须先走高保真引擎主路径
+   - 引擎不可用时回退到中间模型转换，并附带强提示 warning
 
 原因：
 
@@ -166,7 +167,7 @@
      - `source_path`
      - `target_format`
      - `destination_path`
-     - `fidelity`: `high|content`
+    - `fidelity`: `high|content`，默认 `high`
 3. 在 `manager_types.go` 注册对应 handler。
 4. 在 `document_tools.go` 中实现：
    - 输入校验
