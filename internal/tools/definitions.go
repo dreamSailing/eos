@@ -42,6 +42,7 @@ const (
 	ToolToolSearch       = "tool_search" // 工具搜索工具
 	ToolSkill            = "skill"       // Agent Skills meta-tool
 	ToolSkillsList       = "skills_list"
+	ToolCreateSkill      = "create_skill"
 	ToolTimeNow          = "time_now"
 	ToolUserConfirm      = "user_confirm"
 	ToolUserInput        = "user_input"
@@ -197,6 +198,47 @@ func GetAllToolDefinitions() []ToolDefinition {
 			RiskLevel:   RiskLevelLow,
 			Examples: []ToolExample{
 				{Description: "查询 skills 列表", Input: map[string]any{}},
+			},
+		},
+		{
+			Name:        ToolCreateSkill,
+			Description: "根据用户需求创建一个新的 skill。调用前必须先判断该 skill 更适合工作区还是全局；如果用户未说明创建位置，应先用 ask_user_question 询问，再带上明确的 scope 调用本工具。",
+			Params: map[string]*schema.ParameterInfo{
+				"name":               {Type: schema.String, Required: false, Desc: "可选：skill 名称；为空时会尝试从需求或生成结果中推导"},
+				"request":            {Type: schema.String, Required: true, Desc: "用户的自然语言需求，用于生成完整 SKILL.md"},
+				"scope":              {Type: schema.String, Required: true, Desc: "创建范围：workspace 或 user"},
+				"description":        {Type: schema.String, Required: false, Desc: "可选：覆盖或补充 skill 描述"},
+				"allowed_tools":      {Type: schema.Array, Required: false, Desc: "可选：写入 allowed-tools 的工具名称列表"},
+				"model":              {Type: schema.String, Required: false, Desc: "可选：写入 skill frontmatter 的 model"},
+				"argument_hint":      {Type: schema.String, Required: false, Desc: "可选：写入 argument-hint"},
+				"user_invocable":     {Type: schema.Boolean, Required: false, Desc: "可选：写入 user-invocable"},
+				"context":            {Type: schema.String, Required: false, Desc: "可选：写入 context，例如 fork"},
+				"agent":              {Type: schema.String, Required: false, Desc: "可选：写入 agent"},
+				"keywords":           {Type: schema.Array, Required: false, Desc: "可选：写入 keywords"},
+				"include_scripts":    {Type: schema.Boolean, Required: false, Desc: "是否创建 scripts/ 目录"},
+				"include_references": {Type: schema.Boolean, Required: false, Desc: "是否创建 references/ 目录"},
+				"include_assets":     {Type: schema.Boolean, Required: false, Desc: "是否创建 assets/ 目录"},
+				"overwrite":          {Type: schema.Boolean, Required: false, Desc: "若目标 skill 已存在，是否允许覆盖"},
+				"activate":           {Type: schema.Boolean, Required: false, Desc: "创建后是否重新加载 skills（默认 true）"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{
+					Description: "在当前工作区创建一个项目专属 skill",
+					Input: map[string]any{
+						"name":    "repo-review",
+						"request": "创建一个用于本仓库代码审查的 skill，重点检查 API 兼容性、数据库迁移和测试缺失。",
+						"scope":   "workspace",
+					},
+				},
+				{
+					Description: "创建一个可跨项目复用的全局 skill",
+					Input: map[string]any{
+						"request":  "创建一个通用的 release notes 生成 skill，可复用于多个项目。",
+						"scope":    "user",
+						"keywords": []any{"release", "notes"},
+					},
+				},
 			},
 		},
 		{

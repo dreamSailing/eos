@@ -69,6 +69,7 @@ func NewManager() *Manager {
 		ToolSearch:           m.searchStructured,
 		ToolToolSearch:       m.toolSearchStructured,
 		ToolSkill:            m.skillStructured,
+		ToolCreateSkill:      m.createSkillStructured,
 		ToolDocumentGenerate: m.documentGenerateStructured,
 		ToolDocumentConvert:  m.documentConvertStructured,
 		ToolTimeNow:          m.timeNowStructured,
