@@ -5,7 +5,6 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import "github.com/cloudwego/eino/schema"
 
 // ToolExample 工具使用示例
@@ -16,12 +15,12 @@ type ToolExample struct {
 
 // ToolDefinition 工具定义，包含工具的名称、描述和参数信息
 type ToolDefinition struct {
-	Name             string                           // 工具名称
-	Description      string                           // 工具描述
-	Params           map[string]*schema.ParameterInfo // 参数定义
-	RiskLevel        ToolRiskLevel                    // 风险等级：low/medium/high
-	Examples         []ToolExample                    // 使用示例（提升模型理解复杂参数的准确率）
-	ConcurrencySafe  bool                             // 标记工具是否可安全并行执行
+	Name            string                           // 工具名称
+	Description     string                           // 工具描述
+	Params          map[string]*schema.ParameterInfo // 参数定义
+	RiskLevel       ToolRiskLevel                    // 风险等级：low/medium/high
+	Examples        []ToolExample                    // 使用示例（提升模型理解复杂参数的准确率）
+	ConcurrencySafe bool                             // 标记工具是否可安全并行执行
 }
 
 // ToolRiskLevel 工具风险等级
@@ -43,6 +42,7 @@ const (
 	ToolToolSearch       = "tool_search" // 工具搜索工具
 	ToolSkill            = "skill"       // Agent Skills meta-tool
 	ToolSkillsList       = "skills_list"
+	ToolCreateSkill      = "create_skill"
 	ToolTimeNow          = "time_now"
 	ToolUserConfirm      = "user_confirm"
 	ToolUserInput        = "user_input"
@@ -196,6 +196,50 @@ func GetAllToolDefinitions() []ToolDefinition {
 			RiskLevel:   RiskLevelLow,
 			Examples: []ToolExample{
 				{Description: "查询 skills 列表", Input: map[string]any{}},
+			},
+		},
+		{
+			Name:        ToolCreateSkill,
+			Description: "根据用户需求创建一个新的 skill。调用前必须先判断该 skill 更适合工作区还是全局；如果用户未说明创建位置，应先用 ask_user_question 询问，再带上明确的 scope 调用本工具。",
+			Params: map[string]*schema.ParameterInfo{
+				"name":               {Type: schema.String, Required: false, Desc: "可选：skill 名称；为空时会尝试从需求或生成结果中推导"},
+				"request":            {Type: schema.String, Required: true, Desc: "用户的自然语言需求，用于生成完整 SKILL.md"},
+				"scope":              {Type: schema.String, Required: true, Desc: "创建范围：workspace 或 user"},
+				"description":        {Type: schema.String, Required: false, Desc: "可选：覆盖或补充 skill 描述"},
+				"allowed_tools":      {Type: schema.Array, Required: false, Desc: "可选：写入 allowed-tools 的工具名称列表"},
+				"model":              {Type: schema.String, Required: false, Desc: "可选：写入 skill frontmatter 的 model"},
+				"argument_hint":      {Type: schema.String, Required: false, Desc: "可选：写入 argument-hint"},
+				"user_invocable":     {Type: schema.Boolean, Required: false, Desc: "可选：写入 user-invocable"},
+				"context":            {Type: schema.String, Required: false, Desc: "可选：写入 context，例如 fork"},
+				"agent":              {Type: schema.String, Required: false, Desc: "可选：写入 agent"},
+				"keywords":           {Type: schema.Array, Required: false, Desc: "可选：写入 keywords"},
+				"include_scripts":    {Type: schema.Boolean, Required: false, Desc: "是否创建 scripts/ 目录"},
+				"include_references": {Type: schema.Boolean, Required: false, Desc: "是否创建 references/ 目录"},
+				"include_assets":     {Type: schema.Boolean, Required: false, Desc: "是否创建 assets/ 目录"},
+				"overwrite":          {Type: schema.Boolean, Required: false, Desc: "若目标 skill 已存在，是否允许覆盖"},
+				"activate":           {Type: schema.Boolean, Required: false, Desc: "创建后是否重新加载 skills（默认 true）"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{
+					Description: "在当前工作区创建一个项目专属 skill",
+					Input: map[string]any{
+						"name":    "repo-review",
+						"request": "创建一个用于本仓库代码审查的 skill，重点检查 API 兼容性、数据库迁移和测试缺失。",
+						"scope":   "workspace",
+					},
+				},
+				{
+					Description: "创建一个可跨项目复用的全局 skill",
+					Input: map[string]any{
+						"request": "创建一个通用的 release notes 生成 skill，可复用于多个项目。",
+						"scope":   "user",
+						"keywords": []any{
+							"release",
+							"notes",
+						},
+					},
+				},
 			},
 		},
 		{
@@ -604,9 +648,9 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Name:        ToolGitStash,
 			Description: "Git stash 操作（save/list/pop/apply/drop）",
 			Params: map[string]*schema.ParameterInfo{
-				"action":           {Type: schema.String, Required: true, Desc: "动作: save, list, pop, apply, drop"},
-				"message":          {Type: schema.String, Required: false, Desc: "save 时可选：stash message"},
-				"index":            {Type: schema.Integer, Required: false, Desc: "pop/apply/drop 时可选：stash 序号（默认 0）"},
+				"action":            {Type: schema.String, Required: true, Desc: "动作: save, list, pop, apply, drop"},
+				"message":           {Type: schema.String, Required: false, Desc: "save 时可选：stash message"},
+				"index":             {Type: schema.Integer, Required: false, Desc: "pop/apply/drop 时可选：stash 序号（默认 0）"},
 				"include_untracked": {Type: schema.Boolean, Required: false, Desc: "save 时可选：是否包含未跟踪文件（默认 false）"},
 			},
 			RiskLevel: RiskLevelHigh,
@@ -750,11 +794,11 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Name:        ToolAgent,
 			Description: "委派任务给子代理执行。子代理可以在隔离的上下文中独立运行，支持同步和异步两种模式。\n\n可用子代理类型:\n- explore: 只读探索代理，用于搜索和阅读代码\n- general-purpose: 通用代理，拥有完整工具集\n- plan: 规划专用代理\n- verification: 验证专用代理",
 			Params: map[string]*schema.ParameterInfo{
-				"prompt":          {Type: schema.String, Required: true, Desc: "子代理任务描述"},
-				"subagent_type":   {Type: schema.String, Required: false, Desc: "子代理类型: explore, general-purpose, plan, verification (默认 general-purpose)"},
+				"prompt":            {Type: schema.String, Required: true, Desc: "子代理任务描述"},
+				"subagent_type":     {Type: schema.String, Required: false, Desc: "子代理类型: explore, general-purpose, plan, verification (默认 general-purpose)"},
 				"run_in_background": {Type: schema.Boolean, Required: false, Desc: "是否异步执行 (默认 false)"},
-				"description":     {Type: schema.String, Required: false, Desc: "任务简短描述 (用于显示)"},
-				"model":           {Type: schema.String, Required: false, Desc: "可选：指定模型"},
+				"description":       {Type: schema.String, Required: false, Desc: "任务简短描述 (用于显示)"},
+				"model":             {Type: schema.String, Required: false, Desc: "可选：指定模型"},
 			},
 			RiskLevel: RiskLevelLow,
 			Examples: []ToolExample{
@@ -909,10 +953,10 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Name:        ToolTeamSendMsg,
 			Description: "在 team 内的 agent 之间发送消息。",
 			Params: map[string]*schema.ParameterInfo{
-				"team":        {Type: schema.String, Required: true, Desc: "Team 名称"},
-				"from_agent":  {Type: schema.String, Required: true, Desc: "发送方 agent 角色"},
-				"to_agent":    {Type: schema.String, Required: true, Desc: "接收方 agent 角色"},
-				"message":     {Type: schema.String, Required: true, Desc: "消息内容"},
+				"team":       {Type: schema.String, Required: true, Desc: "Team 名称"},
+				"from_agent": {Type: schema.String, Required: true, Desc: "发送方 agent 角色"},
+				"to_agent":   {Type: schema.String, Required: true, Desc: "接收方 agent 角色"},
+				"message":    {Type: schema.String, Required: true, Desc: "消息内容"},
 			},
 			RiskLevel: RiskLevelLow,
 		},
