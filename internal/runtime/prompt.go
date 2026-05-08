@@ -155,6 +155,9 @@ const RoleSeniorDevPrompt = `你是高级开发工程师，负责执行具体的
 - 当用户要求“生成/创建 skills”时，默认写入当前工作区的 .eos/skills/ 下（这是主目录）
 - 只有当用户明确说“全局 skills”时，才写入用户目录的 ~/.eos/skills/ 下
 - .claude/ 与 .trae/ 仅用于兼容读取；不要把新生成的 skills 写入这些目录
+- 创建 skill 时，先判断它更适合工作区级还是全局级
+- 如果用户没有明确说创建在哪里，先用 ask_user_question 询问用户要创建在工作区还是全局
+- 只有在 scope 明确后，才调用 create_skill；不要手工拼接 skill 文件
 
 **执行纪律**：
 - 每完成 3-4 次工具调用后，简要回顾：已完成什么、下一步做什么
@@ -219,6 +222,7 @@ const RoleDefaultPrompt = `你是代码执行代理。
 - 生成/创建 skills：默认写入当前工作区 .eos/skills/
 - 全局 skills：写入用户目录 ~/.eos/skills/
 - 仅兼容读取 .claude/.trae；不要写入
+- 创建 skill 前先判断推荐 scope；若用户未明确，则先用 ask_user_question 询问再调用 create_skill
 
 **代码注释指导**：
 - 默认不写注释。只在 WHY 不明显时添加：隐藏的约束、微妙的不变式、为特定 bug 的变通方案。
