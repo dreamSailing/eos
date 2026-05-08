@@ -34,66 +34,74 @@ const (
 
 // ToolNames 所有工具名称的常量定义
 const (
-	ToolRead             = "read"
-	ToolFS               = "fs"
-	ToolEdit             = "edit"
-	ToolHistory          = "history"
-	ToolSearch           = "search"
-	ToolToolSearch       = "tool_search" // 工具搜索工具
-	ToolSkill            = "skill"       // Agent Skills meta-tool
-	ToolSkillsList       = "skills_list"
-	ToolCreateSkill      = "create_skill"
-	ToolTimeNow          = "time_now"
-	ToolUserConfirm      = "user_confirm"
-	ToolUserInput        = "user_input"
-	ToolUserSelect       = "user_select"
-	ToolBash             = "bash"
-	ToolBashSession      = "bash_session"
-	ToolBGTask           = "bg_task"
-	ToolPlanSteps        = "plan_steps"
-	ToolTodoRead         = "todo_read"
-	ToolTodoWrite        = "todo_write"
-	ToolMCPStatus        = "mcp_status"
-	ToolBrowserStatus    = "browser_status"
-	ToolGitStatus        = "git_status"
-	ToolGitAdd           = "git_add"
-	ToolGitCommit        = "git_commit"
-	ToolGitBranchList    = "git_branch_list"
-	ToolGitCheckout      = "git_checkout"
-	ToolGitInit          = "git_init"
-	ToolGitPull          = "git_pull"
-	ToolGitPush          = "git_push"
-	ToolGitDiff          = "git_diff"
-	ToolGitLog           = "git_log"
-	ToolGitShow          = "git_show"
-	ToolGitStash         = "git_stash"
-	ToolGitReset         = "git_reset"
-	ToolGitRevert        = "git_revert"
-	ToolGitMerge         = "git_merge"
-	ToolGitRebase        = "git_rebase"
-	ToolProjectStructure = "ProjectStructure"
-	ToolAskUserQuestion  = "ask_user_question"
-	ToolEnterPlanMode    = "enter_plan_mode"
-	ToolExitPlanMode     = "exit_plan_mode"
-	ToolAgent            = "agent"
-	ToolSuggestMemory    = "suggest_memory"
-	ToolWebSearch        = "web_search"
-	ToolWebFetch         = "web_fetch"
-	ToolEnterWorktree    = "enter_worktree"
-	ToolExitWorktree     = "exit_worktree"
-	ToolNotebookEdit     = "notebook_edit"
-	ToolDocumentGenerate = "document_generate"
-	ToolDocumentConvert  = "document_convert"
-	ToolMCPListResources = "mcp_list_resources"
-	ToolMCPReadResource  = "mcp_read_resource"
-	ToolMCPListPrompts   = "mcp_list_prompts"
-	ToolMCPGetPrompt     = "mcp_get_prompt"
-	ToolPowerShell       = "powershell"
-	ToolStructuredOutput = "structured_output"
-	ToolSnip             = "snip"
-	ToolTeamCreate       = "team_create"
-	ToolTeamDelete       = "team_delete"
-	ToolTeamSendMsg      = "team_send_message"
+	ToolRead                    = "read"
+	ToolFS                      = "fs"
+	ToolEdit                    = "edit"
+	ToolHistory                 = "history"
+	ToolSearch                  = "search"
+	ToolToolSearch              = "tool_search" // 工具搜索工具
+	ToolSkill                   = "skill"       // Agent Skills meta-tool
+	ToolSkillsList              = "skills_list"
+	ToolCreateSkill             = "create_skill"
+	ToolTimeNow                 = "time_now"
+	ToolUserConfirm             = "user_confirm"
+	ToolUserInput               = "user_input"
+	ToolUserSelect              = "user_select"
+	ToolBash                    = "bash"
+	ToolBashSession             = "bash_session"
+	ToolBGTask                  = "bg_task"
+	ToolPlanSteps               = "plan_steps"
+	ToolTodoRead                = "todo_read"
+	ToolTodoWrite               = "todo_write"
+	ToolMCPStatus               = "mcp_status"
+	ToolBrowserStatus           = "browser_status"
+	ToolGitStatus               = "git_status"
+	ToolGitAdd                  = "git_add"
+	ToolGitCommit               = "git_commit"
+	ToolGitBranchList           = "git_branch_list"
+	ToolGitCheckout             = "git_checkout"
+	ToolGitInit                 = "git_init"
+	ToolGitPull                 = "git_pull"
+	ToolGitPush                 = "git_push"
+	ToolGitDiff                 = "git_diff"
+	ToolGitLog                  = "git_log"
+	ToolGitShow                 = "git_show"
+	ToolGitStash                = "git_stash"
+	ToolGitReset                = "git_reset"
+	ToolGitRevert               = "git_revert"
+	ToolGitMerge                = "git_merge"
+	ToolGitRebase               = "git_rebase"
+	ToolProjectStructure        = "ProjectStructure"
+	ToolAskUserQuestion         = "ask_user_question"
+	ToolEnterPlanMode           = "enter_plan_mode"
+	ToolExitPlanMode            = "exit_plan_mode"
+	ToolAgent                   = "agent"
+	ToolSuggestMemory           = "suggest_memory"
+	ToolWebSearch               = "web_search"
+	ToolWebFetch                = "web_fetch"
+	ToolEnterWorktree           = "enter_worktree"
+	ToolExitWorktree            = "exit_worktree"
+	ToolNotebookEdit            = "notebook_edit"
+	ToolDocumentGenerate        = "document_generate"
+	ToolDocumentConvert         = "document_convert"
+	ToolMCPListResources        = "mcp_list_resources"
+	ToolMCPReadResource         = "mcp_read_resource"
+	ToolMCPListPrompts          = "mcp_list_prompts"
+	ToolMCPGetPrompt            = "mcp_get_prompt"
+	ToolPowerShell              = "powershell"
+	ToolStructuredOutput        = "structured_output"
+	ToolSnip                    = "snip"
+	ToolTeamCreate              = "team_create"
+	ToolTeamDelete              = "team_delete"
+	ToolTeamSendMsg             = "team_send_message"
+	ToolRemoteRepoConnect       = "remote_repo_connect"
+	ToolRemoteRepoStatus        = "remote_repo_status"
+	ToolRemoteRepoCloneOrOpen   = "remote_repo_clone_or_open"
+	ToolRemoteRepoCheckout      = "remote_repo_checkout"
+	ToolRemoteRepoCommitAndPush = "remote_repo_commit_and_push"
+	ToolRemoteRepoCreatePR      = "remote_repo_create_pr"
+	ToolRemoteRepoCreateMR      = "remote_repo_create_mr"
+	ToolRemoteRepoDisconnect    = "remote_repo_disconnect"
 )
 
 // GetAllToolDefinitions 返回所有工具的定义
@@ -637,6 +645,80 @@ func GetAllToolDefinitions() []ToolDefinition {
 				"password": {Type: schema.String, Required: false, Desc: "密码/Token"},
 			},
 			RiskLevel: RiskLevelHigh,
+		},
+		{
+			Name:        ToolRemoteRepoConnect,
+			Description: "连接远程 GitHub 或 Gitee 账号，优先复用已保存授权；若未授权，则返回 OAuth 授权信息。",
+			Params: map[string]*schema.ParameterInfo{
+				"platform": {Type: schema.String, Required: true, Desc: "平台: github 或 gitee"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolRemoteRepoStatus,
+			Description: "查看当前会话绑定的远程仓库上下文、授权账号和本地目录。",
+			Params:      nil,
+			RiskLevel:   RiskLevelLow,
+		},
+		{
+			Name:        ToolRemoteRepoCloneOrOpen,
+			Description: "克隆远程 GitHub/Gitee 仓库到隔离目录，或复用本地副本，并将后续工具切换到远程仓库上下文。",
+			Params: map[string]*schema.ParameterInfo{
+				"platform":    {Type: schema.String, Required: true, Desc: "平台: github 或 gitee"},
+				"repo_url":    {Type: schema.String, Required: true, Desc: "远程仓库地址"},
+				"base_branch": {Type: schema.String, Required: false, Desc: "可选：要切换/克隆的基线分支"},
+			},
+			RiskLevel: RiskLevelHigh,
+		},
+		{
+			Name:        ToolRemoteRepoCheckout,
+			Description: "在当前远程仓库上下文中切换或创建分支。",
+			Params: map[string]*schema.ParameterInfo{
+				"branch": {Type: schema.String, Required: true, Desc: "目标分支名"},
+				"create": {Type: schema.Boolean, Required: false, Desc: "是否创建新分支"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolRemoteRepoCommitAndPush,
+			Description: "在当前远程仓库上下文中执行 add/commit/push，并返回分支与提交信息。",
+			Params: map[string]*schema.ParameterInfo{
+				"message":      {Type: schema.String, Required: true, Desc: "提交信息"},
+				"branch":       {Type: schema.String, Required: false, Desc: "可选：推送分支；为空时使用当前分支"},
+				"author_name":  {Type: schema.String, Required: false, Desc: "可选：提交作者名"},
+				"author_email": {Type: schema.String, Required: false, Desc: "可选：提交作者邮箱"},
+			},
+			RiskLevel: RiskLevelHigh,
+		},
+		{
+			Name:        ToolRemoteRepoCreatePR,
+			Description: "为当前 GitHub 远程仓库创建 Pull Request。",
+			Params: map[string]*schema.ParameterInfo{
+				"title": {Type: schema.String, Required: true, Desc: "PR 标题"},
+				"body":  {Type: schema.String, Required: false, Desc: "PR 描述"},
+				"base":  {Type: schema.String, Required: false, Desc: "目标基线分支"},
+				"head":  {Type: schema.String, Required: false, Desc: "源分支"},
+			},
+			RiskLevel: RiskLevelHigh,
+		},
+		{
+			Name:        ToolRemoteRepoCreateMR,
+			Description: "为当前 Gitee 远程仓库创建 Pull Request / Merge Request。",
+			Params: map[string]*schema.ParameterInfo{
+				"title": {Type: schema.String, Required: true, Desc: "标题"},
+				"body":  {Type: schema.String, Required: false, Desc: "描述"},
+				"base":  {Type: schema.String, Required: false, Desc: "目标基线分支"},
+				"head":  {Type: schema.String, Required: false, Desc: "源分支"},
+			},
+			RiskLevel: RiskLevelHigh,
+		},
+		{
+			Name:        ToolRemoteRepoDisconnect,
+			Description: "断开当前会话的远程仓库上下文，可选清理本地克隆目录。",
+			Params: map[string]*schema.ParameterInfo{
+				"cleanup_local": {Type: schema.Boolean, Required: false, Desc: "是否删除本地副本"},
+			},
+			RiskLevel: RiskLevelMedium,
 		},
 		{
 			Name:        ToolGitDiff,

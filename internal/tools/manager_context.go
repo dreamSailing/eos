@@ -106,11 +106,15 @@ func WithWorkspaceRoot(ctx context.Context, root string) context.Context {
 }
 
 func WorkspaceRootFromContext(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	if v, ok := ctx.Value(ctxKeyWorkspaceRoot).(string); ok {
-		return strings.TrimSpace(v)
+	if ctx != nil {
+		if traceID := TraceIDFromContext(ctx); traceID != "" {
+			if remote, ok := GetRemoteRepoContext(traceID); ok && strings.TrimSpace(remote.LocalPath) != "" {
+				return strings.TrimSpace(remote.LocalPath)
+			}
+		}
+		if v, ok := ctx.Value(ctxKeyWorkspaceRoot).(string); ok {
+			return strings.TrimSpace(v)
+		}
 	}
 	return ""
 }

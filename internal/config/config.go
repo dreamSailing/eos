@@ -118,23 +118,73 @@ type PermissionsConfig struct {
 	DeniedTools  []string `json:"denied_tools,omitempty"`
 }
 
+// RemotePlatformType 远程仓库平台类型
+type RemotePlatformType string
+
+const (
+	RemotePlatformGitHub RemotePlatformType = "github"
+	RemotePlatformGitee  RemotePlatformType = "gitee"
+)
+
+// RemoteOAuthAppConfig 远程平台 OAuth 应用配置
+type RemoteOAuthAppConfig struct {
+	ClientID     string `json:"client_id,omitempty"`
+	ClientSecret string `json:"client_secret,omitempty"`
+	RedirectURI  string `json:"redirect_uri,omitempty"`
+}
+
+// RemoteProviderConfig 远程平台配置
+type RemoteProviderConfig struct {
+	OAuth       RemoteOAuthAppConfig `json:"oauth,omitempty"`
+	AccessToken string               `json:"access_token,omitempty"` // 可选：预置 token，便于服务端或 CI 场景
+	Username    string               `json:"username,omitempty"`     // 可选：与预置 token 搭配使用
+}
+
+// RemoteAuthToken 持久化保存的授权令牌
+type RemoteAuthToken struct {
+	Platform     RemotePlatformType `json:"platform"`
+	AccountID    string             `json:"account_id,omitempty"`
+	AccountName  string             `json:"account_name,omitempty"`
+	Login        string             `json:"login,omitempty"`
+	AccessToken  string             `json:"access_token,omitempty"`
+	RefreshToken string             `json:"refresh_token,omitempty"`
+	TokenType    string             `json:"token_type,omitempty"`
+	Scope        string             `json:"scope,omitempty"`
+	ExpiryUnix   int64              `json:"expiry_unix,omitempty"`
+}
+
+// RemoteRepoEntry 远程仓库缓存信息
+type RemoteRepoEntry struct {
+	Platform      RemotePlatformType `json:"platform"`
+	RepoURL       string             `json:"repo_url"`
+	Owner         string             `json:"owner,omitempty"`
+	Repo          string             `json:"repo,omitempty"`
+	DefaultBranch string             `json:"default_branch,omitempty"`
+	LocalPath     string             `json:"local_path,omitempty"`
+	LastBranch    string             `json:"last_branch,omitempty"`
+	LastUsedUnix  int64              `json:"last_used_unix,omitempty"`
+}
+
 type Config struct {
-	Models                       []ModelEntry       `json:"models,omitempty"`
-	Active                       string             `json:"active_model,omitempty"`
-	Thinking                     ThinkingConfig     `json:"thinking,omitempty"` // 思考模式配置
-	NextMessagePredictionEnabled *bool              `json:"next_message_prediction_enabled,omitempty"`
-	Agent                        AgentConfig        `json:"agent,omitempty"`
-	MCP                          []MCPEntry         `json:"mcp,omitempty"`                // MCP服务配置
-	Skills                       []SkillsDirEntry   `json:"skills,omitempty"`             // Skills 目录配置
-	DisabledSkills               []string           `json:"disabled_skills,omitempty"`    // 被禁用的 skill 名称
-	Plugins                      []PluginEntry      `json:"plugins,omitempty"`            // 插件启停覆盖配置
-	LSP                          LSPConfig          `json:"lsp,omitempty"`                // LSP 配置
-	KnownWorkspaces              []string           `json:"known_workspaces,omitempty"`   // 已知工作区（绝对路径）
-	LastWorkspace                string             `json:"last_workspace,omitempty"`     // 上次前台工作区（绝对路径）
-	TrustedWorkspaces            []string           `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
-	Language                     string             `json:"language,omitempty"`           // 语言设置 (zh, en)
-	FastModel                    string             `json:"fast_model,omitempty"`         // Fast mode model name
-	Permissions                  *PermissionsConfig `json:"permissions,omitempty"`        // Tool permissions
+	Models                       []ModelEntry                    `json:"models,omitempty"`
+	Active                       string                          `json:"active_model,omitempty"`
+	Thinking                     ThinkingConfig                  `json:"thinking,omitempty"` // 思考模式配置
+	NextMessagePredictionEnabled *bool                           `json:"next_message_prediction_enabled,omitempty"`
+	Agent                        AgentConfig                     `json:"agent,omitempty"`
+	MCP                          []MCPEntry                      `json:"mcp,omitempty"`                // MCP服务配置
+	Skills                       []SkillsDirEntry                `json:"skills,omitempty"`             // Skills 目录配置
+	DisabledSkills               []string                        `json:"disabled_skills,omitempty"`    // 被禁用的 skill 名称
+	Plugins                      []PluginEntry                   `json:"plugins,omitempty"`            // 插件启停覆盖配置
+	LSP                          LSPConfig                       `json:"lsp,omitempty"`                // LSP 配置
+	KnownWorkspaces              []string                        `json:"known_workspaces,omitempty"`   // 已知工作区（绝对路径）
+	LastWorkspace                string                          `json:"last_workspace,omitempty"`     // 上次前台工作区（绝对路径）
+	TrustedWorkspaces            []string                        `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
+	Language                     string                          `json:"language,omitempty"`           // 语言设置 (zh, en)
+	FastModel                    string                          `json:"fast_model,omitempty"`         // Fast mode model name
+	Permissions                  *PermissionsConfig              `json:"permissions,omitempty"`        // Tool permissions
+	RemoteProviders              map[string]RemoteProviderConfig `json:"remote_providers,omitempty"`   // GitHub/Gitee OAuth/Token 配置
+	RemoteAuth                   map[string]RemoteAuthToken      `json:"remote_auth,omitempty"`        // 已授权账号（按平台）
+	RemoteRepos                  []RemoteRepoEntry               `json:"remote_repos,omitempty"`       // 最近访问的远程仓库
 }
 
 func NextMessagePredictionEnabled(cfg *Config) bool {

@@ -5,19 +5,19 @@ package git
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
-	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	gg "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
@@ -25,6 +25,13 @@ import (
 )
 
 type Ops struct{ Root string }
+
+func blankOr(v, fallback string) string {
+	if strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	return strings.TrimSpace(v)
+}
 
 func NewOps() *Ops {
 	return NewOpsWithRoot("")
@@ -65,6 +72,58 @@ func (o *Ops) Init() (string, error) {
 		return "", err
 	}
 	return filepath.ToSlash(o.Root), nil
+}
+
+type CloneOut struct {
+	Root          string `json:"root"`
+	DefaultBranch string `json:"default_branch,omitempty"`
+}
+
+func Clone(ctx context.Context, repoURL, targetDir, branch, user, pass string) (*CloneOut, error) {
+	if strings.TrimSpace(repoURL) == "" {
+		return nil, fmt.Errorf("repo url required")
+	}
+	if strings.TrimSpace(targetDir) == "" {
+		return nil, fmt.Errorf("target dir required")
+	}
+	absTarget, err := filepath.Abs(targetDir)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(absTarget), 0o755); err != nil {
+		return nil, err
+	}
+
+	opts := &gg.CloneOptions{
+		URL:      strings.TrimSpace(repoURL),
+		Progress: nil,
+	}
+	if strings.TrimSpace(branch) != "" {
+		opts.ReferenceName = plumbing.NewBranchReferenceName(strings.TrimSpace(branch))
+		opts.SingleBranch = true
+	}
+	if strings.TrimSpace(user) != "" || strings.TrimSpace(pass) != "" {
+		opts.Auth = &http.BasicAuth{
+			Username: blankOr(strings.TrimSpace(user), "oauth2"),
+			Password: strings.TrimSpace(pass),
+		}
+	}
+
+	repo, err := gg.PlainCloneContext(ctx, absTarget, false, opts)
+	if err != nil {
+		return nil, err
+	}
+	defaultBranch := ""
+	if headRef, e := repo.Reference(plumbing.ReferenceName("refs/remotes/origin/HEAD"), true); e == nil {
+		target := headRef.Target().String()
+		defaultBranch = strings.TrimPrefix(target, "refs/remotes/origin/")
+	}
+	if defaultBranch == "" {
+		if head, e := repo.Head(); e == nil {
+			defaultBranch = strings.TrimPrefix(head.Name().String(), "refs/heads/")
+		}
+	}
+	return &CloneOut{Root: filepath.ToSlash(absTarget), DefaultBranch: defaultBranch}, nil
 }
 
 type Change struct {
@@ -294,6 +353,71 @@ func (o *Ops) Push(remote, branch, user, pass string) (string, error) {
 		return "", e
 	}
 	return "pushed", nil
+}
+
+func (o *Ops) PushBranch(remote, branch, user, pass string, setUpstream bool) (string, error) {
+	r, err := o.repo()
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(remote) == "" {
+		remote = "origin"
+	}
+	if strings.TrimSpace(branch) == "" {
+		branch, _ = o.branchName()
+	}
+	if strings.TrimSpace(branch) == "" {
+		return "", fmt.Errorf("branch required")
+	}
+	var auth *http.BasicAuth
+	if strings.TrimSpace(user) != "" || strings.TrimSpace(pass) != "" {
+		auth = &http.BasicAuth{
+			Username: blankOr(strings.TrimSpace(user), "oauth2"),
+			Password: strings.TrimSpace(pass),
+		}
+	}
+	refspec := configRefSpec(branch, setUpstream)
+	e := r.Push(&gg.PushOptions{
+		RemoteName: remote,
+		Auth:       auth,
+		RefSpecs:   []config.RefSpec{refspec},
+	})
+	if e == gg.NoErrAlreadyUpToDate {
+		return "up-to-date", nil
+	}
+	if e != nil {
+		return "", e
+	}
+	return "pushed", nil
+}
+
+func configRefSpec(branch string, setUpstream bool) config.RefSpec {
+	_ = setUpstream
+	spec := fmt.Sprintf("refs/heads/%s:refs/heads/%s", branch, branch)
+	return config.RefSpec(spec)
+}
+
+func (o *Ops) RemoteURL(remote string) (string, error) {
+	r, err := o.repo()
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(remote) == "" {
+		remote = "origin"
+	}
+	rm, err := r.Remote(remote)
+	if err != nil {
+		return "", err
+	}
+	cfg := rm.Config()
+	if cfg == nil || len(cfg.URLs) == 0 {
+		return "", fmt.Errorf("remote %s has no url", remote)
+	}
+	return cfg.URLs[0], nil
+}
+
+func (o *Ops) HeadBranch() (string, error) {
+	return o.branchName()
 }
 
 func (o *Ops) Diff(path string) (string, error) {

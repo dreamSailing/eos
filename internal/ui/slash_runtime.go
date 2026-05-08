@@ -907,6 +907,13 @@ func (m *AppModel) handleStatusSlash() tea.Cmd {
 		fmt.Sprintf("%s: %s", m.localize("当前会话", "Session"), blankFallback(currentSessionID, m.localize("无", "none"))),
 		fmt.Sprintf("%s: %s", m.localize("浏览器 MCP", "Browser MCP"), m.browserStatusLabel(browser)),
 	}
+	if remote, ok := core.CurrentRemoteRepo(); ok {
+		lines = append(lines,
+			fmt.Sprintf("%s: %s/%s", m.localize("远程仓库", "Remote repo"), remote.Owner, remote.Repo),
+			fmt.Sprintf("%s: %s", m.localize("远程分支", "Remote branch"), blankFallback(remote.WorkingBranch, remote.DefaultBranch)),
+			fmt.Sprintf("%s: %s", m.localize("远程目录", "Remote path"), remote.LocalPath),
+		)
+	}
 	if strings.TrimSpace(browser.LastError) != "" {
 		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("浏览器错误", "Browser error"), browser.LastError))
 	}
@@ -917,6 +924,29 @@ func (m *AppModel) handleStatusSlash() tea.Cmd {
 		lines = append(lines, fmt.Sprintf("%s: %d tokens", m.localize("上下文窗口", "Context window"), ctxWindowTokens))
 	}
 
+	m.appendSystem(strings.Join(lines, "\n"), "info")
+	return nil
+}
+
+func (m *AppModel) handleRemoteSlash(args []string) tea.Cmd {
+	_ = args
+	core := m.adapter.GetCore()
+	remote, ok := core.CurrentRemoteRepo()
+	if !ok {
+		m.appendSystem(m.localize("当前没有活跃的远程仓库上下文。", "No active remote repository context."), "info")
+		return nil
+	}
+	lines := []string{
+		m.localize("远程仓库上下文", "Remote repository context"),
+		fmt.Sprintf("%s: %s", m.localize("平台", "Platform"), remote.Platform),
+		fmt.Sprintf("%s: %s/%s", m.localize("仓库", "Repository"), remote.Owner, remote.Repo),
+		fmt.Sprintf("%s: %s", m.localize("地址", "URL"), remote.RepoURL),
+		fmt.Sprintf("%s: %s", m.localize("当前分支", "Current branch"), blankFallback(remote.WorkingBranch, remote.DefaultBranch)),
+		fmt.Sprintf("%s: %s", m.localize("本地目录", "Local path"), remote.LocalPath),
+	}
+	if strings.TrimSpace(remote.AccountLogin) != "" || strings.TrimSpace(remote.AccountName) != "" {
+		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("账号", "Account"), blankFallback(remote.AccountLogin, remote.AccountName)))
+	}
 	m.appendSystem(strings.Join(lines, "\n"), "info")
 	return nil
 }
