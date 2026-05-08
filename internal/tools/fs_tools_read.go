@@ -5,16 +5,16 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/document"
+	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
-	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 func (m *Manager) readStructured(ctx context.Context, params map[string]any) ToolResult {
@@ -79,13 +79,24 @@ func (m *Manager) readFileContent(ctx context.Context, ap, rel string, params ma
 	// Check for special binary file types that we can handle
 	ext := strings.ToLower(filepath.Ext(ap))
 	switch ext {
+	case ".docx":
+		model, err := document.ReadDOCX(ap)
+		if err != nil {
+			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("错误：读取 DOCX 失败：%s", err.Error())}
+		}
+		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": model.PlainText(), "format": "docx", "structured": model, "warnings": model.Warnings}, Display: fmt.Sprintf("已读取 DOCX：%s", rel)}
+	case ".xlsx":
+		model, err := document.ReadXLSX(ap)
+		if err != nil {
+			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("错误：读取 XLSX 失败：%s", err.Error())}
+		}
+		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": model.PlainText(), "format": "xlsx", "structured": model, "warnings": model.Warnings}, Display: fmt.Sprintf("已读取 XLSX：%s", rel)}
 	case ".pdf":
-		pages, _ := params["pages"].(string)
-		content, err := ReadPDF(ap, pages)
+		model, err := document.ReadPDF(ap)
 		if err != nil {
 			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("错误：读取 PDF 失败：%s", err.Error())}
 		}
-		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": content, "format": "pdf"}, Display: fmt.Sprintf("已读取 PDF：%s", rel)}
+		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": model.PlainText(), "format": "pdf", "structured": model, "warnings": model.Warnings}, Display: fmt.Sprintf("已读取 PDF：%s", rel)}
 	case ".ipynb":
 		content, err := ReadNotebook(ap, 2000)
 		if err != nil {

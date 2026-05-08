@@ -25,6 +25,7 @@ EOS is a Go-based terminal AI coding assistant built on CloudWeGo Eino. It provi
 - Two execution modes: `plan` / `auto` (switchable in the interface)
 - Multi-agent collaboration: planner, developer, tester, reviewer, and other specialized agents
 - Tooling system: file read/write/edit, search, Git, Shell, background tasks, MCP calls, and more
+- Office document support: built-in `DOCX/XLSX/PDF` reading, generation, and conversion with high-fidelity conversion preferred
 - Safety controls: tiered confirmation for high-risk actions with session-level authorization support
 - Context indexing: code indexing, file watching, context compression, and session persistence
 - Optional LSP support: `without_lsp`, default LSP, and embedded `with_gopls` builds
@@ -113,6 +114,22 @@ The repository includes gopls embedding scripts: `scripts/embed_gopls.sh` and `s
 - `/workspace list|add|remove|use <path>`
 - `/settings` `/lsp` `/rules` `/lang` `/compact`
 - `/init`: initialize `EOS.md` in the current workspace
+
+## Document Support
+
+- Read: the built-in `read` tool can now open `DOCX`, `XLSX`, and `PDF`
+- Generate: available through the `document_generate` tool and `eos doc generate`
+- Convert: available through the `document_convert` tool and `eos doc convert`
+- High fidelity: `DOCX <-> PDF` and `XLSX <-> PDF` prefer `soffice` for layout-preserving conversion; if unavailable, EOS falls back to content-level conversion with warnings
+- Boundary: first-release `DOCX <-> XLSX` conversion focuses on structured content and tables rather than full layout preservation
+
+CLI examples:
+
+```bash
+eos doc read ./report.docx
+eos doc generate --format pdf --output ./out/report.pdf --title "Weekly Report" --content "Paragraph one\n\nParagraph two"
+eos doc convert ./report.docx --to pdf --output ./out/report.pdf --fidelity high
+```
 
 ## Service Mode API
 

@@ -82,6 +82,8 @@ const (
 	ToolEnterWorktree    = "enter_worktree"
 	ToolExitWorktree     = "exit_worktree"
 	ToolNotebookEdit     = "notebook_edit"
+	ToolDocumentGenerate = "document_generate"
+	ToolDocumentConvert  = "document_convert"
 	ToolMCPListResources = "mcp_list_resources"
 	ToolMCPReadResource  = "mcp_read_resource"
 	ToolMCPListPrompts   = "mcp_list_prompts"
@@ -268,6 +270,37 @@ func GetAllToolDefinitions() []ToolDefinition {
 					Description: "检查文件是否存在",
 					Input:       map[string]any{"mode": "exists", "path": "README.md"},
 				},
+			},
+		},
+		{
+			Name:        ToolDocumentGenerate,
+			Description: "生成 DOCX/XLSX/PDF 文档。支持纯文本内容和结构化内容输入。",
+			Params: map[string]*schema.ParameterInfo{
+				"format":             {Type: schema.String, Required: true, Desc: "输出格式：docx、xlsx 或 pdf"},
+				"path":               {Type: schema.String, Required: true, Desc: "输出文件路径"},
+				"title":              {Type: schema.String, Required: false, Desc: "文档标题"},
+				"content":            {Type: schema.String, Required: false, Desc: "纯文本正文"},
+				"structured_content": {Type: schema.Object, Required: false, Desc: "结构化内容，可传入文档块/工作表 JSON"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "生成 DOCX", Input: map[string]any{"format": "docx", "path": "out/report.docx", "title": "周报", "content": "第一段\n\n第二段"}},
+				{Description: "生成 XLSX", Input: map[string]any{"format": "xlsx", "path": "out/table.xlsx", "structured_content": map[string]any{"sheets": []map[string]any{{"name": "Sheet1", "rows": [][]string{{"A", "B"}, {"1", "2"}}}}}}},
+			},
+		},
+		{
+			Name:        ToolDocumentConvert,
+			Description: "在 DOCX/XLSX/PDF 之间进行文档转换。默认优先高保真转换，必要时回退为内容级转换并附带告警。",
+			Params: map[string]*schema.ParameterInfo{
+				"source_path":      {Type: schema.String, Required: true, Desc: "源文件路径"},
+				"target_format":    {Type: schema.String, Required: true, Desc: "目标格式：docx、xlsx 或 pdf"},
+				"destination_path": {Type: schema.String, Required: false, Desc: "输出文件路径；为空时自动推导"},
+				"fidelity":         {Type: schema.String, Required: false, Desc: "转换保真度：high（默认）或 content"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "高保真转换为 PDF", Input: map[string]any{"source_path": "report.docx", "target_format": "pdf", "fidelity": "high"}},
+				{Description: "内容级转换为 XLSX", Input: map[string]any{"source_path": "notes.pdf", "target_format": "xlsx", "fidelity": "content"}},
 			},
 		},
 		{
