@@ -169,7 +169,10 @@ Bash 只用于需要 shell 执行操作的系统命令。
 **技能（Skills）目录约定**：
 - 当用户要求"生成/创建 skills"时，默认写入当前工作区的 .eos/skills/ 下
 - 只有当用户明确说"全局 skills"时，才写入用户目录的 ~/.eos/skills/
-- .claude/ 与 .trae/ 仅用于兼容读取；不要把新生成的 skills 写入这些目录`
+- .claude/ 与 .trae/ 仅用于兼容读取；不要把新生成的 skills 写入这些目录
+- 创建 skill 时先判断它更适合工作区级还是全局级
+- 如果用户没有明确创建位置，先用 ask_user_question 询问用户要创建在工作区还是全局
+- 只有在 scope 明确后，才调用 create_skill，不要手工拼接 skill 文件`
 }
 
 // getLanguageSection 语言偏好部分

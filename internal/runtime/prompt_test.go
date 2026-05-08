@@ -115,3 +115,20 @@ func TestBuildRoleSystemPromptUsesPlanPromptStyleOnlyForPlanner(t *testing.T) {
 		t.Fatalf("senior-dev prompt should not receive planner style:\n%s", seniorPrompt)
 	}
 }
+
+func TestSkillCreationPromptsMentionScopeWorkflow(t *testing.T) {
+	if !strings.Contains(RoleDefaultPrompt, "create_skill") {
+		t.Fatalf("RoleDefaultPrompt should mention create_skill workflow:\n%s", RoleDefaultPrompt)
+	}
+	if !strings.Contains(RoleDefaultPrompt, "ask_user_question") {
+		t.Fatalf("RoleDefaultPrompt should mention asking the user for scope:\n%s", RoleDefaultPrompt)
+	}
+
+	usingTools := getUsingToolsSection(&PromptConfig{})
+	if !strings.Contains(usingTools, "create_skill") {
+		t.Fatalf("using tools guidance should mention create_skill:\n%s", usingTools)
+	}
+	if !strings.Contains(usingTools, "ask_user_question") {
+		t.Fatalf("using tools guidance should mention ask_user_question:\n%s", usingTools)
+	}
+}

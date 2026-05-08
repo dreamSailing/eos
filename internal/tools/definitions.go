@@ -234,9 +234,12 @@ func GetAllToolDefinitions() []ToolDefinition {
 				{
 					Description: "创建一个可跨项目复用的全局 skill",
 					Input: map[string]any{
-						"request":  "创建一个通用的 release notes 生成 skill，可复用于多个项目。",
-						"scope":    "user",
-						"keywords": []any{"release", "notes"},
+						"request": "创建一个通用的 release notes 生成 skill，可复用于多个项目。",
+						"scope":   "user",
+						"keywords": []any{
+							"release",
+							"notes",
+						},
 					},
 				},
 			},
