@@ -53,6 +53,7 @@ type EinoRuntime struct {
 	recentAssistantHashes map[string]int
 	onDelta               func(string)
 	onMeta                func(string)
+	onPlanUpdate          func(string)
 	onReasoning           func(string) // 思考内容回调
 	dispatchTools         *DispatchTools
 	tokenAnalyzer         *TokenAnalyzer             // Token 使用分析器
@@ -95,12 +96,22 @@ func NewEinoRuntimeWithMCP(ctx context.Context, cm *session.ContextManager, tm *
 	LogDebug("runtime.new_graph.success", nil)
 	rt.runnable = rg
 
+	rt.bindPlanUpdates(cm)
+	return rt, nil
+}
+
+func (rt *EinoRuntime) bindPlanUpdates(cm *session.ContextManager) {
+	if rt == nil || cm == nil {
+		return
+	}
 	cm.SetOnPlanUpdate(func(plan string) {
+		if rt.onPlanUpdate != nil {
+			rt.onPlanUpdate(plan)
+		}
 		if rt.onMeta != nil {
 			rt.onMeta(EventPlanReady)
 		}
 	})
-	return rt, nil
 }
 
 func (rt *EinoRuntime) WithSafety(h SafetyGate) *EinoRuntime {
@@ -125,6 +136,11 @@ func (rt *EinoRuntime) WithSafety(h SafetyGate) *EinoRuntime {
 
 func (rt *EinoRuntime) WithOnDelta(cb func(string)) *EinoRuntime {
 	rt.onDelta = cb
+	return rt
+}
+
+func (rt *EinoRuntime) WithOnPlanUpdate(cb func(string)) *EinoRuntime {
+	rt.onPlanUpdate = cb
 	return rt
 }
 

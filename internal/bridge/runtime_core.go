@@ -154,6 +154,9 @@ type RuntimeCore struct {
 	panicAt   time.Time
 	panicHits int
 
+	planMu         sync.Mutex
+	lastPlanStored string
+
 	// 流式解析器
 	parser *StreamParser
 
@@ -665,6 +668,26 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	rc.wg.Add(1)
 	go rc.loop()
 	return rc
+}
+
+func (rc *RuntimeCore) HandlePlanUpdate(plan string) {
+	if rc == nil {
+		return
+	}
+	trimmed := strings.TrimSpace(plan)
+	if trimmed == "" {
+		return
+	}
+	rc.planMu.Lock()
+	if rc.lastPlanStored == trimmed {
+		rc.planMu.Unlock()
+		return
+	}
+	rc.lastPlanStored = trimmed
+	rc.planMu.Unlock()
+	if err := rc.PersistPlan(trimmed); err != nil {
+		slog.Warn("runtime.plan.persist.error", "component", utils.ComponentSystem, "error", err)
+	}
 }
 
 // SetModelOverride overrides the model used by the runtime (from --model CLI flag)

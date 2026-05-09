@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dreamSailing/eos/internal/session"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -85,3 +86,26 @@ func TestNormalizeDispatchHistory_FoldsTrailingSystemMessagesIntoPrompt(t *testi
 	}
 }
 
+func TestBindPlanUpdatesForwardsPlanAndEmitsReady(t *testing.T) {
+	cm := session.NewContextManager()
+	rt := &EinoRuntime{}
+
+	var gotPlan string
+	var gotMeta string
+	rt.WithOnPlanUpdate(func(plan string) {
+		gotPlan = strings.TrimSpace(plan)
+	})
+	rt.WithOnMeta(func(meta string) {
+		gotMeta = strings.TrimSpace(meta)
+	})
+
+	rt.bindPlanUpdates(cm)
+	cm.SetLastPlan("# Test Plan\n\n- item")
+
+	if gotPlan != "# Test Plan\n\n- item" {
+		t.Fatalf("got plan = %q", gotPlan)
+	}
+	if gotMeta != EventPlanReady {
+		t.Fatalf("got meta = %q, want %q", gotMeta, EventPlanReady)
+	}
+}

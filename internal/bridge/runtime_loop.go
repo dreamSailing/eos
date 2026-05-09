@@ -127,6 +127,9 @@ func (rc *RuntimeCore) loop() {
 			slog.Error("bridge.init_runtime.eino_runtime_failed", "component", utils.ComponentSystem, "error", err.Error())
 			return err
 		}
+		nrt.WithOnPlanUpdate(func(plan string) {
+			rc.HandlePlanUpdate(plan)
+		})
 		slog.Debug("bridge.init_runtime.create_runtime_success", "component", utils.ComponentSystem)
 
 		var agentMu sync.Mutex
@@ -407,6 +410,9 @@ func (rc *RuntimeCore) loop() {
 				if errF == nil {
 					fastRT, errF2 := einoruntime.NewEinoRuntimeWithMCP(ctx, rc.cm, rc.tm, fastEm, nil)
 					if errF2 == nil {
+						fastRT.WithOnPlanUpdate(func(plan string) {
+							rc.HandlePlanUpdate(plan)
+						})
 						rc.fastRT = fastRT
 						slog.Info("bridge.init_runtime.fast_model_created", "component", utils.ComponentSystem, "fast_model", fastModelEntry.Model)
 					} else {
