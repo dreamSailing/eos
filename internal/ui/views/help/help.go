@@ -17,6 +17,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const (
+	keyColumnWidth     = 12
+	commandColumnWidth = 14
+)
+
 // HelpView 帮助视图
 type HelpView struct {
 	width    int
@@ -109,38 +114,7 @@ func (h *HelpView) View() string {
 	h.relayout()
 
 	lang := h.language
-	var b strings.Builder
-
-	// 标题
-	b.WriteString(h.styles.PanelTitle.Render(i18n.T("help.title", lang)))
-	b.WriteString("\n\n")
-
-	// 全局快捷键
-	b.WriteString(h.styles.TextInfo.Render(i18n.T("help.global", lang) + "\n"))
-	b.WriteString(h.renderKey("F2", i18n.T("help.key.f2", lang)) + "\n")
-	b.WriteString(h.renderKey("Tab", i18n.T("help.key.tab", lang)) + "\n")
-	b.WriteString(h.renderKey("Alt+V", i18n.T("help.key.alt_v", lang)) + "\n")
-	b.WriteString(h.renderKey("→", i18n.T("help.key.right", lang)) + "\n")
-	b.WriteString(h.renderKey("Ctrl+J", i18n.T("help.key.ctrl_j", lang)) + "\n")
-	b.WriteString(h.renderKey("Esc", i18n.T("help.key.esc_esc", lang)) + "\n")
-	b.WriteString(h.renderKey("Ctrl+C", i18n.T("help.key.ctrl_c", lang)) + "\n")
-	b.WriteString(h.renderKey("PgUp/PgDn", i18n.T("help.key.pgup_pgdn", lang)) + "\n")
-	b.WriteString(h.renderKey("Home / End", i18n.T("help.key.home_end", lang)) + "\n")
-	b.WriteString(h.renderKey("↑/↓", i18n.T("help.key.up_down", lang)) + "\n")
-	b.WriteString("\n")
-
-	// 斜杠命令
-	for _, group := range slash.GroupedVisibleCommands(lang) {
-		b.WriteString(h.styles.TextInfo.Render(group.Label + "\n"))
-		for _, cmd := range group.Commands {
-			b.WriteString(h.renderCmd(cmd.DisplayText(), cmd.Description(lang)) + "\n")
-		}
-		b.WriteString("\n")
-	}
-
-	b.WriteString(h.styles.TextMuted.Render(i18n.T("footer.close_help", lang)))
-
-	next := b.String()
+	next := h.renderContent(lang)
 	if next != h.content {
 		h.content = next
 		h.vp.SetContent(next)
@@ -162,26 +136,66 @@ func (h *HelpView) View() string {
 	return panelStyle.Render(h.vp.View())
 }
 
+func (h *HelpView) renderContent(lang string) string {
+	var b strings.Builder
+
+	// 标题
+	b.WriteString(h.styles.PanelTitle.Render(i18n.T("help.title", lang)))
+	b.WriteString("\n\n")
+
+	// 全局快捷键
+	b.WriteString(h.styles.TextInfo.Render(i18n.T("help.global", lang)))
+	b.WriteString("\n")
+	b.WriteString(h.renderKey("F2", i18n.T("help.key.f2", lang)) + "\n")
+	b.WriteString(h.renderKey("Tab", i18n.T("help.key.tab", lang)) + "\n")
+	b.WriteString(h.renderKey("Alt+V", i18n.T("help.key.alt_v", lang)) + "\n")
+	b.WriteString(h.renderKey("→", i18n.T("help.key.right", lang)) + "\n")
+	b.WriteString(h.renderKey("Ctrl+J", i18n.T("help.key.ctrl_j", lang)) + "\n")
+	b.WriteString(h.renderKey("Esc", i18n.T("help.key.esc_esc", lang)) + "\n")
+	b.WriteString(h.renderKey("Ctrl+C", i18n.T("help.key.ctrl_c", lang)) + "\n")
+	b.WriteString(h.renderKey("PgUp/PgDn", i18n.T("help.key.pgup_pgdn", lang)) + "\n")
+	b.WriteString(h.renderKey("Home / End", i18n.T("help.key.home_end", lang)) + "\n")
+	b.WriteString(h.renderKey("↑/↓", i18n.T("help.key.up_down", lang)) + "\n")
+	b.WriteString("\n")
+
+	// 斜杠命令
+	for _, group := range slash.GroupedVisibleCommands(lang) {
+		b.WriteString(h.styles.TextInfo.Render(group.Label))
+		b.WriteString("\n")
+		for _, cmd := range group.Commands {
+			b.WriteString(h.renderCmd(cmd.DisplayText(), cmd.Description(lang)) + "\n")
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString(h.styles.TextMuted.Render(i18n.T("footer.close_help", lang)))
+	return b.String()
+}
+
 // renderKey 渲染快捷键
 func (h *HelpView) renderKey(key, desc string) string {
 	keyStyle := h.styles.TextInfo.Bold(true)
-	keyText := key
-	pad := 12 - lipgloss.Width(keyText)
-	if pad < 1 {
-		pad = 1
-	}
-	return keyStyle.Render(keyText) + strings.Repeat(" ", pad) + h.styles.TextMuted.Render(desc)
+	return h.renderAlignedRow(key, desc, keyColumnWidth, keyStyle, h.styles.TextMuted)
 }
 
 // renderCmd 渲染命令
 func (h *HelpView) renderCmd(cmd, desc string) string {
 	cmdStyle := h.styles.TextInfo.Bold(true)
-	cmdText := cmd
-	pad := 14 - lipgloss.Width(cmdText)
-	if pad < 1 {
-		pad = 1
+	return h.renderAlignedRow(cmd, "- "+desc, commandColumnWidth, cmdStyle, h.styles.TextMuted)
+}
+
+func (h *HelpView) renderAlignedRow(label, desc string, labelColumnWidth int, labelStyle, descStyle lipgloss.Style) string {
+	label = strings.TrimSpace(label)
+	desc = strings.TrimSpace(desc)
+
+	labelText := labelStyle.Render(label)
+	descText := descStyle.Render(desc)
+	labelWidth := lipgloss.Width(label)
+	if labelWidth >= labelColumnWidth {
+		return labelText + "\n" + strings.Repeat(" ", labelColumnWidth) + descText
 	}
-	return cmdStyle.Render(cmdText) + strings.Repeat(" ", pad) + h.styles.TextMuted.Render("- "+desc)
+
+	return labelText + strings.Repeat(" ", labelColumnWidth-labelWidth) + descText
 }
 
 // LanguageChangeMsg 语言切换消息

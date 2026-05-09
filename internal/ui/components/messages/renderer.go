@@ -244,11 +244,16 @@ func (r *Renderer) RenderPlan(title, description string, steps []PlanStep) strin
 
 // RenderThinking 渲染思考过程
 func (r *Renderer) RenderThinking(content string, duration time.Duration, expanded bool, steps []ThinkingStep) string {
+	return r.RenderThinkingWithHint(content, duration, expanded, steps, "")
+}
+
+func (r *Renderer) RenderThinkingWithHint(content string, duration time.Duration, expanded bool, steps []ThinkingStep, toggleHint string) string {
 	msg := &ThinkingMessage{
-		Content:  content,
-		Duration: duration,
-		Expanded: expanded,
-		Steps:    steps,
+		Content:    content,
+		Duration:   duration,
+		Expanded:   expanded,
+		Steps:      steps,
+		ToggleHint: toggleHint,
 	}
 	return msg.Render(r.styles, r.width)
 }

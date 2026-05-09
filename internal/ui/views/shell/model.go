@@ -130,7 +130,7 @@ func (m *Model) SetSize(width, height int) {
 	}
 	m.input.SetSize(width-2, 0)
 	inputHeight := m.input.ViewHeight()
-	contentHeight := max(height-inputHeight-hintsHeight-statusHeight-4-m.livePanelOuterHeight(), 10)
+	contentHeight := max(height-inputHeight-hintsHeight-statusHeight-4-m.liveReserveHeight(), 10)
 	m.contentH = contentHeight
 
 	hh := 3
@@ -156,7 +156,7 @@ func (m *Model) SetLive(view string) {
 		m.hintLive = false
 		m.hintThinking = false
 	}
-	m.relayout()
+	m.recomputeLayout()
 }
 
 func (m *Model) ClearLive() {
@@ -180,7 +180,7 @@ func (m *Model) recomputeLayout() {
 		hintsHeight = m.hints.Height()
 	}
 	inputHeight := m.input.ViewHeight()
-	contentHeight := max(m.height-inputHeight-hintsHeight-statusHeight-4-m.livePanelOuterHeight(), 10)
+	contentHeight := max(m.height-inputHeight-hintsHeight-statusHeight-4-m.liveReserveHeight(), 10)
 	m.contentH = contentHeight
 	m.relayout()
 }
@@ -216,6 +216,28 @@ func (m Model) livePanelOuterHeight() int {
 		return 0
 	}
 	return inner + 2
+}
+
+func (m Model) inlineLiveHeight() int {
+	if m.livePanelMode != 0 || strings.TrimSpace(m.live) == "" {
+		return 0
+	}
+	maxH := min(max(m.height/3, 5), 14)
+	if maxH <= 0 {
+		return 0
+	}
+	h := m.liveHeight
+	if h <= 0 {
+		h = lipgloss.Height(m.live)
+	}
+	return min(max(h, 1), maxH)
+}
+
+func (m Model) liveReserveHeight() int {
+	if h := m.livePanelOuterHeight(); h > 0 {
+		return h
+	}
+	return m.inlineLiveHeight()
 }
 
 func tailLines(s string, n int) string {
@@ -273,6 +295,18 @@ func (m Model) renderLivePanel() string {
 	return m.styles.Panel.Render(lipgloss.JoinVertical(lipgloss.Left, title, body))
 }
 
+func (m Model) renderInlineLive() string {
+	bodyH := m.inlineLiveHeight()
+	if bodyH <= 0 {
+		return ""
+	}
+	body := m.live
+	if lipgloss.Height(body) > bodyH {
+		body = tailLines(body, bodyH)
+	}
+	return body
+}
+
 // SetMode 设置模式
 func (m *Model) SetMode(mode Mode) {
 	m.mode = mode
@@ -301,6 +335,9 @@ func (m *Model) ToggleMode() {
 // SetProcessing 设置处理状态
 func (m *Model) SetProcessing(v bool) {
 	m.processing = v
+	if !v && !m.thinking {
+		m.statusAnim = 0
+	}
 }
 
 // Processing 获取处理状态
@@ -312,6 +349,9 @@ func (m *Model) Processing() bool {
 func (m *Model) SetThinking(v bool, text string) {
 	m.thinking = v
 	m.thinkingText = text
+	if !v && !m.processing {
+		m.statusAnim = 0
+	}
 }
 
 func (m *Model) SetContextUsage(tokens int, ratio float64) {
@@ -690,11 +730,15 @@ func (m Model) View() string {
 	contentView := m.content.View()
 	// 使用原始内容判断是否为空，因为 View() 返回的字符串包含样式（padding等）
 	hasContent := m.content.Content() != ""
-	if m.showWelcome && !hasContent {
-		sections = append(sections, m.styles.Panel.Render(m.welcome.View()))
+	inlineLive := m.renderInlineLive()
+	if m.showWelcome && !hasContent && inlineLive == "" {
+		contentView = m.welcome.View()
 	} else {
-		sections = append(sections, m.styles.Panel.Render(contentView))
+		if inlineLive != "" {
+			contentView = lipgloss.JoinVertical(lipgloss.Left, contentView, inlineLive)
+		}
 	}
+	sections = append(sections, m.styles.Panel.Render(contentView))
 
 	if livePanel := m.renderLivePanel(); livePanel != "" {
 		sections = append(sections, livePanel)
@@ -773,22 +817,11 @@ func (m Model) renderStatusBar() string {
 
 	if m.mode == ModeAI {
 		thinkingLabel := i18n.T("status.thinking", m.language)
-		var thinkingPart string
 		if !state.Thinking() {
-			thinkingPart = m.styles.TextMuted.Render(thinkingLabel + ":" + i18n.T("status.off", m.language))
+			leftParts = append(leftParts, m.styles.TextMuted.Render(thinkingLabel+":"+i18n.T("status.off", m.language)))
 		} else {
-			stateLabel := i18n.T("thinking.state.collapsed", m.language)
-			if m.thinkingExpanded {
-				stateLabel = i18n.T("thinking.state.expanded", m.language)
-			}
-			if m.thinking {
-				thinkingPart = m.styles.TextMuted.Render(thinkingLabel + strings.Repeat(".", m.statusAnim) + "(" + stateLabel + ")")
-			} else {
-				thinkingPart = m.styles.TextMuted.Render(thinkingLabel + ":" + stateLabel)
-			}
+			leftParts = append(leftParts, m.styles.TextMuted.Render(thinkingLabel+":"+i18n.T("status.on", m.language)))
 		}
-		leftParts = append(leftParts, thinkingPart)
-
 	}
 
 	if m.processing {

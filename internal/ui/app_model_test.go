@@ -14,6 +14,7 @@ import (
 	"github.com/dreamSailing/eos/internal/pkg/filedialog"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/session"
+	"github.com/dreamSailing/eos/internal/state"
 	"github.com/dreamSailing/eos/internal/tools"
 	"github.com/dreamSailing/eos/internal/ui/views/setup"
 
@@ -310,6 +311,70 @@ func TestHandleSettingsSavePersistsGlobalPredictionFlag(t *testing.T) {
 	}
 	if got := doc["next_message_prediction_enabled"]; got != false {
 		t.Fatalf("next_message_prediction_enabled=%v, want false", got)
+	}
+}
+
+func TestThinkingStatusIsNotRenderedAsFoldStateWhenIdle(t *testing.T) {
+	setTestHome(t)
+	t.Setenv("EOS_API_BASE", "https://example.com/v1")
+	t.Setenv("EOS_API_KEY", "secret")
+	t.Setenv("EOS_MODEL", "demo-model")
+	state.SetThinking(true)
+	t.Cleanup(func() { state.SetThinking(true) })
+
+	app := newTestAppModel(t)
+	view := stripANSIAppTest(app.shell.View())
+	if strings.Contains(view, "思考:折叠") || strings.Contains(view, "Thinking:collapsed") {
+		t.Fatalf("idle status should not expose thinking fold state, got %q", view)
+	}
+	if !strings.Contains(view, "思考:开") {
+		t.Fatalf("expected idle status to show thinking switch state, got %q", view)
+	}
+}
+
+func TestThinkingLiveBlockTogglesInContentAndClearsWhenAnswerStarts(t *testing.T) {
+	setTestHome(t)
+	t.Setenv("EOS_API_BASE", "https://example.com/v1")
+	t.Setenv("EOS_API_KEY", "secret")
+	t.Setenv("EOS_MODEL", "demo-model")
+	state.SetThinking(true)
+	t.Cleanup(func() { state.SetThinking(true) })
+
+	app := newTestAppModel(t)
+	app.state.Processing = true
+	app.shell.SetProcessing(true)
+	app.currentAIStartTime = time.Now()
+
+	next, _ := app.Update(ThinkingMsg{Content: "第一步分析\n第二步推理"})
+	updated := next.(*AppModel)
+	view := stripANSIAppTest(updated.shell.View())
+	if !strings.Contains(view, "Thinking") || !strings.Contains(view, "Alt+H") {
+		t.Fatalf("expected current thinking to render in content live block, got %q", view)
+	}
+	if !strings.Contains(view, "第二步推理") {
+		t.Fatalf("expected collapsed thinking summary to be visible, got %q", view)
+	}
+	if strings.Contains(view, "思考:折叠") {
+		t.Fatalf("status bar should not render thinking fold state, got %q", view)
+	}
+
+	historyLen := len(updated.history)
+	updated = sendAppKey(t, updated, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}, Alt: true})
+	view = stripANSIAppTest(updated.shell.View())
+	if !strings.Contains(view, "第一步分析") {
+		t.Fatalf("expected Alt+H to expand current thinking content, got %q", view)
+	}
+	if len(updated.history) != historyLen {
+		t.Fatalf("Alt+H should not append a history message, got %d want %d", len(updated.history), historyLen)
+	}
+
+	updated.handleAIResponse(AIResponseMsg{Type: "delta", Content: "最终回答"})
+	view = stripANSIAppTest(updated.shell.View())
+	if strings.Contains(view, "第一步分析") || strings.Contains(view, "第二步推理") || strings.Contains(view, "Thinking") {
+		t.Fatalf("thinking live block should clear once assistant output starts, got %q", view)
+	}
+	if !strings.Contains(view, "最终回答") {
+		t.Fatalf("expected assistant live output after thinking clears, got %q", view)
 	}
 }
 

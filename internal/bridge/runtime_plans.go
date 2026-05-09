@@ -26,6 +26,17 @@ type planPersistPaths struct {
 	UserSnapshot     string
 }
 
+// PlanSnapshot is a compact, GUI-friendly view of the latest plan and the
+// files where the CLI persists it.
+type PlanSnapshot struct {
+	HasPlan          bool
+	Content          string
+	WorkspaceCurrent string
+	UserLatest       string
+	UserSnapshot     string
+	UpdatedAt        time.Time
+}
+
 func planUserBaseDir() string {
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
 		return filepath.Join(home, ".eos", "plans")
@@ -180,4 +191,31 @@ func (rc *RuntimeCore) persistPlanAt(ts time.Time, plan string) (planPersistPath
 		root = rc.workingRoot()
 	}
 	return persistPlanArtifacts(root, ts, plan)
+}
+
+func (rc *RuntimeCore) PlanSnapshot() PlanSnapshot {
+	if rc == nil {
+		return PlanSnapshot{}
+	}
+	plan := strings.TrimSpace(rc.cm.LastPlan())
+	if plan == "" {
+		plan = strings.TrimSpace(rc.lastPlanStored)
+	}
+	now := time.Now()
+	result := PlanSnapshot{
+		HasPlan:   plan != "",
+		Content:   plan,
+		UpdatedAt: now,
+	}
+	if plan == "" {
+		return result
+	}
+	paths := planPaths(rc.workingRoot(), now, plan)
+	result.WorkspaceCurrent = paths.WorkspaceCurrent
+	result.UserLatest = paths.UserLatest
+	result.UserSnapshot = paths.UserSnapshot
+	if info, err := os.Stat(paths.WorkspaceCurrent); err == nil {
+		result.UpdatedAt = info.ModTime()
+	}
+	return result
 }

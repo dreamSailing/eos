@@ -231,14 +231,17 @@ func (m *AppModel) refreshAILive() {
 		return
 	}
 	if !m.state.Processing {
+		m.shell.ClearLive()
+		m.shell.SetStatusHints(false, false)
 		return
 	}
 	var blocks []string
 	thinking := strings.TrimSpace(m.thinkingLive.String())
-	thinkingShown := state.Thinking() && thinking != ""
-	if state.Thinking() && thinking != "" {
+	thinkingShown := m.state.Thinking && state.Thinking() && thinking != ""
+	if thinkingShown {
 		if m.msgRenderer != nil {
-			blocks = append(blocks, m.msgRenderer.RenderThinking(thinking, time.Since(m.currentAIStartTime), m.thinkingExpanded, nil))
+			hint := i18n.T("status.hint.thinking_expand", m.state.Language)
+			blocks = append(blocks, m.msgRenderer.RenderThinkingWithHint(thinking, time.Since(m.currentAIStartTime), m.thinkingExpanded, nil, hint))
 		} else {
 			blocks = append(blocks, thinking)
 		}
@@ -253,11 +256,25 @@ func (m *AppModel) refreshAILive() {
 		}
 	}
 	if len(blocks) == 0 {
+		m.shell.SetStatusHints(false, false)
 		m.shell.ClearLive()
 		return
 	}
-	m.shell.SetStatusHints(thinkingShown || liveShown, thinkingShown)
+	m.shell.SetStatusHints(liveShown, thinkingShown)
 	m.shell.SetLive(strings.Join(blocks, "\n\n"))
+}
+
+func (m *AppModel) clearCurrentThinking() {
+	if m == nil {
+		return
+	}
+	m.thinkingLive.Reset()
+	m.state.Thinking = false
+	m.thinkingExpanded = false
+	if m.shell != nil {
+		m.shell.SetThinking(false, "")
+		m.shell.SetThinkingExpanded(false)
+	}
 }
 
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
@@ -777,6 +794,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cancelProcessingUI()
 
 	case ThinkingMsg:
+		if !m.state.Processing {
+			return m, nil
+		}
 		m.state.Thinking = true
 		m.thinkingLive.WriteString(msg.Content)
 		m.shell.SetThinking(true, "")
@@ -808,11 +828,14 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.delegatedThisRound = true
 		m.shell.ClearLive()
 		m.aiLive.Reset()
+		m.clearCurrentThinking()
 		m.appendHistory(historyEntry{kind: "agent.task", agentName: msg.AgentName, task: msg.Task, timestamp: time.Now()})
 
 	case AgentFinalMsg:
 		m.delegatedThisRound = true
 		m.shell.ClearLive()
+		m.aiLive.Reset()
+		m.clearCurrentThinking()
 		m.lastAgentFinal = msg.Content
 		m.appendHistory(historyEntry{
 			kind:          "agent.final",
@@ -824,6 +847,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 		m.state.Processing = false
 		m.shell.SetProcessing(false)
+		m.shell.SetStatusHints(false, false)
+		m.activeCancel = nil
+		m.stopRequested = false
 
 	case PromptRequestMsg:
 		if m.confirmView == nil {
@@ -1816,9 +1842,8 @@ func (m *AppModel) sendMessage() tea.Cmd {
 	m.shell.SetProcessing(true)
 	m.delegatedThisRound = false
 	m.aiLive.Reset()
-	m.thinkingLive.Reset()
-	m.state.Thinking = false
-	m.shell.SetThinking(false, "")
+	m.clearCurrentThinking()
+	m.shell.SetStatusHints(false, false)
 	m.shell.ClearLive()
 
 	// 记录AI开始时间
@@ -2046,9 +2071,8 @@ func (m *AppModel) cancelProcessingUI() {
 	m.shell.SetProcessing(false)
 	m.shell.ClearLive()
 	m.aiLive.Reset()
-	m.thinkingLive.Reset()
-	m.state.Thinking = false
-	m.shell.SetThinking(false, "")
+	m.clearCurrentThinking()
+	m.shell.SetStatusHints(false, false)
 	m.toolInflight = make(map[string]toolTrack)
 	m.activeCancel = nil
 	m.stopRequested = false
@@ -2451,16 +2475,14 @@ func (m *AppModel) pasteClipboardImage() tea.Cmd {
 }
 
 func (m *AppModel) toggleThinkingExpand() tea.Cmd {
+	if m == nil || !m.state.Thinking || strings.TrimSpace(m.thinkingLive.String()) == "" {
+		return nil
+	}
 	m.thinkingExpanded = !m.thinkingExpanded
 	if m.shell != nil {
 		m.shell.SetThinkingExpanded(m.thinkingExpanded)
 	}
 	m.refreshAILive()
-	if m.thinkingExpanded {
-		m.appendSystem("思考已展开", "info")
-	} else {
-		m.appendSystem("思考已折叠", "info")
-	}
 	return func() tea.Msg { return nil }
 }
 
@@ -2527,7 +2549,7 @@ func (m *AppModel) handleGlobalKey(msg tea.KeyMsg) tea.Cmd {
 	case "alt+v":
 		return m.pasteClipboardImage()
 	case "alt+h":
-		if m.activeView == "shell" && m.shell != nil && m.shell.GetMode() == shell.ModeAI && state.Thinking() {
+		if m.activeView == "shell" && m.shell != nil && m.shell.GetMode() == shell.ModeAI && m.state.Thinking && strings.TrimSpace(m.thinkingLive.String()) != "" {
 			return m.toggleThinkingExpand()
 		}
 	}
@@ -2585,6 +2607,9 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 	switch msg.Type {
 	case "delta":
 		m.clearPrediction()
+		if strings.TrimSpace(msg.Content) != "" && strings.TrimSpace(m.thinkingLive.String()) != "" {
+			m.clearCurrentThinking()
+		}
 		m.aiLive.WriteString(msg.Content)
 		m.currentAITokens += len(msg.Content) / 4
 		m.refreshAILive()
@@ -2592,9 +2617,8 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 		duration := time.Since(m.currentAIStartTime)
 		m.shell.ClearLive()
 		m.aiLive.Reset()
-		m.thinkingLive.Reset()
-		m.state.Thinking = false
-		m.shell.SetThinking(false, "")
+		m.clearCurrentThinking()
+		m.shell.SetStatusHints(false, false)
 		mainContent := strings.TrimSpace(msg.Content)
 		agentContent := strings.TrimSpace(m.lastAgentFinal)
 		if !(m.delegatedThisRound && mainContent != "" && agentContent != "" && mainContent == agentContent) {
@@ -2610,23 +2634,27 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 		}
 		m.state.Processing = false
 		m.shell.SetProcessing(false)
+		m.activeCancel = nil
+		m.stopRequested = false
 		return m.schedulePrediction(m.shell.GetInputValue())
 	case "error":
 		m.clearPrediction()
 		m.shell.ClearLive()
 		m.aiLive.Reset()
-		m.thinkingLive.Reset()
-		m.state.Thinking = false
-		m.shell.SetThinking(false, "")
+		m.clearCurrentThinking()
+		m.shell.SetStatusHints(false, false)
 		m.appendHistory(historyEntry{kind: "system", content: msg.Content, level: "error"})
 		m.state.Processing = false
 		m.shell.SetProcessing(false)
+		m.activeCancel = nil
+		m.stopRequested = false
 	}
 	return nil
 }
 
 // handleToolCall 处理工具调用
 func (m *AppModel) handleToolCall(msg ToolCallMsg) tea.Cmd {
+	m.clearCurrentThinking()
 	entry := historyEntry{
 		kind:       "tool",
 		toolID:     msg.ID,

@@ -825,10 +825,11 @@ func (m *PlanMessage) Render(s *styles.Styles, width int) string {
 
 // ThinkingMessage 思考过程消息
 type ThinkingMessage struct {
-	Content  string
-	Duration time.Duration
-	Expanded bool
-	Steps    []ThinkingStep
+	Content    string
+	Duration   time.Duration
+	Expanded   bool
+	Steps      []ThinkingStep
+	ToggleHint string
 }
 
 // ThinkingStep 思考步骤
@@ -847,7 +848,11 @@ func (m *ThinkingMessage) Render(s *styles.Styles, width int) string {
 	if m.Expanded {
 		expandIcon = "[-]"
 	}
-	header := s.MsgThinkingHeader.Render(fmt.Sprintf("💭 Thinking · %.1fs ─── %s", m.Duration.Seconds(), expandIcon))
+	headerText := fmt.Sprintf("💭 Thinking · %.1fs ─── %s", m.Duration.Seconds(), expandIcon)
+	if strings.TrimSpace(m.ToggleHint) != "" {
+		headerText = fmt.Sprintf("%s · %s", headerText, strings.TrimSpace(m.ToggleHint))
+	}
+	header := s.MsgThinkingHeader.Render(headerText)
 	result.WriteString(header)
 
 	// 展开时显示内容
@@ -875,9 +880,32 @@ func (m *ThinkingMessage) Render(s *styles.Styles, width int) string {
 				result.WriteString("\n")
 			}
 		}
+	} else {
+		summary := lastNonEmptyLine(m.Content)
+		if summary != "" {
+			result.WriteString("\n")
+			if len(summary) > 160 {
+				summary = summary[:160] + "..."
+			}
+			for _, line := range wrapText(summary, width-6) {
+				result.WriteString("  " + s.TextMuted.Render(line))
+				result.WriteString("\n")
+			}
+		}
 	}
 
 	return s.MsgThinkingBorder.Render(result.String())
+}
+
+func lastNonEmptyLine(text string) string {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 // SystemMessage 系统消息
