@@ -626,6 +626,12 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 			Data:    data,
 		}
 	}
+	tools.OnRemoteRepoContextChanged = func(traceID string, remote tools.RemoteRepoContext) {
+		rc.onRemoteRepoContextChanged(traceID, remote)
+	}
+	tools.OnRemoteRepoContextCleared = func(traceID string, remote tools.RemoteRepoContext) {
+		rc.onRemoteRepoContextCleared(traceID, remote)
+	}
 
 	// 初始化 LSP 管理器（可选功能）
 	rc.lspManager = rc.initLSPManager()

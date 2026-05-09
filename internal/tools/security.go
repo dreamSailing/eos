@@ -5,7 +5,6 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"os"
 	"path/filepath"
@@ -150,6 +149,25 @@ func ClassifyToolDanger(call ToolCall) (category string, level string, summary s
 		return "git-push", "high", "git push", true
 	case ToolGitPull:
 		return "git-pull", "medium", "git pull", true
+	case ToolRemoteRepoConnect:
+		platform, _ := call.Parameters["platform"].(string)
+		return "remote-repo-connect", "medium", "remote repo connect " + strings.TrimSpace(platform), true
+	case ToolRemoteRepoCloneOrOpen:
+		repoURL, _ := call.Parameters["repo_url"].(string)
+		return "remote-repo-open", "high", "remote repo open " + strings.TrimSpace(repoURL), true
+	case ToolRemoteRepoCheckout:
+		branch, _ := call.Parameters["branch"].(string)
+		return "remote-repo-checkout", "medium", "remote repo checkout " + strings.TrimSpace(branch), true
+	case ToolRemoteRepoCommitAndPush:
+		return "remote-repo-push", "high", "remote repo commit and push", true
+	case ToolRemoteRepoCreatePR:
+		return "remote-repo-pr", "high", "remote repo create pr", true
+	case ToolRemoteRepoCreateMR:
+		return "remote-repo-mr", "high", "remote repo create mr", true
+	case ToolRemoteRepoDisconnect:
+		return "remote-repo-disconnect", "medium", "remote repo disconnect", true
+	case ToolRemoteRepoStatus:
+		return "", "low", "remote repo status", false
 	case ToolGitReset:
 		if t, ok := call.Parameters["target"].(string); ok && strings.TrimSpace(t) != "" {
 			return "git-reset", "high", "git reset " + strings.TrimSpace(t), true
@@ -207,7 +225,7 @@ func ClassifyToolDanger(call ToolCall) (category string, level string, summary s
 		if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://localhost") {
 			return "web:fetch", "medium", "non-HTTPS web fetch: " + url, true
 		}
-		return "web:fetch", "low", "web fetch: "+url, false
+		return "web:fetch", "low", "web fetch: " + url, false
 	case ToolSuggestMemory:
 		return "memory:suggest", "low", "suggest memory", false
 	case ToolEnterWorktree:

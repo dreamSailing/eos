@@ -48,6 +48,7 @@ var Commands = []Command{
 	{Name: "/diff", Group: GroupProject, Usage: "/diff [path]", DescriptionZH: "查看待提交 diff 或指定文件差异", DescriptionEN: "Show the pending diff or a file diff"},
 	{Name: "/review", Group: GroupProject, Usage: "/review [path]", DescriptionZH: "汇总改动、诊断和审查入口", DescriptionEN: "Summarize changes, diagnostics, and review entry points"},
 	{Name: "/git", Group: GroupProject, Usage: "/git status|branches|log|show|diff [args...]", DescriptionZH: "查看 Git 状态、分支、日志和差异", DescriptionEN: "Inspect Git status, branches, history, and diff"},
+	{Name: "/remote", Group: GroupProject, Usage: "/remote [status]", DescriptionZH: "查看当前远程仓库上下文与本地隔离目录", DescriptionEN: "Show the current remote repository context and local sandbox path"},
 	{Name: "/compact", Group: GroupProject, DescriptionZH: "压缩当前上下文", DescriptionEN: "Compact the current context"},
 	{Name: "/export", Group: GroupProject, Usage: "/export [markdown|json] [path]", DescriptionZH: "导出当前会话为 Markdown 或 JSON", DescriptionEN: "Export current session as Markdown or JSON"},
 	{Name: "/rename", Group: GroupProject, Usage: "/rename <title>", DescriptionZH: "重命名当前会话", DescriptionEN: "Rename the current session"},
