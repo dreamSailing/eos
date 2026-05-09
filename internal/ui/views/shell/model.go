@@ -411,6 +411,10 @@ func (m *Model) HasPrediction() bool {
 	return m.input.HasPrediction()
 }
 
+func (m *Model) CanAcceptPrediction() bool {
+	return m.input.CanAcceptPrediction()
+}
+
 // AddToHistory 添加到历史
 func (m *Model) AddToHistory(text string) {
 	m.input.AddToHistory(text)
@@ -886,8 +890,12 @@ func (m *Model) HandleKey(msg tea.KeyMsg) (handled bool, cmd tea.Cmd) {
 		// 清空输入或取消
 		m.input.Clear()
 		return true, nil
+	case "tab":
+		if m.input.AcceptPrediction() {
+			return true, nil
+		}
 	case "right":
-		if strings.TrimSpace(m.input.Value()) == "" && m.input.AcceptPrediction() {
+		if m.input.AcceptPrediction() {
 			return true, nil
 		}
 	}

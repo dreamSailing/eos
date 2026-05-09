@@ -71,14 +71,54 @@ func TestAcceptPredictionPromotesPlaceholderToValue(t *testing.T) {
 func TestTypingClearsPrediction(t *testing.T) {
 	m := New()
 	m.SetSize(40, 0)
-	m.SetPrediction("下一句预测")
+	m.SetPrediction("你好吗")
 
 	updated, _ := m.Update(keyRunesMsg('你'))
-	if updated.HasPrediction() {
-		t.Fatalf("expected prediction to clear after typing")
+	if !updated.HasPrediction() {
+		t.Fatalf("expected prediction to remain when typed text matches prefix")
+	}
+	if got := updated.PredictionSuffix(); got != "好吗" {
+		t.Fatalf("suffix=%q, want 好吗", got)
 	}
 	if got := updated.Value(); got != "你" {
 		t.Fatalf("value=%q, want 你", got)
+	}
+}
+
+func TestAcceptPredictionAppendsSuffixForExistingInput(t *testing.T) {
+	m := New()
+	m.SetSize(40, 0)
+	m.SetValue("你")
+	m.SetPrediction("你好吗")
+
+	if !m.CanAcceptPrediction() {
+		t.Fatalf("expected suffix prediction to be acceptable")
+	}
+	if got := m.PredictionSuffix(); got != "好吗" {
+		t.Fatalf("suffix=%q, want 好吗", got)
+	}
+	if !m.AcceptPrediction() {
+		t.Fatalf("expected accept prediction to append suffix")
+	}
+	if got := m.Value(); got != "你好吗" {
+		t.Fatalf("value=%q, want 你好吗", got)
+	}
+	if m.HasPrediction() {
+		t.Fatalf("expected prediction to clear after accept")
+	}
+}
+
+func TestTypingClearsPredictionWhenPrefixNoLongerMatches(t *testing.T) {
+	m := New()
+	m.SetSize(40, 0)
+	m.SetPrediction("你好吗")
+
+	updated, _ := m.Update(keyRunesMsg('他'))
+	if updated.HasPrediction() {
+		t.Fatalf("expected prediction to clear after typing")
+	}
+	if got := updated.Value(); got != "他" {
+		t.Fatalf("value=%q, want 他", got)
 	}
 }
 

@@ -154,9 +154,9 @@ func (rc *RuntimeCore) Summarize(ctx context.Context, text string) (string, erro
 	return res.text, res.err
 }
 
-func (rc *RuntimeCore) PredictNextUserMessage(ctx context.Context) (string, error) {
+func (rc *RuntimeCore) PredictNextUserMessage(ctx context.Context, draft string) (string, error) {
 	ctx = rc.withWorkspaceRoot(ctx)
-	transcript := buildPredictionTranscript(rc.cm)
+	transcript := buildPredictionTranscript(rc.cm, draft)
 	if transcript == "" {
 		return "", nil
 	}
@@ -282,7 +282,7 @@ func (rc *RuntimeCore) DemoteFullWithAISummary(ctx context.Context) {
 	}
 }
 
-func buildPredictionTranscript(cm *session.ContextManager) string {
+func buildPredictionTranscript(cm *session.ContextManager, draft string) string {
 	if cm == nil {
 		return ""
 	}
@@ -322,7 +322,21 @@ func buildPredictionTranscript(cm *session.ContextManager) string {
 	for i, j := 0, len(relevant)-1; i < j; i, j = i+1, j-1 {
 		relevant[i], relevant[j] = relevant[j], relevant[i]
 	}
-	return "请基于以下最近对话，预测用户接下来最可能发送的一句话：\n\n" + strings.Join(relevant, "\n\n")
+	var sb strings.Builder
+	sb.WriteString("请基于以下最近对话，预测用户接下来最可能发送的一句话。")
+	if strings.TrimSpace(draft) == "" {
+		sb.WriteString("当前用户还没有开始输入，请输出一条完整的下一句消息。")
+	} else {
+		sb.WriteString("当前用户已经输入了以下前缀，请保持此前缀不变，并补全成最自然的一整句用户消息。")
+	}
+	sb.WriteString("\n\n")
+	sb.WriteString(strings.Join(relevant, "\n\n"))
+	if strings.TrimSpace(draft) != "" {
+		sb.WriteString("\n\n")
+		sb.WriteString("当前输入前缀: ")
+		sb.WriteString(strings.TrimSpace(draft))
+	}
+	return sb.String()
 }
 
 func cleanPredictionText(text string) string {

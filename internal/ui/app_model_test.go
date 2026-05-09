@@ -198,7 +198,7 @@ func TestHandlePlanStyleSlashShowsCurrentAndSavesWorkspaceSetting(t *testing.T) 
 	}
 }
 
-func TestPredictionUpdateMsgShowsPredictionAndTypingClearsIt(t *testing.T) {
+func TestPredictionUpdateMsgShowsPredictionForMatchingDraft(t *testing.T) {
 	setTestHome(t)
 	t.Setenv("EOS_API_BASE", "https://example.com/v1")
 	t.Setenv("EOS_API_KEY", "secret")
@@ -207,19 +207,67 @@ func TestPredictionUpdateMsgShowsPredictionAndTypingClearsIt(t *testing.T) {
 	app := newTestAppModel(t)
 	app.predictionEnabled = true
 	app.predictionSeq = 1
+	app.shell.SetInputValue("我")
 
-	next, _ := app.Update(PredictionUpdateMsg{Seq: 1, Text: "继续帮我拆一下这个方案"})
+	next, _ := app.Update(PredictionUpdateMsg{Seq: 1, Draft: "我", Text: "我们继续拆一下这个方案"})
 	updated := next.(*AppModel)
 	if !updated.shell.HasPrediction() {
 		t.Fatalf("expected prediction to be visible")
 	}
+	if got := updated.shell.GetInputValue(); got != "我" {
+		t.Fatalf("input=%q, want 我", got)
+	}
 
-	updated = sendAppKey(t, updated, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'我'}})
+	updated = sendAppKey(t, updated, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'们'}})
+	if !updated.shell.HasPrediction() {
+		t.Fatalf("expected prediction to remain when typed input still matches prefix")
+	}
+	if got := updated.shell.GetInputValue(); got != "我们" {
+		t.Fatalf("input=%q, want 我们", got)
+	}
+}
+
+func TestPredictionUpdateMsgIgnoresStaleDraft(t *testing.T) {
+	setTestHome(t)
+	t.Setenv("EOS_API_BASE", "https://example.com/v1")
+	t.Setenv("EOS_API_KEY", "secret")
+	t.Setenv("EOS_MODEL", "demo-model")
+
+	app := newTestAppModel(t)
+	app.predictionEnabled = true
+	app.predictionSeq = 1
+	app.shell.SetInputValue("我")
+
+	next, _ := app.Update(PredictionUpdateMsg{Seq: 1, Draft: "他", Text: "他们继续拆一下这个方案"})
+	updated := next.(*AppModel)
 	if updated.shell.HasPrediction() {
-		t.Fatalf("expected prediction to clear after typing")
+		t.Fatalf("expected stale draft prediction to be ignored")
 	}
 	if got := updated.shell.GetInputValue(); got != "我" {
 		t.Fatalf("input=%q, want 我", got)
+	}
+}
+
+func TestSchedulePredictionCreatesDebouncedRequest(t *testing.T) {
+	setTestHome(t)
+	t.Setenv("EOS_API_BASE", "https://example.com/v1")
+	t.Setenv("EOS_API_KEY", "secret")
+	t.Setenv("EOS_MODEL", "demo-model")
+
+	app := newTestAppModel(t)
+	app.predictionEnabled = true
+
+	cmd := app.schedulePrediction("我想")
+	if cmd == nil {
+		t.Fatalf("expected debounced prediction cmd")
+	}
+	msg := cmd()
+	debounce, ok := msg.(predictionDebounceMsg)
+	if !ok {
+		t.Fatalf("msg=%T, want predictionDebounceMsg", msg)
+	}
+	if debounce.Draft != "我想" {
+		t.Fatalf("draft=%q, want 我想", debounce.Draft)
 	}
 }
 

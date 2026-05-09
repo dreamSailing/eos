@@ -241,8 +241,9 @@ type InvokeDoneMsg struct {
 }
 
 type PredictionUpdateMsg struct {
-	Text string
-	Seq  int
+	Text  string
+	Seq   int
+	Draft string
 }
 
 type ThinkingMsg struct {
