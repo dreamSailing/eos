@@ -1,21 +1,30 @@
 package bridge
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/config"
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
-	"github.com/dreamSailing/vb-coding/internal/mcp"
-	"github.com/dreamSailing/vb-coding/internal/pkg/git"
-	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
-	"github.com/dreamSailing/vb-coding/internal/pkg/workspace"
-	"github.com/dreamSailing/vb-coding/internal/runtime"
-	"github.com/dreamSailing/vb-coding/internal/session"
-	"github.com/dreamSailing/vb-coding/internal/skills"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/config"
+	codectx "github.com/dreamSailing/eos/internal/context"
+	"github.com/dreamSailing/eos/internal/mcp"
+	"github.com/dreamSailing/eos/internal/pkg/git"
+	"github.com/dreamSailing/eos/internal/pkg/settings"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/workspace"
+	einoruntime "github.com/dreamSailing/eos/internal/runtime"
+	"github.com/dreamSailing/eos/internal/session"
+	"github.com/dreamSailing/eos/internal/skills"
+	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/pkg/protocol"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -92,7 +101,7 @@ type RuntimeCore struct {
 	gitMgr       *git.Manager
 	wsMgr        *workspace.Manager
 	settingsMgr  *settings.Manager
-	hooks        runtime.SafetyGate
+	hooks        einoruntime.SafetyGate
 	reqCh        chan any
 	eventsCh     chan Event // 新增：事件通道
 	mu           sync.RWMutex
@@ -103,6 +112,11 @@ type RuntimeCore struct {
 	modelBase    string
 	tokenHistory []TokenRecord
 	tokenMu      sync.RWMutex
+	tokenBudget  *TokenBudget // Token budget management
+
+	foregroundMu      sync.Mutex
+	foregroundTraceID string
+	foregroundCancel  context.CancelFunc
 
 	metricsMu   sync.Mutex
 	inflightReq map[string]*RequestMetric
@@ -117,7 +131,8 @@ type RuntimeCore struct {
 	settings settings.Settings
 
 	// LSP 支持（条件编译）
-	lspManager *lspManagerEntry
+	lspManager      *lspManagerEntry
+	sessionLockPath string
 
 	// Goroutine 追踪
 	wg   sync.WaitGroup
@@ -133,13 +148,23 @@ type RuntimeCore struct {
 	pendingGraph  map[chan graphInvokeRes]struct{}
 	pendingTools  map[chan toolsNodeRes]struct{}
 	pendingSumm   map[chan summarizeRes]struct{}
+	pendingPred   map[chan predictNextRes]struct{}
 
 	panicMu   sync.Mutex
 	panicAt   time.Time
 	panicHits int
 
+	planMu         sync.Mutex
+	lastPlanStored string
+
 	// 流式解析器
 	parser *StreamParser
+
+	// Fast model runtime for summaries
+	fastRT *einoruntime.EinoRuntime
+
+	// hookManager for advanced hooks integration (Stop hooks, etc.)
+	hookManager *einoruntime.HookManager
 }
 
 type PromptResponse struct {
@@ -211,7 +236,7 @@ func (p *StreamParser) Process(delta string) {
 			if idx >= 0 {
 				// 发送标记前的内容
 				if idx > 0 {
-					p.eventsCh <- Event{Type: "delta", Content: fullText[:idx]}
+					p.eventsCh <- bridgeTextDeltaEvent(fullText[:idx])
 				}
 				// 切换模式
 				p.mode = nextMode
@@ -240,7 +265,7 @@ func (p *StreamParser) Process(delta string) {
 				// 发送安全部分
 				safeLen := l - matchLen
 				if safeLen > 0 {
-					p.eventsCh <- Event{Type: "delta", Content: fullText[:safeLen]}
+					p.eventsCh <- bridgeTextDeltaEvent(fullText[:safeLen])
 					p.buffer.Reset()
 					p.buffer.WriteString(fullText[safeLen:])
 				}
@@ -248,7 +273,7 @@ func (p *StreamParser) Process(delta string) {
 				return
 			} else {
 				// 没有匹配，全部发送
-				p.eventsCh <- Event{Type: "delta", Content: fullText}
+				p.eventsCh <- bridgeTextDeltaEvent(fullText)
 				p.buffer.Reset()
 				return
 			}
@@ -274,7 +299,7 @@ func (p *StreamParser) Process(delta string) {
 						taskContent = ""
 					}
 				}
-				p.eventsCh <- Event{Type: "agent.task", RID: name, Content: strings.TrimSpace(taskContent)}
+				p.eventsCh <- bridgeAgentProgressEvent("", name, strings.TrimSpace(taskContent), nil)
 
 				p.mode = "final"
 				p.buffer.Reset()
@@ -293,7 +318,7 @@ func (p *StreamParser) Process(delta string) {
 				// 提取 name 和 content
 				name := p.agentName
 				finalContent := content
-				p.eventsCh <- Event{Type: "agent.final", RID: name, Content: strings.TrimSpace(finalContent)}
+				p.eventsCh <- bridgeAgentCompletedEvent("", name, strings.TrimSpace(finalContent), nil)
 
 				p.mode = "task"
 				p.buffer.Reset()
@@ -332,7 +357,7 @@ func (p *StreamParser) Flush() {
 				taskContent = ""
 			}
 		}
-		p.eventsCh <- Event{Type: "agent.task", RID: name, Content: strings.TrimSpace(taskContent)}
+		p.eventsCh <- bridgeAgentProgressEvent("", name, strings.TrimSpace(taskContent), nil)
 	case "final":
 		// final 结束
 		// 尝试提取 name (agent.final:name content)
@@ -345,10 +370,10 @@ func (p *StreamParser) Flush() {
 		// 我们假设 agent.final 后面直接是内容，或者 name space content
 		// 如果 name 已经设置，且 content 看起来不像以 name 开头...
 
-		p.eventsCh <- Event{Type: "agent.final", RID: name, Content: strings.TrimSpace(finalContent)}
+		p.eventsCh <- bridgeAgentCompletedEvent("", name, strings.TrimSpace(finalContent), nil)
 	default:
 		// normal
-		p.eventsCh <- Event{Type: "delta", Content: content}
+		p.eventsCh <- bridgeTextDeltaEvent(content)
 	}
 
 	p.buffer.Reset()
@@ -363,23 +388,26 @@ type TokenRecord struct {
 	Input     int
 	Reply     int
 	Total     int
+	CostUSD   float64
 }
 
 // TokenStats Token 累计统计
 type TokenStats struct {
-	Rounds int
-	Input  int
-	Reply  int
-	Total  int
+	Rounds       int
+	Input        int
+	Reply        int
+	Total        int
+	TotalCostUSD float64
 }
 
 // ModelTokenStats 单个模型的 Token 统计
 type ModelTokenStats struct {
-	Model  string
-	Rounds int
-	Input  int
-	Reply  int
-	Total  int
+	Model        string
+	Rounds       int
+	Input        int
+	Reply        int
+	Total        int
+	TotalCostUSD float64
 }
 
 type graphInvokeReq struct {
@@ -418,6 +446,17 @@ type summarizeRes struct {
 	err  error
 }
 
+type predictNextReq struct {
+	ctx   context.Context
+	text  string
+	resCh chan predictNextRes
+}
+
+type predictNextRes struct {
+	text string
+	err  error
+}
+
 type finalizeTaskReq struct {
 	traceID       string
 	userText      string
@@ -435,6 +474,11 @@ type hookEventReq struct {
 
 type reloadReq struct {
 	resCh chan error
+}
+
+type cancelForegroundReq struct {
+	traceID string
+	resCh   chan bool
 }
 
 // NewRuntimeCore 创建运行时核心实例
@@ -477,6 +521,7 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 		pendingGraph:             make(map[chan graphInvokeRes]struct{}),
 		pendingTools:             make(map[chan toolsNodeRes]struct{}),
 		pendingSumm:              make(map[chan summarizeRes]struct{}),
+		pendingPred:              make(map[chan predictNextRes]struct{}),
 		modelName:                modelName,
 		modelBase:                modelBase,
 	}
@@ -486,7 +531,7 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	tm.SetSkillManager(skillManager)
 	tm.SetMCPManager(rc.mcpMgr)
 
-	hooks := runtime.SafetyGate{
+	hooks := einoruntime.SafetyGate{
 		Classify: func(call tools.ToolCall) (string, string, string, bool) {
 			return tools.ClassifyToolDanger(call)
 		},
@@ -511,6 +556,36 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	rc.hooks = hooks
 	rc.securityMgr.SetHooks(hooks)
 
+	// Fix 1: Inject HookRunner so pre/post tool use hooks actually fire
+	tm.SetHookRunner(adaptSafetyGateAsHookRunner(hooks))
+
+	// Fix 3 & Fix R7: Wire reactive compaction callback
+	// Note: removed duplicate SnipToolOutputs call since reactive_compact_suggested
+	// flag already triggers SnipToolOutputs in the tool execution path
+	tm.OnReactiveCompact = func() {
+		slog.Info("runtime.reactive_compact.triggered", "component", utils.ComponentSystem)
+		// Trigger micro-compact to reduce large tool outputs before they accumulate
+		if rc.cm != nil {
+			rc.cm.MicroCompact()
+		}
+	}
+
+	// Fix 4: Wire ask-tool-approval callback
+	tm.AskToolApproval = func(toolName string) bool {
+		return rc.promptPermission(context.Background(), "tool_approval", "Allow tool: "+toolName) == "allow"
+	}
+
+	// Fix R5: Create and inject ToolResultBudget
+	tm.SetResultBudget(tools.NewToolResultBudget(rc.workingRoot()))
+
+	// Fix R4: Connect snip checker to context manager
+	if cm != nil {
+		cm.SetSnipChecker(
+			tools.IsMessageSnipped,
+			tools.GetSnipReason,
+		)
+	}
+
 	tools.SafetyGatePrompt = hooks.Prompt
 	tools.SafetyGateSessionAllowed = hooks.SessionAllowed
 	tools.SafetyGateAllowSession = hooks.AllowSession
@@ -518,6 +593,7 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	tools.SetPendingDiff = hooks.SetPendingDiff
 	tools.ClearReviewText = hooks.ClearReviewText
 	tools.UserConfirmPrompt = rc.userConfirmPrompt
+	tools.AskUserQuestionPrompt = rc.askUserQuestionPrompt
 	tools.OnToolCall = func(id string, toolName string) {
 		rc.RecordToolCall(id, toolName)
 	}
@@ -525,13 +601,125 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 		rc.RecordToolResult(id, toolName, success)
 	}
 
+	// Wire plan mode tool callbacks
+	tools.OnModeChange = func(oldMode, newMode string) {
+		if newMode == "plan" {
+			rc.securityMgr.SwitchToPlanMode()
+		} else {
+			rc.securityMgr.RestorePreviousMode()
+		}
+		rc.eventsCh <- Event{
+			Type:    string(protocol.EventTypeModeChanged),
+			Content: newMode,
+			Data:    map[string]any{"old_mode": oldMode, "new_mode": newMode},
+		}
+	}
+	tools.OnGetCurrentMode = func() string {
+		return rc.securityMgr.ExecutionMode()
+	}
+	tools.OnGetPreviousMode = func() string {
+		return rc.securityMgr.PreviousMode()
+	}
+
+	// Phase 1 集成: Wire AgentTool executor callbacks
+	tools.OnAgentToolEvent = func(eventType string, data map[string]interface{}) {
+		rc.eventsCh <- Event{
+			Type:    "agent." + eventType,
+			Content: eventType,
+			Data:    data,
+		}
+	}
+	tools.OnRemoteRepoContextChanged = func(traceID string, remote tools.RemoteRepoContext) {
+		rc.onRemoteRepoContextChanged(traceID, remote)
+	}
+	tools.OnRemoteRepoContextCleared = func(traceID string, remote tools.RemoteRepoContext) {
+		rc.onRemoteRepoContextCleared(traceID, remote)
+	}
+
 	// 初始化 LSP 管理器（可选功能）
 	rc.lspManager = rc.initLSPManager()
 
+	// Initialize hook manager for advanced hooks (stop hooks, session hooks, etc.)
+
+	rc.hookManager = einoruntime.NewHookManager(tm)
+
+	// Fix R3: Load hook configurations from default locations
+	if err := rc.hookManager.LoadFromDefaultLocations(context.Background()); err != nil {
+		slog.Warn("runtime.hooks.load_failed", "component", utils.ComponentSystem, "error", err.Error())
+	}
+
+	// Fix 4.3: Wire PostCompact hook - fires after context compression
+	if cm != nil && rc.hookManager != nil {
+		hm := rc.hookManager
+		cm.SetOnPostCompact(func(trigger string, originalTokens, savedTokens int) {
+			hm.PostCompact(context.Background(), trigger, originalTokens, savedTokens)
+		})
+	}
+
+	// Fix 4.2: Instantiate SessionMemoryManager and inject into ContextManager
+	if cm != nil {
+		smMgr := session.NewSessionMemoryManager()
+		cm.SetSessionMemoryManager(smMgr)
+	}
+
 	// 创建会话锁，用于检测非正常退出
-	AcquireSessionLock()
+	rc.syncSessionLock()
 
 	rc.wg.Add(1)
 	go rc.loop()
 	return rc
+}
+
+func (rc *RuntimeCore) HandlePlanUpdate(plan string) {
+	if rc == nil {
+		return
+	}
+	trimmed := strings.TrimSpace(plan)
+	if trimmed == "" {
+		return
+	}
+	rc.planMu.Lock()
+	if rc.lastPlanStored == trimmed {
+		rc.planMu.Unlock()
+		return
+	}
+	rc.lastPlanStored = trimmed
+	rc.planMu.Unlock()
+	if err := rc.PersistPlan(trimmed); err != nil {
+		slog.Warn("runtime.plan.persist.error", "component", utils.ComponentSystem, "error", err)
+	}
+}
+
+// SetModelOverride overrides the model used by the runtime (from --model CLI flag)
+func (rc *RuntimeCore) SetModelOverride(model, base string) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	if model != "" {
+		rc.modelName = model
+	}
+	if base != "" {
+		rc.modelBase = base
+	}
+}
+
+// SetMaxTurns sets the maximum number of turns (from --max-turns CLI flag)
+func (rc *RuntimeCore) SetMaxTurns(n int) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	if n > 0 {
+		rc.settings.MaxTurnTokens = n // reuse field as max-turns indicator
+	}
+}
+
+// SetToolPermissions configures fine-grained tool permissions (from --allowed-tools/--disallowed-tools CLI flags)
+func (rc *RuntimeCore) SetToolPermissions(allowed, denied []string) {
+	rc.securityMgr.LoadPermissions(&settings.Permissions{
+		AllowedTools: allowed,
+		DeniedTools:  denied,
+	})
+}
+
+// SetSkipPermissions enables permission bypass mode (from --dangerously-skip-permissions CLI flag)
+func (rc *RuntimeCore) SetSkipPermissions(skip bool) {
+	rc.securityMgr.SetSkipPermissions(skip)
 }

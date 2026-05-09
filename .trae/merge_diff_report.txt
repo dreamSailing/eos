@@ -1,0 +1,2827 @@
+===== FILE: .trae/documents/eos-daemon-gateway-plan.md =====
+diff --git a/.trae/documents/eos-daemon-gateway-plan.md b/.trae/documents/eos-daemon-gateway-plan.md
+new file mode 100644
+index 0000000..a7f0bab
+--- /dev/null
++++ b/.trae/documents/eos-daemon-gateway-plan.md
+@@ -0,0 +1,580 @@
++## Summary
++
++为 EOS 增加“后台常驻 + 统一 HTTP 网关 + Web 控制台 + 定时任务”能力，使 `eos` 可以以守护进程方式长期运行，在默认工作区中提供非交互式服务，并通过网页操作后台 EOS，适合作为 MCP Server 的长期宿主。
++
++本计划基于已确认方向：
++
++- 使用显式后台入口，而不是隐式改写所有现有命令行为
++- 统一 HTTP 网关同时承载后台管理 API、网页控制台，以及对外的 MCP 网络入口
++- 后台模式默认工作区使用 `internal/config/workspaces.go` 中的默认工作区
++- 第一版定时任务同时支持两类目标：
++  - 触发 EOS 会话/工具调用
++  - 执行任意 Shell 命令
++- 服务端以非交互方式运行，不依赖 TUI
++
++对于用户跳过未确认项，本计划采用保守默认决策：
++
++- HTTP 网关默认只监听 `127.0.0.1`
++- 第一版不做登录系统，先不引入复杂认证；后续可预留静态 token 扩展点
++- Web 控制台第一版聚焦运维与控制，不做完整配置中心
++- 调度底层使用标准 5 段 cron 表达式；网页可后续再补“简单模式”编辑
++
++## Current State Analysis
++
++### 现有可复用能力
++
++- `internal/cli/root.go`
++  - 当前根命令已注册 `bridge`、`mcp`、`serve`、`update`
++  - 可以自然扩展新的 `daemon` 子命令而不破坏现有 CLI
++
++- `internal/cli/mcp.go`
++  - 已有 `eos mcp serve`
++  - 已支持 `stdio` 与 `sse`
++  - 已要求传入 `--workspace`
++  - 说明 EOS 已能前台作为 MCP Server 运行
++
++- `internal/mcp/server.go`
++  - 标准 MCP Server 已存在
++  - 支持 `stdio` 和 `sse`
++  - `ServerOptions` 已包含 `ListenAddr`、`BaseURL`、`DefaultWorkspacePath`
++  - 适合作为后台守护进程中“对外 MCP 网络能力”的核心复用点
++
++- `internal/mcp/server_transport_sse.go`
++  - 已实现 HTTP SSE 监听
++  - 当前仅负责 MCP SSE server 生命周期，不包含后台管理 API 或 Web 页面
++
++- `internal/mcp/streamable_http.go`
++  - 已有 Streamable HTTP 客户端
++  - 说明仓库已经具备“HTTP 化 MCP 交互”相关经验，可为后续网关转发或自检复用
++
++- `internal/serve/server.go`
++  - 已有会话、审批、询问、任务、结果缓存、事件通知、工具执行等完整服务端模型
++  - 会话摘要、待审批、待提问、任务状态等都已经具备结构化表示
++  - 很适合作为 Web 控制台与后台 API 的领域模型参考
++
++- `internal/serve/session_store.go`
++  - 已支持 session 状态持久化与恢复
++  - 当前默认落盘位置与工作区绑定：`<workspace>/.eos/serve/sessions.json`
++  - 说明守护进程具备“跨重启恢复状态”的实现基础
++
++- `internal/config/workspaces.go`
++  - 已提供 `DefaultWorkspacePath()`
++  - 已提供 `EnsureDefaultWorkspaceDir()`
++  - 已明确默认工作区为 `~/.eos/workspace`
++  - 满足“后台启动时工作区为默认工作区”的基础能力
++
++- `internal/config/config.go`
++  - 已有全局配置读写能力
++  - 已支持 MCP 客户端配置、工作区状态等持久化
++  - 适合作为守护进程状态文件、网关配置、调度配置的统一配置入口
++
++- `internal/tools/bg/manager.go`
++  - 已实现后台 Shell 任务管理器
++  - 已支持 `Start/List/Info/Tail/Kill/CleanupFinished`
++  - 可直接复用到“守护进程中的命令型定时任务”和任务日志查看
++
++- `internal/tools/bg_tools.go`
++  - 已将后台任务管理暴露为结构化工具
++  - 可为后台 API 与网页控制台提供一致的行为参考
++
++- `internal/toolapi/interfaces.go` 与 `internal/toolapi/impl/tasks.go`
++  - 已有统一任务视图抽象 `Tasks`
++  - 当前可聚合 shell task、todo、agent task
++  - 可作为 Web 控制台任务面板的底层读取接口
++
++### 现有缺口
++
++- 缺少守护进程入口
++  - 当前没有 `eos daemon start/status/stop`
++  - 现有 `eos mcp serve` 和 `eos serve` 都是前台阻塞运行
++
++- 缺少统一 HTTP 网关
++  - 当前仓库没有通用 `http.ServeMux` / `HandleFunc` / 静态文件服务实现
++  - 唯一现成 HTTP 服务是 MCP SSE transport，不含后台 API、网页资源与统一路由
++
++- 缺少 Web 前端资源
++  - 当前仓库没有前端目录、HTML 模板、静态 JS/CSS 或嵌入式静态站点
++  - 需要从零增加最小控制台页面
++
++- 缺少守护进程状态持久化
++  - session 可持久化，但进程自身 PID、监听地址、运行模式、定时任务定义等尚无专门状态模型
++
++- 缺少定时任务调度器
++  - 当前只有后台任务执行器，没有 cron 调度、任务定义、启停、持久化和重载逻辑
++
++- 缺少“后台默认工作区”自动化逻辑
++  - 目前 `internal/cli/mcp.go` 强制要求 `--workspace`
++  - 尚未提供 daemon 模式自动回落到 `DefaultWorkspacePath()`
++
++- 缺少面向网页的后台管理 API
++  - 当前的对外接口是 MCP 协议与私有 `serve` JSON-RPC
++  - 没有适合浏览器直接调用的 REST/JSON API
++
++## Proposed Changes
++
++### 1. 新增守护进程命令与状态管理
++
++涉及文件：
++
++- 新增 `internal/cli/daemon.go`
++- 更新 `internal/cli/root.go`
++- 新增 `internal/daemon/manager.go`
++- 新增 `internal/daemon/state.go`
++- 新增 `internal/daemon/lock.go`
++
++变更目标：
++
++- 提供显式后台入口：
++  - `eos daemon start`
++  - `eos daemon status`
++  - `eos daemon stop`
++  - 可选 `eos daemon restart`
++- 让 EOS 后台进程成为统一宿主，长期运行 MCP 网关与定时调度器
++
++实现方式：
++
++- `internal/cli/daemon.go`
++  - 新增 `daemon` 根子命令
++  - `start` 默认使用 `config.DefaultWorkspacePath()`
++  - 如果默认工作区不存在，调用后续实现中的确保逻辑创建
++  - 参数建议包含：
++    - `--workspace`：可选，省略时回落默认工作区
++    - `--listen`：HTTP 网关监听地址，默认 `127.0.0.1:8765` 或独立后台端口
++    - `--mcp-base-url`：可选，对外显示/反代场景使用
++    - `--session-store`
++    - `--state-file`
++    - `--schedule-file`
++    - `--allowed-tools`
++    - `--sandbox-mode`
++    - `--policy`
++  - `status` / `stop` 通过状态文件和 PID/锁文件识别后台实例
++
++- `internal/daemon/manager.go`
++  - 负责后台实例启动、停止、探活、状态读取
++  - 统一封装“前台初始化 -> 后台化/子进程托管 -> 写状态文件”
++  - Linux 下优先采用 `exec.Command` 派生子进程并脱离当前命令会话的方式；避免依赖 systemd
++
++- `internal/daemon/state.go`
++  - 定义守护进程状态文件结构，例如：
++    - `pid`
++    - `started_at`
++    - `listen_addr`
++    - `workspace`
++    - `session_store_path`
++    - `schedule_store_path`
++    - `mcp_sse_path`
++    - `web_base_url`
++  - 落盘位置建议放在：
++    - `~/.eos/daemon/state.json`
++    - 或 `<workspace>/.eos/daemon/state.json`
++  - 本计划采用“全局守护进程 + 默认工作区宿主”的思路，优先使用全局状态目录 `~/.eos/daemon`
++
++- `internal/daemon/lock.go`
++  - 用文件锁避免重复启动多个后台守护进程
++
++决策：
++
++- 第一版按“单实例守护进程”设计
++- 单实例后台只承载一个默认工作区
++- 如需多工作区守护进程，后续再扩展多实例或多 tenant 模型
++
++### 2. 新增统一 HTTP 网关宿主
++
++涉及文件：
++
++- 新增 `internal/gateway/server.go`
++- 新增 `internal/gateway/routes.go`
++- 新增 `internal/gateway/types.go`
++- 新增 `internal/gateway/context.go`
++- 视复用情况更新 `internal/mcp/server.go`
++- 视复用情况更新 `internal/mcp/server_transport_sse.go`
++
++变更目标：
++
++- 提供一个统一的 HTTP 服务器，挂载：
++  - Web 控制台页面
++  - 后台管理 API
++  - MCP SSE 接入点
++- 避免再让守护进程同时维护多个彼此独立的 HTTP 监听器
++
++实现方式：
++
++- `internal/gateway/server.go`
++  - 基于 `http.Server` + `http.ServeMux`
++  - 统一组装所有路由
++  - 负责生命周期管理、关闭、健康检查
++
++- `internal/gateway/routes.go`
++  - 规划建议路由：
++    - `GET /healthz`
++    - `GET /api/status`
++    - `GET /api/sessions`
++    - `GET /api/sessions/{id}`
++    - `POST /api/approvals/{id}/resolve`
++    - `POST /api/inquiries/{id}/resolve`
++    - `GET /api/tasks`
++    - `GET /api/tasks/{id}/logs`
++    - `POST /api/tasks/{id}/kill`
++    - `GET /api/schedules`
++    - `POST /api/schedules`
++    - `PUT /api/schedules/{id}`
++    - `DELETE /api/schedules/{id}`
++    - `POST /api/schedules/{id}/trigger`
++    - `GET /` 与静态资源路由
++    - `/mcp/sse` 或 `/mcp` 作为 MCP HTTP 入口
++
++- `internal/gateway/context.go`
++  - 封装共享依赖：
++    - MCP Server
++    - 会话读写服务
++    - 守护进程状态读取器
++    - 调度器
++    - 后台任务管理器
++
++与现有 MCP 的关系：
++
++- 网关不重写 MCP 核心逻辑
++- 复用 `internal/mcp.Server`
++- 对于 HTTP MCP 入口，优先采用将 `internal/mcp/server_transport_sse.go` 调整为“可挂载 handler”模式
++- 若当前 `mcp-go` SSE server 只能自带启动整个 HTTP server，则在 `internal/mcp` 增加一个“返回 handler/attach mux”包装层，让网关统一监听
++
++### 3. 让后台模式默认工作区自动生效
++
++涉及文件：
++
++- 更新 `internal/cli/daemon.go`
++- 可能更新 `internal/cli/mcp.go`
++- 更新 `internal/config/workspaces.go`
++
++变更目标：
++
++- 后台启动时，若未显式指定工作区，则自动使用默认工作区
++- 守护进程启动前自动确保默认工作区存在
++
++实现方式：
++
++- `daemon start` 中直接调用：
++  - `config.DefaultWorkspacePath()`
++  - `config.EnsureDefaultWorkspaceDir()`
++- 启动守护进程时将该路径注入：
++  - MCP Server `DefaultWorkspacePath`
++  - 会话存储默认路径
++  - 调度任务默认工作目录
++
++兼容性决策：
++
++- 不强改现有 `eos mcp serve --workspace required` 行为
++- “默认工作区自动生效”仅先用于新的 `daemon start`
++- 后续如需要，再决定是否让 `eos mcp serve` 也支持省略 `--workspace`
++
++### 4. 为守护进程抽取后台领域服务
++
++涉及文件：
++
++- 新增 `internal/daemon/service.go`
++- 可能新增 `internal/daemon/runtime.go`
++- 复用：
++  - `internal/mcp/server.go`
++  - `internal/serve/server.go`
++  - `internal/toolapi/impl/services.go`
++  - `internal/tools/bg/manager.go`
++
++变更目标：
++
++- 把守护进程中的几个长期运行组件组合在一起：
++  - MCP Server
++  - HTTP 网关
++  - 定时调度器
++  - 统一状态存储
++
++实现方式：
++
++- 定义 `DaemonService` 或等价结构，持有：
++  - `toolapi.Services`
++  - `*mcp.Server`
++  - `*gateway.Server`
++  - `*scheduler.Service`
++  - 守护进程状态仓库
++- 提供：
++  - `Start(ctx)`
++  - `Shutdown(ctx)`
++  - `Status()`
++
++说明：
++
++- 这里不建议直接复用 `internal/serve.Server` 作为外部 API，因为它是按行 JSON-RPC over stdio
++- 但其会话/审批/任务/预览模型需要复用或参考，以便后台 API 与 Web 展示的结构稳定
++
++### 5. 新增定时任务调度器
++
++涉及文件：
++
++- 新增 `internal/scheduler/service.go`
++- 新增 `internal/scheduler/store.go`
++- 新增 `internal/scheduler/types.go`
++- 新增 `internal/scheduler/cron.go`
++- 新增 `internal/scheduler/runner_eos.go`
++- 新增 `internal/scheduler/runner_shell.go`
++
++变更目标：
++
++- 后台模式支持持久化、可管理、可触发的定时任务
++- 同时覆盖：
++  - EOS 会话/工具调用类任务
++  - Shell 命令类任务
++
++实现方式：
++
++- `types.go`
++  - 定义调度任务实体：
++    - `id`
++    - `name`
++    - `enabled`
++    - `cron`
++    - `timezone`（第一版可先固定本地时区，字段保留）
++    - `kind`：`eos_call` / `shell`
++    - `workspace`
++    - `payload`
++    - `last_run_at`
++    - `next_run_at`
++    - `last_status`
++    - `last_error`
++
++- `store.go`
++  - JSON 文件持久化
++  - 推荐路径：`~/.eos/daemon/schedules.json`
++
++- `cron.go`
++  - 封装 cron 表达式解析与下一次触发时间计算
++  - 若仓库中尚无 cron 依赖，则新增轻量依赖，例如标准 cron 解析库
++
++- `service.go`
++  - 后台启动时加载所有任务
++  - 维护调度循环
++  - 提供 `List/Create/Update/Delete/Enable/Disable/TriggerNow`
++
++- `runner_eos.go`
++  - 负责创建或复用后台 EOS session，并发起指定工具调用
++  - 复用 `toolapi.Executor` 和/或 `internal/mcp.Server` 的会话能力
++  - 第一版建议直接通过 `toolapi.Executor` 执行单个或一组结构化工具调用，避免“自己通过 HTTP 再调自己”造成环路
++
++- `runner_shell.go`
++  - 复用 `internal/tools/bg/manager.go`
++  - 将 shell 定时任务作为后台任务启动
++  - 保留日志 tail 能力供网页查看
++
++关键决策：
++
++- EOS 调度任务不依赖浏览器或交互输入
++- 如果任务触发审批/提问，第一版行为为：
++  - 记录为 pending
++  - 在网页控制台展示需要人工处理
++  - 不自动跳过、不自动放行
++
++### 6. 新增面向浏览器的后台管理 API
++
++涉及文件：
++
++- 新增 `internal/gateway/api_status.go`
++- 新增 `internal/gateway/api_sessions.go`
++- 新增 `internal/gateway/api_tasks.go`
++- 新增 `internal/gateway/api_schedules.go`
++- 新增 `internal/gateway/api_prompts.go`
++
++变更目标：
++
++- 为 Web 控制台提供稳定 JSON API
++- 同时也方便未来脚本或其他系统通过 HTTP 管理后台 EOS
++
++接口范围：
++
++- `status`
++  - 返回守护进程状态、监听地址、默认工作区、MCP 入口信息、版本
++
++- `sessions`
++  - 列出 session
++  - 查看单个 session
++  - 返回状态、标题、预览、待审批、待提问、运行中请求等摘要
++  - 数据模型尽量复用 `internal/serve/server.go` 中 `sessionInfoLocked` 的语义
++
++- `prompts`
++  - 列出待审批、待提问
++  - 提交审批决定
++  - 提交问题答案
++
++- `tasks`
++  - 列表
++  - 查询日志 tail
++  - 杀掉 shell 后台任务
++  - 复用 `toolapi.Tasks()` 与 `bg.Manager`
++
++- `schedules`
++  - 增删改查
++  - 启停
++  - 立即执行
++  - 查看最近执行结果
++
++说明：
++
++- 第一版不做复杂 REST 版本治理，统一走 JSON
++- 错误结构保持简洁，优先满足网页控制台调用
++
++### 7. 新增 Web 控制台
++
++涉及文件：
++
++- 新增 `internal/gateway/web.go`
++- 新增 `internal/gateway/web_embed.go`
++- 新增目录 `internal/gateway/web/`
++  - `index.html`
++  - `app.css`
++  - `app.js`
++
++变更目标：
++
++- 提供一个轻量网页，用于通过网关操作后台 EOS
++- 第一版覆盖核心运维能力，而不是完整系统设置
++
++页面范围：
++
++- 首页仪表盘
++  - 守护进程状态
++  - 默认工作区
++  - MCP 入口地址
++  - 待处理审批/提问数量
++  - 定时任务数量与最近执行概况
++
++- Session 面板
++  - 列表
++  - 基本详情
++  - 待审批/待提问可视化
++
++- 任务面板
++  - 当前后台任务列表
++  - 查看 shell 日志 tail
++  - 终止可终止任务
++
++- 定时任务面板
++  - 新增/编辑/删除/启停
++  - 支持两种任务类型：
++    - EOS 调用
++    - Shell 命令
++
++- 提示处理面板
++  - 审批 allow once / allow session / deny
++  - 询问回答 option/text
++
++实现方式：
++
++- 采用 Go `embed` 嵌入静态页面
++- 页面尽量原生 HTML/CSS/JS，避免额外前端构建链
++- 所有操作通过网关 JSON API 完成
++
++约束：
++
++- 第一版不引入 SPA 框架和 npm 构建
++- 目标是“可直接内置到 Go 二进制并随守护进程分发”
++
++### 8. 将 MCP HTTP 能力挂到统一网关下
++
++涉及文件：
++
++- 更新 `internal/mcp/server_transport_sse.go`
++- 可能新增 `internal/mcp/server_transport_http.go`
++- 更新 `internal/gateway/routes.go`
++
++变更目标：
++
++- 通过统一 HTTP 网关对外提供 MCP 服务
++- 让网页控制台和 MCP 客户端共用同一后台实例与监听端口
++
++实现方式：
++
++- 将现有 `RunSSE(ctx)` 拆成两层：
++  - 一层负责创建 MCP 的 HTTP handler/transport 适配器
++  - 一层负责独立启动 HTTP server（保留给前台 `eos mcp serve`）
++- 守护进程模式下由 `gateway.Server` 统一挂载 MCP 路由
++- 前台 `eos mcp serve --transport sse` 继续保持原有行为，不被破坏
++
++结果：
++
++- `eos mcp serve --transport sse` 继续可独立使用
++- `eos daemon start` 则通过统一网关暴露：
++  - Web 控制台
++  - 后台管理 API
++  - MCP SSE 入口
++
++### 9. 补充守护进程与网关的测试
++
++涉及文件：
++
++- 新增 `internal/daemon/manager_test.go`
++- 新增 `internal/daemon/state_test.go`
++- 新增 `internal/gateway/server_test.go`
++- 新增 `internal/gateway/api_schedules_test.go`
++- 新增 `internal/gateway/api_sessions_test.go`
++- 新增 `internal/scheduler/service_test.go`
++- 新增 `internal/scheduler/store_test.go`
++- 视需要调整：
++  - `internal/mcp/server_test.go`
++  - `internal/serve/server_test.go`
++
++测试范围：
++
++- 守护进程状态文件读写与单实例锁
++- `daemon start/status/stop` 的最小行为
++- 默认工作区自动回落与自动创建
++- HTTP 网关 `healthz` / `status`
++- Web 静态资源可访问
++- MCP 路由成功挂载在统一网关下
++- 定时任务 CRUD、持久化、重载
++- cron 触发 EOS 调用任务
++- cron 触发 shell 命令任务
++- 待审批/待提问在 API 中可见并可闭环处理
++
++## Assumptions & Decisions
++
++- 决策：新增 `eos daemon`，而不是让现有 `eos mcp serve` 默认后台化
++- 决策：后台模式默认工作区使用 `config.DefaultWorkspacePath()`
++- 决策：后台模式优先服务 MCP 使用场景，因此守护进程只承载一个默认工作区
++- 决策：统一 HTTP 网关承载 Web、管理 API 与 MCP 网络入口
++- 决策：第一版网页控制台聚焦“运行态控制”，不做完整配置编辑中心
++- 决策：定时任务底层使用 cron 表达式存储
++- 决策：Shell 定时任务通过现有 `bg.Manager` 执行
++- 决策：EOS 定时任务通过内部执行器触发，不通过 HTTP 自调自身
++- 决策：审批/询问在后台模式下仍保持人工闭环，不自动通过
++- 决策：第一版默认仅监听 `127.0.0.1`，不实现登录系统
++- 假设：`mcp-go` 当前 SSE server 能拆分或包装为可挂载到现有 `http.ServeMux` 的形式；若不能，则在 `internal/mcp` 增加适配层
++- 假设：仓库可以接受新增轻量 cron 解析依赖；若不希望加依赖，则改为内置最小 cron 解析实现
++- 假设：Linux 沙箱/用户环境下允许通过普通子进程实现后台化，不要求 systemd 集成
++
++## Verification Steps
++
++实现后按以下顺序验证：
++
++1. `go test ./internal/daemon/... ./internal/gateway/... ./internal/scheduler/...`
++2. `go test ./internal/mcp/... ./internal/serve/... ./internal/toolapi/...`
++3. `go test ./...`
++4. `go build ./...`
++5. 手工验证守护进程：
++   - `eos daemon start`
++   - 确认默认工作区自动生效
++   - `eos daemon status`
++   - `eos daemon stop`
++6. 手工验证统一网关：
++   - 打开 `http://127.0.0.1:<port>/`
++   - 确认首页能显示后台状态、工作区、MCP 入口
++   - `GET /healthz` 返回正常
++7. 手工验证 MCP：
++   - 用 MCP 客户端连接统一网关暴露的 SSE 入口
++   - 执行 `initialize`
++   - 列出工具
++   - 调用只读工具
++8. 手工验证审批/提问：
++   - 触发高风险工具调用
++   - 确认网页/API 中可见 pending approval
++   - 在网页上完成 resolve 后调用继续推进
++9. 手工验证定时任务：
++   - 新建一个 shell cron 任务
++   - 新建一个 EOS cron 任务
++   - 校验任务持久化、重启恢复、立即触发、最近结果展示
+
+
+===== FILE: go.mod =====
+diff --git a/go.mod b/go.mod
+index db1dc40..7e88500 100644
+--- a/go.mod
++++ b/go.mod
+@@ -128,6 +128,7 @@ require (
+ 	github.com/pjbgf/sha1cd v0.3.0 // indirect
+ 	github.com/pkg/errors v0.9.1 // indirect
+ 	github.com/rivo/uniseg v0.4.7 // indirect
++	github.com/robfig/cron/v3 v3.0.1 // indirect
+ 	github.com/sagikazarmark/locafero v0.4.0 // indirect
+ 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
+ 	github.com/sahilm/fuzzy v0.1.1 // indirect
+
+
+===== FILE: go.sum =====
+diff --git a/go.sum b/go.sum
+index 668be83..d581540 100644
+--- a/go.sum
++++ b/go.sum
+@@ -352,6 +352,8 @@ github.com/rivo/uniseg v0.1.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJ
+ github.com/rivo/uniseg v0.2.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=
+ github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
+ github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
++github.com/robfig/cron/v3 v3.0.1 h1:WdRxkvbJztn8LMz/QEvLN5sBU+xKpSqwwUO1Pjr4qDs=
++github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzGIFLtro=
+ github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
+ github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
+ github.com/rollbar/rollbar-go v1.0.2/go.mod h1:AcFs5f0I+c71bpHlXNNDbOWJiKwjFDtISeXco0L5PKQ=
+
+
+===== FILE: internal/cli/daemon.go =====
+diff --git a/internal/cli/daemon.go b/internal/cli/daemon.go
+new file mode 100644
+index 0000000..42e7a4f
+--- /dev/null
++++ b/internal/cli/daemon.go
+@@ -0,0 +1,127 @@
++package cli
++
++import (
++	"context"
++	"fmt"
++	"os"
++	"os/signal"
++	"strings"
++	"syscall"
++
++	"github.com/dreamSailing/eos/internal/config"
++	"github.com/dreamSailing/eos/internal/daemon"
++	"github.com/spf13/cobra"
++)
++
++func newDaemonCmd() *cobra.Command {
++	var workspace string
++	var listenAddr string
++	var baseURL string
++	var allowedTools string
++	var sandboxMode string
++	var policyPath string
++	var sessionStorePath string
++	var stateFile string
++	var scheduleFile string
++	var logFile string
++	var mcpBasePath string
++
++	buildOptions := func() daemon.Options {
++		return daemon.Options{
++			Workspace:        workspace,
++			ListenAddr:       listenAddr,
++			BaseURL:          baseURL,
++			AllowedTools:     splitCommaList(allowedTools),
++			SandboxMode:      sandboxMode,
++			PolicyPath:       policyPath,
++			SessionStorePath: sessionStorePath,
++			StateFile:        stateFile,
++			ScheduleFile:     scheduleFile,
++			LogFile:          logFile,
++			MCPBasePath:      mcpBasePath,
++		}
++	}
++
++	cmd := &cobra.Command{Use: "daemon", Short: "Run EOS as a background daemon with HTTP gateway."}
++
++	startCmd := &cobra.Command{
++		Use:   "start",
++		Short: "Start EOS daemon in background.",
++		RunE: func(cmd *cobra.Command, args []string) error {
++			opts := buildOptions()
++			if strings.TrimSpace(opts.Workspace) == "" {
++				opts.Workspace = config.DefaultWorkspacePath()
++			}
++			if err := daemon.EnsureDefaults(&opts); err != nil {
++				return err
++			}
++			state, err := daemon.NewManager(opts).StartBackground()
++			if err != nil {
++				return err
++			}
++			fmt.Fprintf(cmd.OutOrStdout(), "EOS daemon started\nPID: %d\nWorkspace: %s\nWeb: %s\nMCP SSE: %s%s\n", state.PID, state.Workspace, state.WebBaseURL, state.WebBaseURL, state.MCPBasePath)
++			return nil
++		},
++	}
++
++	statusCmd := &cobra.Command{
++		Use:   "status",
++		Short: "Show EOS daemon status.",
++		RunE: func(cmd *cobra.Command, args []string) error {
++			state, ok, err := daemon.Status(stateFile)
++			if err != nil {
++				return err
++			}
++			if !ok {
++				fmt.Fprintln(cmd.OutOrStdout(), "EOS daemon is not running")
++				return nil
++			}
++			fmt.Fprintf(cmd.OutOrStdout(), "EOS daemon is running\nPID: %d\nWorkspace: %s\nWeb: %s\nMCP SSE: %s%s\n", state.PID, state.Workspace, state.WebBaseURL, state.WebBaseURL, state.MCPBasePath)
++			return nil
++		},
++	}
++
++	stopCmd := &cobra.Command{
++		Use:   "stop",
++		Short: "Stop EOS daemon.",
++		RunE: func(cmd *cobra.Command, args []string) error {
++			if err := daemon.Stop(stateFile); err != nil {
++				return err
++			}
++			fmt.Fprintln(cmd.OutOrStdout(), "EOS daemon stopped")
++			return nil
++		},
++	}
++
++	runCmd := &cobra.Command{
++		Use:    "run",
++		Short:  "Run EOS daemon in foreground.",
++		Hidden: true,
++		RunE: func(cmd *cobra.Command, args []string) error {
++			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
++			defer stop()
++			opts := buildOptions()
++			if err := daemon.EnsureDefaults(&opts); err != nil {
++				return err
++			}
++			return daemon.NewManager(opts).RunForeground(ctx)
++		},
++	}
++
++	for _, sub := range []*cobra.Command{startCmd, statusCmd, stopCmd, runCmd} {
++		sub.Flags().StringVar(&workspace, "workspace", "", "workspace path (default is EOS default workspace)")
++		sub.Flags().StringVar(&listenAddr, "listen", "127.0.0.1:8765", "HTTP gateway listen address")
++		sub.Flags().StringVar(&baseURL, "base-url", "", "public base URL (optional)")
++		sub.Flags().StringVar(&allowedTools, "allowed-tools", "", "comma-separated allowed tools")
++		sub.Flags().StringVar(&sandboxMode, "sandbox-mode", "workspace", "sandbox mode")
++		sub.Flags().StringVar(&policyPath, "policy", "", "policy file path")
++		sub.Flags().StringVar(&sessionStorePath, "session-store", "", "session store file path")
++		sub.Flags().StringVar(&stateFile, "state-file", daemon.DefaultStateFile(), "daemon state file")
++		sub.Flags().StringVar(&scheduleFile, "schedule-file", daemon.DefaultScheduleFile(), "schedule file")
++		sub.Flags().StringVar(&logFile, "log-file", daemon.DefaultLogFile(), "daemon log file")
++		sub.Flags().StringVar(&mcpBasePath, "mcp-base-path", "/mcp", "MCP base path on HTTP gateway")
++	}
++
++	cmd.AddCommand(startCmd, statusCmd, stopCmd, runCmd)
++	return cmd
++}
+
+
+===== FILE: internal/cli/root.go =====
+diff --git a/internal/cli/root.go b/internal/cli/root.go
+index e5fa063..61f4804 100644
+--- a/internal/cli/root.go
++++ b/internal/cli/root.go
+@@ -128,6 +128,7 @@ func init() {
+ 	rootCmd.PersistentFlags().BoolVar(&cliSkipPermissions, "dangerously-skip-permissions", false, "Skip all permission checks (use with caution)")
+ 
+ 	rootCmd.AddCommand(newBridgeCmd())
++	rootCmd.AddCommand(newDaemonCmd())
+ 	rootCmd.AddCommand(newMCPCmd())
+ 	rootCmd.AddCommand(newServeCmd())
+ 	rootCmd.AddCommand(newUpdateCmd())
+
+
+===== FILE: internal/daemon/lock.go =====
+diff --git a/internal/daemon/lock.go b/internal/daemon/lock.go
+new file mode 100644
+index 0000000..0967e94
+--- /dev/null
++++ b/internal/daemon/lock.go
+@@ -0,0 +1,35 @@
++package daemon
++
++import (
++	"fmt"
++	"os"
++	"path/filepath"
++	"syscall"
++)
++
++type FileLock struct {
++	file *os.File
++}
++
++func AcquireLock(path string) (*FileLock, error) {
++	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
++		return nil, err
++	}
++	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
++	if err != nil {
++		return nil, err
++	}
++	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
++		_ = f.Close()
++		return nil, fmt.Errorf("daemon already running")
++	}
++	return &FileLock{file: f}, nil
++}
++
++func (l *FileLock) Close() error {
++	if l == nil || l.file == nil {
++		return nil
++	}
++	_ = syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN)
++	return l.file.Close()
++}
+
+
+===== FILE: internal/daemon/manager.go =====
+diff --git a/internal/daemon/manager.go b/internal/daemon/manager.go
+new file mode 100644
+index 0000000..2443f0b
+--- /dev/null
++++ b/internal/daemon/manager.go
+@@ -0,0 +1,149 @@
++package daemon
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"net/http"
++	"os"
++	"os/exec"
++	"strings"
++	"syscall"
++	"time"
++)
++
++type Manager struct {
++	opts Options
++}
++
++func NewManager(opts Options) *Manager {
++	return &Manager{opts: opts}
++}
++
++func (m *Manager) StartBackground() (State, error) {
++	opts, err := normalizeOptions(m.opts)
++	if err != nil {
++		return State{}, err
++	}
++	if state, ok, _ := Status(opts.StateFile); ok {
++		return state, fmt.Errorf("daemon already running")
++	}
++	if err := os.MkdirAll(DefaultDir(), 0o755); err != nil {
++		return State{}, err
++	}
++	logFile, err := os.OpenFile(opts.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
++	if err != nil {
++		return State{}, err
++	}
++	defer logFile.Close()
++	exe, err := os.Executable()
++	if err != nil {
++		return State{}, err
++	}
++	args := []string{"daemon", "run", "--workspace", opts.Workspace, "--listen", opts.ListenAddr, "--state-file", opts.StateFile, "--schedule-file", opts.ScheduleFile, "--session-store", opts.SessionStorePath, "--sandbox-mode", opts.SandboxMode, "--mcp-base-path", opts.MCPBasePath, "--log-file", opts.LogFile}
++	if strings.TrimSpace(opts.PolicyPath) != "" {
++		args = append(args, "--policy", opts.PolicyPath)
++	}
++	if strings.TrimSpace(opts.BaseURL) != "" {
++		args = append(args, "--base-url", opts.BaseURL)
++	}
++	if len(opts.AllowedTools) > 0 {
++		args = append(args, "--allowed-tools", strings.Join(opts.AllowedTools, ","))
++	}
++	cmd := exec.Command(exe, args...)
++	cmd.Stdout = logFile
++	cmd.Stderr = logFile
++	cmd.Stdin = nil
++	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
++	if err := cmd.Start(); err != nil {
++		return State{}, err
++	}
++	for i := 0; i < 50; i++ {
++		time.Sleep(100 * time.Millisecond)
++		state, err := LoadState(opts.StateFile)
++		if err == nil && state.PID > 0 {
++			if healthy(state.WebBaseURL) {
++				return state, nil
++			}
++		}
++	}
++	return State{}, fmt.Errorf("daemon did not become ready")
++}
++
++func (m *Manager) RunForeground(ctx context.Context) error {
++	svc, err := NewService(m.opts)
++	if err != nil {
++		return err
++	}
++	return svc.Start(ctx)
++}
++
++func Status(stateFile string) (State, bool, error) {
++	state, err := LoadState(stateFile)
++	if err != nil {
++		if errors.Is(err, os.ErrNotExist) {
++			return State{}, false, nil
++		}
++		return State{}, false, err
++	}
++	if state.PID <= 0 || !processAlive(state.PID) {
++		return state, false, nil
++	}
++	return state, true, nil
++}
++
++func Stop(stateFile string) error {
++	state, ok, err := Status(stateFile)
++	if err != nil {
++		return err
++	}
++	if !ok {
++		_ = RemoveState(stateFile)
++		return fmt.Errorf("daemon not running")
++	}
++	proc, err := os.FindProcess(state.PID)
++	if err != nil {
++		return err
++	}
++	if err := proc.Signal(syscall.SIGTERM); err != nil {
++		return err
++	}
++	for i := 0; i < 50; i++ {
++		time.Sleep(100 * time.Millisecond)
++		if !processAlive(state.PID) {
++			_ = RemoveState(stateFile)
++			return nil
++		}
++	}
++	return fmt.Errorf("daemon stop timeout")
++}
++
++func processAlive(pid int) bool {
++	if pid <= 0 {
++		return false
++	}
++	proc, err := os.FindProcess(pid)
++	if err != nil {
++		return false
++	}
++	return proc.Signal(syscall.Signal(0)) == nil
++}
++
++func healthy(baseURL string) bool {
++	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
++	if baseURL == "" {
++		return false
++	}
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++	defer cancel()
++	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/healthz", nil)
++	if err != nil {
++		return false
++	}
++	resp, err := http.DefaultClient.Do(req)
++	if err != nil {
++		return false
++	}
++	defer resp.Body.Close()
++	return resp.StatusCode == http.StatusOK
++}
+
+
+===== FILE: internal/daemon/service.go =====
+diff --git a/internal/daemon/service.go b/internal/daemon/service.go
+new file mode 100644
+index 0000000..1ebca2b
+--- /dev/null
++++ b/internal/daemon/service.go
+@@ -0,0 +1,199 @@
++package daemon
++
++import (
++	"context"
++	"fmt"
++	"os"
++	"path/filepath"
++	"strings"
++	"time"
++
++	"github.com/dreamSailing/eos/internal/config"
++	"github.com/dreamSailing/eos/internal/gateway"
++	"github.com/dreamSailing/eos/internal/mcp"
++	"github.com/dreamSailing/eos/internal/scheduler"
++	"github.com/dreamSailing/eos/internal/toolapi"
++	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
++)
++
++type Options struct {
++	Workspace        string
++	ListenAddr       string
++	BaseURL          string
++	AllowedTools     []string
++	SandboxMode      string
++	PolicyPath       string
++	SessionStorePath string
++	StateFile        string
++	ScheduleFile     string
++	LogFile          string
++	MCPBasePath      string
++}
++
++type Service struct {
++	opts      Options
++	lock      *FileLock
++	mcpServer *mcp.Server
++	scheduler *scheduler.Service
++	gateway   *gateway.Server
++	services  toolapi.Services
++	state     State
++}
++
++func normalizeOptions(opts Options) (Options, error) {
++	if strings.TrimSpace(opts.Workspace) == "" {
++		opts.Workspace = config.DefaultWorkspacePath()
++	}
++	workspace, err := config.ResolveWorkspacePath(opts.Workspace)
++	if err != nil {
++		return Options{}, err
++	}
++	opts.Workspace = workspace
++	if err := os.MkdirAll(opts.Workspace, 0o755); err != nil {
++		return Options{}, err
++	}
++	if strings.TrimSpace(opts.ListenAddr) == "" {
++		opts.ListenAddr = "127.0.0.1:8765"
++	}
++	if strings.TrimSpace(opts.StateFile) == "" {
++		opts.StateFile = DefaultStateFile()
++	}
++	if strings.TrimSpace(opts.ScheduleFile) == "" {
++		opts.ScheduleFile = DefaultScheduleFile()
++	}
++	if strings.TrimSpace(opts.LogFile) == "" {
++		opts.LogFile = DefaultLogFile()
++	}
++	if strings.TrimSpace(opts.MCPBasePath) == "" {
++		opts.MCPBasePath = "/mcp"
++	}
++	if strings.TrimSpace(opts.SessionStorePath) == "" {
++		opts.SessionStorePath = filepath.Join(opts.Workspace, ".eos", "serve", "sessions.json")
++	}
++	if strings.TrimSpace(opts.SandboxMode) == "" {
++		opts.SandboxMode = "workspace"
++	}
++	return opts, nil
++}
++
++func NewService(opts Options) (*Service, error) {
++	normalized, err := normalizeOptions(opts)
++	if err != nil {
++		return nil, err
++	}
++	lock, err := AcquireLock(filepath.Join(filepath.Dir(normalized.StateFile), "daemon.lock"))
++	if err != nil {
++		return nil, err
++	}
++	services := toolapiimpl.NewServices()
++	mcpServer, err := mcp.NewServer(mcp.ServerOptions{
++		Transport:             "sse",
++		DefaultWorkspacePath:  normalized.Workspace,
++		DefaultAllowedTools:   normalized.AllowedTools,
++		DefaultSandboxMode:    normalized.SandboxMode,
++		PolicyPath:            normalized.PolicyPath,
++		SessionStorePath:      normalized.SessionStorePath,
++		RequireApprovalDigest: true,
++		ListenAddr:            normalized.ListenAddr,
++		BaseURL:               normalized.BaseURL,
++	}, services)
++	if err != nil {
++		lock.Close()
++		return nil, err
++	}
++	schedulerSvc := scheduler.NewService(normalized.ScheduleFile, services, normalized.Workspace)
++	svc := &Service{
++		opts:      normalized,
++		lock:      lock,
++		mcpServer: mcpServer,
++		scheduler: schedulerSvc,
++		services:  services,
++	}
++	gatewayServer := gateway.NewServer(gateway.Options{
++		ListenAddr: normalized.ListenAddr,
++		BaseURL:    normalized.BaseURL,
++		MCPBasePath: normalized.MCPBasePath,
++	}, &gateway.Context{
++		MCP:       mcpServer,
++		Scheduler: schedulerSvc,
++		Services:  services,
++		StatusSnapshot: svc.statusSnapshot,
++	})
++	svc.gateway = gatewayServer
++	return svc, nil
++}
++
++func (s *Service) Start(ctx context.Context) error {
++	if err := s.scheduler.Start(ctx); err != nil {
++		return err
++	}
++	if err := s.gateway.Start(); err != nil {
++		return err
++	}
++	s.state = State{
++		PID:              os.Getpid(),
++		StartedAt:        time.Now(),
++		ListenAddr:       s.opts.ListenAddr,
++		Workspace:        s.opts.Workspace,
++		SessionStorePath: s.opts.SessionStorePath,
++		SchedulePath:     s.opts.ScheduleFile,
++		MCPBasePath:      strings.TrimRight(s.opts.MCPBasePath, "/") + "/sse",
++		MCPMessagePath:   strings.TrimRight(s.opts.MCPBasePath, "/") + "/message",
++		WebBaseURL:       s.gateway.BaseURL(),
++		LogFile:          s.opts.LogFile,
++	}
++	if err := SaveState(s.opts.StateFile, s.state); err != nil {
++		return err
++	}
++	<-ctx.Done()
++	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++	defer cancel()
++	_ = s.Shutdown(shutdownCtx)
++	return ctx.Err()
++}
++
++func (s *Service) Shutdown(ctx context.Context) error {
++	if s.scheduler != nil {
++		s.scheduler.Close()
++	}
++	if s.gateway != nil {
++		_ = s.gateway.Shutdown(ctx)
++	}
++	if s.lock != nil {
++		_ = s.lock.Close()
++	}
++	_ = RemoveState(s.opts.StateFile)
++	return nil
++}
++
++func (s *Service) statusSnapshot() map[string]any {
++	payload := map[string]any{
++		"daemon": map[string]any{
++			"pid":           s.state.PID,
++			"started_at":    s.state.StartedAt,
++			"listen_addr":   s.opts.ListenAddr,
++			"workspace":     s.opts.Workspace,
++			"web_base_url":  s.gateway.BaseURL(),
++			"mcp_sse_url":   s.gateway.BaseURL() + strings.TrimRight(s.opts.MCPBasePath, "/") + "/sse",
++			"schedule_file": s.opts.ScheduleFile,
++			"log_file":      s.opts.LogFile,
++		},
++	}
++	if s.mcpServer != nil {
++		payload["mcp"] = s.mcpServer.StatusSnapshot()
++	}
++	if s.scheduler != nil {
++		payload["scheduler"] = map[string]any{"count": len(s.scheduler.List())}
++	}
++	return payload
++}
++
++func EnsureDefaults(opts *Options) error {
++	if opts == nil {
++		return fmt.Errorf("options required")
++	}
++	if strings.TrimSpace(opts.Workspace) == "" {
++		opts.Workspace = config.DefaultWorkspacePath()
++	}
++	return config.EnsureDefaultWorkspaceDir()
++}
+
+
+===== FILE: internal/daemon/state.go =====
+diff --git a/internal/daemon/state.go b/internal/daemon/state.go
+new file mode 100644
+index 0000000..cff87e0
+--- /dev/null
++++ b/internal/daemon/state.go
+@@ -0,0 +1,90 @@
++package daemon
++
++import (
++	"encoding/json"
++	"errors"
++	"os"
++	"path/filepath"
++	"strings"
++	"time"
++)
++
++type State struct {
++	PID              int       `json:"pid"`
++	StartedAt        time.Time `json:"started_at"`
++	ListenAddr       string    `json:"listen_addr"`
++	Workspace        string    `json:"workspace"`
++	SessionStorePath string    `json:"session_store_path,omitempty"`
++	SchedulePath     string    `json:"schedule_path,omitempty"`
++	MCPBasePath      string    `json:"mcp_base_path,omitempty"`
++	MCPMessagePath   string    `json:"mcp_message_path,omitempty"`
++	WebBaseURL       string    `json:"web_base_url,omitempty"`
++	LogFile          string    `json:"log_file,omitempty"`
++}
++
++func DefaultDir() string {
++	home, err := os.UserHomeDir()
++	if err != nil || strings.TrimSpace(home) == "" {
++		return filepath.Join(".eos", "daemon")
++	}
++	return filepath.Join(home, ".eos", "daemon")
++}
++
++func DefaultStateFile() string {
++	return filepath.Join(DefaultDir(), "state.json")
++}
++
++func DefaultScheduleFile() string {
++	return filepath.Join(DefaultDir(), "schedules.json")
++}
++
++func DefaultLogFile() string {
++	return filepath.Join(DefaultDir(), "daemon.log")
++}
++
++func LoadState(path string) (State, error) {
++	path = strings.TrimSpace(path)
++	if path == "" {
++		path = DefaultStateFile()
++	}
++	body, err := os.ReadFile(path)
++	if err != nil {
++		return State{}, err
++	}
++	var state State
++	if err := json.Unmarshal(body, &state); err != nil {
++		return State{}, err
++	}
++	return state, nil
++}
++
++func SaveState(path string, state State) error {
++	path = strings.TrimSpace(path)
++	if path == "" {
++		path = DefaultStateFile()
++	}
++	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
++		return err
++	}
++	body, err := json.MarshalIndent(state, "", "  ")
++	if err != nil {
++		return err
++	}
++	tmp := path + ".tmp"
++	if err := os.WriteFile(tmp, body, 0o644); err != nil {
++		return err
++	}
++	return os.Rename(tmp, path)
++}
++
++func RemoveState(path string) error {
++	path = strings.TrimSpace(path)
++	if path == "" {
++		path = DefaultStateFile()
++	}
++	err := os.Remove(path)
++	if errors.Is(err, os.ErrNotExist) {
++		return nil
++	}
++	return err
++}
+
+
+===== FILE: internal/daemon/state_test.go =====
+diff --git a/internal/daemon/state_test.go b/internal/daemon/state_test.go
+new file mode 100644
+index 0000000..6c8f8ef
+--- /dev/null
++++ b/internal/daemon/state_test.go
+@@ -0,0 +1,35 @@
++package daemon
++
++import (
++	"os"
++	"path/filepath"
++	"testing"
++	"time"
++)
++
++func TestStateRoundTrip(t *testing.T) {
++	path := filepath.Join(t.TempDir(), "state.json")
++	want := State{
++		PID:        1234,
++		StartedAt:  time.Now().UTC().Truncate(time.Second),
++		ListenAddr: "127.0.0.1:8765",
++		Workspace:  "/tmp/workspace",
++		WebBaseURL: "http://127.0.0.1:8765",
++	}
++	if err := SaveState(path, want); err != nil {
++		t.Fatalf("SaveState() error = %v", err)
++	}
++	got, err := LoadState(path)
++	if err != nil {
++		t.Fatalf("LoadState() error = %v", err)
++	}
++	if got.PID != want.PID || got.ListenAddr != want.ListenAddr || got.Workspace != want.Workspace || got.WebBaseURL != want.WebBaseURL {
++		t.Fatalf("LoadState() = %+v, want %+v", got, want)
++	}
++	if err := RemoveState(path); err != nil {
++		t.Fatalf("RemoveState() error = %v", err)
++	}
++	if _, err := os.Stat(path); !os.IsNotExist(err) {
++		t.Fatalf("expected state file removed, err=%v", err)
++	}
++}
+
+
+===== FILE: internal/gateway/routes.go =====
+diff --git a/internal/gateway/routes.go b/internal/gateway/routes.go
+new file mode 100644
+index 0000000..99edce2
+--- /dev/null
++++ b/internal/gateway/routes.go
+@@ -0,0 +1,262 @@
++package gateway
++
++import (
++	"encoding/json"
++	"net/http"
++	"strconv"
++	"strings"
++
++	"github.com/dreamSailing/eos/internal/scheduler"
++	"github.com/dreamSailing/eos/internal/tools/bg"
++)
++
++func (s *Server) routes() {
++	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
++	s.mux.HandleFunc("GET /api/status", s.handleStatus)
++	s.mux.HandleFunc("GET /api/sessions", s.handleSessions)
++	s.mux.HandleFunc("GET /api/sessions/{id}", s.handleSessionDetail)
++	s.mux.HandleFunc("GET /api/prompts", s.handlePrompts)
++	s.mux.HandleFunc("POST /api/approvals/{id}/resolve", s.handleResolveApproval)
++	s.mux.HandleFunc("POST /api/inquiries/{id}/resolve", s.handleResolveInquiry)
++	s.mux.HandleFunc("GET /api/tasks", s.handleTasks)
++	s.mux.HandleFunc("GET /api/tasks/{id}/logs", s.handleTaskLogs)
++	s.mux.HandleFunc("POST /api/tasks/{id}/kill", s.handleTaskKill)
++	s.mux.HandleFunc("GET /api/schedules", s.handleSchedules)
++	s.mux.HandleFunc("POST /api/schedules", s.handleScheduleCreate)
++	s.mux.HandleFunc("PUT /api/schedules/{id}", s.handleScheduleUpdate)
++	s.mux.HandleFunc("DELETE /api/schedules/{id}", s.handleScheduleDelete)
++	s.mux.HandleFunc("POST /api/schedules/{id}/trigger", s.handleScheduleTrigger)
++	if s.ctx != nil && s.ctx.MCP != nil {
++		mounted := s.ctx.MCP.NewMountedSSE(s.BaseURL(), s.opts.MCPBasePath)
++		mounted.Attach(s.mux)
++	}
++	s.mountWeb()
++}
++
++func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
++	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
++}
++
++func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
++	payload := map[string]any{}
++	if s.ctx != nil && s.ctx.StatusSnapshot != nil {
++		payload = s.ctx.StatusSnapshot()
++	}
++	writeJSON(w, http.StatusOK, payload)
++}
++
++func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
++	if s.ctx == nil || s.ctx.MCP == nil {
++		writeError(w, http.StatusServiceUnavailable, "mcp unavailable")
++		return
++	}
++	writeJSON(w, http.StatusOK, map[string]any{"sessions": s.ctx.MCP.SessionSnapshots()})
++}
++
++func (s *Server) handleSessionDetail(w http.ResponseWriter, r *http.Request) {
++	if s.ctx == nil || s.ctx.MCP == nil {
++		writeError(w, http.StatusServiceUnavailable, "mcp unavailable")
++		return
++	}
++	payload, ok := s.ctx.MCP.SessionDetail(r.PathValue("id"))
++	if !ok {
++		writeError(w, http.StatusNotFound, "session not found")
++		return
++	}
++	writeJSON(w, http.StatusOK, payload)
++}
++
++func (s *Server) handlePrompts(w http.ResponseWriter, r *http.Request) {
++	if s.ctx == nil || s.ctx.MCP == nil {
++		writeError(w, http.StatusServiceUnavailable, "mcp unavailable")
++		return
++	}
++	writeJSON(w, http.StatusOK, s.ctx.MCP.PromptSnapshots())
++}
++
++func (s *Server) handleResolveApproval(w http.ResponseWriter, r *http.Request) {
++	if s.ctx == nil || s.ctx.MCP == nil {
++		writeError(w, http.StatusServiceUnavailable, "mcp unavailable")
++		return
++	}
++	var body struct {
++		Decision string `json:"decision"`
++		Reason   string `json:"reason"`
++		PolicyID string `json:"policy_id"`
++	}
++	if !decodeBody(w, r, &body) {
++		return
++	}
++	payload, err := s.ctx.MCP.ResolveApproval(r.PathValue("id"), body.Decision, body.Reason, body.PolicyID)
++	if err != nil {
++		writeError(w, http.StatusBadRequest, err.Error())
++		return
++	}
++	writeJSON(w, http.StatusOK, payload)
++}
++
++func (s *Server) handleResolveInquiry(w http.ResponseWriter, r *http.Request) {
++	if s.ctx == nil || s.ctx.MCP == nil {
++		writeError(w, http.StatusServiceUnavailable, "mcp unavailable")
++		return
++	}
++	var body struct {
++		Option string `json:"option"`
++		Text   string `json:"text"`
++	}
++	if !decodeBody(w, r, &body) {
++		return
++	}
++	payload, err := s.ctx.MCP.ResolveInquiry(r.PathValue("id"), body.Option, body.Text)
++	if err != nil {
++		writeError(w, http.StatusBadRequest, err.Error())
++		return
++	}
++	writeJSON(w, http.StatusOK, payload)
++}
++
++func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
++	if s.ctx == nil || s.ctx.Services == nil {
++		writeError(w, http.StatusServiceUnavailable, "services unavailable")
++		return
++	}
++	items, err := s.ctx.Services.Tasks().List(r.Context())
++	if err != nil {
++		writeError(w, http.StatusInternalServerError, err.Error())
++		return
++	}
++	writeJSON(w, http.StatusOK, map[string]any{"tasks": items})
++}
++
++func (s *Server) handleTaskLogs(w http.ResponseWriter, r *http.Request) {
++	id := strings.TrimSpace(r.PathValue("id"))
++	fromSeq, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("from_seq")), 10, 64)
++	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
++	res, err := bg.Default().Tail(id, &bg.TailOptions{FromSeq: fromSeq, Limit: limit})
++	if err != nil {
++		writeError(w, http.StatusBadRequest, err.Error())
++		return
++	}
++	writeJSON(w, http.StatusOK, map[string]any{"tail": res})
++}
++
++func (s *Server) handleTaskKill(w http.ResponseWriter, r *http.Request) {
++	id := strings.TrimSpace(r.PathValue("id"))
++	if s.ctx == nil || s.ctx.Services == nil {
++		writeError(w, http.StatusServiceUnavailable, "services unavailable")
++		return
++	}
++	if err := s.ctx.Services.Tasks().Kill(r.Context(), id); err != nil {
++		writeError(w, http.StatusBadRequest, err.Error())
++		return
++	}
++	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
++}
++
++func (s *Server) handleSchedules(w http.ResponseWriter, r *http.Request) {
++	if s.ctx == nil || s.ctx.Scheduler == nil {
++		writeError(w, http.StatusServiceUnavailable, "scheduler unavailable")
++		return
++	}
++	writeJSON(w, http.StatusOK, map[string]any{"schedules": s.ctx.Scheduler.List()})
++}
++
++func (s *Server) handleScheduleCreate(w http.ResponseWriter, r *http.Request) {
++	if s.ctx == nil || s.ctx.Scheduler == nil {
++		writeError(w, http.StatusServiceUnavailable, "scheduler unavailable")
++		return
++	}
++	var body scheduleRequest
++	if !decodeBody(w, r, &body) {
++		return
++	}
++	item, err := s.ctx.Scheduler.Create(body.toSchedule())
++	if err != nil {
++		writeError(w, http.StatusBadRequest, err.Error())
++		return
++	}
++	writeJSON(w, http.StatusOK, item)
++}
++
++func (s *Server) handleScheduleUpdate(w http.ResponseWriter, r *http.Request) {
++	if s.ctx == nil || s.ctx.Scheduler == nil {
++		writeError(w, http.StatusServiceUnavailable, "scheduler unavailable")
++		return
++	}
++	var body scheduleRequest
++	if !decodeBody(w, r, &body) {
++		return
++	}
++	item, err := s.ctx.Scheduler.Update(r.PathValue("id"), body.toSchedule())
++	if err != nil {
++		writeError(w, http.StatusBadRequest, err.Error())
++		return
++	}
++	writeJSON(w, http.StatusOK, item)
++}
++
++func (s *Server) handleScheduleDelete(w http.ResponseWriter, r *http.Request) {
++	if s.ctx == nil || s.ctx.Scheduler == nil {
++		writeError(w, http.StatusServiceUnavailable, "scheduler unavailable")
++		return
++	}
++	if err := s.ctx.Scheduler.Delete(r.PathValue("id")); err != nil {
++		writeError(w, http.StatusBadRequest, err.Error())
++		return
++	}
++	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
++}
++
++func (s *Server) handleScheduleTrigger(w http.ResponseWriter, r *http.Request) {
++	if s.ctx == nil || s.ctx.Scheduler == nil {
++		writeError(w, http.StatusServiceUnavailable, "scheduler unavailable")
++		return
++	}
++	item, err := s.ctx.Scheduler.TriggerNow(r.Context(), r.PathValue("id"))
++	if err != nil {
++		writeError(w, http.StatusBadRequest, err.Error())
++		return
++	}
++	writeJSON(w, http.StatusOK, item)
++}
++
++type scheduleRequest struct {
++	Name      string         `json:"name"`
++	Enabled   bool           `json:"enabled"`
++	Cron      string         `json:"cron"`
++	Timezone  string         `json:"timezone"`
++	Kind      string         `json:"kind"`
++	Workspace string         `json:"workspace"`
++	Payload   map[string]any `json:"payload"`
++}
++
++func (s scheduleRequest) toSchedule() scheduler.Schedule {
++	return scheduler.Schedule{
++		Name:      strings.TrimSpace(s.Name),
++		Enabled:   s.Enabled,
++		Cron:      strings.TrimSpace(s.Cron),
++		Timezone:  strings.TrimSpace(s.Timezone),
++		Kind:      scheduler.TaskKind(strings.TrimSpace(s.Kind)),
++		Workspace: strings.TrimSpace(s.Workspace),
++		Payload:   s.Payload,
++	}
++}
++
++func decodeBody(w http.ResponseWriter, r *http.Request, out any) bool {
++	defer r.Body.Close()
++	if err := json.NewDecoder(r.Body).Decode(out); err != nil {
++		writeError(w, http.StatusBadRequest, "invalid json body")
++		return false
++	}
++	return true
++}
++
++func writeJSON(w http.ResponseWriter, code int, payload any) {
++	w.Header().Set("Content-Type", "application/json")
++	w.WriteHeader(code)
++	_ = json.NewEncoder(w).Encode(payload)
++}
++
++func writeError(w http.ResponseWriter, code int, message string) {
++	writeJSON(w, code, map[string]any{"error": strings.TrimSpace(message)})
++}
+
+
+===== FILE: internal/gateway/server.go =====
+diff --git a/internal/gateway/server.go b/internal/gateway/server.go
+new file mode 100644
+index 0000000..febbc28
+--- /dev/null
++++ b/internal/gateway/server.go
+@@ -0,0 +1,64 @@
++package gateway
++
++import (
++	"context"
++	"fmt"
++	"net"
++	"net/http"
++	"strings"
++)
++
++type Server struct {
++	opts     Options
++	ctx      *Context
++	mux      *http.ServeMux
++	http     *http.Server
++	listener net.Listener
++}
++
++func NewServer(opts Options, ctx *Context) *Server {
++	if strings.TrimSpace(opts.ListenAddr) == "" {
++		opts.ListenAddr = "127.0.0.1:8765"
++	}
++	if strings.TrimSpace(opts.MCPBasePath) == "" {
++		opts.MCPBasePath = "/mcp"
++	}
++	mux := http.NewServeMux()
++	s := &Server{opts: opts, ctx: ctx, mux: mux}
++	s.routes()
++	s.http = &http.Server{Addr: opts.ListenAddr, Handler: mux}
++	return s
++}
++
++func (s *Server) Start() error {
++	ln, err := net.Listen("tcp", s.opts.ListenAddr)
++	if err != nil {
++		return err
++	}
++	s.listener = ln
++	go func() {
++		_ = s.http.Serve(ln)
++	}()
++	return nil
++}
++
++func (s *Server) Shutdown(ctx context.Context) error {
++	if s == nil || s.http == nil {
++		return nil
++	}
++	return s.http.Shutdown(ctx)
++}
++
++func (s *Server) BaseURL() string {
++	if s == nil {
++		return ""
++	}
++	if strings.TrimSpace(s.opts.BaseURL) != "" {
++		return strings.TrimRight(s.opts.BaseURL, "/")
++	}
++	addr := s.opts.ListenAddr
++	if s.listener != nil {
++		addr = s.listener.Addr().String()
++	}
++	return fmt.Sprintf("http://%s", addr)
++}
+
+
+===== FILE: internal/gateway/server_test.go =====
+diff --git a/internal/gateway/server_test.go b/internal/gateway/server_test.go
+new file mode 100644
+index 0000000..93372a5
+--- /dev/null
++++ b/internal/gateway/server_test.go
+@@ -0,0 +1,67 @@
++package gateway
++
++import (
++	"context"
++	"encoding/json"
++	"net/http"
++	"path/filepath"
++	"testing"
++	"time"
++
++	eosmcp "github.com/dreamSailing/eos/internal/mcp"
++	"github.com/dreamSailing/eos/internal/scheduler"
++	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
++)
++
++func TestGatewayHealthAndStatus(t *testing.T) {
++	services := toolapiimpl.NewServices()
++	mcpServer, err := eosmcp.NewServer(eosmcp.ServerOptions{
++		Transport:            "sse",
++		DefaultWorkspacePath: t.TempDir(),
++		DefaultSandboxMode:   "workspace",
++		ListenAddr:           "127.0.0.1:0",
++	}, services)
++	if err != nil {
++		t.Fatalf("NewServer() error = %v", err)
++	}
++	schedulerSvc := scheduler.NewService(filepath.Join(t.TempDir(), "schedules.json"), services, t.TempDir())
++	if err := schedulerSvc.Start(context.Background()); err != nil {
++		t.Fatalf("scheduler.Start() error = %v", err)
++	}
++	defer schedulerSvc.Close()
++	server := NewServer(Options{ListenAddr: "127.0.0.1:0", MCPBasePath: "/mcp"}, &Context{
++		MCP:       mcpServer,
++		Scheduler: schedulerSvc,
++		Services:  services,
++		StatusSnapshot: func() map[string]any {
++			return map[string]any{"ok": true}
++		},
++	})
++	if err := server.Start(); err != nil {
++		t.Fatalf("Start() error = %v", err)
++	}
++	defer server.Shutdown(context.Background())
++
++	client := &http.Client{Timeout: 2 * time.Second}
++	resp, err := client.Get(server.BaseURL() + "/healthz")
++	if err != nil {
++		t.Fatalf("GET /healthz error = %v", err)
++	}
++	defer resp.Body.Close()
++	if resp.StatusCode != http.StatusOK {
++		t.Fatalf("healthz status = %d", resp.StatusCode)
++	}
++
++	resp, err = client.Get(server.BaseURL() + "/api/status")
++	if err != nil {
++		t.Fatalf("GET /api/status error = %v", err)
++	}
++	defer resp.Body.Close()
++	var payload map[string]any
++	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
++		t.Fatalf("decode status payload: %v", err)
++	}
++	if payload["ok"] != true {
++		t.Fatalf("unexpected payload: %#v", payload)
++	}
++}
+
+
+===== FILE: internal/gateway/types.go =====
+diff --git a/internal/gateway/types.go b/internal/gateway/types.go
+new file mode 100644
+index 0000000..e156bea
+--- /dev/null
++++ b/internal/gateway/types.go
+@@ -0,0 +1,20 @@
++package gateway
++
++import (
++	"github.com/dreamSailing/eos/internal/mcp"
++	"github.com/dreamSailing/eos/internal/scheduler"
++	"github.com/dreamSailing/eos/internal/toolapi"
++)
++
++type Options struct {
++	ListenAddr string
++	BaseURL    string
++	MCPBasePath string
++}
++
++type Context struct {
++	MCP           *mcp.Server
++	Scheduler     *scheduler.Service
++	Services      toolapi.Services
++	StatusSnapshot func() map[string]any
++}
+
+
+===== FILE: internal/gateway/web.go =====
+diff --git a/internal/gateway/web.go b/internal/gateway/web.go
+new file mode 100644
+index 0000000..0b97c5f
+--- /dev/null
++++ b/internal/gateway/web.go
+@@ -0,0 +1,23 @@
++package gateway
++
++import (
++	"io/fs"
++	"net/http"
++)
++
++func (s *Server) mountWeb() {
++	sub, err := fs.Sub(webFS, "web")
++	if err != nil {
++		s.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
++			http.Error(w, err.Error(), http.StatusInternalServerError)
++		})
++		return
++	}
++	fileServer := http.FileServer(http.FS(sub))
++	s.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
++		r.URL.Path = "/index.html"
++		fileServer.ServeHTTP(w, r)
++	})
++	s.mux.Handle("GET /app.js", fileServer)
++	s.mux.Handle("GET /app.css", fileServer)
++}
+
+
+===== FILE: internal/gateway/web/app.css =====
+diff --git a/internal/gateway/web/app.css b/internal/gateway/web/app.css
+new file mode 100644
+index 0000000..c400f39
+--- /dev/null
++++ b/internal/gateway/web/app.css
+@@ -0,0 +1,55 @@
++body {
++  margin: 0;
++  font-family: Arial, sans-serif;
++  background: #0f172a;
++  color: #e2e8f0;
++}
++.container {
++  max-width: 1200px;
++  margin: 0 auto;
++  padding: 24px;
++}
++.panel {
++  background: #111827;
++  border: 1px solid #334155;
++  border-radius: 12px;
++  padding: 16px;
++  margin-bottom: 20px;
++}
++.grid {
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
++  gap: 20px;
++}
++pre {
++  white-space: pre-wrap;
++  word-break: break-word;
++  background: #020617;
++  border-radius: 8px;
++  padding: 12px;
++  min-height: 120px;
++}
++form {
++  display: grid;
++  gap: 12px;
++}
++label {
++  display: grid;
++  gap: 6px;
++}
++input, textarea, select, button {
++  font: inherit;
++  padding: 10px;
++  border-radius: 8px;
++  border: 1px solid #475569;
++}
++button {
++  cursor: pointer;
++  background: #2563eb;
++  color: white;
++}
++.checkbox {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++}
+
+
+===== FILE: internal/gateway/web/app.js =====
+diff --git a/internal/gateway/web/app.js b/internal/gateway/web/app.js
+new file mode 100644
+index 0000000..b9a10fc
+--- /dev/null
++++ b/internal/gateway/web/app.js
+@@ -0,0 +1,60 @@
++async function getJSON(url, options = {}) {
++  const res = await fetch(url, {
++    headers: { 'Content-Type': 'application/json' },
++    ...options,
++  })
++  const text = await res.text()
++  try {
++    return JSON.parse(text)
++  } catch {
++    return { raw: text, status: res.status }
++  }
++}
++
++function render(id, data) {
++  document.getElementById(id).textContent = JSON.stringify(data, null, 2)
++}
++
++async function refreshAll() {
++  render('status', await getJSON('/api/status'))
++  render('sessions', await getJSON('/api/sessions'))
++  render('prompts', await getJSON('/api/prompts'))
++  render('tasks', await getJSON('/api/tasks'))
++  render('schedules', await getJSON('/api/schedules'))
++}
++
++document.querySelector('[data-action="refresh-sessions"]').addEventListener('click', async () => render('sessions', await getJSON('/api/sessions')))
++document.querySelector('[data-action="refresh-prompts"]').addEventListener('click', async () => render('prompts', await getJSON('/api/prompts')))
++document.querySelector('[data-action="refresh-tasks"]').addEventListener('click', async () => render('tasks', await getJSON('/api/tasks')))
++document.querySelector('[data-action="refresh-schedules"]').addEventListener('click', async () => render('schedules', await getJSON('/api/schedules')))
++
++document.getElementById('schedule-form').addEventListener('submit', async (event) => {
++  event.preventDefault()
++  const form = new FormData(event.target)
++  const kind = form.get('kind')
++  const target = String(form.get('target') || '').trim()
++  let parameters = {}
++  const raw = String(form.get('parameters') || '').trim()
++  if (raw) {
++    parameters = JSON.parse(raw)
++  }
++  const payload = kind === 'shell'
++    ? { command: target }
++    : { tool: target, parameters }
++  const body = {
++    name: String(form.get('name') || ''),
++    cron: String(form.get('cron') || ''),
++    kind,
++    workspace: String(form.get('workspace') || ''),
++    enabled: form.get('enabled') === 'on',
++    payload,
++  }
++  const result = await getJSON('/api/schedules', {
++    method: 'POST',
++    body: JSON.stringify(body),
++  })
++  document.getElementById('form-result').textContent = JSON.stringify(result, null, 2)
++  render('schedules', await getJSON('/api/schedules'))
++})
++
++refreshAll()
+
+
+===== FILE: internal/gateway/web/index.html =====
+diff --git a/internal/gateway/web/index.html b/internal/gateway/web/index.html
+new file mode 100644
+index 0000000..18db781
+--- /dev/null
++++ b/internal/gateway/web/index.html
+@@ -0,0 +1,69 @@
++<!doctype html>
++<html lang="zh-CN">
++<head>
++  <meta charset="utf-8">
++  <meta name="viewport" content="width=device-width, initial-scale=1">
++  <title>EOS Daemon Console</title>
++  <link rel="stylesheet" href="/app.css">
++</head>
++<body>
++  <main class="container">
++    <header>
++      <h1>EOS Daemon Console</h1>
++      <p>通过统一网关查看后台状态、MCP 会话、任务与定时任务。</p>
++    </header>
++
++    <section class="panel">
++      <h2>运行状态</h2>
++      <pre id="status">加载中...</pre>
++    </section>
++
++    <section class="grid">
++      <div class="panel">
++        <h2>Sessions</h2>
++        <button data-action="refresh-sessions">刷新</button>
++        <pre id="sessions">加载中...</pre>
++      </div>
++      <div class="panel">
++        <h2>待处理提示</h2>
++        <button data-action="refresh-prompts">刷新</button>
++        <pre id="prompts">加载中...</pre>
++      </div>
++    </section>
++
++    <section class="grid">
++      <div class="panel">
++        <h2>后台任务</h2>
++        <button data-action="refresh-tasks">刷新</button>
++        <pre id="tasks">加载中...</pre>
++      </div>
++      <div class="panel">
++        <h2>定时任务</h2>
++        <button data-action="refresh-schedules">刷新</button>
++        <pre id="schedules">加载中...</pre>
++      </div>
++    </section>
++
++    <section class="panel">
++      <h2>新建定时任务</h2>
++      <form id="schedule-form">
++        <label>名称<input name="name" required></label>
++        <label>Cron<input name="cron" placeholder="*/5 * * * *" required></label>
++        <label>类型
++          <select name="kind">
++            <option value="shell">shell</option>
++            <option value="eos_call">eos_call</option>
++          </select>
++        </label>
++        <label>工作区<input name="workspace" placeholder="留空使用默认工作区"></label>
++        <label>命令 / 工具<input name="target" required></label>
++        <label>参数(JSON，可选)<textarea name="parameters" rows="4" placeholder='{"path":"README.md"}'></textarea></label>
++        <label class="checkbox"><input type="checkbox" name="enabled" checked> 启用</label>
++        <button type="submit">创建任务</button>
++      </form>
++      <div id="form-result"></div>
++    </section>
++  </main>
++  <script src="/app.js"></script>
++</body>
++</html>
+
+
+===== FILE: internal/gateway/web_embed.go =====
+diff --git a/internal/gateway/web_embed.go b/internal/gateway/web_embed.go
+new file mode 100644
+index 0000000..8700a84
+--- /dev/null
++++ b/internal/gateway/web_embed.go
+@@ -0,0 +1,6 @@
++package gateway
++
++import "embed"
++
++//go:embed web/*
++var webFS embed.FS
+
+
+===== FILE: internal/mcp/server_gateway.go =====
+diff --git a/internal/mcp/server_gateway.go b/internal/mcp/server_gateway.go
+new file mode 100644
+index 0000000..d6470a0
+--- /dev/null
++++ b/internal/mcp/server_gateway.go
+@@ -0,0 +1,183 @@
++package mcp
++
++import (
++	"context"
++	"fmt"
++	"net/http"
++	"sort"
++	"strings"
++	"time"
++
++	"github.com/dreamSailing/eos/internal/toolapi"
++	mcpserver "github.com/mark3labs/mcp-go/server"
++)
++
++type MountedSSE struct {
++	SSEPath     string
++	MessagePath string
++	server      *mcpserver.SSEServer
++}
++
++func (s *Server) NewMountedSSE(baseURL string, basePath string) *MountedSSE {
++	basePath = strings.TrimSpace(basePath)
++	if basePath == "" {
++		basePath = "/mcp"
++	}
++	sse := mcpserver.NewSSEServer(
++		s.mcp,
++		mcpserver.WithBaseURL(strings.TrimRight(baseURL, "/")),
++		mcpserver.WithStaticBasePath(basePath),
++		mcpserver.WithUseFullURLForMessageEndpoint(false),
++		mcpserver.WithKeepAlive(true),
++		mcpserver.WithKeepAliveInterval(10*time.Second),
++		mcpserver.WithSSEContextFunc(func(ctx context.Context, r *http.Request) context.Context {
++			return s.contextWithRequestMeta(ctx, r.Header)
++		}),
++	)
++	return &MountedSSE{
++		SSEPath:     strings.TrimRight(basePath, "/") + "/sse",
++		MessagePath: strings.TrimRight(basePath, "/") + "/message",
++		server:      sse,
++	}
++}
++
++func (m *MountedSSE) Attach(mux *http.ServeMux) {
++	if m == nil || mux == nil || m.server == nil {
++		return
++	}
++	mux.Handle(m.SSEPath, m.server.SSEHandler())
++	mux.Handle(m.MessagePath, m.server.MessageHandler())
++}
++
++func (s *Server) Services() toolapi.Services {
++	return s.services
++}
++
++func (s *Server) SessionSnapshots() []map[string]any {
++	items := s.listSessions()
++	out := make([]map[string]any, 0, len(items))
++	for _, item := range items {
++		out = append(out, item.snapshot())
++	}
++	return out
++}
++
++func (s *Server) SessionDetail(sessionID string) (map[string]any, bool) {
++	sess := s.getSession(sessionID)
++	if sess == nil {
++		return nil, false
++	}
++	return map[string]any{
++		"session":   sess.snapshot(),
++		"approvals": sess.approvalList(),
++		"inquiries": sess.inquiryList(),
++	}, true
++}
++
++func (s *Server) PromptSnapshots() map[string][]map[string]any {
++	approvals := make([]map[string]any, 0)
++	inquiries := make([]map[string]any, 0)
++	for _, sess := range s.listSessions() {
++		sessionID := sess.ID
++		for _, item := range sess.approvalList() {
++			entry := cloneMap(item)
++			entry["session_id"] = sessionID
++			approvals = append(approvals, entry)
++		}
++		for _, item := range sess.inquiryList() {
++			entry := cloneMap(item)
++			entry["session_id"] = sessionID
++			inquiries = append(inquiries, entry)
++		}
++	}
++	sort.Slice(approvals, func(i, j int) bool {
++		return stringValue(approvals[i]["request_id"]) < stringValue(approvals[j]["request_id"])
++	})
++	sort.Slice(inquiries, func(i, j int) bool {
++		return stringValue(inquiries[i]["request_id"]) < stringValue(inquiries[j]["request_id"])
++	})
++	return map[string][]map[string]any{
++		"approvals": approvals,
++		"inquiries": inquiries,
++	}
++}
++
++func (s *Server) ResolveApproval(requestID, decision, reason, policyID string) (map[string]any, error) {
++	requestID = strings.TrimSpace(requestID)
++	decision = strings.ToLower(strings.TrimSpace(decision))
++	if requestID == "" {
++		return nil, fmt.Errorf("request id required")
++	}
++	if decision != "allow_once" && decision != "allow_session" && decision != "deny" {
++		return nil, fmt.Errorf("invalid decision")
++	}
++	for _, sess := range s.listSessions() {
++		sess.mu.Lock()
++		item := sess.Approvals[requestID]
++		if item == nil {
++			sess.mu.Unlock()
++			continue
++		}
++		item.Decision = decision
++		item.Reason = strings.TrimSpace(reason)
++		item.PolicyID = strings.TrimSpace(policyID)
++		item.ResolvedAt = time.Now()
++		sess.UpdatedAt = time.Now()
++		preview := fmt.Sprintf("审批已处理: %s", decision)
++		if decision == "allow_session" {
++			preview = "审批已放行: allow_session"
++		}
++		if text := normalizePreview(preview); text != "" {
++			sess.Preview = text
++		}
++		result := pendingPromptSnapshot(item)
++		result["session_id"] = sess.ID
++		sess.mu.Unlock()
++		return result, nil
++	}
++	return nil, fmt.Errorf("approval not found")
++}
++
++func (s *Server) ResolveInquiry(requestID, option, text string) (map[string]any, error) {
++	requestID = strings.TrimSpace(requestID)
++	if requestID == "" {
++		return nil, fmt.Errorf("request id required")
++	}
++	for _, sess := range s.listSessions() {
++		sess.mu.Lock()
++		item := sess.Inquiries[requestID]
++		if item == nil {
++			sess.mu.Unlock()
++			continue
++		}
++		item.Decision = "resolve"
++		item.Option = strings.TrimSpace(option)
++		item.Text = strings.TrimSpace(text)
++		item.ResolvedAt = time.Now()
++		sess.UpdatedAt = time.Now()
++		if preview := normalizePreview(firstNonEmpty(item.Option, item.Text, item.Question)); preview != "" {
++			sess.Preview = preview
++		}
++		result := pendingPromptSnapshot(item)
++		result["session_id"] = sess.ID
++		sess.mu.Unlock()
++		return result, nil
++	}
++	return nil, fmt.Errorf("inquiry not found")
++}
++
++func (s *Server) StatusSnapshot() map[string]any {
++	sessions := s.SessionSnapshots()
++	prompts := s.PromptSnapshots()
++	return map[string]any{
++		"transport":         s.opts.Transport,
++		"workspace":         s.opts.DefaultWorkspacePath,
++		"listen_addr":       s.opts.ListenAddr,
++		"session_count":     len(sessions),
++		"approval_count":    len(prompts["approvals"]),
++		"inquiry_count":     len(prompts["inquiries"]),
++		"require_approval":  s.opts.RequireApprovalDigest,
++		"default_sandbox":   s.opts.DefaultSandboxMode,
++		"default_allow_list": append([]string(nil), s.opts.DefaultAllowedTools...),
++	}
++}
+
+
+===== FILE: internal/scheduler/cron.go =====
+diff --git a/internal/scheduler/cron.go b/internal/scheduler/cron.go
+new file mode 100644
+index 0000000..fff3480
+--- /dev/null
++++ b/internal/scheduler/cron.go
+@@ -0,0 +1,23 @@
++package scheduler
++
++import (
++	"fmt"
++	"strings"
++	"time"
++
++	cronlib "github.com/robfig/cron/v3"
++)
++
++var cronParser = cronlib.NewParser(cronlib.Minute | cronlib.Hour | cronlib.Dom | cronlib.Month | cronlib.Dow)
++
++func nextRun(expr string, from time.Time) (time.Time, error) {
++	expr = strings.TrimSpace(expr)
++	if expr == "" {
++		return time.Time{}, fmt.Errorf("cron required")
++	}
++	spec, err := cronParser.Parse(expr)
++	if err != nil {
++		return time.Time{}, err
++	}
++	return spec.Next(from), nil
++}
+
+
+===== FILE: internal/scheduler/runner_eos.go =====
+diff --git a/internal/scheduler/runner_eos.go b/internal/scheduler/runner_eos.go
+new file mode 100644
+index 0000000..83002df
+--- /dev/null
++++ b/internal/scheduler/runner_eos.go
+@@ -0,0 +1,54 @@
++package scheduler
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"strings"
++	"time"
++
++	"github.com/dreamSailing/eos/internal/toolapi"
++)
++
++func runEOSSchedule(ctx context.Context, services toolapi.Services, item Schedule, workspace string) error {
++	if services == nil {
++		return fmt.Errorf("services unavailable")
++	}
++	toolName, _ := item.Payload["tool"].(string)
++	toolName = strings.TrimSpace(toolName)
++	if toolName == "" {
++		return fmt.Errorf("tool required")
++	}
++	params := map[string]any{}
++	if raw, ok := item.Payload["parameters"].(map[string]any); ok {
++		for k, v := range raw {
++			params[k] = v
++		}
++	}
++	executor := services.NewExecutor(workspace)
++	results, err := executor.Execute(ctx, toolapi.ExecSession{
++		WorkspaceRoot: workspace,
++		TraceID:       "schedule_" + item.ID + "_" + time.Now().Format("150405"),
++	}, []toolapi.ToolCall{{
++		ID:     item.ID,
++		Name:   toolName,
++		Params: params,
++	}})
++	if err != nil {
++		return err
++	}
++	if len(results) == 0 {
++		return fmt.Errorf("empty tool result")
++	}
++	res := results[0]
++	if strings.EqualFold(strings.TrimSpace(res.Status), "success") || strings.TrimSpace(res.Status) == "" {
++		return nil
++	}
++	if strings.TrimSpace(res.Error) != "" {
++		return errors.New(strings.TrimSpace(res.Error))
++	}
++	if strings.TrimSpace(res.Display) != "" {
++		return errors.New(strings.TrimSpace(res.Display))
++	}
++	return fmt.Errorf("tool status: %s", res.Status)
++}
+
+
+===== FILE: internal/scheduler/runner_shell.go =====
+diff --git a/internal/scheduler/runner_shell.go b/internal/scheduler/runner_shell.go
+new file mode 100644
+index 0000000..99ce0ea
+--- /dev/null
++++ b/internal/scheduler/runner_shell.go
+@@ -0,0 +1,18 @@
++package scheduler
++
++import (
++	"fmt"
++	"strings"
++
++	"github.com/dreamSailing/eos/internal/tools/bg"
++)
++
++func runShellSchedule(item Schedule, workspace string) error {
++	command, _ := item.Payload["command"].(string)
++	command = strings.TrimSpace(command)
++	if command == "" {
++		return fmt.Errorf("shell command required")
++	}
++	_, err := bg.Default().Start(command, &bg.StartOptions{WorkingDir: workspace, LogCap: 2000})
++	return err
++}
+
+
+===== FILE: internal/scheduler/service.go =====
+diff --git a/internal/scheduler/service.go b/internal/scheduler/service.go
+new file mode 100644
+index 0000000..5031a0a
+--- /dev/null
++++ b/internal/scheduler/service.go
+@@ -0,0 +1,286 @@
++package scheduler
++
++import (
++	"context"
++	"fmt"
++	"sort"
++	"strings"
++	"sync"
++	"time"
++
++	"github.com/dreamSailing/eos/internal/toolapi"
++	"github.com/google/uuid"
++)
++
++type Service struct {
++	mu               sync.RWMutex
++	store            *Store
++	services         toolapi.Services
++	defaultWorkspace string
++	items            map[string]*Schedule
++	closeCh          chan struct{}
++	once             sync.Once
++}
++
++func NewService(storePath string, services toolapi.Services, defaultWorkspace string) *Service {
++	return &Service{
++		store:            NewStore(storePath),
++		services:         services,
++		defaultWorkspace: strings.TrimSpace(defaultWorkspace),
++		items:            map[string]*Schedule{},
++		closeCh:          make(chan struct{}),
++	}
++}
++
++func (s *Service) Start(ctx context.Context) error {
++	if err := s.reload(); err != nil {
++		return err
++	}
++	go s.loop(ctx)
++	return nil
++}
++
++func (s *Service) Close() {
++	s.once.Do(func() { close(s.closeCh) })
++}
++
++func (s *Service) loop(ctx context.Context) {
++	ticker := time.NewTicker(15 * time.Second)
++	defer ticker.Stop()
++	for {
++		select {
++		case <-ctx.Done():
++			return
++		case <-s.closeCh:
++			return
++		case <-ticker.C:
++			s.runDue(context.Background())
++		}
++	}
++}
++
++func (s *Service) reload() error {
++	items, err := s.store.Load()
++	if err != nil {
++		return err
++	}
++	now := time.Now()
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	s.items = map[string]*Schedule{}
++	for _, item := range items {
++		it := item
++		if strings.TrimSpace(it.Workspace) == "" {
++			it.Workspace = s.defaultWorkspace
++		}
++		if it.Enabled {
++			it.NextRunAt, _ = nextRun(it.Cron, now)
++		}
++		s.items[it.ID] = &it
++	}
++	return nil
++}
++
++func (s *Service) persistLocked() error {
++	items := make([]Schedule, 0, len(s.items))
++	for _, item := range s.items {
++		items = append(items, cloneSchedule(item))
++	}
++	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
++	return s.store.Save(items)
++}
++
++func (s *Service) List() []Schedule {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	items := make([]Schedule, 0, len(s.items))
++	for _, item := range s.items {
++		items = append(items, cloneSchedule(item))
++	}
++	sort.Slice(items, func(i, j int) bool {
++		if items[i].Name == items[j].Name {
++			return items[i].ID < items[j].ID
++		}
++		return items[i].Name < items[j].Name
++	})
++	return items
++}
++
++func (s *Service) Get(id string) (Schedule, bool) {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	item := s.items[strings.TrimSpace(id)]
++	if item == nil {
++		return Schedule{}, false
++	}
++	return cloneSchedule(item), true
++}
++
++func (s *Service) Create(in Schedule) (Schedule, error) {
++	now := time.Now()
++	item, err := s.normalize(in, true, now)
++	if err != nil {
++		return Schedule{}, err
++	}
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if item.ID == "" {
++		item.ID = "sch_" + uuid.NewString()[:12]
++	}
++	s.items[item.ID] = &item
++	if err := s.persistLocked(); err != nil {
++		return Schedule{}, err
++	}
++	return cloneSchedule(&item), nil
++}
++
++func (s *Service) Update(id string, in Schedule) (Schedule, error) {
++	now := time.Now()
++	id = strings.TrimSpace(id)
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	current := s.items[id]
++	if current == nil {
++		return Schedule{}, fmt.Errorf("schedule not found")
++	}
++	in.ID = id
++	item, err := s.normalize(in, false, now)
++	if err != nil {
++		return Schedule{}, err
++	}
++	item.LastRunAt = current.LastRunAt
++	item.LastStatus = current.LastStatus
++	item.LastError = current.LastError
++	if item.Enabled {
++		item.NextRunAt, _ = nextRun(item.Cron, now)
++	}
++	s.items[id] = &item
++	if err := s.persistLocked(); err != nil {
++		return Schedule{}, err
++	}
++	return cloneSchedule(&item), nil
++}
++
++func (s *Service) Delete(id string) error {
++	id = strings.TrimSpace(id)
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if s.items[id] == nil {
++		return fmt.Errorf("schedule not found")
++	}
++	delete(s.items, id)
++	return s.persistLocked()
++}
++
++func (s *Service) TriggerNow(ctx context.Context, id string) (Schedule, error) {
++	id = strings.TrimSpace(id)
++	s.mu.RLock()
++	item := s.items[id]
++	if item == nil {
++		s.mu.RUnlock()
++		return Schedule{}, fmt.Errorf("schedule not found")
++	}
++	copyItem := cloneSchedule(item)
++	s.mu.RUnlock()
++	go s.executeSchedule(ctx, copyItem)
++	return copyItem, nil
++}
++
++func (s *Service) runDue(ctx context.Context) {
++	now := time.Now()
++	due := make([]Schedule, 0)
++	s.mu.Lock()
++	for _, item := range s.items {
++		if item == nil || !item.Enabled || item.NextRunAt.IsZero() || item.NextRunAt.After(now) {
++			continue
++		}
++		copyItem := cloneSchedule(item)
++		item.NextRunAt, _ = nextRun(item.Cron, now)
++		due = append(due, copyItem)
++	}
++	_ = s.persistLocked()
++	s.mu.Unlock()
++	for _, item := range due {
++		go s.executeSchedule(ctx, item)
++	}
++}
++
++func (s *Service) executeSchedule(ctx context.Context, item Schedule) {
++	now := time.Now()
++	status := "success"
++	errText := ""
++	workspace := strings.TrimSpace(item.Workspace)
++	if workspace == "" {
++		workspace = s.defaultWorkspace
++	}
++	var err error
++	switch item.Kind {
++	case TaskKindShell:
++		err = runShellSchedule(item, workspace)
++	case TaskKindEOSCall:
++		err = runEOSSchedule(ctx, s.services, item, workspace)
++	default:
++		err = fmt.Errorf("unsupported schedule kind: %s", item.Kind)
++	}
++	if err != nil {
++		status = "error"
++		errText = err.Error()
++	}
++	s.mu.Lock()
++	if current := s.items[item.ID]; current != nil {
++		current.LastRunAt = now
++		current.LastStatus = status
++		current.LastError = errText
++		if current.Enabled && current.NextRunAt.IsZero() {
++			current.NextRunAt, _ = nextRun(current.Cron, now)
++		}
++		_ = s.persistLocked()
++	}
++	s.mu.Unlock()
++}
++
++func (s *Service) normalize(in Schedule, isCreate bool, now time.Time) (Schedule, error) {
++	in.ID = strings.TrimSpace(in.ID)
++	in.Name = strings.TrimSpace(in.Name)
++	in.Cron = strings.TrimSpace(in.Cron)
++	in.Workspace = strings.TrimSpace(in.Workspace)
++	if in.Name == "" {
++		return Schedule{}, fmt.Errorf("name required")
++	}
++	if in.Cron == "" {
++		return Schedule{}, fmt.Errorf("cron required")
++	}
++	if _, err := nextRun(in.Cron, now); err != nil {
++		return Schedule{}, err
++	}
++	if in.Workspace == "" {
++		in.Workspace = s.defaultWorkspace
++	}
++	if in.Kind != TaskKindEOSCall && in.Kind != TaskKindShell {
++		return Schedule{}, fmt.Errorf("kind required")
++	}
++	if in.Payload == nil {
++		in.Payload = map[string]any{}
++	}
++	if isCreate && in.ID == "" {
++		in.ID = "sch_" + uuid.NewString()[:12]
++	}
++	if in.Enabled {
++		in.NextRunAt, _ = nextRun(in.Cron, now)
++	}
++	return in, nil
++}
++
++func cloneSchedule(in *Schedule) Schedule {
++	if in == nil {
++		return Schedule{}
++	}
++	out := *in
++	if in.Payload != nil {
++		out.Payload = make(map[string]any, len(in.Payload))
++		for k, v := range in.Payload {
++			out.Payload[k] = v
++		}
++	}
++	return out
++}
+
+
+===== FILE: internal/scheduler/service_test.go =====
+diff --git a/internal/scheduler/service_test.go b/internal/scheduler/service_test.go
+new file mode 100644
+index 0000000..711e20c
+--- /dev/null
++++ b/internal/scheduler/service_test.go
+@@ -0,0 +1,71 @@
++package scheduler
++
++import (
++	"context"
++	"path/filepath"
++	"testing"
++	"time"
++
++	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
++)
++
++func TestServiceCreateUpdateDelete(t *testing.T) {
++	service := NewService(filepath.Join(t.TempDir(), "schedules.json"), toolapiimpl.NewServices(), t.TempDir())
++	created, err := service.Create(Schedule{
++		Name:    "shell job",
++		Enabled: true,
++		Cron:    "*/5 * * * *",
++		Kind:    TaskKindShell,
++		Payload: map[string]any{"command": "printf hi"},
++	})
++	if err != nil {
++		t.Fatalf("Create() error = %v", err)
++	}
++	if created.ID == "" {
++		t.Fatalf("expected created ID")
++	}
++	updated, err := service.Update(created.ID, Schedule{
++		Name:    "shell job 2",
++		Enabled: false,
++		Cron:    "*/10 * * * *",
++		Kind:    TaskKindShell,
++		Payload: map[string]any{"command": "printf ok"},
++	})
++	if err != nil {
++		t.Fatalf("Update() error = %v", err)
++	}
++	if updated.Name != "shell job 2" || updated.Enabled {
++		t.Fatalf("unexpected updated item: %+v", updated)
++	}
++	if err := service.Delete(created.ID); err != nil {
++		t.Fatalf("Delete() error = %v", err)
++	}
++	if items := service.List(); len(items) != 0 {
++		t.Fatalf("expected empty list, got %d items", len(items))
++	}
++}
++
++func TestServiceTriggerNowShell(t *testing.T) {
++	service := NewService(filepath.Join(t.TempDir(), "schedules.json"), toolapiimpl.NewServices(), t.TempDir())
++	item, err := service.Create(Schedule{
++		Name:    "trigger shell",
++		Enabled: true,
++		Cron:    "*/5 * * * *",
++		Kind:    TaskKindShell,
++		Payload: map[string]any{"command": "printf hi"},
++	})
++	if err != nil {
++		t.Fatalf("Create() error = %v", err)
++	}
++	if _, err := service.TriggerNow(context.Background(), item.ID); err != nil {
++		t.Fatalf("TriggerNow() error = %v", err)
++	}
++	time.Sleep(200 * time.Millisecond)
++	got, ok := service.Get(item.ID)
++	if !ok {
++		t.Fatalf("expected schedule to exist")
++	}
++	if got.ID != item.ID {
++		t.Fatalf("unexpected schedule: %+v", got)
++	}
++}
+
+
+===== FILE: internal/scheduler/store.go =====
+diff --git a/internal/scheduler/store.go b/internal/scheduler/store.go
+new file mode 100644
+index 0000000..1767eac
+--- /dev/null
++++ b/internal/scheduler/store.go
+@@ -0,0 +1,60 @@
++package scheduler
++
++import (
++	"encoding/json"
++	"errors"
++	"os"
++	"path/filepath"
++	"strings"
++)
++
++type Store struct {
++	path string
++}
++
++func NewStore(path string) *Store {
++	return &Store{path: strings.TrimSpace(path)}
++}
++
++func (s *Store) Path() string {
++	if s == nil {
++		return ""
++	}
++	return s.path
++}
++
++func (s *Store) Load() ([]Schedule, error) {
++	if s == nil || strings.TrimSpace(s.path) == "" {
++		return nil, nil
++	}
++	body, err := os.ReadFile(s.path)
++	if errors.Is(err, os.ErrNotExist) {
++		return nil, nil
++	}
++	if err != nil {
++		return nil, err
++	}
++	var data StoreData
++	if err := json.Unmarshal(body, &data); err != nil {
++		return nil, err
++	}
++	return data.Schedules, nil
++}
++
++func (s *Store) Save(items []Schedule) error {
++	if s == nil || strings.TrimSpace(s.path) == "" {
++		return nil
++	}
++	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
++		return err
++	}
++	body, err := json.MarshalIndent(StoreData{Schedules: items}, "", "  ")
++	if err != nil {
++		return err
++	}
++	tmp := s.path + ".tmp"
++	if err := os.WriteFile(tmp, body, 0o644); err != nil {
++		return err
++	}
++	return os.Rename(tmp, s.path)
++}
+
+
+===== FILE: internal/scheduler/types.go =====
+diff --git a/internal/scheduler/types.go b/internal/scheduler/types.go
+new file mode 100644
+index 0000000..4d490db
+--- /dev/null
++++ b/internal/scheduler/types.go
+@@ -0,0 +1,29 @@
++package scheduler
++
++import "time"
++
++type TaskKind string
++
++const (
++	TaskKindEOSCall TaskKind = "eos_call"
++	TaskKindShell   TaskKind = "shell"
++)
++
++type Schedule struct {
++	ID         string         `json:"id"`
++	Name       string         `json:"name"`
++	Enabled    bool           `json:"enabled"`
++	Cron       string         `json:"cron"`
++	Timezone   string         `json:"timezone,omitempty"`
++	Kind       TaskKind       `json:"kind"`
++	Workspace  string         `json:"workspace,omitempty"`
++	Payload    map[string]any `json:"payload,omitempty"`
++	LastRunAt  time.Time      `json:"last_run_at,omitempty"`
++	NextRunAt  time.Time      `json:"next_run_at,omitempty"`
++	LastStatus string         `json:"last_status,omitempty"`
++	LastError  string         `json:"last_error,omitempty"`
++}
++
++type StoreData struct {
++	Schedules []Schedule `json:"schedules,omitempty"`
++}
+
+

@@ -1,5 +1,11 @@
 package render
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"bytes"
 	"strings"
@@ -42,16 +48,12 @@ func HighlightCodeANSI(code string, lang string) string {
 		return code
 	}
 
-	formatterName := "terminal16m"
+	formatterName := "terminal16"
 	switch termenv.EnvColorProfile() {
-	case termenv.ANSI:
-		formatterName = "terminal16"
 	case termenv.ANSI256:
 		formatterName = "terminal256"
 	case termenv.TrueColor:
 		formatterName = "terminal16m"
-	default:
-		formatterName = "terminal16"
 	}
 	formatter := formatters.Get(formatterName)
 	style := styles.Get("monokai")

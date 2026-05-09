@@ -1,5 +1,10 @@
 package tools
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"context"
 	"fmt"
@@ -9,9 +14,9 @@ import (
 	"strings"
 	"sync"
 
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
-	"github.com/dreamSailing/vb-coding/internal/search"
+	codectx "github.com/dreamSailing/eos/internal/context"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/search"
 
 	"github.com/bmatcuk/doublestar/v4"
 )
@@ -91,9 +96,12 @@ func (m *Manager) searchGlob(_ context.Context, root, relRoot, pattern string, m
 	// 默认排除的目录（VCS、构建产物等）
 	defaultExcludeDirs := map[string]bool{
 		".git": true, ".svn": true, ".hg": true,
-		"node_modules": true, ".vb": true, "__pycache__": true,
+		"node_modules": true, ".eos": true, "__pycache__": true,
 		".idea": true, ".vscode": true, "vendor": true,
 	}
+
+	// Load .eosignore patterns.
+	di := NewDotIgnore(root)
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -104,6 +112,10 @@ func (m *Manager) searchGlob(_ context.Context, root, relRoot, pattern string, m
 		if info.IsDir() && path != root {
 			base := filepath.Base(path)
 			if defaultExcludeDirs[base] {
+				return filepath.SkipDir
+			}
+			// Check .eosignore for directories.
+			if di.Match(path) {
 				return filepath.SkipDir
 			}
 		}
@@ -136,6 +148,11 @@ func (m *Manager) searchGlob(_ context.Context, root, relRoot, pattern string, m
 
 		// Skip directories by default
 		if info.IsDir() {
+			return nil
+		}
+
+		// Check .eosignore for files.
+		if di.Match(path) {
 			return nil
 		}
 
@@ -178,15 +195,8 @@ func (m *Manager) searchRegex(_ context.Context, root, relRoot, pattern string, 
 		MaxFileSize:  2 * 1024 * 1024,
 	}
 	res, trunc, err := search.DirRegex(pattern, opts)
-	if err != nil {
-		return ToolResult{Type: "tool_result", Tool: "search", Status: "error", Error: fmt.Sprintf("%v", err)}
-	}
-	return ToolResult{Type: "tool_result", Tool: "search", Status: "success", Data: map[string]any{"mode": "regex", "root": filepath.ToSlash(relRoot), "results": mapResults(res), "truncated": trunc}, Display: fmt.Sprintf("%d match(es)%s", len(res), func() string {
-		if trunc {
-			return " (truncated)"
-		}
-		return ""
-	}())}
+	res = filterIgnoredResults(root, res)
+	return searchResult("regex", relRoot, res, trunc, err)
 }
 
 func (m *Manager) searchText(_ context.Context, root, relRoot, pattern string, _ int, exclude []string, limit, contextLines int, caseInsensitive bool) ToolResult {
@@ -200,20 +210,55 @@ func (m *Manager) searchText(_ context.Context, root, relRoot, pattern string, _
 		MaxFileSize:     2 * 1024 * 1024,
 	}
 	res, trunc, err := search.DirText(pattern, opts)
+	res = filterIgnoredResults(root, res)
+	return searchResult("text", relRoot, res, trunc, err)
+}
+
+func searchResult(mode, relRoot string, res []search.Result, trunc bool, err error) ToolResult {
 	if err != nil {
 		return ToolResult{Type: "tool_result", Tool: "search", Status: "error", Error: fmt.Sprintf("%v", err)}
 	}
-	return ToolResult{Type: "tool_result", Tool: "search", Status: "success", Data: map[string]any{"mode": "text", "root": filepath.ToSlash(relRoot), "results": mapResults(res), "truncated": trunc}, Display: fmt.Sprintf("%d match(es)%s", len(res), func() string {
-		if trunc {
-			return " (truncated)"
+	return ToolResult{
+		Type:   "tool_result",
+		Tool:   "search",
+		Status: "success",
+		Data: map[string]any{
+			"mode":      mode,
+			"root":      filepath.ToSlash(relRoot),
+			"results":   mapResults(res),
+			"truncated": trunc,
+		},
+		Display: fmt.Sprintf("%d match(es)%s", len(res), func() string {
+			if trunc {
+				return " (truncated)"
+			}
+			return ""
+		}()),
+	}
+}
+
+func filterIgnoredResults(root string, results []search.Result) []search.Result {
+	di := NewDotIgnore(root)
+	if len(di.Load()) == 0 || len(results) == 0 {
+		return results
+	}
+	filtered := make([]search.Result, 0, len(results))
+	for _, item := range results {
+		path := item.File
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(root, path)
 		}
-		return ""
-	}())}
+		if di.Match(path) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
 }
 
 func (m *Manager) searchCode(_ context.Context, root, relRoot, query string, k int) ToolResult {
 	e := codectx.NewEngine(root)
-	idxp := filepath.Join(root, ".vb", "index.json")
+	idxp := filepath.Join(root, ".eos", "index.json")
 	if _, err := os.Stat(idxp); err == nil {
 		_ = e.LoadIndex(idxp)
 	} else {
@@ -240,7 +285,7 @@ func (m *Manager) searchDeps(_ context.Context, root string, _ string, file stri
 		return ToolResult{Type: "tool_result", Tool: "search", Status: "error", Error: "file required"}
 	}
 	e := codectx.NewEngine(root)
-	idxp := filepath.Join(root, ".vb", "index.json")
+	idxp := filepath.Join(root, ".eos", "index.json")
 	if _, err := os.Stat(idxp); err == nil {
 		_ = e.LoadIndex(idxp)
 	} else {

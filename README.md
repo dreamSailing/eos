@@ -1,5 +1,7 @@
 # EOS
 
+[中文](./README.md) | [English](./README.en.md)
+
 Go 语言实现的终端 AI 编码助手，基于 CloudWeGo Eino 做多代理编排，提供可交互 TUI、工具调用、安全门禁与工作区上下文能力。
 
 - 项目仓库：https://github.com/dreamSailing/eos
@@ -20,9 +22,10 @@ Go 语言实现的终端 AI 编码助手，基于 CloudWeGo Eino 做多代理编
 ## 核心能力
 
 - 交互式 TUI：AI/Bash 双模式、面板系统、流式输出与 Markdown 渲染
-- 三种执行模式：`manual` / `plan` / `auto`（可在界面中循环切换）
+- 两种执行模式：`plan` / `auto`（可在界面中切换）
 - 多代理协同：planner、developer、tester、reviewer 等子代理分工
 - 工具体系：文件读写/编辑、搜索、Git、Shell、后台任务、MCP 调用等
+- Office 文档能力：内置 `DOCX/XLSX/PDF` 读取、生成与转换，复杂格式默认优先高保真转换
 - 安全控制：高风险工具调用分级与确认，支持会话级授权
 - 上下文索引：代码索引、文件监听、上下文压缩与会话持久化
 - 可选 LSP 能力：支持 `without_lsp`、默认 LSP、`with_gopls` 嵌入版本
@@ -97,7 +100,7 @@ export EOS_MODEL="gpt-4o-mini"
 ### 快捷键
 
 - `F2`：切换 AI / Bash 模式
-- `Alt+M`：切换执行模式（manual → plan → auto）
+- `Alt+M`：切换执行模式（plan ↔ auto）
 - `Alt+V`：粘贴剪贴板图片
 - `Alt+H`：展开/折叠思考内容
 - `?`：打开帮助面板
@@ -112,10 +115,71 @@ export EOS_MODEL="gpt-4o-mini"
 - `/settings` `/lsp` `/rules` `/lang` `/compact`
 - `/init`：在当前工作区初始化 `EOS.md`
 
+## 文档能力
+
+- 读取：`read` 工具现在可直接读取 `DOCX`、`XLSX`、`PDF`
+- 生成：内置 `document_generate` 工具，以及 CLI `eos doc generate`
+- 转换：内置 `document_convert` 工具，以及 CLI `eos doc convert`
+- 高保真：`DOCX <-> PDF`、`XLSX <-> PDF` 默认优先使用 `soffice` 高保真转换；环境不可用时回退到内容级转换并返回告警
+- 边界：`DOCX <-> XLSX` 首版偏向表格/结构化内容转换，不承诺复杂版式完全无损
+
+CLI 示例：
+
+```bash
+eos doc read ./report.docx
+eos doc generate --format pdf --output ./out/report.pdf --title "周报" --content "第一段\n\n第二段"
+eos doc convert ./report.docx --to pdf --output ./out/report.pdf --fidelity high
+```
+
 ## 服务模式 API
 
 - CLI 对外 API（`eos serve`）：[internal/docs/serve/API.md](./internal/docs/serve/API.md)
 - IDE bridge 最小接入：先生成桥接清单 `eos bridge manifest --workspace "/abs/workspace"`，详见 [internal/docs/serve/IDE_BRIDGE.md](./internal/docs/serve/IDE_BRIDGE.md)
+- 标准 MCP Server：`eos mcp serve --transport stdio --workspace "/abs/workspace"`，详见 [internal/docs/mcp/SERVER.md](./internal/docs/mcp/SERVER.md)
+
+### MCP Server 示例
+
+stdio:
+
+```bash
+eos mcp serve --transport stdio --workspace "/abs/workspace"
+```
+
+SSE:
+
+```bash
+eos mcp serve --transport sse --listen 127.0.0.1:8765 --workspace "/abs/workspace"
+```
+
+### 浏览器自动化
+
+EOS 当前不内置浏览器驱动，推荐通过成熟的 Playwright MCP 接入浏览器能力。接入后，agent 可以执行网页点击、输入、选择、等待页面变化和截图等真实浏览器操作。
+
+最小可用配置：
+
+```json
+[
+  {
+    "name": "playwright",
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp@latest"],
+    "envs": {},
+    "enabled": true
+  }
+]
+```
+
+启用方式：
+
+- 在 `/mcp` 面板中按 `B` 一键插入 Playwright 预设
+- 或手动编辑 `~/.eos.json` 中的 `mcp` 配置
+
+使用边界：
+
+- `web_fetch` 适合只读抓取网页内容
+- 浏览器 MCP 适合真实页面交互与行为验证
+- 可用性排查可使用 `browser_status` 或 `/status`、`/doctor`
 
 ## 项目结构（简版）
 

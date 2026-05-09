@@ -1,9 +1,14 @@
 package tools
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -112,20 +117,20 @@ func (m *Manager) userSelectStructured(ctx context.Context, params map[string]in
 	}
 
 	data := map[string]any{
-		"confirmed":         res.Confirmed,
-		"multi":             multi,
-		"options":           opts,
-		"selected_indices":  indices,
-		"selected_options":  selected,
-		"text":              rawText,
-		"option":            strings.TrimSpace(res.Option),
-		"option_index":      res.OptionIndex,
+		"confirmed":        res.Confirmed,
+		"multi":            multi,
+		"options":          opts,
+		"selected_indices": indices,
+		"selected_options": selected,
+		"text":             rawText,
+		"option":           strings.TrimSpace(res.Option),
+		"option_index":     res.OptionIndex,
 	}
 
 	display := "Canceled"
 	if res.Confirmed {
 		if len(selected) > 0 {
-			display = fmt.Sprintf("%s", strings.Join(selected, ", "))
+			display = strings.Join(selected, ", ")
 		} else {
 			display = "Confirmed"
 		}
@@ -179,4 +184,3 @@ func parseSelectionIndices(s string, n int) []int {
 	}
 	return out
 }
-

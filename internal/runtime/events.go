@@ -1,5 +1,11 @@
 package runtime
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 // 统一的事件类型常量
 // 所有事件格式：event_type:content
 // 去掉 meta: 前缀，使用点分隔命名，风格统一
@@ -15,10 +21,15 @@ const (
 	EventAssistantFinal = "assistant.final"
 
 	// Agent 相关事件
-	EventAgentCall  = "agent.call"
-	EventAgentTask  = "agent.task"
-	EventAgentSkill = "agent.skill"
-	EventAgentFinal = "agent.final" // 子 Agent 的最终输出（使用白色圆点）
+	EventAgentCall      = "agent.call"
+	EventAgentTask      = "agent.task"
+	EventAgentSkill     = "agent.skill"
+	EventAgentStarted   = "agent.started"
+	EventAgentProgress  = "agent.progress"
+	EventAgentCompleted = "agent.completed"
+	EventAgentFailed    = "agent.failed"
+	EventAgentCancelled = "agent.cancelled"
+	EventAgentFinal     = "agent.final" // 兼容旧事件名
 
 	// 流程相关事件
 	EventPhaseNote         = "phase.note"

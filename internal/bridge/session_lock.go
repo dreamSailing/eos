@@ -1,14 +1,22 @@
 package bridge
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"encoding/json"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // sessionLockInfo lock 文件中存储的信息
@@ -17,21 +25,45 @@ type sessionLockInfo struct {
 	StartedAt int64 `json:"started_at"`
 }
 
+var (
+	sessionLockMu   sync.Mutex
+	sessionLockRefs = map[string]int{}
+)
+
 // sessionLockPath 返回 lock 文件路径
 func sessionLockPath() string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return ""
+	return sessionLockPathForRoot("")
+}
+
+func sessionLockPathForRoot(root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return ""
+		}
+		root = cwd
 	}
-	return filepath.Join(cwd, ".vb", "sessions", ".lock")
+	return filepath.Join(root, ".eos", "sessions", ".lock")
 }
 
 // AcquireSessionLock 创建 lock 文件，写入 PID + 时间戳
 func AcquireSessionLock() {
-	p := sessionLockPath()
+	acquireSessionLockPath(sessionLockPath())
+}
+
+func acquireSessionLockPath(p string) {
 	if p == "" {
 		return
 	}
+
+	sessionLockMu.Lock()
+	if n := sessionLockRefs[p]; n > 0 {
+		sessionLockRefs[p] = n + 1
+		sessionLockMu.Unlock()
+		return
+	}
+	sessionLockMu.Unlock()
 
 	dir := filepath.Dir(p)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -55,17 +87,34 @@ func AcquireSessionLock() {
 			"error", err)
 		return
 	}
+	sessionLockMu.Lock()
+	sessionLockRefs[p] = 1
+	sessionLockMu.Unlock()
 	slog.Debug("session_lock.acquired",
 		"component", utils.ComponentSystem,
-		"pid", info.PID)
+		"pid", info.PID,
+		"path", p)
 }
 
 // ReleaseSessionLock 删除 lock 文件
 func ReleaseSessionLock() {
-	p := sessionLockPath()
+	releaseSessionLockPath(sessionLockPath())
+}
+
+func releaseSessionLockPath(p string) {
 	if p == "" {
 		return
 	}
+
+	sessionLockMu.Lock()
+	if n := sessionLockRefs[p]; n > 1 {
+		sessionLockRefs[p] = n - 1
+		sessionLockMu.Unlock()
+		return
+	}
+	delete(sessionLockRefs, p)
+	sessionLockMu.Unlock()
+
 	if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
 		slog.Debug("session_lock.release.error",
 			"component", utils.ComponentSystem,
@@ -84,7 +133,10 @@ type CrashRecoveryInfo struct {
 // DetectCrashRecovery 检测上次是否非正常退出
 // 如果 lock 文件存在且进程已不运行，说明非正常退出
 func DetectCrashRecovery() CrashRecoveryInfo {
-	p := sessionLockPath()
+	return detectCrashRecoveryAtPath(sessionLockPath())
+}
+
+func detectCrashRecoveryAtPath(p string) CrashRecoveryInfo {
 	if p == "" {
 		return CrashRecoveryInfo{}
 	}
@@ -141,6 +193,37 @@ func DetectCrashRecovery() CrashRecoveryInfo {
 		StartedAt: time.Unix(info.StartedAt, 0),
 		SessionID: sessionID,
 	}
+}
+
+func (rc *RuntimeCore) syncSessionLock() {
+	if rc == nil {
+		return
+	}
+
+	next := sessionLockPathForRoot(rc.workingRoot())
+	rc.mu.Lock()
+	prev := rc.sessionLockPath
+	if strings.EqualFold(filepath.Clean(prev), filepath.Clean(next)) {
+		rc.mu.Unlock()
+		return
+	}
+	rc.sessionLockPath = next
+	rc.mu.Unlock()
+
+	acquireSessionLockPath(next)
+	releaseSessionLockPath(prev)
+}
+
+func (rc *RuntimeCore) releaseHeldSessionLock() {
+	if rc == nil {
+		return
+	}
+
+	rc.mu.Lock()
+	p := rc.sessionLockPath
+	rc.sessionLockPath = ""
+	rc.mu.Unlock()
+	releaseSessionLockPath(p)
 }
 
 // isProcessRunning 检查指定 PID 的进程是否仍在运行

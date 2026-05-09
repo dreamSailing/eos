@@ -1,15 +1,21 @@
 package hints
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/table"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 // Hint 是提示项
 type Hint struct {
-	Key  string
-	Desc string
+	Key   string
+	Desc  string
+	Value string
 }
 
 // SelectMsg 选择提示消息
@@ -89,7 +95,7 @@ func (m *Model) updateTableRows() {
 
 // AddHint 添加提示
 func (m *Model) AddHint(key, desc string) {
-	m.hints = append(m.hints, Hint{Key: key, Desc: desc})
+	m.hints = append(m.hints, Hint{Key: key, Desc: desc, Value: key})
 	m.updateTableRows()
 }
 
@@ -124,7 +130,7 @@ func (m *Model) Selected() string {
 	if idx < 0 || idx >= len(m.hints) {
 		return ""
 	}
-	return m.hints[idx].Key
+	return m.hints[idx].Value
 }
 
 // CursorUp 向上移动

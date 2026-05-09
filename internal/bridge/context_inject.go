@@ -1,5 +1,11 @@
 package bridge
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"io/fs"
 	"os"
@@ -9,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
+	"github.com/dreamSailing/eos/internal/ai"
+	codectx "github.com/dreamSailing/eos/internal/context"
 )
 
 func computeInjectBudgetBytes(rc *RuntimeCore, maxInjectKB int) int {
@@ -29,9 +35,16 @@ func computeInjectBudgetBytes(rc *RuntimeCore, maxInjectKB int) int {
 	return clampInt(budget, 16*1024, 128*1024)
 }
 
-func buildInjectCandidates(query string, sugg []codectx.Suggestion, limit int) []codectx.Suggestion {
+func buildInjectCandidates(rc *RuntimeCore, query string, sugg []codectx.Suggestion, limit int) []codectx.Suggestion {
 	if limit <= 0 {
 		limit = 4
+	}
+
+	root := ""
+	versionsRoot := filepath.Join(".eos", "versions")
+	if rc != nil {
+		root = rc.workingRoot()
+		versionsRoot = rc.versionsRoot()
 	}
 
 	seen := map[string]struct{}{}
@@ -47,7 +60,7 @@ func buildInjectCandidates(query string, sugg []codectx.Suggestion, limit int) [
 		if !isSafeRelPath(p) {
 			return
 		}
-		if !fileExistsUnderWd(p) {
+		if !fileExistsUnderRoot(root, p) {
 			return
 		}
 		seen[p] = struct{}{}
@@ -60,7 +73,7 @@ func buildInjectCandidates(query string, sugg []codectx.Suggestion, limit int) [
 			return out
 		}
 	}
-	for _, p := range recentVersionedFilesList(6) {
+	for _, p := range recentVersionedFilesList(versionsRoot, 6) {
 		add(p, nil)
 		if len(out) >= limit {
 			return out
@@ -187,12 +200,10 @@ func tokenizeKeywords(text string) []string {
 	return out
 }
 
-func recentVersionedFilesList(limit int) []string {
+func recentVersionedFilesList(root string, limit int) []string {
 	if limit <= 0 {
 		limit = 6
 	}
-	wd, _ := os.Getwd()
-	root := filepath.Join(wd, ".vb", "versions")
 	if _, err := os.Stat(root); err != nil {
 		return nil
 	}
@@ -204,6 +215,12 @@ func recentVersionedFilesList(limit int) []string {
 			return nil
 		}
 		if d.IsDir() {
+			if path != root {
+				rel, err := filepath.Rel(root, path)
+				if err == nil && strings.HasPrefix(filepath.ToSlash(rel), "_") {
+					return filepath.SkipDir
+				}
+			}
 			return nil
 		}
 		seen++
@@ -211,19 +228,20 @@ func recentVersionedFilesList(limit int) []string {
 			return fs.SkipAll
 		}
 		name := d.Name()
-		if !strings.HasSuffix(name, ".meta") && !strings.HasSuffix(name, ".content") {
-			return nil
-		}
-		id := strings.TrimSuffix(strings.TrimSuffix(name, ".meta"), ".content")
-		ts, err := time.Parse("20060102-150405", id)
-		if err != nil {
+		if !strings.HasSuffix(name, ".content") {
 			return nil
 		}
 		dir := filepath.Dir(path)
 		relDir, err := filepath.Rel(root, dir)
-		if err != nil || strings.HasPrefix(relDir, "..") {
+		relDir = filepath.ToSlash(relDir)
+		if err != nil || strings.HasPrefix(relDir, "..") || relDir == "." || strings.HasPrefix(relDir, "_") {
 			return nil
 		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		ts := info.ModTime()
 		existing, ok := latest[relDir]
 		if !ok || ts.After(existing) {
 			latest[relDir] = ts
@@ -250,9 +268,11 @@ func recentVersionedFilesList(limit int) []string {
 	return out
 }
 
-func fileExistsUnderWd(rel string) bool {
-	wd, _ := os.Getwd()
-	ap := filepath.Join(wd, filepath.FromSlash(rel))
+func fileExistsUnderRoot(root, rel string) bool {
+	ap := filepath.Clean(filepath.FromSlash(rel))
+	if root != "" {
+		ap = filepath.Join(root, filepath.FromSlash(rel))
+	}
 	fi, err := os.Stat(ap)
 	return err == nil && !fi.IsDir()
 }

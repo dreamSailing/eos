@@ -2,6 +2,12 @@
 
 package lsp
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"fmt"
@@ -11,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/events"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/events"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // Manager LSP 管理器
@@ -143,7 +149,7 @@ func (m *Manager) createClient(ctx context.Context, rootPath string) (*Client, e
 
 	// 初始化
 	if err := client.Initialize(startCtx); err != nil {
-		client.Stop()
+		_ = client.Stop()
 		return nil, fmt.Errorf("failed to initialize: %w", err)
 	}
 
@@ -235,7 +241,7 @@ func (m *Manager) SetEnabled(enabled bool) {
 	if !enabled {
 		// 关闭所有客户端
 		for _, client := range m.clients {
-			client.Stop()
+			_ = client.Stop()
 		}
 		m.clients = make(map[string]*Client)
 	}

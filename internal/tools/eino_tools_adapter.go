@@ -1,14 +1,20 @@
 package tools
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"os"
 	"path/filepath"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
@@ -133,17 +139,6 @@ func (t *invokableAdapter) InvokableRun(ctx context.Context, argumentsInJSON str
 								SetPendingDiff(diffText)
 							}
 						}
-						// 保存行数统计
-						if added, ok := diffResults[0].Data["added_lines"].(int); ok {
-							lastDiffAddedLines = added
-						} else if added, ok := diffResults[0].Data["added_lines"].(float64); ok {
-							lastDiffAddedLines = int(added)
-						}
-						if removed, ok := diffResults[0].Data["removed_lines"].(int); ok {
-							lastDiffRemovedLines = removed
-						} else if removed, ok := diffResults[0].Data["removed_lines"].(float64); ok {
-							lastDiffRemovedLines = int(removed)
-						}
 					}
 				}
 			case ToolEdit:
@@ -162,8 +157,6 @@ func (t *invokableAdapter) InvokableRun(ctx context.Context, argumentsInJSON str
 			// 调用安全门提示用户
 			dec := SafetyGatePrompt(ctx, category, summary)
 			if dec == "deny" {
-				lastDiffAddedLines = 0
-				lastDiffRemovedLines = 0
 				return "", fmt.Errorf("operation denied by user")
 			}
 			if dec == "session" && SafetyGateAllowSession != nil {
@@ -273,10 +266,4 @@ var (
 	SetPendingDiff           func(diff string)
 	ClearReviewText          func() // 新增：清除审阅变更文本的回调
 	ObservationConsumer      func(res ToolResult)
-)
-
-// 存储最近的 diff 行数统计
-var (
-	lastDiffAddedLines   int
-	lastDiffRemovedLines int
 )

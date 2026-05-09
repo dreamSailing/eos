@@ -1,28 +1,37 @@
 package bridge
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/notify"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	einoruntime "github.com/dreamSailing/eos/internal/runtime"
+	"github.com/dreamSailing/eos/internal/session"
+	"github.com/dreamSailing/eos/internal/skills"
+	"github.com/dreamSailing/eos/internal/state"
+	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/internal/tools/fileops"
+	"github.com/google/uuid"
 	"log/slog"
-	"os"
-	"path/filepath"
+	"regexp"
+	stdruntime "runtime"
 	"sort"
 	"strconv"
-	stdruntime "runtime"
 	"strings"
 	"sync"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/notify"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
-	einoruntime "github.com/dreamSailing/vb-coding/internal/runtime"
-	"github.com/dreamSailing/vb-coding/internal/session"
-	"github.com/dreamSailing/vb-coding/internal/state"
-	"github.com/dreamSailing/vb-coding/internal/tools"
-	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
 )
+
+var thinkBlockPattern = regexp.MustCompile(`(?is)<think>.*?</think>`)
 
 // loop 运行时事件循环
 func (rc *RuntimeCore) loop() {
@@ -78,47 +87,16 @@ func (rc *RuntimeCore) loop() {
 		slog.Debug("bridge.init_runtime.create_model_success", "component", utils.ComponentSystem)
 
 		slog.Debug("bridge.init_runtime.load_mcp_start", "component", utils.ComponentSystem)
-		if err := rc.mcpMgr.Reload(ctx, &cfg); err != nil {
+		mcpCfg := cfg
+		mcpCfg.MCP = pluginpkg.MergeMCPEntries(&cfg, rc.workingRoot())
+		if err := rc.mcpMgr.Reload(ctx, &mcpCfg); err != nil {
 			slog.Warn("bridge.init_runtime.load_mcp_failed", "component", utils.ComponentSystem, "error", err.Error())
 		}
 		mcpTools := rc.mcpMgr.GetAllTools()
 		slog.Debug("bridge.init_runtime.load_mcp_success", "component", utils.ComponentSystem, "tools_count", len(mcpTools))
 
 		slog.Debug("bridge.init_runtime.load_skills_start", "component", utils.ComponentSystem)
-		skillsDirs := make([]string, 0, 8)
-
-		addDir := func(dir string) {
-			if dir == "" {
-				return
-			}
-			if abs, err := filepath.Abs(dir); err == nil {
-				dir = abs
-			}
-			dir = filepath.Clean(dir)
-			for _, existing := range skillsDirs {
-				if strings.EqualFold(existing, dir) {
-					return
-				}
-			}
-			skillsDirs = append(skillsDirs, dir)
-		}
-
-		if home, err := os.UserHomeDir(); err == nil {
-			addDir(filepath.Join(home, ".vb", "skills"))
-			addDir(filepath.Join(home, ".claude", "skills"))
-			addDir(filepath.Join(home, ".trae", "skills"))
-		}
-
-		if wd, err := os.Getwd(); err == nil {
-			workspaceRoot := wd
-			addDir(filepath.Join(workspaceRoot, ".vb", "skills"))
-			addDir(filepath.Join(workspaceRoot, ".claude", "skills"))
-			addDir(filepath.Join(workspaceRoot, ".trae", "skills"))
-		}
-
-		for _, dir := range config.GetEnabledSkillsDirs(&cfg) {
-			addDir(dir)
-		}
+		skillsDirs := skills.ResolveScanDirs(rc.workingRoot(), &cfg)
 
 		if len(skillsDirs) > 0 {
 			rc.skillsLoader.SetSkillsDirs(skillsDirs)
@@ -130,6 +108,18 @@ func (rc *RuntimeCore) loop() {
 					"skills_count", len(rc.skillsLoader.List()))
 			}
 		}
+		if sm := rc.tm.GetSkillManager(); sm != nil {
+			sm.SetDisabledSkills(cfg.DisabledSkills)
+		}
+		for _, plugin := range pluginpkg.DefaultRegistry().List() {
+			if plugin == nil {
+				continue
+			}
+			pluginpkg.DefaultRegistry().SetEnabled(plugin.Name(), true)
+		}
+		for _, entry := range cfg.Plugins {
+			pluginpkg.DefaultRegistry().SetEnabled(entry.Name, entry.Enabled)
+		}
 
 		slog.Debug("bridge.init_runtime.create_runtime_start", "component", utils.ComponentSystem)
 		nrt, err := einoruntime.NewEinoRuntimeWithMCP(ctx, rc.cm, rc.tm, em, mcpTools)
@@ -137,6 +127,9 @@ func (rc *RuntimeCore) loop() {
 			slog.Error("bridge.init_runtime.eino_runtime_failed", "component", utils.ComponentSystem, "error", err.Error())
 			return err
 		}
+		nrt.WithOnPlanUpdate(func(plan string) {
+			rc.HandlePlanUpdate(plan)
+		})
 		slog.Debug("bridge.init_runtime.create_runtime_success", "component", utils.ComponentSystem)
 
 		var agentMu sync.Mutex
@@ -168,26 +161,97 @@ func (rc *RuntimeCore) loop() {
 							if d, ok := m["data"].(map[string]any); ok {
 								params = d
 							}
-							rc.eventsCh <- Event{Type: "tool_call", RID: id, Content: name, Data: params}
+							rc.eventsCh <- bridgeToolCallEvent(id, name, params)
 							return
 						case einoruntime.EventToolResult:
 							id, _ := m["id"].(string)
 							status, _ := m["status"].(string)
 							display, _ := m["display"].(string)
 							errMsg, _ := m["error"].(string)
+							toolName, _ := m["tool"].(string)
 							out := strings.TrimSpace(display)
 							if out == "" {
 								out = strings.TrimSpace(errMsg)
 							}
-							rc.eventsCh <- Event{Type: "tool_result", RID: id, Content: out, Data: map[string]any{"status": status}}
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							rc.eventsCh <- bridgeToolResultEvent(id, toolName, status, out, errMsg, data)
 							return
 						case einoruntime.EventAssistantDelta:
 							content, _ := m["content"].(string)
-							rc.eventsCh <- Event{Type: "delta", Content: content}
+							rc.eventsCh <- bridgeTextDeltaEvent(content)
 							return
 						case einoruntime.EventPhaseNote:
 							note, _ := m["content"].(string)
-							rc.eventsCh <- Event{Type: "phase.note", Content: note}
+							rc.eventsCh <- bridgeReasoningEvent(note)
+							return
+						case einoruntime.EventAgentStarted:
+							id, _ := m["id"].(string)
+							content, _ := m["content"].(string)
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							agentName, _ := data["agent_name"].(string)
+							task := strings.TrimSpace(content)
+							if task == "" {
+								task, _ = data["task"].(string)
+							}
+							rc.eventsCh <- bridgeAgentStartedEvent(id, agentName, task, data)
+							return
+						case einoruntime.EventAgentProgress:
+							id, _ := m["id"].(string)
+							content, _ := m["content"].(string)
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							agentName, _ := data["agent_name"].(string)
+							task := strings.TrimSpace(content)
+							if task == "" {
+								task, _ = data["task"].(string)
+							}
+							rc.eventsCh <- bridgeAgentProgressEvent(id, agentName, task, data)
+							return
+						case einoruntime.EventAgentCompleted:
+							id, _ := m["id"].(string)
+							content, _ := m["content"].(string)
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							agentName, _ := data["agent_name"].(string)
+							rc.eventsCh <- bridgeAgentCompletedEvent(id, agentName, content, data)
+							return
+						case einoruntime.EventAgentFailed:
+							id, _ := m["id"].(string)
+							content, _ := m["content"].(string)
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							agentName, _ := data["agent_name"].(string)
+							errMsg := strings.TrimSpace(content)
+							if errMsg == "" {
+								errMsg, _ = data["error"].(string)
+							}
+							rc.eventsCh <- bridgeAgentFailedEvent(id, agentName, errMsg, data)
+							return
+						case einoruntime.EventAgentCancelled:
+							id, _ := m["id"].(string)
+							content, _ := m["content"].(string)
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							agentName, _ := data["agent_name"].(string)
+							reason := strings.TrimSpace(content)
+							if reason == "" {
+								reason, _ = data["reason"].(string)
+							}
+							rc.eventsCh <- bridgeAgentCancelledEvent(id, agentName, reason, data)
 							return
 						}
 					}
@@ -208,7 +272,7 @@ func (rc *RuntimeCore) loop() {
 				agentMu.Lock()
 				lastAgentName = name
 				agentMu.Unlock()
-				rc.eventsCh <- Event{Type: "agent.task", RID: name, Content: task}
+				rc.eventsCh <- bridgeAgentProgressEvent("", name, task, nil)
 				return
 			}
 
@@ -217,7 +281,7 @@ func (rc *RuntimeCore) loop() {
 				agentMu.Lock()
 				name := lastAgentName
 				agentMu.Unlock()
-				rc.eventsCh <- Event{Type: "agent.final", RID: name, Content: content}
+				rc.eventsCh <- bridgeAgentCompletedEvent("", name, content, nil)
 				return
 			}
 
@@ -228,9 +292,9 @@ func (rc *RuntimeCore) loop() {
 				}
 				parts := strings.SplitN(raw, ":", 2)
 				if len(parts) == 2 {
-					rc.eventsCh <- Event{Type: "tool_call", RID: strings.TrimSpace(parts[0]), Content: strings.TrimSpace(parts[1])}
+					rc.eventsCh <- bridgeToolCallEvent(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil)
 				} else {
-					rc.eventsCh <- Event{Type: "tool_call", RID: "", Content: strings.TrimSpace(parts[0])}
+					rc.eventsCh <- bridgeToolCallEvent("", strings.TrimSpace(parts[0]), nil)
 				}
 				return
 			}
@@ -242,9 +306,9 @@ func (rc *RuntimeCore) loop() {
 				}
 				parts := strings.SplitN(raw, ":", 2)
 				if len(parts) == 2 {
-					rc.eventsCh <- Event{Type: "tool_result", RID: strings.TrimSpace(parts[0]), Content: strings.TrimSpace(parts[1]), Data: map[string]any{"status": "success"}}
+					rc.eventsCh <- bridgeToolResultEvent(strings.TrimSpace(parts[0]), "", "success", strings.TrimSpace(parts[1]), "", nil)
 				} else {
-					rc.eventsCh <- Event{Type: "tool_result", RID: "", Content: strings.TrimSpace(parts[0]), Data: map[string]any{"status": "success"}}
+					rc.eventsCh <- bridgeToolResultEvent("", "", "success", strings.TrimSpace(parts[0]), "", nil)
 				}
 				return
 			}
@@ -252,7 +316,7 @@ func (rc *RuntimeCore) loop() {
 			if strings.HasPrefix(line, einoruntime.EventAssistantDelta+":") {
 				raw := strings.TrimSpace(strings.TrimPrefix(line, einoruntime.EventAssistantDelta+":"))
 				if raw != "" {
-					rc.eventsCh <- Event{Type: "delta", Content: raw}
+					rc.eventsCh <- bridgeTextDeltaEvent(raw)
 				}
 				return
 			}
@@ -260,7 +324,7 @@ func (rc *RuntimeCore) loop() {
 			if strings.HasPrefix(line, einoruntime.EventPhaseNote+":") {
 				raw := strings.TrimSpace(strings.TrimPrefix(line, einoruntime.EventPhaseNote+":"))
 				if raw != "" {
-					rc.eventsCh <- Event{Type: "phase.note", Content: raw}
+					rc.eventsCh <- bridgeReasoningEvent(raw)
 				}
 				return
 			}
@@ -280,13 +344,23 @@ func (rc *RuntimeCore) loop() {
 				cbReasoning(reasoning)
 			}
 			// 发送事件到 eventsCh
-			rc.eventsCh <- Event{
-				Type:    "reasoning",
-				Content: reasoning,
-			}
+			rc.eventsCh <- bridgeReasoningEvent(reasoning)
 		})
 
 		nrt = nrt.WithSafety(rc.hooks)
+
+		// Phase 1 集成: Wire AgentTool executor to use the runtime
+		tools.AgentToolExecutor = func(agentCtx context.Context, prompt, subagentType, description, model string) (string, error) {
+			agentCtx = tools.WithTraceID(agentCtx, "agent-"+uuid.New().String()[:8])
+			result, err := nrt.GraphInvoke(agentCtx, prompt, "")
+			if err != nil {
+				return "", err
+			}
+			if result != nil {
+				return result.Content, nil
+			}
+			return "", nil
+		}
 
 		rt = nrt
 		rc.mu.Lock()
@@ -319,6 +393,39 @@ func (rc *RuntimeCore) loop() {
 				rc.cm.SetCompressionStrategy(session.CompressionAggressive)
 			}
 		}
+
+		// Initialize fast model runtime for summaries if FastModel is configured
+		if cfg.FastModel != "" && rc.fastRT == nil {
+			var fastModelEntry config.ModelEntry
+			fastOk := false
+			for _, m := range cfg.Models {
+				if m.Name == cfg.FastModel || m.Model == cfg.FastModel {
+					fastModelEntry = m
+					fastOk = true
+					break
+				}
+			}
+			if fastOk {
+				fastEm, errF := einoruntime.NewChatModelWithSettings(ctx, fastModelEntry.APIKey, fastModelEntry.APIBase, fastModelEntry.Model, "")
+				if errF == nil {
+					fastRT, errF2 := einoruntime.NewEinoRuntimeWithMCP(ctx, rc.cm, rc.tm, fastEm, nil)
+					if errF2 == nil {
+						fastRT.WithOnPlanUpdate(func(plan string) {
+							rc.HandlePlanUpdate(plan)
+						})
+						rc.fastRT = fastRT
+						slog.Info("bridge.init_runtime.fast_model_created", "component", utils.ComponentSystem, "fast_model", fastModelEntry.Model)
+					} else {
+						slog.Warn("bridge.init_runtime.fast_model_runtime_failed", "component", utils.ComponentSystem, "error", errF2.Error())
+					}
+				} else {
+					slog.Warn("bridge.init_runtime.fast_model_failed", "component", utils.ComponentSystem, "error", errF.Error())
+				}
+			} else {
+				slog.Warn("bridge.init_runtime.fast_model_not_found", "component", utils.ComponentSystem, "fast_model", cfg.FastModel)
+			}
+		}
+
 		return nil
 	}
 
@@ -347,20 +454,71 @@ func (rc *RuntimeCore) loop() {
 				go func(tRT *einoruntime.EinoRuntime, tReq graphInvokeReq) {
 					defer rc.wg.Done()
 					defer rc.removePendingGraph(tReq.resCh)
-					
+
 					// 重置解析器并确保在结束时刷新
 					if rc.parser == nil {
 						rc.parser = NewStreamParser(rc.eventsCh)
 					}
 					rc.parser.Reset()
 					defer rc.parser.Flush()
-					
+
 					defer func() {
 						if rr := recover(); rr != nil {
 							tReq.resCh <- graphInvokeRes{msg: nil, err: ErrRuntimeLoopUnavailable}
 						}
 					}()
+
+					// Reset tool result budget at start of each turn
+					rc.tm.ResetResultBudget()
+
+					// Proactive micro-compact: compress large tool outputs before they accumulate
+					if rc.cm != nil && rc.cm.ShouldMicroCompact() {
+						slog.Debug("runtime.micro_compact.proactive", "component", utils.ComponentSystem)
+						rc.cm.MicroCompact()
+					}
+
+					// Fix 4.4: Auto-compact when token threshold exceeded
+					if rc.cm != nil && rc.cm.GetAutoCompressEnabled() {
+						rc.cm.AutoCompactIfNeeded()
+					}
+
 					msg, err := rc.graphInvokeWithRetry(tReq.ctx, tRT, tReq.query, tReq.executionMode, tReq.imagePaths)
+
+					// Gap D: Check stop hooks after graph invocation
+					if err == nil && msg != nil && rc.hookManager != nil {
+						assistantContent := ""
+						if msg.Content != "" {
+							assistantContent = msg.Content
+						}
+						stopDec, stopErr := rc.hookManager.Stop(tReq.ctx, assistantContent, true)
+						if stopErr == nil && (stopDec.Decision == "block" || stopDec.Decision == "deny") {
+							slog.Info("runtime.stop_hook.blocked", "component", utils.ComponentSystem, "reason", stopDec.Reason)
+						}
+					}
+
+					// Fix 4.2: Check session memory extraction after graph invoke
+					if err == nil && rc.cm != nil {
+						if smMgr := rc.cm.GetSessionMemoryManager(); smMgr != nil && rc.cm.IsSessionMemoryEnabled() {
+							messages := rc.cm.Build()
+							tokenCount := rc.cm.EstimateCurrentTokens()
+							if smMgr.ShouldExtractMemory(messages, tokenCount) {
+								lastMessageContent := ""
+								if len(messages) > 0 {
+									lastMessageContent = messages[len(messages)-1].Content
+								}
+								go func() {
+									smMgr.SetExtractionInProgress(true)
+									defer smMgr.SetExtractionInProgress(false)
+									if extractErr := rc.cm.ExtractSessionMemory(context.Background()); extractErr != nil {
+										slog.Warn("runtime.session_memory.extract_failed", "component", utils.ComponentSystem, "error", extractErr.Error())
+									} else {
+										smMgr.RecordExtraction(tokenCount, lastMessageContent)
+									}
+								}()
+							}
+						}
+					}
+
 					tReq.resCh <- graphInvokeRes{msg: msg, err: err}
 				}(currentRT, r)
 			case toolsNodeReq:
@@ -394,7 +552,11 @@ func (rc *RuntimeCore) loop() {
 						continue
 					}
 				}
+				// Use fast model for summaries if available
 				currentRT := rt
+				if rc.fastRT != nil {
+					currentRT = rc.fastRT
+				}
 				rc.wg.Add(1)
 				go func(tRT *einoruntime.EinoRuntime, tReq summarizeReq) {
 					defer rc.wg.Done()
@@ -407,9 +569,41 @@ func (rc *RuntimeCore) loop() {
 					out, err := tRT.Summarize(tReq.ctx, tReq.text)
 					tReq.resCh <- summarizeRes{text: out, err: err}
 				}(currentRT, r)
+			case predictNextReq:
+				rc.addPendingPredict(r.resCh)
+				if rt == nil {
+					if err := initRuntime(); err != nil {
+						rc.removePendingPredict(r.resCh)
+						r.resCh <- predictNextRes{text: "", err: err}
+						continue
+					}
+				}
+				currentRT := rt
+				if rc.fastRT != nil {
+					currentRT = rc.fastRT
+				}
+				rc.wg.Add(1)
+				go func(tRT *einoruntime.EinoRuntime, tReq predictNextReq) {
+					defer rc.wg.Done()
+					defer rc.removePendingPredict(tReq.resCh)
+					defer func() {
+						if rr := recover(); rr != nil {
+							tReq.resCh <- predictNextRes{text: "", err: ErrRuntimeLoopUnavailable}
+						}
+					}()
+					out, err := tRT.PredictNextUserMessage(tReq.ctx, tReq.text)
+					tReq.resCh <- predictNextRes{text: out, err: err}
+				}(currentRT, r)
 			case finalizeTaskReq:
 				rc.finalizeTask(rt, r.traceID, r.userText, r.assistantText, r.success, r.errorMsg)
 				r.resCh <- struct{}{}
+			case cancelForegroundReq:
+				cancelled := false
+				if rt != nil && strings.TrimSpace(r.traceID) != "" {
+					rt.ClearRequestContexts(strings.TrimSpace(r.traceID))
+					cancelled = true
+				}
+				r.resCh <- cancelled
 			case hookEventReq:
 				if rt == nil {
 					continue
@@ -504,7 +698,7 @@ func (rc *RuntimeCore) finalizeTask(rt *einoruntime.EinoRuntime, traceID string,
 	if len(userShort) > 180 {
 		userShort = userShort[:180] + "…"
 	}
-	assistantShort := assistantText
+	assistantShort := sanitizeTaskSummaryAssistantText(assistantText)
 	if len(assistantShort) > 380 {
 		assistantShort = assistantShort[:380] + "…"
 	}
@@ -533,7 +727,9 @@ func (rc *RuntimeCore) finalizeTask(rt *einoruntime.EinoRuntime, traceID string,
 		b.WriteString("\n  - 关键路径: " + strings.Join(paths[:max], ", "))
 	}
 
-	rc.cm.AppendTaskSummary(b.String())
+	if rc != nil && rc.cm != nil {
+		rc.cm.AppendTaskSummary(b.String())
+	}
 
 	if rt != nil {
 		meta := map[string]any{
@@ -573,8 +769,21 @@ func (rc *RuntimeCore) finalizeTask(rt *einoruntime.EinoRuntime, traceID string,
 		msg = msg + "\n" + userShort
 	}
 	if desktopEnabled {
-		notify.NotifyAsync("VB CODING", msg)
+		notify.NotifyAsync("EOS", msg)
 	}
+}
+
+func sanitizeTaskSummaryAssistantText(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	text = thinkBlockPattern.ReplaceAllString(text, "")
+	text = strings.TrimSpace(text)
+	for strings.Contains(text, "\n\n\n") {
+		text = strings.ReplaceAll(text, "\n\n\n", "\n\n")
+	}
+	return text
 }
 
 func extractSummaryPaths(toolObs []string, toolSummaries []string) []string {
@@ -652,10 +861,15 @@ func (rc *RuntimeCore) cleanupPendingRequests() {
 	for ch := range rc.pendingSumm {
 		sumChs = append(sumChs, ch)
 	}
+	predChs := make([]chan predictNextRes, 0, len(rc.pendingPred))
+	for ch := range rc.pendingPred {
+		predChs = append(predChs, ch)
+	}
 	rc.pendingReload = make(map[chan error]struct{})
 	rc.pendingGraph = make(map[chan graphInvokeRes]struct{})
 	rc.pendingTools = make(map[chan toolsNodeRes]struct{})
 	rc.pendingSumm = make(map[chan summarizeRes]struct{})
+	rc.pendingPred = make(map[chan predictNextRes]struct{})
 	rc.pendingMu.Unlock()
 
 	for _, ch := range reloadChs {
@@ -682,12 +896,18 @@ func (rc *RuntimeCore) cleanupPendingRequests() {
 		default:
 		}
 	}
+	for _, ch := range predChs {
+		select {
+		case ch <- predictNextRes{text: "", err: ErrRuntimeLoopUnavailable}:
+		default:
+		}
+	}
 }
 
 // Shutdown 优雅关闭运行时，等待所有 goroutine 完成
 func (rc *RuntimeCore) Shutdown() {
 	// 释放会话锁（正常退出时清除 lock 文件）
-	ReleaseSessionLock()
+	rc.releaseHeldSessionLock()
 
 	// 关闭 LSP 管理器
 	rc.ShutdownLSPManager(rc.lspManager)

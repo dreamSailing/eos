@@ -1,5 +1,11 @@
 package tools
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"fmt"
@@ -7,7 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 
 	"github.com/google/uuid"
 )
@@ -114,10 +120,32 @@ func (m *Manager) executeSingleWithCache(ctx context.Context, call ToolCall, now
 	}
 
 	if allowed := AllowedToolsFromContext(ctx); allowed != nil && !allowed[strings.ToLower(call.Tool)] {
-		return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "permission denied: tool not allowed", Display: "Error: permission denied: tool not allowed", Ts: now}
+		return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "permission denied: tool not allowed", Display: "错误：权限被拒绝：工具未授权", Ts: now}
 	}
 
-	r := handler(ctx, call.Parameters)
+	// Fix 4: Ask-tool-approval for tools that require explicit user confirmation
+	if m.AskToolApproval != nil && GetToolRiskLevel(call.Tool) >= RiskLevelHigh {
+		if !m.AskToolApproval(call.Tool) {
+			return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "tool execution denied by user", Display: "错误：工具执行已被用户拒绝", Ts: now}
+		}
+	}
+
+	// Pre-tool hook: allows input modification and execution veto
+	params := call.Parameters
+	if m.hookRunner != nil {
+		proceed, modified, err := m.hookRunner.PreToolUse(ctx, call.Tool, call.Parameters)
+		if err != nil {
+			slog.Debug("tools.pre_hook.error", "component", utils.ComponentTool, "tool", call.Tool, "error", err.Error())
+		}
+		if !proceed {
+			return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "tool execution blocked by pre-hook", Display: "错误：工具执行已被 pre-hook 阻止", Ts: now}
+		}
+		if modified != nil {
+			params = modified
+		}
+	}
+
+	r := handler(ctx, params)
 	r.ID = call.ID
 	if r.Ts == 0 {
 		r.Ts = now
@@ -132,6 +160,39 @@ func (m *Manager) executeSingleWithCache(ctx context.Context, call ToolCall, now
 		r.Data["params"] = call.Parameters
 	}
 	r = m.limitToolOutputSize(r)
+
+	// Enforce aggregate tool result budget per turn
+	if m.resultBudget != nil && r.Status == "success" {
+		if content, ok := r.Data["content"].(string); ok {
+			replaced, truncated := m.resultBudget.CheckAndEnforce(call.ID, content)
+			if truncated {
+				r.Data["content"] = replaced
+				r.Data["budget_truncated"] = true
+			}
+		} else if text, ok := r.Data["text"].(string); ok {
+			replaced, truncated := m.resultBudget.CheckAndEnforce(call.ID, text)
+			if truncated {
+				r.Data["text"] = replaced
+				r.Data["budget_truncated"] = true
+			}
+		}
+	}
+
+	// Post-tool hook: allows result processing (logging, notifications, etc.)
+	if m.hookRunner != nil {
+		if err := m.hookRunner.PostToolUse(ctx, call.Tool, params, r.Data); err != nil {
+			slog.Debug("tools.post_hook.error", "component", utils.ComponentTool, "tool", call.Tool, "error", err.Error())
+		}
+	}
+
+	// Reactive compaction: if tool output exceeds threshold, flag for context compression
+	if r.Status == "success" && m.isReactiveCompactNeeded(r) {
+		slog.Info("tools.reactive_compact.triggered", "component", utils.ComponentTool, "tool", call.Tool)
+		r.Data["reactive_compact_suggested"] = true
+		if m.OnReactiveCompact != nil {
+			go m.OnReactiveCompact()
+		}
+	}
 
 	// 写入缓存（仅对可缓存的成功结果）
 	if m.cache != nil && r.Status == "success" && IsCacheable(call.Tool, call.Parameters) {
@@ -199,7 +260,7 @@ func (m *Manager) execStructured(ctx context.Context, call ToolCall) ToolResult 
 	}
 
 	if allowed := AllowedToolsFromContext(ctx); allowed != nil && !allowed[strings.ToLower(call.Tool)] {
-		r := ToolResult{Type: "tool_result", Tool: call.Tool, Status: "error", Error: "permission denied: tool not allowed", Display: "Error: permission denied: tool not allowed"}
+		r := ToolResult{Type: "tool_result", Tool: call.Tool, Status: "error", Error: "permission denied: tool not allowed", Display: "错误：权限被拒绝：工具未授权"}
 		return r
 	}
 
@@ -214,4 +275,22 @@ func normalizePathPlaceholder(p string) string {
 		return np
 	}
 	return p
+}
+
+// reactiveCompactThresholdKB is the threshold in KB above which tool output triggers reactive compaction
+const reactiveCompactThresholdKB = 50
+
+// isReactiveCompactNeeded checks if the tool result size exceeds the reactive compaction threshold
+func (m *Manager) isReactiveCompactNeeded(r ToolResult) bool {
+	if r.Data == nil {
+		return false
+	}
+	totalSize := 0
+	for _, v := range r.Data {
+		if s, ok := v.(string); ok {
+			totalSize += len(s)
+		}
+	}
+	threshold := reactiveCompactThresholdKB * 1024
+	return totalSize > threshold
 }

@@ -1,11 +1,17 @@
 package session
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"strconv"
 	"strings"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 // Compact 压缩上下文
@@ -75,6 +81,12 @@ func (c *ContextManager) compactLocked() {
 	// 保存快照
 	snapshot.Stats = c.compressionStats
 	c.addSnapshotLocked(snapshot)
+
+	// Notify post-compact callback
+	if c.onPostCompact != nil {
+		savedTokens := originalTokens - compressedTokens
+		go c.onPostCompact("compact", originalTokens, savedTokens)
+	}
 }
 
 // AutoCompactIfNeeded 检查当前上下文大小并在超过阈值时自动压缩
@@ -82,6 +94,13 @@ func (c *ContextManager) AutoCompactIfNeeded() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.autoCompactIfNeededLocked()
+}
+
+// EstimateCurrentTokens returns the estimated token count for the current context
+func (c *ContextManager) EstimateCurrentTokens() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.estimateTotalTokensLocked()
 }
 
 // autoCompactIfNeededLocked 内部自动压缩方法（调用前需持有锁）

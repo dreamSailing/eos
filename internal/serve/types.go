@@ -1,12 +1,19 @@
 package serve
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import "encoding/json"
 
 type Options struct {
 	Transport             string
 	DefaultWorkspacePath  string
 	DefaultAllowedTools   []string
+	DefaultSandboxMode    string
 	PolicyPath            string
+	SessionStorePath      string
 	RequireApprovalDigest bool
 }
 
@@ -52,6 +59,28 @@ type sessionCloseParams struct {
 	SessionID string `json:"sessionID"`
 }
 
+type sessionGetParams struct {
+	SessionID string `json:"sessionID"`
+}
+
+type sessionResumeParams struct {
+	SessionID string `json:"sessionID"`
+}
+
+type sessionDeleteParams struct {
+	SessionID string `json:"sessionID"`
+}
+
+type requestStartParams struct {
+	SessionID string      `json:"sessionID"`
+	Call      toolCallDTO `json:"call"`
+}
+
+type requestCancelParams struct {
+	SessionID string `json:"sessionID"`
+	RequestID string `json:"requestID"`
+}
+
 type toolListParams struct {
 	SessionID string `json:"sessionID"`
 }
@@ -69,12 +98,16 @@ type toolPreflightParams struct {
 type promptResolveParams struct {
 	SessionID       string `json:"sessionID"`
 	RequestID       string `json:"requestID"`
+	ApprovalID      string `json:"approvalID,omitempty"`
+	InquiryID       string `json:"inquiryID,omitempty"`
 	Decision        string `json:"decision"`
 	ApprovalDigest  string `json:"approvalDigest"`
 	Reason          string `json:"reason,omitempty"`
 	PolicyID        string `json:"policyID,omitempty"`
 	CorrelationID   string `json:"correlationID,omitempty"`
 	ApproverTraceID string `json:"approverTraceID,omitempty"`
+	Option          string `json:"option,omitempty"`
+	Text            string `json:"text,omitempty"`
 }
 
 type toolCancelParams struct {
@@ -91,34 +124,53 @@ type taskKillParams struct {
 	TaskID    string `json:"taskID"`
 }
 
+type taskResumeParams struct {
+	SessionID string `json:"sessionID"`
+	TaskID    string `json:"taskID"`
+	Task      string `json:"task,omitempty"`
+}
+
 type toolCallDTO struct {
 	ID         string                 `json:"id"`
 	Tool       string                 `json:"tool"`
 	Parameters map[string]interface{} `json:"parameters,omitempty"`
 }
 
-type eventDTO struct {
-	Type          string `json:"type"`
-	Ts            int64  `json:"ts"`
-	SessionID     string `json:"sessionID,omitempty"`
-	CorrelationID string `json:"correlationID,omitempty"`
-	Message       string `json:"message,omitempty"`
-	Call          any    `json:"call,omitempty"`
-	Result        any    `json:"result,omitempty"`
-	Request       any    `json:"request,omitempty"`
-	Task          any    `json:"task,omitempty"`
-}
-
 type toolDefinitionDTO struct {
-	Name        string                        `json:"name"`
-	Description string                        `json:"description"`
-	RiskLevel   string                        `json:"riskLevel"`
-	Params      map[string]parameterInfoDTO   `json:"params,omitempty"`
-	Examples    []map[string]any              `json:"examples,omitempty"`
+	Name               string                      `json:"name"`
+	Description        string                      `json:"description"`
+	RiskLevel          string                      `json:"riskLevel"`
+	Params             map[string]parameterInfoDTO `json:"params,omitempty"`
+	Examples           []map[string]any            `json:"examples,omitempty"`
+	Source             string                      `json:"source,omitempty"`
+	Category           string                      `json:"category,omitempty"`
+	VisibleIn          []string                    `json:"visibleIn,omitempty"`
+	ReadOnly           bool                        `json:"readOnly,omitempty"`
+	Invocable          bool                        `json:"invocable"`
+	RequiresFullAccess bool                        `json:"requiresFullAccess,omitempty"`
+	Tags               []string                    `json:"tags,omitempty"`
+	Metadata           map[string]any              `json:"metadata,omitempty"`
+	Access             *toolAccessDTO              `json:"access,omitempty"`
 }
 
 type parameterInfoDTO struct {
 	Type     string `json:"type,omitempty"`
 	Required bool   `json:"required,omitempty"`
 	Desc     string `json:"desc,omitempty"`
+}
+
+type toolAccessDTO struct {
+	Mode          string `json:"mode"`
+	SandboxMode   string `json:"sandboxMode,omitempty"`
+	Visible       bool   `json:"visible"`
+	Executable    bool   `json:"executable"`
+	NeedsApproval bool   `json:"needsApproval"`
+	Reason        string `json:"reason,omitempty"`
+}
+
+type executionModeDTO struct {
+	Name             string   `json:"name"`
+	Aliases          []string `json:"aliases,omitempty"`
+	Description      string   `json:"description,omitempty"`
+	ApprovalBehavior string   `json:"approvalBehavior,omitempty"`
 }

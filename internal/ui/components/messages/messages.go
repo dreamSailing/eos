@@ -1,5 +1,10 @@
 package messages
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"fmt"
 	"sort"
@@ -7,10 +12,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/ui/styles"
 
-	xansi "github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/lipgloss"
+	xansi "github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -68,7 +73,12 @@ type AIMessage struct {
 	Tokens    int
 	Duration  time.Duration
 	Done      bool
-	CopyLabel string
+	Actions   []BubbleAction
+}
+
+type BubbleAction struct {
+	Kind  string
+	Label string
 }
 
 func (m *AIMessage) Type() MessageType { return MsgTypeAI }
@@ -105,13 +115,9 @@ func (m *AIMessage) Render(s *styles.Styles, width int) string {
 			footer := s.MsgAIFooter.Render(strings.Join(footerParts, " · "))
 			result.WriteString(footer)
 		}
-		if strings.TrimSpace(m.Content) != "" {
-			label := strings.TrimSpace(m.CopyLabel)
-			if label == "" {
-				label = "Copy"
-			}
+		if strings.TrimSpace(m.Content) != "" && len(m.Actions) > 0 {
 			result.WriteString("\n")
-			result.WriteString(lipgloss.PlaceHorizontal(bw-4, lipgloss.Right, s.MsgCopyButton.Render(label)))
+			result.WriteString(renderBubbleActions(s, bw-4, m.Actions))
 		}
 	}
 
@@ -129,7 +135,7 @@ type AgentBubbleMessage struct {
 	Tokens    int
 	Duration  time.Duration
 	Done      bool
-	CopyLabel string
+	Actions   []BubbleAction
 }
 
 func (m *AgentBubbleMessage) Type() MessageType { return MsgTypeAgent }
@@ -200,16 +206,30 @@ func (m *AgentBubbleMessage) Render(s *styles.Styles, width int) string {
 		}
 	}
 
-	if m.Done && strings.TrimSpace(m.Content) != "" {
-		label := strings.TrimSpace(m.CopyLabel)
-		if label == "" {
-			label = "Copy"
-		}
+	if m.Done && strings.TrimSpace(m.Content) != "" && len(m.Actions) > 0 {
 		result.WriteString("\n")
-		result.WriteString(lipgloss.PlaceHorizontal(bw-4, lipgloss.Right, s.MsgCopyButton.Render(label)))
+		result.WriteString(renderBubbleActions(s, bw-4, m.Actions))
 	}
 
 	return s.MsgAgentBorder.Render(result.String())
+}
+
+func renderBubbleActions(s *styles.Styles, width int, actions []BubbleAction) string {
+	if len(actions) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(actions))
+	for _, action := range actions {
+		label := strings.TrimSpace(action.Label)
+		if label == "" {
+			continue
+		}
+		parts = append(parts, s.MsgActionButton.Render(label))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return lipgloss.PlaceHorizontal(width, lipgloss.Right, strings.Join(parts, " "))
 }
 
 func splitAndWrapANSI(text string, maxWidth int) []string {
@@ -295,13 +315,13 @@ func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
 		icon = "✅"
 		statusStr = s.MsgToolSuccess.Render(fmt.Sprintf("✓ Success · %s", formatDuration(m.Duration)))
 		if s.Theme != nil {
-			border = border.Copy().BorderForeground(s.Theme.Success)
+			border = border.BorderForeground(s.Theme.Success)
 		}
 	case "error":
 		icon = "❌"
 		statusStr = s.MsgToolError.Render(fmt.Sprintf("✗ Failed · %s", formatDuration(m.Duration)))
 		if s.Theme != nil {
-			border = border.Copy().BorderForeground(s.Theme.Error)
+			border = border.BorderForeground(s.Theme.Error)
 		}
 	}
 
@@ -309,10 +329,10 @@ func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
 	result.WriteString(headerLeft)
 	result.WriteString("\n")
 
-	blockStyle := s.ToolCall.Copy().MarginLeft(1)
-	resultStyle := s.ToolResult.Copy().MarginLeft(1)
+	blockStyle := s.ToolCall.MarginLeft(1)
+	resultStyle := s.ToolResult.MarginLeft(1)
 	if m.Status == "error" {
-		resultStyle = s.MsgToolError.Copy().MarginLeft(1)
+		resultStyle = s.MsgToolError.MarginLeft(1)
 	}
 	dividerW := contentW
 	if dividerW > 18 {
@@ -622,15 +642,15 @@ func displayToolName(raw string) string {
 	}
 	l := strings.ToLower(raw)
 	known := map[string]string{
-		"fs":            "FS",
-		"mcp":           "MCP",
-		"lsp":           "LSP",
-		"ui":            "UI",
-		"time_now":      "TimeNow",
-		"runcommand":    "RunCommand",
+		"fs":             "FS",
+		"mcp":            "MCP",
+		"lsp":            "LSP",
+		"ui":             "UI",
+		"time_now":       "TimeNow",
+		"runcommand":     "RunCommand",
 		"searchcodebase": "SearchCodebase",
-		"websearch":     "WebSearch",
-		"webfetch":      "WebFetch",
+		"websearch":      "WebSearch",
+		"webfetch":       "WebFetch",
 	}
 	if v, ok := known[l]; ok {
 		return v
@@ -733,7 +753,7 @@ func (m *AgentFinalMessage) Render(s *styles.Styles, width int) string {
 	var result strings.Builder
 
 	// 头部 - 绿色圆点表示最终结果
-	result.WriteString(s.TextSuccess.Render("●") + " " + s.TextSuccess.Copy().Bold(true).Render(m.AgentName))
+	result.WriteString(s.TextSuccess.Render("●") + " " + s.TextSuccess.Bold(true).Render(m.AgentName))
 	result.WriteString("\n")
 
 	// 内容
@@ -805,10 +825,11 @@ func (m *PlanMessage) Render(s *styles.Styles, width int) string {
 
 // ThinkingMessage 思考过程消息
 type ThinkingMessage struct {
-	Content   string
-	Duration  time.Duration
-	Expanded  bool
-	Steps     []ThinkingStep
+	Content    string
+	Duration   time.Duration
+	Expanded   bool
+	Steps      []ThinkingStep
+	ToggleHint string
 }
 
 // ThinkingStep 思考步骤
@@ -827,7 +848,11 @@ func (m *ThinkingMessage) Render(s *styles.Styles, width int) string {
 	if m.Expanded {
 		expandIcon = "[-]"
 	}
-	header := s.MsgThinkingHeader.Render(fmt.Sprintf("💭 Thinking · %.1fs ─── %s", m.Duration.Seconds(), expandIcon))
+	headerText := fmt.Sprintf("💭 Thinking · %.1fs ─── %s", m.Duration.Seconds(), expandIcon)
+	if strings.TrimSpace(m.ToggleHint) != "" {
+		headerText = fmt.Sprintf("%s · %s", headerText, strings.TrimSpace(m.ToggleHint))
+	}
+	header := s.MsgThinkingHeader.Render(headerText)
 	result.WriteString(header)
 
 	// 展开时显示内容
@@ -855,9 +880,32 @@ func (m *ThinkingMessage) Render(s *styles.Styles, width int) string {
 				result.WriteString("\n")
 			}
 		}
+	} else {
+		summary := lastNonEmptyLine(m.Content)
+		if summary != "" {
+			result.WriteString("\n")
+			if len(summary) > 160 {
+				summary = summary[:160] + "..."
+			}
+			for _, line := range wrapText(summary, width-6) {
+				result.WriteString("  " + s.TextMuted.Render(line))
+				result.WriteString("\n")
+			}
+		}
 	}
 
 	return s.MsgThinkingBorder.Render(result.String())
+}
+
+func lastNonEmptyLine(text string) string {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 // SystemMessage 系统消息

@@ -1,5 +1,10 @@
 package cli
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"context"
 	"errors"
@@ -9,8 +14,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/dreamSailing/vb-coding/internal/serve"
-	toolapiimpl "github.com/dreamSailing/vb-coding/internal/toolapi/impl"
+	"github.com/dreamSailing/eos/internal/serve"
+	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
 	"github.com/spf13/cobra"
 )
 
@@ -18,12 +23,14 @@ func newServeCmd() *cobra.Command {
 	var transport string
 	var workspace string
 	var allowedTools string
+	var sandboxMode string
 	var policyPath string
+	var sessionStorePath string
 	var requireApprovalDigest bool
 
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Start vb-coding as a local tool service (for agents/platform).",
+		Short: "Start eos as a local tool service (for agents/platform).",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			transport = strings.TrimSpace(transport)
 			if transport == "" {
@@ -43,7 +50,9 @@ func newServeCmd() *cobra.Command {
 				Transport:             transport,
 				DefaultWorkspacePath:  workspace,
 				DefaultAllowedTools:   splitCommaList(allowedTools),
+				DefaultSandboxMode:    sandboxMode,
 				PolicyPath:            policyPath,
+				SessionStorePath:      sessionStorePath,
 				RequireApprovalDigest: requireApprovalDigest,
 			}, os.Stdin, os.Stdout, os.Stderr, toolapiimpl.NewServices())
 			if err != nil {
@@ -56,7 +65,9 @@ func newServeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&transport, "transport", "stdio", "transport: stdio")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace path (required)")
 	cmd.Flags().StringVar(&allowedTools, "allowed-tools", "", "comma-separated allowed tools (optional)")
+	cmd.Flags().StringVar(&sandboxMode, "sandbox-mode", "workspace", "sandbox mode: workspace or full_access")
 	cmd.Flags().StringVar(&policyPath, "policy", "", "policy json file path (optional)")
+	cmd.Flags().StringVar(&sessionStorePath, "session-store", "", "session store file path (optional)")
 	cmd.Flags().BoolVar(&requireApprovalDigest, "require-approval-digest", true, "require approvalDigest for medium/high risk tools")
 
 	_ = cmd.MarkFlagRequired("workspace")

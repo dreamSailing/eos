@@ -1,5 +1,11 @@
 package history
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"bufio"
 	"os"
@@ -23,7 +29,7 @@ func NewManager(maxSize int) *Manager {
 
 	// 历史文件路径
 	homeDir, _ := os.UserHomeDir()
-	historyFile := filepath.Join(homeDir, ".vb-coding", "history.txt")
+	historyFile := filepath.Join(homeDir, ".eos", "history.txt")
 
 	m := &Manager{
 		aiHistory:   make([]string, 0, maxSize),
@@ -33,7 +39,7 @@ func NewManager(maxSize int) *Manager {
 	}
 
 	// 加载历史
-	m.Load()
+	_ = m.Load()
 
 	return m
 }
@@ -56,7 +62,7 @@ func (m *Manager) AddAI(entry string) {
 	}
 
 	// 保存到文件
-	m.Save()
+	_ = m.Save()
 }
 
 // AddBash 添加Bash模式历史
@@ -77,7 +83,7 @@ func (m *Manager) AddBash(entry string) {
 	}
 
 	// 保存到文件
-	m.Save()
+	_ = m.Save()
 }
 
 // GetAI 获取AI历史
@@ -97,13 +103,13 @@ func (m *Manager) GetBash() []string {
 // ClearAI 清空AI历史
 func (m *Manager) ClearAI() {
 	m.aiHistory = m.aiHistory[:0]
-	m.Save()
+	_ = m.Save()
 }
 
 // ClearBash 清空Bash历史
 func (m *Manager) ClearBash() {
 	m.bashHistory = m.bashHistory[:0]
-	m.Save()
+	_ = m.Save()
 }
 
 // Save 保存历史到文件
@@ -118,20 +124,28 @@ func (m *Manager) Save() error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	writer := bufio.NewWriter(file)
 
 	// 写入AI历史
-	writer.WriteString("# AI History\n")
+	if _, err := writer.WriteString("# AI History\n"); err != nil {
+		return err
+	}
 	for _, entry := range m.aiHistory {
-		writer.WriteString("AI:" + entry + "\n")
+		if _, err := writer.WriteString("AI:" + entry + "\n"); err != nil {
+			return err
+		}
 	}
 
 	// 写入Bash历史
-	writer.WriteString("# Bash History\n")
+	if _, err := writer.WriteString("# Bash History\n"); err != nil {
+		return err
+	}
 	for _, entry := range m.bashHistory {
-		writer.WriteString("BASH:" + entry + "\n")
+		if _, err := writer.WriteString("BASH:" + entry + "\n"); err != nil {
+			return err
+		}
 	}
 
 	return writer.Flush()
@@ -146,7 +160,7 @@ func (m *Manager) Load() error {
 		}
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {

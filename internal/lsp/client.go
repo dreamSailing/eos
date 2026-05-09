@@ -2,6 +2,12 @@
 
 package lsp
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"bufio"
 	"context"
@@ -16,7 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // Client LSP 客户端
@@ -95,7 +101,7 @@ func (c *Client) Start(ctx context.Context) error {
 		"args", c.cmdArgs)
 
 	// 启动服务器进程
-	c.cmd = exec.CommandContext(ctx, c.cmdPath, c.cmdArgs...)
+	c.cmd = utils.CommandContext(ctx, c.cmdPath, c.cmdArgs...)
 
 	// 创建管道
 	stdin, err := c.cmd.StdinPipe()
@@ -226,7 +232,7 @@ func (c *Client) writeMessage(msg any) error {
 
 // readMessages 读取服务器消息
 func (c *Client) readMessages() {
-	defer c.Stop()
+	defer func() { _ = c.Stop() }()
 
 	scanner := bufio.NewScanner(c.stdout)
 	for scanner.Scan() {
@@ -359,10 +365,10 @@ func (c *Client) Stop() error {
 		// 发送 shutdown 请求
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		c.Call(ctx, "shutdown", nil, nil)
+		_ = c.Call(ctx, "shutdown", nil, nil)
 
 		// 发送 exit 通知
-		c.Notify(ctx, "exit", nil)
+		_ = c.Notify(ctx, "exit", nil)
 
 		// 等待进程结束或强制终止
 		done := make(chan error, 1)
@@ -373,7 +379,7 @@ func (c *Client) Stop() error {
 		select {
 		case <-done:
 		case <-time.After(2 * time.Second):
-			c.cmd.Process.Kill()
+			_ = c.cmd.Process.Kill()
 		}
 	}
 

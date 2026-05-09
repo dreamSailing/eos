@@ -1,11 +1,17 @@
 package setup
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/i18n"
-	uinput "github.com/dreamSailing/vb-coding/internal/ui/components/input"
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/i18n"
+	uinput "github.com/dreamSailing/eos/internal/ui/components/input"
+	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -90,7 +96,7 @@ func (v *MCPConfigEditorView) View() string {
 	if v.edit {
 		title = i18n.T("mcp.editor.title.edit", v.language)
 	}
-	titleStyle := v.styles.PanelTitle.Copy().
+	titleStyle := v.styles.PanelTitle.
 		Width(v.width - 4).
 		Align(lipgloss.Center)
 
@@ -105,4 +111,3 @@ func (v *MCPConfigEditorView) View() string {
 
 	return content.String()
 }
-

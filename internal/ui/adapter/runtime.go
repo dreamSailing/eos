@@ -1,17 +1,26 @@
 package adapter
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
-	"github.com/dreamSailing/vb-coding/internal/bridge"
-	"github.com/dreamSailing/vb-coding/internal/pkg/workspace"
-	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
-	"github.com/dreamSailing/vb-coding/internal/session"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/bridge"
+	"github.com/dreamSailing/eos/internal/pkg/settings"
+	"github.com/dreamSailing/eos/internal/pkg/workspace"
+	"github.com/dreamSailing/eos/internal/session"
+	"github.com/dreamSailing/eos/internal/tools"
+	"sync"
 )
 
 // RuntimeAdapter �?RuntimeCore �?Bubble Tea UI 之间的适配�?
 type RuntimeAdapter struct {
-	core *bridge.RuntimeCore
+	core       *bridge.RuntimeCore
+	eventsOnce sync.Once
+	eventsCh   chan bridge.Event
 }
 
 // NewRuntimeAdapter 创建新的 RuntimeAdapter 实例
@@ -21,7 +30,16 @@ func NewRuntimeAdapter(core *bridge.RuntimeCore) *RuntimeAdapter {
 
 // Events 返回运行时事件通道
 func (a *RuntimeAdapter) Events() <-chan bridge.Event {
-	return a.core.Events()
+	a.eventsOnce.Do(func() {
+		a.eventsCh = make(chan bridge.Event, 128)
+		go func() {
+			defer close(a.eventsCh)
+			for event := range a.core.Events() {
+				a.eventsCh <- normalizeRuntimeEvent(event)
+			}
+		}()
+	})
+	return a.eventsCh
 }
 
 // Invoke 调用 RuntimeCore �?GraphInvokePlanWithImages 方法
@@ -34,6 +52,13 @@ func (a *RuntimeAdapter) Invoke(ctx context.Context, query, executionMode string
 		return "", nil
 	}
 	return msg.Content, nil
+}
+
+func (a *RuntimeAdapter) CancelForegroundRequest() bool {
+	if a == nil || a.core == nil {
+		return false
+	}
+	return a.core.CancelForegroundRequest()
 }
 
 // GetContext 获取会话上下文管理器
@@ -80,4 +105,3 @@ func (a *RuntimeAdapter) GetCore() *bridge.RuntimeCore {
 func (a *RuntimeAdapter) Reload() error {
 	return a.core.Reload()
 }
-

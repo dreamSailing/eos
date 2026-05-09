@@ -1,5 +1,11 @@
 package ai
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"strings"
 )
@@ -61,6 +67,10 @@ func (r *Resolver) ResolveByModelName(modelName string) *ModelProviderInfo {
 
 // Resolve 根据 API Base 和模型名称解析完整信息
 func (r *Resolver) Resolve(baseURL, modelName string) *ModelProviderInfo {
+	if info := r.resolveByBaseAndModel(baseURL, modelName); info != nil {
+		return info
+	}
+
 	info := r.ResolveByModelName(modelName)
 	if info != nil {
 		// 如果提供了自定义 baseURL，使用它
@@ -90,6 +100,43 @@ func (r *Resolver) Resolve(baseURL, modelName string) *ModelProviderInfo {
 		ProviderType:     ProviderCustom,
 		RequiresCodePlan: false,
 	}
+}
+
+func (r *Resolver) resolveByBaseAndModel(baseURL, modelName string) *ModelProviderInfo {
+	base := normalizeResolverBase(baseURL)
+	name := strings.ToLower(strings.TrimSpace(modelName))
+	if base == "" || name == "" {
+		return nil
+	}
+
+	for _, entry := range builtinModelsCatalog {
+		if strings.ToLower(strings.TrimSpace(entry.ModelName)) != name && strings.ToLower(strings.TrimSpace(entry.ID)) != name {
+			continue
+		}
+		provider := r.registry.Get(entry.Provider)
+		if provider == nil {
+			continue
+		}
+		expectedBase := normalizeResolverBase(r.getAPIBaseForEntry(&entry, provider))
+		if expectedBase == "" || expectedBase != base {
+			continue
+		}
+		return &ModelProviderInfo{
+			Provider:         provider,
+			Model:            &entry,
+			APIBase:          strings.TrimSpace(baseURL),
+			ProviderType:     entry.Provider,
+			RequiresCodePlan: entry.APIType == APITypeCodePlan,
+		}
+	}
+
+	return nil
+}
+
+func normalizeResolverBase(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimSuffix(value, "/")
+	return value
 }
 
 // getAPIBaseForEntry 根据模型条目获取正确的 API Base URL
@@ -278,10 +325,16 @@ func InferDefaultModelFromBase(baseURL string) string {
 	// 回退到原来的逻辑
 	b := strings.ToLower(strings.TrimSpace(baseURL))
 	if strings.Contains(b, "dashscope.aliyuncs.com") && strings.Contains(b, "compatible-mode") {
-		return "qwen3.5-plus"
+		return "qwen3.6-plus"
 	}
-	if strings.Contains(b, "api.kimi.com") && strings.Contains(b, "/coding/") {
-		return "kimi-for-coding"
+	if strings.Contains(b, "api.moonshot.cn") {
+		return "kimi-k2.5"
+	}
+	if strings.Contains(b, "api.minimaxi.com") || strings.Contains(b, "api.minimax.io") {
+		return "MiniMax-M2.7"
+	}
+	if strings.Contains(b, "xiaomimimo.com") {
+		return "mimo-v2-pro"
 	}
 	return ""
 }

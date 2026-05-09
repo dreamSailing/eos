@@ -1,5 +1,11 @@
 package utils
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"log/slog"
 	"os"
@@ -42,10 +48,7 @@ const (
 	EventTypeAssistantFinal = "assistant_final"
 )
 
-var projectRootPath string
-
 func init() {
-	projectRootPath = projectRootDir()
 	NewLogger("")
 }
 
@@ -59,17 +62,17 @@ func defaultLogDir() string {
 		if strings.TrimSpace(base) == "" {
 			base, _ = os.UserHomeDir()
 		}
-		return filepath.Join(base, "VBCoding", "logs")
+		return filepath.Join(base, "EOS", "logs")
 	case "darwin":
 		home, _ := os.UserHomeDir()
-		return filepath.Join(home, "Library", "Logs", "VBCoding")
+		return filepath.Join(home, "Library", "Logs", "EOS")
 	default:
 		base := os.Getenv("XDG_STATE_HOME")
 		if strings.TrimSpace(base) == "" {
 			home, _ := os.UserHomeDir()
 			base = filepath.Join(home, ".local", "state")
 		}
-		return filepath.Join(base, "vb-coding", "logs")
+		return filepath.Join(base, "eos", "logs")
 	}
 }
 
@@ -85,7 +88,7 @@ func NewLogger(dir string) {
 }
 
 func getLogLevel() slog.Level {
-	lvl := os.Getenv("VBCODING_LOG_LEVEL")
+	lvl := os.Getenv("EOS_LOG_LEVEL")
 	if strings.TrimSpace(lvl) == "" {
 		lvl = os.Getenv("LOG_LEVEL")
 	}
@@ -104,24 +107,6 @@ func getLogLevel() slog.Level {
 		}
 	}
 	return slog.LevelDebug
-}
-
-func projectRootDir() string {
-	wd, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	dir := wd
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return ""
-		}
-		dir = parent
-	}
 }
 
 // LogError 结构化错误日志辅助函数

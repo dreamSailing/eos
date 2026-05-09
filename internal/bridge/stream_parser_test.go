@@ -1,5 +1,11 @@
 package bridge
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import "testing"
 
 func drainEvents(ch <-chan Event) []Event {
@@ -26,17 +32,17 @@ func TestStreamParser_TaskAndFinalSingleChunk(t *testing.T) {
 	var finals []Event
 	for _, e := range events {
 		switch e.Type {
-		case "agent.task":
+		case "agent.progress":
 			tasks = append(tasks, e)
-		case "agent.final":
+		case "agent.completed":
 			finals = append(finals, e)
 		}
 	}
 	if len(tasks) != 1 || tasks[0].RID != "senior-dev" {
-		t.Fatalf("expected 1 agent.task with RID senior-dev, got %+v", tasks)
+		t.Fatalf("expected 1 agent.progress with RID senior-dev, got %+v", tasks)
 	}
 	if len(finals) != 1 || finals[0].RID != "senior-dev" {
-		t.Fatalf("expected 1 agent.final with RID senior-dev, got %+v", finals)
+		t.Fatalf("expected 1 agent.completed with RID senior-dev, got %+v", finals)
 	}
 	if tasks[0].Content != "你好啊" {
 		t.Fatalf("expected task content 你好啊, got %q", tasks[0].Content)
@@ -67,7 +73,7 @@ func TestStreamParser_PartialMarkerDoesNotLeak(t *testing.T) {
 
 	events := drainEvents(ch)
 	for _, e := range events {
-		if e.Type != "delta" {
+		if e.Type != "text.delta" {
 			continue
 		}
 		if e.Content == "agent.task:" || e.Content == "agent.final:" {
@@ -75,4 +81,3 @@ func TestStreamParser_PartialMarkerDoesNotLeak(t *testing.T) {
 		}
 	}
 }
-

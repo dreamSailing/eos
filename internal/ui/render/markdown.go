@@ -1,11 +1,17 @@
 package render
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"fmt"
 	"strings"
 	"sync"
 
-	uistyles "github.com/dreamSailing/vb-coding/internal/ui/styles"
+	uistyles "github.com/dreamSailing/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/glamour"
 	gansi "github.com/charmbracelet/glamour/ansi"
@@ -26,19 +32,19 @@ type MarkdownRenderer struct {
 
 // RenderStyles 渲染样式
 type RenderStyles struct {
-	Header       lipgloss.Style
-	CodeBlock    lipgloss.Style
-	InlineCode   lipgloss.Style
-	Link         lipgloss.Style
-	Bold         lipgloss.Style
-	Italic       lipgloss.Style
-	Strike       lipgloss.Style
-	List         lipgloss.Style
-	Quote        lipgloss.Style
-	Table        lipgloss.Style
-	TableHeader  lipgloss.Style
-	TableCell    lipgloss.Style
-	Normal       lipgloss.Style
+	Header      lipgloss.Style
+	CodeBlock   lipgloss.Style
+	InlineCode  lipgloss.Style
+	Link        lipgloss.Style
+	Bold        lipgloss.Style
+	Italic      lipgloss.Style
+	Strike      lipgloss.Style
+	List        lipgloss.Style
+	Quote       lipgloss.Style
+	Table       lipgloss.Style
+	TableHeader lipgloss.Style
+	TableCell   lipgloss.Style
+	Normal      lipgloss.Style
 }
 
 // NewRenderStyles 创建新的渲染样式
@@ -104,8 +110,10 @@ func NewThemeRenderStyles(s *uistyles.Styles) *RenderStyles {
 		return NewPlainRenderStyles()
 	}
 	t := s.Theme
+	headerStyle := s.MarkdownHeader
+	linkStyle := s.MarkdownLink
 	return &RenderStyles{
-		Header: s.MarkdownHeader.Copy(),
+		Header: headerStyle,
 		CodeBlock: lipgloss.NewStyle().
 			Background(t.SurfaceAlt).
 			BorderLeft(true).
@@ -115,7 +123,7 @@ func NewThemeRenderStyles(s *uistyles.Styles) *RenderStyles {
 		InlineCode: lipgloss.NewStyle().
 			Background(t.SurfaceAlt).
 			Foreground(t.Text),
-		Link: s.MarkdownLink.Copy(),
+		Link: linkStyle,
 		Bold: lipgloss.NewStyle().Bold(true),
 		Italic: lipgloss.NewStyle().
 			Italic(true),

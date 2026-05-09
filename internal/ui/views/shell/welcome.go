@@ -1,36 +1,44 @@
 package shell
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"os"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/version"
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/update"
+	"github.com/dreamSailing/eos/internal/version"
+	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/lipgloss"
 )
 
 // WelcomeCard 欢迎卡片组件
 type WelcomeCard struct {
-	width     int
-	height    int
-	styles    *styles.Styles
-	modelName string
-	apiInfo   string
-	workDir   string
+	width      int
+	height     int
+	styles     *styles.Styles
+	modelName  string
+	apiInfo    string
+	workDir    string
 	appVersion string
+	updateInfo *update.CheckResult
 }
 
 // NewWelcomeCard 创建新的欢迎卡片
 func NewWelcomeCard(s *styles.Styles) *WelcomeCard {
 	wd, _ := os.Getwd()
 	return &WelcomeCard{
-		width:     80,
-		height:    24,
-		styles:    s,
-		modelName: "AI Assistant",
-		apiInfo:   "Ready",
-		workDir:   wd,
+		width:      80,
+		height:     24,
+		styles:     s,
+		modelName:  "AI Assistant",
+		apiInfo:    "Ready",
+		workDir:    wd,
 		appVersion: version.AppVersion,
 	}
 }
@@ -54,6 +62,11 @@ func (w *WelcomeCard) SetInfo(modelName, apiInfo, workDir string) {
 	}
 }
 
+// SetUpdateInfo 设置版本更新信息
+func (w *WelcomeCard) SetUpdateInfo(info *update.CheckResult) {
+	w.updateInfo = info
+}
+
 // View 渲染欢迎卡片
 func (w *WelcomeCard) View() string {
 	if w.width == 0 {
@@ -62,14 +75,10 @@ func (w *WelcomeCard) View() string {
 
 	// 大 ASCII Logo 行
 	logoLines := []string{
-		" __      ______     _____          _ _             ",
-		" \\ \\    / /  _ \\   / ____|        | (_)            ",
-		"  \\ \\  / /| |_) | | |     ___   __| |_ _ __   __ _ ",
-		"   \\ \\/ / |  _ <  | |    / _ \\ / _` | | '_ \\ / _` |",
-		"    \\  /  | |_) | | |___| (_) | (_| | | | | | (_| |",
-		"     \\/   |____/   \\_____\\___/ \\__,_|_|_| |_|\\__, |",
-		"                                              __/ |",
-		"                                             |___/ ",
+		"   ___    ___    ___  ",
+		"  / _ \\  / _ \\  / __| ",
+		" |  __/ | (_) | \\__ \\ ",
+		"  \\___|  \\___/  |___/ ",
 	}
 
 	// Logo 样式（橙色/黄色）
@@ -111,7 +120,30 @@ func (w *WelcomeCard) View() string {
 	content.WriteString(subtitleStyle.Render("AI Powered Development Assistant"))
 	content.WriteString("\n")
 	content.WriteString(subtitleStyle.Render(version.AppName + " " + w.appVersion))
+	content.WriteString("\n")
+	if version.BuildCommit != "unknown" || version.BuildDate != "" {
+		buildInfo := version.BuildCommit
+		if buildInfo != "unknown" && len(buildInfo) > 8 {
+			buildInfo = buildInfo[:8]
+		}
+		if version.BuildDate != "" {
+			if buildInfo != "unknown" {
+				buildInfo += " · " + version.BuildDate
+			} else {
+				buildInfo = version.BuildDate
+			}
+		}
+		content.WriteString(subtitleStyle.Render("build " + buildInfo))
+	}
 	content.WriteString("\n\n")
+
+	if w.updateInfo != nil && w.updateInfo.HasUpdate {
+		updateStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#f59e0b")).
+			PaddingLeft(4)
+		content.WriteString(updateStyle.Render("⬆ 新版本 " + w.updateInfo.LatestVersion + " 可用！运行 'eos update' 更新。"))
+		content.WriteString("\n\n")
+	}
 
 	// 信息行
 	content.WriteString(infoStyle.Render("🧠 Model: " + w.modelName))
@@ -126,7 +158,7 @@ func (w *WelcomeCard) View() string {
 	content.WriteString("\n")
 	content.WriteString(infoStyle.Render("?  显示帮助   F2 切换模式   /  命令提示"))
 	content.WriteString("\n")
-	content.WriteString(infoStyle.Render("Enter 发送   Esc 清空      Ctrl+C 退出"))
+	content.WriteString(infoStyle.Render("Enter 发送   Esc 停止      Ctrl+C 退出"))
 
 	return borderStyle.Render(content.String())
 }

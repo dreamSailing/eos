@@ -1,18 +1,24 @@
 package runtime
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"errors"
 	"fmt"
+	ai "github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/session"
+	"github.com/dreamSailing/eos/internal/tools"
 	"log/slog"
 	"regexp"
 	"strings"
 	"time"
-	ai "github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/session"
-	"github.com/dreamSailing/vb-coding/internal/tools"
 
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
@@ -47,6 +53,7 @@ type EinoRuntime struct {
 	recentAssistantHashes map[string]int
 	onDelta               func(string)
 	onMeta                func(string)
+	onPlanUpdate          func(string)
 	onReasoning           func(string) // 思考内容回调
 	dispatchTools         *DispatchTools
 	tokenAnalyzer         *TokenAnalyzer             // Token 使用分析器
@@ -89,12 +96,22 @@ func NewEinoRuntimeWithMCP(ctx context.Context, cm *session.ContextManager, tm *
 	LogDebug("runtime.new_graph.success", nil)
 	rt.runnable = rg
 
+	rt.bindPlanUpdates(cm)
+	return rt, nil
+}
+
+func (rt *EinoRuntime) bindPlanUpdates(cm *session.ContextManager) {
+	if rt == nil || cm == nil {
+		return
+	}
 	cm.SetOnPlanUpdate(func(plan string) {
+		if rt.onPlanUpdate != nil {
+			rt.onPlanUpdate(plan)
+		}
 		if rt.onMeta != nil {
 			rt.onMeta(EventPlanReady)
 		}
 	})
-	return rt, nil
 }
 
 func (rt *EinoRuntime) WithSafety(h SafetyGate) *EinoRuntime {
@@ -119,6 +136,11 @@ func (rt *EinoRuntime) WithSafety(h SafetyGate) *EinoRuntime {
 
 func (rt *EinoRuntime) WithOnDelta(cb func(string)) *EinoRuntime {
 	rt.onDelta = cb
+	return rt
+}
+
+func (rt *EinoRuntime) WithOnPlanUpdate(cb func(string)) *EinoRuntime {
+	rt.onPlanUpdate = cb
 	return rt
 }
 
@@ -219,7 +241,7 @@ func (rt *EinoRuntime) GraphInvokeWithImages(ctx context.Context, query string, 
 	if strings.TrimSpace(query) != "" || len(imagePaths) > 0 {
 		extra = append(extra, ai.Message{Role: "user", Content: query, ImagePaths: imagePaths})
 	}
-	history := buildHistoryMessages(rt.ctxm, extra)
+	history := buildHistoryMessages(rt.ctxm, extra, tools.WorkspaceRootFromContext(ctx))
 	in := map[string]any{
 		"history":   history,
 		"query":     query,
@@ -442,8 +464,8 @@ func invokeDispatchAgentWithTools(ctx context.Context, in []*schema.Message, dis
 	slog.Debug("runtime.dispatch_agent.invoke.start", "input_messages_count", len(in))
 
 	// 构建系统提示：替换占位符并注入上下文信息
-	systemPrompt := buildDispatchSystemPrompt(ctx, rt, mcpTools, in)
-	msgs := append([]*schema.Message{schema.SystemMessage(systemPrompt)}, in...)
+	systemPrompt, history := normalizeDispatchHistory(systemPromptWithContext(ctx, rt, mcpTools, in), in)
+	msgs := append([]*schema.Message{schema.SystemMessage(systemPrompt)}, history...)
 
 	slog.Debug("runtime.dispatch_agent.invoke.generating", "system_prompt_len", len(systemPrompt))
 
@@ -464,6 +486,41 @@ func invokeDispatchAgentWithTools(ctx context.Context, in []*schema.Message, dis
 	return append(in, out), nil
 }
 
+func systemPromptWithContext(ctx context.Context, rt *EinoRuntime, mcpTools []tool.BaseTool, history []*schema.Message) string {
+	return buildDispatchSystemPrompt(ctx, rt, mcpTools, history)
+}
+
+func normalizeDispatchHistory(systemPrompt string, history []*schema.Message) (string, []*schema.Message) {
+	if len(history) == 0 {
+		return systemPrompt, nil
+	}
+	normalized := make([]*schema.Message, 0, len(history))
+	var foldedSystem []string
+	for _, msg := range history {
+		if msg == nil {
+			continue
+		}
+		if msg.Role == schema.System {
+			if content := strings.TrimSpace(msg.Content); content != "" {
+				foldedSystem = append(foldedSystem, content)
+			}
+			continue
+		}
+		normalized = append(normalized, msg)
+	}
+	if len(foldedSystem) == 0 {
+		return systemPrompt, normalized
+	}
+	var sb strings.Builder
+	sb.WriteString(strings.TrimSpace(systemPrompt))
+	sb.WriteString("\n\n## 前置上下文\n")
+	for _, block := range foldedSystem {
+		sb.WriteString(block)
+		sb.WriteString("\n\n")
+	}
+	return strings.TrimSpace(sb.String()), normalized
+}
+
 // buildDispatchSystemPrompt 构建调度 Agent 的系统提示词
 // 动态替换占位符：{model_name}, {available_tools}
 func buildDispatchSystemPrompt(ctx context.Context, rt *EinoRuntime, mcpTools []tool.BaseTool, history []*schema.Message) string {
@@ -478,17 +535,20 @@ func buildDispatchSystemPrompt(ctx context.Context, rt *EinoRuntime, mcpTools []
 	}
 	prompt = strings.Replace(prompt, "{model_name}", modelName, -1)
 
-	// 替换工具能力描述
-	toolsDesc := GetAvailableToolsDescription(ctx, mcpTools)
+	// 调度 Agent 只能看到自己真实可调用的调度工具，避免调用执行层工具。
+	toolsDesc := GetDispatchToolsDescription()
 	prompt = strings.Replace(prompt, "{available_tools}", toolsDesc, -1)
 
 	// 替换工作目录
-	envInfo := utils.GetEnvInfo()
+	envInfo := envInfoForContext(ctx)
 	prompt = strings.Replace(prompt, "{cwd}", envInfo.CWD, -1)
 
 	prompt += "\n\n" + utils.FormatEnvInfo(envInfo)
-	prompt += "\n" + BuildProjectPromptAdditions(envInfo.CWD)
+	prompt += "\n" + BuildDispatchPromptAdditions(envInfo.CWD)
 	prompt += "\n" + buildIntentPromptAdditions(history)
+
+	// Inject system reminders from prompt_system.go
+	prompt += "\n\n" + getSystemRemindersSection()
 
 	return prompt
 }

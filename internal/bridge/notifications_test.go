@@ -1,12 +1,19 @@
 package bridge
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"testing"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/notify"
-	"github.com/dreamSailing/vb-coding/internal/pkg/settings"
-	"github.com/dreamSailing/vb-coding/internal/session"
+
+	"github.com/dreamSailing/eos/internal/notify"
+	"github.com/dreamSailing/eos/internal/pkg/settings"
+	"github.com/dreamSailing/eos/internal/session"
 )
 
 func TestWaitPrompt_SendsDesktopNotification(t *testing.T) {
@@ -21,7 +28,7 @@ func TestWaitPrompt_SendsDesktopNotification(t *testing.T) {
 		securityMgr: NewSecurityManager(),
 		eventsCh:    make(chan Event, 2),
 	}
-	rc.securityMgr.SetExecutionMode("manual")
+	rc.securityMgr.SetExecutionMode("plan")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -40,8 +47,11 @@ func TestWaitPrompt_SendsDesktopNotification(t *testing.T) {
 	}()
 
 	ev := <-rc.eventsCh
-	if ev.Type != "prompt.request" || ev.RID == "" {
+	if ev.Type != "approval.required" || ev.RID == "" {
 		t.Fatalf("unexpected event: %#v", ev)
+	}
+	if got, _ := ev.Data["approval_id"].(string); got != ev.RID {
+		t.Fatalf("approval_id=%q, want %q", got, ev.RID)
 	}
 
 	select {
@@ -71,7 +81,7 @@ func TestFinalizeTask_SendsDesktopNotificationInAuto(t *testing.T) {
 	defer notify.ResetSender()
 
 	rc := &RuntimeCore{
-		cm:         session.NewContextManager(),
+		cm:          session.NewContextManager(),
 		securityMgr: NewSecurityManager(),
 	}
 	rc.securityMgr.SetExecutionMode("auto")

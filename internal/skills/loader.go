@@ -1,35 +1,68 @@
 package skills
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"io/fs"
 
-	"github.com/dreamSailing/vb-coding/internal/hooks"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/hooks"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 
 	"gopkg.in/yaml.v3"
 )
 
+type AllowedToolsField []string
+
+func (f *AllowedToolsField) UnmarshalYAML(value *yaml.Node) error {
+	if value == nil {
+		return nil
+	}
+	var out []string
+	switch value.Kind {
+	case yaml.ScalarNode:
+		out = parseAllowedToolsString(value.Value)
+	case yaml.SequenceNode:
+		for _, item := range value.Content {
+			if item == nil {
+				continue
+			}
+			out = append(out, parseAllowedToolsString(item.Value)...)
+		}
+	}
+	*f = AllowedToolsField(uniqueStrings(out))
+	return nil
+}
+
+func (f AllowedToolsField) Values() []string {
+	return append([]string(nil), f...)
+}
+
 // Skill 表示一个 Agent Skill
 type Skill struct {
 	// Frontmatter 字段
-	Name         string `yaml:"name"`
-	Description  string `yaml:"description"`
-	License      string `yaml:"license,omitempty"`
-	AllowedTools string `yaml:"allowed-tools,omitempty"`
-	Model        string `yaml:"model,omitempty"`
-	Version      string `yaml:"version,omitempty"`
-	ArgumentHint          string   `yaml:"argument-hint,omitempty"`
-	DisableModelInvocation bool     `yaml:"disable-model-invocation,omitempty"`
-	UserInvocable          *bool    `yaml:"user-invocable,omitempty"`
-	Context                string   `yaml:"context,omitempty"`
-	Agent                  string   `yaml:"agent,omitempty"`
-	Keywords               []string `yaml:"keywords,omitempty"`
+	Name                   string                          `yaml:"name"`
+	Description            string                          `yaml:"description"`
+	License                string                          `yaml:"license,omitempty"`
+	AllowedTools           AllowedToolsField               `yaml:"allowed-tools,omitempty"`
+	Model                  string                          `yaml:"model,omitempty"`
+	Version                string                          `yaml:"version,omitempty"`
+	ArgumentHint           string                          `yaml:"argument-hint,omitempty"`
+	DisableModelInvocation bool                            `yaml:"disable-model-invocation,omitempty"`
+	UserInvocable          *bool                           `yaml:"user-invocable,omitempty"`
+	Context                string                          `yaml:"context,omitempty"`
+	Agent                  string                          `yaml:"agent,omitempty"`
+	Keywords               []string                        `yaml:"keywords,omitempty"`
 	Hooks                  map[string][]hooks.MatcherGroup `yaml:"hooks,omitempty"`
 
 	// Content 字段
@@ -41,6 +74,9 @@ type Skill struct {
 	ReferencesDir string // references/ 路径
 	AssetsDir     string // assets/ 路径
 	SkillMdPath   string // SKILL.md 文件路径
+	PluginName    string // 所属插件名称
+	PluginRoot    string // 所属插件根目录
+	Kind          string // skill/command
 
 	// 运行时字段
 	IsActive bool // 是否当前激活
@@ -111,6 +147,13 @@ func (l *Loader) Scan() error {
 
 // scanDir 扫描单个目录
 func (l *Loader) scanDir(root string) error {
+	if isCommandsRoot(root) {
+		return l.scanCommandRoot(root)
+	}
+	return l.scanSkillRoot(root)
+}
+
+func (l *Loader) scanSkillRoot(root string) error {
 	// 检查目录是否存在
 	info, err := os.Stat(root)
 	if err != nil {
@@ -124,21 +167,16 @@ func (l *Loader) scanDir(root string) error {
 		return fmt.Errorf("not a directory: %s", root)
 	}
 
-	location := "project"
-	if home, err := os.UserHomeDir(); err == nil {
-		if isUserSkillsDir(filepath.Clean(root), filepath.Clean(home)) {
-			location = "user"
-		}
-	}
+	location := inferRootLocation(root)
 
 	ignoreDirs := map[string]bool{
-		".git":        true,
+		".git":         true,
 		"node_modules": true,
-		"dist":        true,
-		"build":       true,
-		"vendor":      true,
-		".vb":         true,
-		".trae":       true,
+		"dist":         true,
+		"build":        true,
+		"vendor":       true,
+		".eos":          true,
+		".trae":        true,
 	}
 	maxDepth := 8
 	maxSkills := 500
@@ -153,7 +191,7 @@ func (l *Loader) scanDir(root string) error {
 		if !d.IsDir() {
 			return nil
 		}
-		if strings.HasPrefix(d.Name(), ".") && d.Name() != ".claude" && d.Name() != ".vb" && d.Name() != ".trae" {
+		if strings.HasPrefix(d.Name(), ".") && d.Name() != ".claude" && d.Name() != ".eos" && d.Name() != ".trae" {
 			return filepath.SkipDir
 		}
 		if ignoreDirs[strings.ToLower(d.Name())] && filepath.Clean(path) != rootClean {
@@ -184,10 +222,8 @@ func (l *Loader) scanDir(root string) error {
 		}
 
 		skill.Location = location
-		if existing, ok := l.skills[skill.Name]; ok && existing != nil {
-			if locationPriority(existing.Location) >= locationPriority(skill.Location) {
-				return filepath.SkipDir
-			}
+		if existing, ok := l.skills[skill.Name]; ok && existing != nil && !shouldReplaceSkill(existing, skill) {
+			return filepath.SkipDir
 		}
 		l.skills[skill.Name] = skill
 		loaded++
@@ -202,6 +238,85 @@ func (l *Loader) scanDir(root string) error {
 		return err
 	}
 
+	return nil
+}
+
+func (l *Loader) scanCommandRoot(root string) error {
+	info, err := os.Stat(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("not a directory: %s", root)
+	}
+
+	location := inferRootLocation(root)
+	ignoreDirs := map[string]bool{
+		".git":         true,
+		"node_modules": true,
+		"dist":         true,
+		"build":        true,
+		"vendor":       true,
+	}
+	maxDepth := 8
+	maxCommands := 500
+	rootClean := filepath.Clean(root)
+	rootSepCount := strings.Count(rootClean, string(os.PathSeparator))
+	loaded := 0
+
+	err = filepath.WalkDir(rootClean, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if strings.HasPrefix(d.Name(), ".") && filepath.Clean(path) != rootClean {
+				return filepath.SkipDir
+			}
+			if ignoreDirs[strings.ToLower(d.Name())] && filepath.Clean(path) != rootClean {
+				return filepath.SkipDir
+			}
+			depth := strings.Count(filepath.Clean(path), string(os.PathSeparator)) - rootSepCount
+			if depth > maxDepth {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if loaded >= maxCommands {
+			return nil
+		}
+		if !strings.EqualFold(filepath.Ext(d.Name()), ".md") || strings.EqualFold(d.Name(), "SKILL.md") {
+			return nil
+		}
+
+		commandName := strings.TrimSpace(strings.TrimSuffix(d.Name(), filepath.Ext(d.Name())))
+		skill, err := l.loadSkillDocument(filepath.Dir(path), path, commandName, "command")
+		if err != nil {
+			slog.Warn("skills.loader.load_command.error",
+				"component", utils.ComponentSystem,
+				"path", path,
+				"error", err,
+			)
+			return nil
+		}
+		skill.Location = location
+		if existing, ok := l.skills[skill.Name]; ok && existing != nil && !shouldReplaceSkill(existing, skill) {
+			return nil
+		}
+		l.skills[skill.Name] = skill
+		loaded++
+		slog.Debug("skills.loader.command.loaded",
+			"component", utils.ComponentSystem,
+			"name", skill.Name,
+			"path", path,
+		)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -223,7 +338,7 @@ func isUserSkillsDir(root, home string) bool {
 		return false
 	}
 	roots := []string{
-		filepath.Join(home, ".vb", "skills"),
+		filepath.Join(home, ".eos", "skills"),
 		filepath.Join(home, ".claude", "skills"),
 		filepath.Join(home, ".trae", "skills"),
 	}
@@ -234,6 +349,42 @@ func isUserSkillsDir(root, home string) bool {
 		}
 	}
 	return false
+}
+
+func inferRootLocation(root string) string {
+	location := "project"
+	if home, err := os.UserHomeDir(); err == nil {
+		root = filepath.Clean(root)
+		home = filepath.Clean(home)
+		if isUserSkillsDir(root, home) || isUserCommandsDir(root, home) {
+			location = "user"
+		}
+	}
+	return location
+}
+
+func isUserCommandsDir(root, home string) bool {
+	r := strings.ToLower(filepath.Clean(root))
+	h := strings.ToLower(filepath.Clean(home))
+	if !strings.HasPrefix(r, h) {
+		return false
+	}
+	roots := []string{
+		filepath.Join(home, ".eos", "commands"),
+		filepath.Join(home, ".claude", "commands"),
+		filepath.Join(home, ".trae", "commands"),
+	}
+	for _, x := range roots {
+		x = strings.ToLower(filepath.Clean(x))
+		if strings.HasPrefix(r, x) {
+			return true
+		}
+	}
+	return false
+}
+
+func isCommandsRoot(root string) bool {
+	return strings.EqualFold(strings.TrimSpace(filepath.Base(filepath.Clean(root))), "commands")
 }
 
 // findSkillMd 查找 SKILL.md 文件（不区分大小写）
@@ -253,41 +404,112 @@ func (l *Loader) findSkillMd(dir string) string {
 
 // loadSkill 加载单个 skill
 func (l *Loader) loadSkill(baseDir, skillMdPath string) (*Skill, error) {
+	return l.loadSkillDocument(baseDir, skillMdPath, filepath.Base(baseDir), "skill")
+}
+
+func (l *Loader) loadSkillDocument(baseDir, skillMdPath, fallbackName, kind string) (*Skill, error) {
 	content, err := os.ReadFile(skillMdPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read SKILL.md: %w", err)
 	}
 
-	// 分离 frontmatter 和 markdown
-	// 格式：---\nYAML\n---\nMarkdown
-	parts := strings.SplitN(string(content), "---", 3)
-	if len(parts) < 3 {
-		return nil, fmt.Errorf("invalid SKILL.md format: missing frontmatter or content")
-	}
-
-	// 解析 YAML frontmatter
+	body, frontmatter := splitFrontmatterContent(string(content))
 	var skill Skill
-	if err := yaml.Unmarshal([]byte(parts[1]), &skill); err != nil {
-		return nil, fmt.Errorf("failed to parse frontmatter: %w", err)
+	if frontmatter != "" {
+		if err := yaml.Unmarshal([]byte(frontmatter), &skill); err != nil {
+			return nil, fmt.Errorf("failed to parse frontmatter: %w", err)
+		}
 	}
-
-	// 验证必需字段
-	if skill.Name == "" {
-		return nil, fmt.Errorf("missing required field: name")
-	}
-	if skill.Description == "" {
-		return nil, fmt.Errorf("missing required field: description")
-	}
-
-	// 提取 markdown 内容
-	skill.Content = strings.TrimSpace(parts[2])
+	skill.Kind = strings.TrimSpace(kind)
+	skill.Content = strings.TrimSpace(body)
 	skill.BaseDir = baseDir
 	skill.SkillMdPath = skillMdPath
 	skill.ScriptsDir = filepath.Join(baseDir, "scripts")
 	skill.ReferencesDir = filepath.Join(baseDir, "references")
 	skill.AssetsDir = filepath.Join(baseDir, "assets")
+	if strings.TrimSpace(skill.Name) == "" {
+		skill.Name = strings.TrimSpace(fallbackName)
+	}
+	if strings.TrimSpace(skill.Description) == "" {
+		skill.Description = firstParagraph(skill.Content)
+	}
+
+	if plugin, ok := pluginpkg.FindOwningManifest(baseDir); ok {
+		skill.PluginName = strings.TrimSpace(plugin.Name)
+		skill.PluginRoot = strings.TrimSpace(plugin.RootDir)
+		if name := strings.TrimSpace(skill.Name); name != "" && skill.PluginName != "" && !strings.Contains(name, ":") {
+			skill.Name = skill.PluginName + ":" + name
+		}
+		if strings.TrimSpace(skill.Location) == "" {
+			skill.Location = strings.TrimSpace(plugin.Location)
+		}
+	}
+
+	if strings.TrimSpace(skill.Name) == "" {
+		return nil, fmt.Errorf("missing skill name")
+	}
+	if strings.TrimSpace(skill.Content) == "" {
+		return nil, fmt.Errorf("missing skill content")
+	}
 
 	return &skill, nil
+}
+
+func splitFrontmatterContent(raw string) (body string, frontmatter string) {
+	text := strings.ReplaceAll(raw, "\r\n", "\n")
+	if !strings.HasPrefix(text, "---\n") {
+		return strings.TrimSpace(text), ""
+	}
+	rest := text[len("---\n"):]
+	idx := strings.Index(rest, "\n---")
+	if idx < 0 {
+		return strings.TrimSpace(text), ""
+	}
+	frontmatter = strings.TrimSpace(rest[:idx])
+	body = rest[idx+len("\n---"):]
+	body = strings.TrimPrefix(body, "\n")
+	return strings.TrimSpace(body), frontmatter
+}
+
+func firstParagraph(content string) string {
+	content = strings.TrimSpace(strings.ReplaceAll(content, "\r\n", "\n"))
+	if content == "" {
+		return ""
+	}
+	for _, block := range strings.Split(content, "\n\n") {
+		block = strings.TrimSpace(block)
+		if block == "" {
+			continue
+		}
+		return strings.Join(strings.Fields(block), " ")
+	}
+	return ""
+}
+
+func shouldReplaceSkill(existing, incoming *Skill) bool {
+	if existing == nil {
+		return true
+	}
+	if incoming == nil {
+		return false
+	}
+	existingLoc := locationPriority(existing.Location)
+	incomingLoc := locationPriority(incoming.Location)
+	if incomingLoc != existingLoc {
+		return incomingLoc > existingLoc
+	}
+	return skillKindPriority(incoming.Kind) > skillKindPriority(existing.Kind)
+}
+
+func skillKindPriority(kind string) int {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "skill":
+		return 2
+	case "command":
+		return 1
+	default:
+		return 0
+	}
 }
 
 // List 列出所有可用 skills
@@ -364,21 +586,7 @@ func (l *Loader) GetStats() map[string]any {
 
 // ParseAllowedTools 解析 allowed-tools 字符串
 func ParseAllowedTools(toolsStr string) []string {
-	if toolsStr == "" {
-		return nil
-	}
-
-	tools := strings.Split(toolsStr, ",")
-	result := make([]string, 0, len(tools))
-
-	for _, tool := range tools {
-		tool = strings.TrimSpace(tool)
-		if tool != "" {
-			result = append(result, tool)
-		}
-	}
-
-	return result
+	return parseAllowedToolsString(toolsStr)
 }
 
 // FormatForTool 格式化 skill 用于 Skill tool 的描述
@@ -389,7 +597,7 @@ func (s *Skill) FormatForTool() string {
 // GetContextModifier 获取上下文修改器
 func (s *Skill) GetContextModifier() *ContextModifier {
 	return &ContextModifier{
-		AllowedTools:  ParseAllowedTools(s.AllowedTools),
+		AllowedTools:  s.AllowedTools.Values(),
 		ModelOverride: s.Model,
 	}
 }
@@ -413,4 +621,37 @@ func (s *Skill) RenderPrompt(arguments string) string {
 		prompt = strings.TrimRight(prompt, "\n") + "\n\nARGUMENTS: " + arguments
 	}
 	return prompt
+}
+
+func parseAllowedToolsString(toolsStr string) []string {
+	parts := strings.FieldsFunc(strings.TrimSpace(toolsStr), func(r rune) bool {
+		switch r {
+		case ',', '\n', '\r', '\t', ' ':
+			return true
+		default:
+			return false
+		}
+	})
+	return uniqueStrings(parts)
+}
+
+func uniqueStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }

@@ -1,5 +1,10 @@
 package shell
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"fmt"
 	"math"
@@ -8,12 +13,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/i18n"
-	"github.com/dreamSailing/vb-coding/internal/state"
-	"github.com/dreamSailing/vb-coding/internal/ui/components/content"
-	"github.com/dreamSailing/vb-coding/internal/ui/components/hints"
-	"github.com/dreamSailing/vb-coding/internal/ui/components/input"
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/state"
+	"github.com/dreamSailing/eos/internal/toolapi"
+	"github.com/dreamSailing/eos/internal/ui/components/content"
+	"github.com/dreamSailing/eos/internal/ui/components/hints"
+	"github.com/dreamSailing/eos/internal/ui/components/input"
+	"github.com/dreamSailing/eos/internal/ui/features/slash"
+	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/update"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -76,16 +84,9 @@ func New(width, height int, s *styles.Styles, lang string) Model {
 	inputModel.SetStyle(s.Input, s.InputFocus)
 	inputModel.SetPlaceholder("Enter message... (Press ? for help)")
 	inputHeight := inputModel.ViewHeight()
-	contentHeight := height - inputHeight - statusHeight - 4 // 减去边框和间距
+	contentHeight := max(height-inputHeight-statusHeight-4, 10) // 减去边框和间距
 
-	if contentHeight < 10 {
-		contentHeight = 10
-	}
-
-	contentWidth := width - 4
-	if contentWidth < 1 {
-		contentWidth = 1
-	}
+	contentWidth := max(width-4, 1)
 
 	// 创建内容组件
 	contentModel := content.New(contentWidth, contentHeight)
@@ -129,25 +130,15 @@ func (m *Model) SetSize(width, height int) {
 	}
 	m.input.SetSize(width-2, 0)
 	inputHeight := m.input.ViewHeight()
-	contentHeight := height - inputHeight - hintsHeight - statusHeight - 4 - m.livePanelOuterHeight()
-
-	if contentHeight < 10 {
-		contentHeight = 10
-	}
+	contentHeight := max(height-inputHeight-hintsHeight-statusHeight-4-m.liveReserveHeight(), 10)
 	m.contentH = contentHeight
 
 	hh := 3
 	if m.hints.Visible() {
-		hh = m.hints.Height()
-		if hh < 3 {
-			hh = 3
-		}
+		hh = max(m.hints.Height(), 3)
 	}
 	m.hints.SetSize(width-2, hh)
-	contentWidth := width - 4
-	if contentWidth < 1 {
-		contentWidth = 1
-	}
+	contentWidth := max(width-4, 1)
 	if m.welcome != nil {
 		m.welcome.SetSize(contentWidth+2, contentHeight)
 	}
@@ -165,7 +156,7 @@ func (m *Model) SetLive(view string) {
 		m.hintLive = false
 		m.hintThinking = false
 	}
-	m.relayout()
+	m.recomputeLayout()
 }
 
 func (m *Model) ClearLive() {
@@ -174,14 +165,8 @@ func (m *Model) ClearLive() {
 
 func (m *Model) relayout() {
 	atBottom := m.content.AtBottom()
-	h := m.contentH
-	if h < 5 {
-		h = 5
-	}
-	contentWidth := m.width - 4
-	if contentWidth < 1 {
-		contentWidth = 1
-	}
+	h := max(m.contentH, 5)
+	contentWidth := max(m.width-4, 1)
 	m.content.SetSize(contentWidth, h)
 	if atBottom {
 		m.content.GotoBottom()
@@ -195,10 +180,7 @@ func (m *Model) recomputeLayout() {
 		hintsHeight = m.hints.Height()
 	}
 	inputHeight := m.input.ViewHeight()
-	contentHeight := m.height - inputHeight - hintsHeight - statusHeight - 4 - m.livePanelOuterHeight()
-	if contentHeight < 10 {
-		contentHeight = 10
-	}
+	contentHeight := max(m.height-inputHeight-hintsHeight-statusHeight-4-m.liveReserveHeight(), 10)
 	m.contentH = contentHeight
 	m.relayout()
 }
@@ -213,13 +195,7 @@ func (m Model) livePanelBodyHeight() int {
 	case 1:
 		return 4
 	case 2:
-		h := m.height / 3
-		if h < 7 {
-			h = 7
-		}
-		if h > 16 {
-			h = 16
-		}
+		h := min(max(m.height/3, 7), 16)
 		return h
 	default:
 		return 0
@@ -240,6 +216,28 @@ func (m Model) livePanelOuterHeight() int {
 		return 0
 	}
 	return inner + 2
+}
+
+func (m Model) inlineLiveHeight() int {
+	if m.livePanelMode != 0 || strings.TrimSpace(m.live) == "" {
+		return 0
+	}
+	maxH := min(max(m.height/3, 5), 14)
+	if maxH <= 0 {
+		return 0
+	}
+	h := m.liveHeight
+	if h <= 0 {
+		h = lipgloss.Height(m.live)
+	}
+	return min(max(h, 1), maxH)
+}
+
+func (m Model) liveReserveHeight() int {
+	if h := m.livePanelOuterHeight(); h > 0 {
+		return h
+	}
+	return m.inlineLiveHeight()
 }
 
 func tailLines(s string, n int) string {
@@ -297,12 +295,25 @@ func (m Model) renderLivePanel() string {
 	return m.styles.Panel.Render(lipgloss.JoinVertical(lipgloss.Left, title, body))
 }
 
+func (m Model) renderInlineLive() string {
+	bodyH := m.inlineLiveHeight()
+	if bodyH <= 0 {
+		return ""
+	}
+	body := m.live
+	if lipgloss.Height(body) > bodyH {
+		body = tailLines(body, bodyH)
+	}
+	return body
+}
+
 // SetMode 设置模式
 func (m *Model) SetMode(mode Mode) {
 	m.mode = mode
 	if mode == ModeAI {
 		m.input.SetPlaceholder("Enter message... (Press ? for help)")
 	} else {
+		m.input.ClearPrediction()
 		m.input.SetPlaceholder("Enter bash command...")
 	}
 }
@@ -324,6 +335,9 @@ func (m *Model) ToggleMode() {
 // SetProcessing 设置处理状态
 func (m *Model) SetProcessing(v bool) {
 	m.processing = v
+	if !v && !m.thinking {
+		m.statusAnim = 0
+	}
 }
 
 // Processing 获取处理状态
@@ -335,6 +349,9 @@ func (m *Model) Processing() bool {
 func (m *Model) SetThinking(v bool, text string) {
 	m.thinking = v
 	m.thinkingText = text
+	if !v && !m.processing {
+		m.statusAnim = 0
+	}
 }
 
 func (m *Model) SetContextUsage(tokens int, ratio float64) {
@@ -343,10 +360,7 @@ func (m *Model) SetContextUsage(tokens int, ratio float64) {
 }
 
 func (m *Model) SetExecutionMode(mode string) {
-	m.executionMode = strings.ToLower(strings.TrimSpace(mode))
-	if m.executionMode == "" {
-		m.executionMode = "auto"
-	}
+	m.executionMode = toolapi.NormalizeExecutionMode(mode)
 }
 
 func (m *Model) SetThinkingExpanded(v bool) {
@@ -373,6 +387,13 @@ func (m *Model) SetStatusHints(liveHint bool, thinkingHint bool) {
 func (m *Model) SetWelcomeInfo(modelName, apiInfo, workDir string) {
 	if m.welcome != nil {
 		m.welcome.SetInfo(modelName, apiInfo, workDir)
+	}
+}
+
+// SetUpdateInfo sets version update info on the welcome card
+func (m *Model) SetUpdateInfo(info *update.CheckResult) {
+	if m.welcome != nil {
+		m.welcome.SetUpdateInfo(info)
 	}
 }
 
@@ -418,6 +439,22 @@ func (m *Model) ClearInput() {
 	m.input.Clear()
 }
 
+func (m *Model) SetPrediction(text string) {
+	m.input.SetPrediction(text)
+}
+
+func (m *Model) ClearPrediction() {
+	m.input.ClearPrediction()
+}
+
+func (m *Model) HasPrediction() bool {
+	return m.input.HasPrediction()
+}
+
+func (m *Model) CanAcceptPrediction() bool {
+	return m.input.CanAcceptPrediction()
+}
+
 // AddToHistory 添加到历史
 func (m *Model) AddToHistory(text string) {
 	m.input.AddToHistory(text)
@@ -440,36 +477,13 @@ func (m *Model) SetLanguage(lang string) {
 
 // ShowSlashHints 显示斜杠命令提示（支持查询过滤）
 func (m *Model) ShowSlashHints(query string) {
-	lang := m.language
-	allCommands := []hints.Hint{
-		{Key: "/help", Desc: i18n.T("hint.cmd.help", lang)},
-		{Key: "/init", Desc: i18n.T("hint.cmd.init", lang)},
-		{Key: "/clear", Desc: i18n.T("hint.cmd.clear", lang)},
-		{Key: "/exit", Desc: i18n.T("hint.cmd.exit", lang)},
-		{Key: "/history", Desc: i18n.T("hint.cmd.history", lang)},
-		{Key: "/models", Desc: i18n.T("hint.cmd.models", lang)},
-		{Key: "/mcp", Desc: i18n.T("hint.cmd.mcp", lang)},
-		{Key: "/ctx", Desc: i18n.T("hint.cmd.ctx", lang)},
-		{Key: "/cost", Desc: i18n.T("hint.cmd.cost", lang)},
-		{Key: "/tasks", Desc: i18n.T("hint.cmd.tasks", lang)},
-		{Key: "/workspace", Desc: i18n.T("hint.cmd.workspace", lang)},
-		{Key: "/lsp", Desc: i18n.T("hint.cmd.lsp", lang)},
-		{Key: "/rules", Desc: i18n.T("hint.cmd.rules", lang)},
-		{Key: "/settings", Desc: i18n.T("hint.cmd.settings", lang)},
-	}
-
-	// 过滤匹配命令
 	var slashHints []hints.Hint
-	if query == "" {
-		slashHints = allCommands
-	} else {
-		lq := strings.ToLower(query)
-		for _, cmd := range allCommands {
-			name := strings.ToLower(cmd.Key)
-			if strings.HasPrefix(name, lq) || strings.Contains(name, lq) {
-				slashHints = append(slashHints, cmd)
-			}
-		}
+	for _, cmd := range slash.GetSuggestions(query) {
+		slashHints = append(slashHints, hints.Hint{
+			Key:   cmd.DisplayText(),
+			Desc:  cmd.Description(m.language),
+			Value: cmd.Name,
+		})
 	}
 
 	if len(slashHints) == 0 {
@@ -533,7 +547,7 @@ func (m *Model) ShowPathHints(query string) {
 			name = filepath.ToSlash(filepath.Join(relPath, name))
 		}
 
-		pathHints = append(pathHints, hints.Hint{Key: name, Desc: desc})
+		pathHints = append(pathHints, hints.Hint{Key: name, Desc: desc, Value: name})
 	}
 
 	if len(pathHints) == 0 {
@@ -716,11 +730,15 @@ func (m Model) View() string {
 	contentView := m.content.View()
 	// 使用原始内容判断是否为空，因为 View() 返回的字符串包含样式（padding等）
 	hasContent := m.content.Content() != ""
-	if m.showWelcome && !hasContent {
-		sections = append(sections, m.styles.Panel.Render(m.welcome.View()))
+	inlineLive := m.renderInlineLive()
+	if m.showWelcome && !hasContent && inlineLive == "" {
+		contentView = m.welcome.View()
 	} else {
-		sections = append(sections, m.styles.Panel.Render(contentView))
+		if inlineLive != "" {
+			contentView = lipgloss.JoinVertical(lipgloss.Left, contentView, inlineLive)
+		}
 	}
+	sections = append(sections, m.styles.Panel.Render(contentView))
 
 	if livePanel := m.renderLivePanel(); livePanel != "" {
 		sections = append(sections, livePanel)
@@ -765,6 +783,9 @@ func (m Model) renderStatusBar() string {
 	if m.bgTaskCount > 0 {
 		rightParts = append(rightParts, m.styles.TextMuted.Render(i18n.T("status.tasks", m.language)+fmt.Sprintf("%d", m.bgTaskCount)))
 	}
+	if m.mode == ModeAI {
+		rightParts = append(rightParts, m.styles.TextMuted.Render(i18n.T("status.exec", m.language)+executionModeLabel(m.language, m.executionMode)))
+	}
 
 	var ctxPart string
 	if m.mode == ModeAI && m.ctxVisible && m.ctxRatio > 0 {
@@ -784,12 +805,7 @@ func (m Model) renderStatusBar() string {
 		}
 		buckets := 10
 		filled := int(math.Round(r * float64(buckets)))
-		if filled < 0 {
-			filled = 0
-		}
-		if filled > buckets {
-			filled = buckets
-		}
+		filled = min(max(filled, 0), buckets)
 		bar := strings.Repeat("█", filled) + strings.Repeat("░", buckets-filled)
 		ctxPart = m.styles.TextMuted.Render(i18n.T("status.ctx", m.language)) + valStyle.Render(pctStr) + " " + m.styles.TextMuted.Render(bar)
 	} else if m.mode == ModeAI && m.ctxVisible && m.ctxTokens > 0 {
@@ -801,27 +817,11 @@ func (m Model) renderStatusBar() string {
 
 	if m.mode == ModeAI {
 		thinkingLabel := i18n.T("status.thinking", m.language)
-		var thinkingPart string
 		if !state.Thinking() {
-			thinkingPart = m.styles.TextMuted.Render(thinkingLabel + ":" + i18n.T("status.off", m.language))
+			leftParts = append(leftParts, m.styles.TextMuted.Render(thinkingLabel+":"+i18n.T("status.off", m.language)))
 		} else {
-			stateLabel := i18n.T("thinking.state.collapsed", m.language)
-			if m.thinkingExpanded {
-				stateLabel = i18n.T("thinking.state.expanded", m.language)
-			}
-			if m.thinking {
-				thinkingPart = m.styles.TextMuted.Render(thinkingLabel + strings.Repeat(".", m.statusAnim) + "(" + stateLabel + ")")
-			} else {
-				thinkingPart = m.styles.TextMuted.Render(thinkingLabel + ":" + stateLabel)
-			}
+			leftParts = append(leftParts, m.styles.TextMuted.Render(thinkingLabel+":"+i18n.T("status.on", m.language)))
 		}
-		leftParts = append(leftParts, thinkingPart)
-
-		mode := m.executionMode
-		if mode == "" {
-			mode = "auto"
-		}
-		leftParts = append(leftParts, m.styles.TextMuted.Render(i18n.T("status.plan", m.language)+":"+i18n.T("exec_mode."+mode, m.language)))
 	}
 
 	if m.processing {
@@ -834,15 +834,19 @@ func (m Model) renderStatusBar() string {
 		return left
 	}
 
-	innerW := m.width - 2
-	if innerW < 10 {
-		innerW = 10
-	}
+	innerW := max(m.width-2, 10)
 	gap := innerW - lipgloss.Width(left) - lipgloss.Width(rightPart)
-	if gap < 1 {
-		gap = 1
-	}
+	gap = max(gap, 1)
 	return left + strings.Repeat(" ", gap) + rightPart
+}
+
+func executionModeLabel(_ string, mode string) string {
+	switch toolapi.NormalizeExecutionMode(mode) {
+	case "plan":
+		return "plan"
+	default:
+		return "auto"
+	}
 }
 
 func (m *Model) StatusTick() tea.Cmd {
@@ -873,6 +877,7 @@ func (m *Model) HandleKey(msg tea.KeyMsg) (handled bool, cmd tea.Cmd) {
 				m.acceptHint(selected)
 			}
 			m.hints.Hide()
+			m.input.Focus()
 			return true, nil
 		case "enter":
 			// 接受选中的 hint 并隐藏 hints
@@ -881,10 +886,12 @@ func (m *Model) HandleKey(msg tea.KeyMsg) (handled bool, cmd tea.Cmd) {
 				m.acceptHint(selected)
 			}
 			m.hints.Hide()
+			m.input.Focus()
 			return true, nil
 		case "esc":
 			m.hints.Hide()
 			m.input.Clear()
+			m.input.Focus()
 			return true, nil
 		}
 	}
@@ -916,6 +923,14 @@ func (m *Model) HandleKey(msg tea.KeyMsg) (handled bool, cmd tea.Cmd) {
 		// 清空输入或取消
 		m.input.Clear()
 		return true, nil
+	case "tab":
+		if m.input.AcceptPrediction() {
+			return true, nil
+		}
+	case "right":
+		if m.input.AcceptPrediction() {
+			return true, nil
+		}
 	}
 	return false, nil
 }

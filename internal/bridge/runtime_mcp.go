@@ -1,17 +1,32 @@
 package bridge
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/mcp"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // ListMCPServers 列出所有 MCP 服务器
 func (rc *RuntimeCore) ListMCPServers() []config.MCPEntry {
 	cfg, _ := config.Load()
-	return cfg.MCP
+	return pluginpkg.MergeMCPEntries(&cfg, rc.workingRoot())
+}
+
+func (rc *RuntimeCore) BrowserStatus() mcp.BrowserStatus {
+	cfg, _ := config.Load()
+	cfg.MCP = pluginpkg.MergeMCPEntries(&cfg, rc.workingRoot())
+	return mcp.DetectBrowserStatus(&cfg, rc.mcpMgr)
 }
 
 // UpdateMCPServer 更新 MCP 服务器

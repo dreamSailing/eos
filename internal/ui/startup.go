@@ -1,5 +1,11 @@
 package ui
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"fmt"
@@ -8,14 +14,26 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/bridge"
-	"github.com/dreamSailing/vb-coding/internal/i18n"
-	"github.com/dreamSailing/vb-coding/internal/session"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/bridge"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/memory"
+	"github.com/dreamSailing/eos/internal/session"
+	"github.com/dreamSailing/eos/internal/tools"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// TUIOptions holds CLI-provided overrides for the interactive TUI
+type TUIOptions struct {
+	SessionID        string   // --continue ("latest") or --resume ("session-id")
+	ModelOverride    string   // --model
+	MaxTurns         int      // --max-turns
+	AllowedTools     []string // --allowed-tools
+	DisallowedTools  []string // --disallowed-tools
+	SkipPermissions  bool     // --dangerously-skip-permissions
+}
 
 // T 是 i18n.T 的别名，用于简化调用
 func T(key, lang string, args ...interface{}) string {
@@ -23,10 +41,16 @@ func T(key, lang string, args ...interface{}) string {
 }
 
 func StartInteractiveTUI() {
+	StartInteractiveTUIWithOptions(TUIOptions{})
+}
+
+func StartInteractiveTUIWithOptions(opts TUIOptions) {
 	cm := session.NewContextManager()
 	tm := tools.NewManager()
 	if p, _ := os.Getwd(); p != "" {
-		core := bridge.NewRuntimeCore(cm, tm, nil) // 传入 nil 因为我们不再使用 CoreUI 接口
+		rememberKnownWorkspace(p, true)
+		core := bridge.NewRuntimeCore(cm, tm, nil)
+		applyTUIOptions(core, cm, opts)
 		base, key, model, _ := core.ResolveAPIConfig()
 		if model != "" {
 			ai.PrimeContextWindowFromProvider(context.Background(), base, key, model)
@@ -42,22 +66,23 @@ func StartInteractiveTUI() {
 			}
 		}
 		injectProjectConventions(cm, p)
-		if raw, err := os.ReadFile(filepath.Join(p, "VB.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-			cm.SetPinnedDoc("VB.md", string(raw), 20000)
+		_ = memory.EnsureWorkspaceMemory(p)
+		if raw, err := os.ReadFile(filepath.Join(p, "EOS.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
+			cm.SetPinnedDoc("EOS.md", string(raw), 20000)
 		}
-		if raw, err := os.ReadFile(filepath.Join(p, ".vb", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-			cm.SetPinnedDoc(".vb/Rules.md", string(raw), 20000)
+		if raw, err := os.ReadFile(filepath.Join(p, ".eos", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
+			cm.SetPinnedDoc(".eos/Rules.md", string(raw), 20000)
 		}
 		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-			if raw, err := os.ReadFile(filepath.Join(home, ".vb", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-				cm.SetPinnedDoc("~/.vb/Rules.md", string(raw), 20000)
+			if raw, err := os.ReadFile(filepath.Join(home, ".eos", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
+				cm.SetPinnedDoc("~/.eos/Rules.md", string(raw), 20000)
 			}
 		}
+		injectMemoryDocs(cm, p)
 		m := NewAppModel(core)
 		slog.Info("ui.startup.app.run")
 		if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 			slog.Error("ui.startup.app.run.error", "error", err)
-			// 打印用户友好的错误信息
 			fmt.Fprintf(os.Stderr, "\nError: Application failed to start: %v\n", err)
 			fmt.Fprintf(os.Stderr, "Please check the logs for more details.\n")
 			os.Exit(1)
@@ -68,7 +93,8 @@ func StartInteractiveTUI() {
 		return
 	}
 
-	core := bridge.NewRuntimeCore(cm, tm, nil) // 传入 nil 因为我们不再使用 CoreUI 接口
+	core := bridge.NewRuntimeCore(cm, tm, nil)
+	applyTUIOptions(core, cm, opts)
 	base, key, model, _ := core.ResolveAPIConfig()
 	if model != "" {
 		ai.PrimeContextWindowFromProvider(context.Background(), base, key, model)
@@ -83,22 +109,23 @@ func StartInteractiveTUI() {
 			cm.SetCompressionStrategy(session.CompressionAggressive)
 		}
 	}
-	if raw, err := os.ReadFile(filepath.Join(".", "VB.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-		cm.SetPinnedDoc("VB.md", string(raw), 20000)
+	if raw, err := os.ReadFile(filepath.Join(".", "EOS.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
+		cm.SetPinnedDoc("EOS.md", string(raw), 20000)
 	}
-	if raw, err := os.ReadFile(filepath.Join(".", ".vb", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-		cm.SetPinnedDoc(".vb/Rules.md", string(raw), 20000)
+	if raw, err := os.ReadFile(filepath.Join(".", ".eos", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
+		cm.SetPinnedDoc(".eos/Rules.md", string(raw), 20000)
 	}
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		if raw, err := os.ReadFile(filepath.Join(home, ".vb", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-			cm.SetPinnedDoc("~/.vb/Rules.md", string(raw), 20000)
+		if raw, err := os.ReadFile(filepath.Join(home, ".eos", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
+			cm.SetPinnedDoc("~/.eos/Rules.md", string(raw), 20000)
 		}
 	}
+	_ = memory.EnsureWorkspaceMemory(".")
+	injectMemoryDocs(cm, ".")
 	m := NewAppModel(core)
 	slog.Info("ui.startup.app.run")
 	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		slog.Error("ui.startup.app.run.error", "error", err)
-		// 打印用户友好的错误信息
 		fmt.Fprintf(os.Stderr, "\nError: Application failed to start: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Please check the logs for more details.\n")
 		os.Exit(1)
@@ -106,4 +133,46 @@ func StartInteractiveTUI() {
 	slog.Info("ui.startup.app.stopped")
 	fmt.Println(T("goodbye.emoji", "zh") + " " + T("goodbye.message", "zh"))
 	fmt.Println(T("goodbye.ended", "zh"))
+}
+
+// applyTUIOptions applies CLI-provided overrides to the runtime core
+func applyTUIOptions(core *bridge.RuntimeCore, cm *session.ContextManager, opts TUIOptions) {
+	if opts.ModelOverride != "" {
+		// Try to find the model in config and activate it
+		cfg, _ := config.Load()
+		for _, m := range cfg.Models {
+			if m.Name == opts.ModelOverride || m.Model == opts.ModelOverride {
+				core.SetModelOverride(m.Model, m.APIBase)
+				break
+			}
+		}
+	}
+	if opts.MaxTurns > 0 {
+		core.SetMaxTurns(opts.MaxTurns)
+	}
+	if len(opts.AllowedTools) > 0 || len(opts.DisallowedTools) > 0 {
+		core.SetToolPermissions(opts.AllowedTools, opts.DisallowedTools)
+	}
+	if opts.SkipPermissions {
+		core.SetSkipPermissions(true)
+	}
+	if opts.SessionID != "" {
+		slog.Info("ui.startup.session", "session_id", opts.SessionID)
+	}
+}
+
+func injectMemoryDocs(cm *session.ContextManager, root string) {
+	if cm == nil {
+		return
+	}
+	snap := memory.LoadSnapshot(root)
+	if snap.GlobalExists && strings.TrimSpace(snap.GlobalContent) != "" {
+		cm.SetPinnedDoc(memory.GlobalMemoryDocID, snap.GlobalContent, 12000)
+	}
+	if snap.ProjectExists && strings.TrimSpace(snap.ProjectContent) != "" {
+		cm.SetPinnedDoc(memory.ProjectMemoryDocID, snap.ProjectContent, 12000)
+	}
+	if snap.IndexExists && strings.TrimSpace(snap.IndexContent) != "" {
+		cm.SetPinnedDoc(memory.ProjectIndexDocID, snap.IndexContent, 8000)
+	}
 }

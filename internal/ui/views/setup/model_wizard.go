@@ -1,14 +1,20 @@
 package setup
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/i18n"
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -41,7 +47,6 @@ type ModelSetupView struct {
 	focusIndex       int
 	selectedProvider *ai.ProviderConfig
 	selectedModel    *ai.ModelCatalogEntry
-	config           ModelSetupConfig
 	providerFocused  bool
 	modelFocused     bool
 	customProvider   bool // 是否选择自定义服务商
@@ -570,7 +575,7 @@ func (v *ModelSetupView) View() string {
 		title = i18n.T("models.action.add", v.language)
 	}
 
-	titleStyle := v.styles.PanelTitle.Copy().
+	titleStyle := v.styles.PanelTitle.
 		Width(v.width - 12).
 		Align(lipgloss.Center)
 	content.WriteString(titleStyle.Render(title))

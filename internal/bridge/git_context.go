@@ -1,17 +1,23 @@
 package bridge
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"bytes"
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 )
 
-func buildGitContextHint() string {
-	root := findGitRoot()
+func buildGitContextHint(startRoot string) string {
+	root := findGitRoot(startRoot)
 	if strings.TrimSpace(root) == "" {
 		return ""
 	}
@@ -63,12 +69,11 @@ func buildGitContextHint() string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func findGitRoot() string {
-	wd, err := os.Getwd()
-	if err != nil || wd == "" {
+func findGitRoot(startRoot string) string {
+	cur := strings.TrimSpace(startRoot)
+	if cur == "" {
 		return ""
 	}
-	cur := wd
 	for {
 		if fi, err := os.Stat(filepath.Join(cur, ".git")); err == nil && fi.IsDir() {
 			return cur
@@ -84,7 +89,7 @@ func findGitRoot() string {
 func runGit(dir string, args ...string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := utils.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	var out bytes.Buffer
 	cmd.Stdout = &out

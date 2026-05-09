@@ -1,20 +1,25 @@
 package messages
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/ui/render"
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/ui/render"
+	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/lipgloss"
 )
 
 // Renderer 消息渲染器
 type Renderer struct {
-	styles *styles.Styles
-	width  int
+	styles       *styles.Styles
+	width        int
 	agentNameMap map[string]string
 	mainAgent    string
 	mainLabel    string
@@ -115,6 +120,10 @@ func (r *Renderer) RenderAIResponseAt(content string, tokens int, duration time.
 }
 
 func (r *Renderer) RenderAIResponseAtWithCopy(content string, tokens int, duration time.Duration, done bool, ts time.Time, copyLabel string) string {
+	return r.RenderAIResponseAtWithActions(content, tokens, duration, done, ts, []BubbleAction{{Kind: "copy", Label: copyLabel}})
+}
+
+func (r *Renderer) RenderAIResponseAtWithActions(content string, tokens int, duration time.Duration, done bool, ts time.Time, actions []BubbleAction) string {
 	msg := &AgentBubbleMessage{
 		Name:      r.mainAgent,
 		Label:     r.mainLabel,
@@ -125,7 +134,7 @@ func (r *Renderer) RenderAIResponseAtWithCopy(content string, tokens int, durati
 		Tokens:    tokens,
 		Duration:  duration,
 		Done:      done,
-		CopyLabel: copyLabel,
+		Actions:   actions,
 	}
 	return msg.Render(r.styles, r.width)
 }
@@ -179,9 +188,9 @@ func (r *Renderer) RenderAgentTask(name, task, goal string, progress, step, tota
 
 func (r *Renderer) RenderAgentTaskAt(name, task string, ts time.Time) string {
 	msg := &AgentDispatchMessage{
-		AgentName:  r.displayAgentName(name),
-		Task:       task,
-		Timestamp:  ts,
+		AgentName: r.displayAgentName(name),
+		Task:      task,
+		Timestamp: ts,
 	}
 	return msg.Render(r.styles, r.width)
 }
@@ -205,6 +214,10 @@ func (r *Renderer) RenderAgentFinalAt(agentName, content string, ts time.Time) s
 }
 
 func (r *Renderer) RenderAgentFinalAtWithCopy(agentName, content string, ts time.Time, copyLabel string) string {
+	return r.RenderAgentFinalAtWithActions(agentName, content, ts, []BubbleAction{{Kind: "copy", Label: copyLabel}})
+}
+
+func (r *Renderer) RenderAgentFinalAtWithActions(agentName, content string, ts time.Time, actions []BubbleAction) string {
 	msg := &AgentBubbleMessage{
 		Name:      r.displayAgentName(agentName),
 		Label:     r.subLabel,
@@ -213,7 +226,7 @@ func (r *Renderer) RenderAgentFinalAtWithCopy(agentName, content string, ts time
 		Content:   r.maybeRenderMarkdown(content, true),
 		Timestamp: ts,
 		Done:      true,
-		CopyLabel: copyLabel,
+		Actions:   actions,
 	}
 	return msg.Render(r.styles, r.width)
 }
@@ -231,11 +244,16 @@ func (r *Renderer) RenderPlan(title, description string, steps []PlanStep) strin
 
 // RenderThinking 渲染思考过程
 func (r *Renderer) RenderThinking(content string, duration time.Duration, expanded bool, steps []ThinkingStep) string {
+	return r.RenderThinkingWithHint(content, duration, expanded, steps, "")
+}
+
+func (r *Renderer) RenderThinkingWithHint(content string, duration time.Duration, expanded bool, steps []ThinkingStep, toggleHint string) string {
 	msg := &ThinkingMessage{
-		Content:  content,
-		Duration: duration,
-		Expanded: expanded,
-		Steps:    steps,
+		Content:    content,
+		Duration:   duration,
+		Expanded:   expanded,
+		Steps:      steps,
+		ToggleHint: toggleHint,
 	}
 	return msg.Render(r.styles, r.width)
 }

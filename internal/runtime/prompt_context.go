@@ -1,9 +1,16 @@
 package runtime
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/memory"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -79,20 +86,20 @@ func FormatProjectContext(ctx ProjectContext) string {
 	return sb.String()
 }
 
-// LoadCustomPrompt 从项目根目录的 .vb/prompt.md 读取用户自定义提示词
+// LoadCustomPrompt 从项目根目录的 .eos/prompt.md 读取用户自定义提示词
 func LoadCustomPrompt(rootDir string) string {
-	promptPath := filepath.Join(rootDir, ".vb", "prompt.md")
+	promptPath := filepath.Join(rootDir, ".eos", "prompt.md")
 	return readFileTruncated(promptPath, maxCustomPromptBytes)
 }
 
-// loadCodingStyle 加载项目规则/约定文件（优先 .vb/Rules.md，其次 ~/.vb/Rules.md）
+// loadCodingStyle 加载项目规则/约定文件（优先 .eos/Rules.md，其次 ~/.eos/Rules.md）
 func loadCodingStyle(rootDir string) string {
 	home, _ := os.UserHomeDir()
 	// 按优先级尝试加载
 	candidates := []string{
-		filepath.Join(rootDir, ".vb", "Rules.md"),
-		filepath.Join(home, ".vb", "Rules.md"),
-		filepath.Join(rootDir, "VB.md"),
+		filepath.Join(rootDir, ".eos", "Rules.md"),
+		filepath.Join(home, ".eos", "Rules.md"),
+		filepath.Join(rootDir, "EOS.md"),
 	}
 
 	for _, path := range candidates {
@@ -104,15 +111,25 @@ func loadCodingStyle(rootDir string) string {
 	return ""
 }
 
+// LoadProjectMemory 读取项目长期记忆文件，与规则文件职责分离。
+func LoadProjectMemory(rootDir string) string {
+	return readFileTruncated(memory.ProjectMemoryPath(rootDir), maxCodingStyleBytes)
+}
+
+// LoadGlobalMemory 读取全局用户记忆文件。
+func LoadGlobalMemory() string {
+	return readFileTruncated(memory.GlobalMemoryPath(), maxCodingStyleBytes)
+}
+
 // CollectRecentFiles 通过 git 获取最近修改的文件列表
 func CollectRecentFiles(rootDir string) []string {
-	cmd := exec.Command("git", "diff", "--name-only", "HEAD")
+	cmd := utils.Command("git", "diff", "--name-only", "HEAD")
 	cmd.Dir = rootDir
 
 	out, err := cmd.Output()
 	if err != nil {
 		// 非 git 目录或无更改，尝试获取最近 commit 的文件
-		cmd2 := exec.Command("git", "diff", "--name-only", "HEAD~1", "HEAD")
+		cmd2 := utils.Command("git", "diff", "--name-only", "HEAD~1", "HEAD")
 		cmd2.Dir = rootDir
 		out, err = cmd2.Output()
 		if err != nil {
@@ -211,7 +228,7 @@ func buildDirSummary(rootDir string) string {
 		".git": true, ".idea": true, ".vscode": true,
 		"node_modules": true, "dist": true, "build": true,
 		"vendor": true, "__pycache__": true, ".DS_Store": true,
-		"bin": true, "obj": true, "target": true, ".vb": true,
+		"bin": true, "obj": true, "target": true, ".eos": true,
 	}
 
 	var sb strings.Builder

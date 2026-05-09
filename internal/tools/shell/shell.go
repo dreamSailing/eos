@@ -1,13 +1,19 @@
 package shell
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"log/slog"
 	"sync"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
 type asyncSession struct {
@@ -57,26 +63,14 @@ func (s *Shell) ExecuteCtx(ctx context.Context, command string) (string, error) 
 	return stdout, nil
 }
 
-func (s *Shell) ExecuteWithWorkingDir(command, workingDir string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	return s.ExecuteWithWorkingDirCtx(ctx, command, workingDir)
+func (s *Shell) ExecuteTypedCtx(ctx context.Context, shellType ShellType, command string) (string, error) {
+	return s.ExecuteTypedWithWorkingDirCtx(ctx, shellType, command, "")
 }
 
-func (s *Shell) ExecuteWithWorkingDirCtx(ctx context.Context, command, workingDir string) (string, error) {
-	stdout, stderr, err := s.executor.Execute(ctx, command, workingDir)
-	if err != nil {
-		if stderr != "" {
-			return stdout, fmt.Errorf("%v: %s", err, stderr)
-		}
-		return stdout, err
-	}
-	return stdout, nil
-}
-
-func (s *Shell) StartAsync(command string) (string, error) {
+func (s *Shell) StartAsyncWithWorkingDir(command, workingDir string) (string, error) {
 	sid := fmt.Sprintf("%d", time.Now().UnixNano())
 	ctx, cancel := context.WithCancel(context.Background())
+	ctx = withPluginEnv(ctx, workingDir)
 
 	sess := &asyncSession{
 		id:       sid,
@@ -91,7 +85,7 @@ func (s *Shell) StartAsync(command string) (string, error) {
 
 	go func() {
 		defer close(sess.done)
-		stdout, stderr, err := sess.executor.Execute(ctx, command, "")
+		stdout, stderr, err := sess.executor.Execute(ctx, command, workingDir)
 
 		sess.mu.Lock()
 		defer sess.mu.Unlock()
@@ -109,10 +103,45 @@ func (s *Shell) StartAsync(command string) (string, error) {
 
 	slog.Debug("shell.start_async.success", "component", utils.ComponentTool,
 		"command", command,
+		"working_dir", workingDir,
 		"session_id", sid,
 	)
 
 	return sid, nil
+}
+
+func (s *Shell) ExecuteWithWorkingDir(command, workingDir string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return s.ExecuteWithWorkingDirCtx(ctx, command, workingDir)
+}
+
+func (s *Shell) ExecuteWithWorkingDirCtx(ctx context.Context, command, workingDir string) (string, error) {
+	ctx = withPluginEnv(ctx, workingDir)
+	stdout, stderr, err := s.executor.Execute(ctx, command, workingDir)
+	if err != nil {
+		if stderr != "" {
+			return stdout, fmt.Errorf("%v: %s", err, stderr)
+		}
+		return stdout, err
+	}
+	return stdout, nil
+}
+
+func (s *Shell) ExecuteTypedWithWorkingDirCtx(ctx context.Context, shellType ShellType, command, workingDir string) (string, error) {
+	ctx = withPluginEnv(ctx, workingDir)
+	stdout, stderr, _, err := executeNativeShellCommand(ctx, shellType, command, workingDir, "", nil)
+	if err != nil {
+		if stderr != "" {
+			return stdout, fmt.Errorf("%v: %s", err, stderr)
+		}
+		return stdout, err
+	}
+	return stdout, nil
+}
+
+func (s *Shell) StartAsync(command string) (string, error) {
+	return s.StartAsyncWithWorkingDir(command, "")
 }
 
 func (s *Shell) Output(id string) (string, string, bool, error) {

@@ -1,5 +1,10 @@
 package input
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"strings"
 
@@ -22,14 +27,15 @@ type Model struct {
 	focusStyle lipgloss.Style
 
 	// 历史
-	history     []string
-	historyIdx  int
-	historyMax  int
-	historyDraft string
+	history            []string
+	historyIdx         int
+	historyMax         int
+	historyDraft       string
 	historyDraftActive bool
 
 	// 占位符
-	placeholder string
+	basePlaceholder string
+	prediction      string
 }
 
 // New 创建新的输入模型
@@ -78,8 +84,64 @@ func (m *Model) SetStyle(style, focusStyle lipgloss.Style) {
 
 // SetPlaceholder 设置占位符
 func (m *Model) SetPlaceholder(text string) {
-	m.placeholder = text
-	m.textarea.Placeholder = text
+	m.basePlaceholder = text
+	m.refreshPlaceholder()
+}
+
+func (m *Model) SetPrediction(text string) {
+	m.prediction = strings.TrimSpace(text)
+	m.refreshPlaceholder()
+}
+
+func (m *Model) ClearPrediction() {
+	if m.prediction == "" {
+		m.refreshPlaceholder()
+		return
+	}
+	m.prediction = ""
+	m.refreshPlaceholder()
+}
+
+func (m *Model) HasPrediction() bool {
+	return m.prediction != ""
+}
+
+func (m *Model) Prediction() string {
+	return m.prediction
+}
+
+func (m *Model) PredictionSuffix() string {
+	value := m.textarea.Value()
+	if strings.TrimSpace(value) == "" {
+		return m.prediction
+	}
+	if m.prediction == "" {
+		return ""
+	}
+	if !strings.HasPrefix(m.prediction, value) {
+		return ""
+	}
+	return m.prediction[len(value):]
+}
+
+func (m *Model) CanAcceptPrediction() bool {
+	return strings.TrimSpace(m.PredictionSuffix()) != ""
+}
+
+func (m *Model) AcceptPrediction() bool {
+	suffix := strings.TrimSpace(m.PredictionSuffix())
+	if suffix == "" {
+		return false
+	}
+	if strings.TrimSpace(m.textarea.Value()) == "" {
+		m.textarea.SetValue(m.prediction)
+	} else {
+		m.textarea.SetValue(m.textarea.Value() + m.PredictionSuffix())
+	}
+	m.prediction = ""
+	m.refreshPlaceholder()
+	m.adjustHeight()
+	return true
 }
 
 // Focus 聚焦
@@ -107,13 +169,16 @@ func (m *Model) Value() string {
 // SetValue 设置输入值
 func (m *Model) SetValue(text string) {
 	m.textarea.SetValue(text)
+	m.refreshPlaceholder()
 }
 
 // Clear 清空输入
 func (m *Model) Clear() {
 	m.textarea.SetValue("")
+	m.prediction = ""
 	m.historyDraft = ""
 	m.historyDraftActive = false
+	m.refreshPlaceholder()
 	m.adjustHeight()
 }
 
@@ -200,9 +265,26 @@ func (m Model) Init() tea.Cmd {
 // Update 更新
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
+	before := m.textarea.Value()
 	m.textarea, cmd = m.textarea.Update(msg)
+	after := m.textarea.Value()
+	if m.prediction != "" && after != "" && !strings.HasPrefix(m.prediction, after) {
+		m.prediction = ""
+	}
+	if before != after && after == "" && strings.TrimSpace(m.prediction) == "" {
+		m.prediction = ""
+	}
+	m.refreshPlaceholder()
 	m.adjustHeight()
 	return m, cmd
+}
+
+func (m *Model) refreshPlaceholder() {
+	if strings.TrimSpace(m.textarea.Value()) == "" && m.prediction != "" {
+		m.textarea.Placeholder = m.prediction
+		return
+	}
+	m.textarea.Placeholder = m.basePlaceholder
 }
 
 func (m *Model) adjustHeight() {
@@ -270,5 +352,9 @@ func (m Model) View() string {
 	if m.focused {
 		style = m.focusStyle
 	}
-	return style.Render(m.textarea.View())
+	view := m.textarea.View()
+	if suffix := m.PredictionSuffix(); strings.TrimSpace(m.textarea.Value()) != "" && strings.TrimSpace(suffix) != "" {
+		view += lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(suffix)
+	}
+	return style.Render(view)
 }

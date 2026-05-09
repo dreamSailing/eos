@@ -1,5 +1,10 @@
 package serve
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"bufio"
 	"context"
@@ -11,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	toolapiimpl "github.com/dreamSailing/vb-coding/internal/toolapi/impl"
+	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
 )
 
 func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {
@@ -23,6 +28,7 @@ func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {
 		Transport:             "stdio",
 		DefaultWorkspacePath:  workspace,
 		DefaultAllowedTools:   []string{"bash"},
+		DefaultSandboxMode:    "full_access",
 		RequireApprovalDigest: false,
 	}, inR, outW, io.Discard, toolapiimpl.NewServices())
 	if err != nil {
@@ -36,7 +42,7 @@ func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {
 		cancel()
 		_ = inW.Close()
 		_ = outW.Close()
-		_ = <-done
+		<-done
 	}()
 
 	rd := bufio.NewReader(outR)
@@ -100,8 +106,8 @@ func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {
 		"params": map[string]any{
 			"workspacePath": workspace,
 			"options": map[string]any{
-				"executionMode":        "plan",
-				"allowedTools":         []any{"bash"},
+				"executionMode":         "plan",
+				"allowedTools":          []any{"bash"},
 				"requireApprovalDigest": false,
 			},
 		},
@@ -149,6 +155,7 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 		Transport:             "stdio",
 		DefaultWorkspacePath:  workspace,
 		DefaultAllowedTools:   []string{"bash", "read"},
+		DefaultSandboxMode:    "full_access",
 		RequireApprovalDigest: false,
 	}, inR, outW, io.Discard, toolapiimpl.NewServices())
 	if err != nil {
@@ -162,7 +169,7 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 		cancel()
 		_ = inW.Close()
 		_ = outW.Close()
-		_ = <-done
+		<-done
 	}()
 
 	rd := bufio.NewReader(outR)
@@ -216,6 +223,16 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 		}
 	}
 
+	readNotification := func(timeout time.Duration) map[string]any {
+		for {
+			m := readLine(timeout)
+			if m["method"] != "event" {
+				continue
+			}
+			return m
+		}
+	}
+
 	write(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"}})
 	_ = readResponse(1, 2*time.Second)
 
@@ -226,12 +243,13 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 		"params": map[string]any{
 			"workspacePath": workspace,
 			"options": map[string]any{
-				"allowedTools":            []any{"bash", "read"},
-				"requireApprovalDigest":   false,
-				"maxConcurrentToolCalls":  1,
-				"executionMode":           "auto",
-				"trustedWorkspace":        true,
-				"confirmPolicyID":         "",
+				"allowedTools":           []any{"bash", "read"},
+				"requireApprovalDigest":  false,
+				"maxConcurrentToolCalls": 1,
+				"executionMode":          "auto",
+				"sandboxMode":            "full_access",
+				"trustedWorkspace":       true,
+				"confirmPolicyID":        "",
 			},
 		},
 	})
@@ -255,6 +273,9 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 			},
 		},
 	})
+	for i := 0; i < 3; i++ {
+		_ = readNotification(2 * time.Second)
+	}
 
 	write(map[string]any{
 		"jsonrpc": "2.0",
@@ -288,6 +309,12 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 	}
 
 	execResp := readResponse(3, 4*time.Second)
+	if errObj, ok := execResp["error"].(map[string]any); ok && errObj != nil {
+		if got, _ := errObj["message"].(string); got != "ConfirmationRequired" {
+			t.Fatalf("expected ConfirmationRequired, got: %v", execResp)
+		}
+		return
+	}
 	res, _ := execResp["result"].(map[string]any)
 	status, _ := res["status"].(string)
 	if status == "" {

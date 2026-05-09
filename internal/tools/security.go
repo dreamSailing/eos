@@ -1,5 +1,10 @@
 package tools
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"os"
 	"path/filepath"
@@ -144,6 +149,25 @@ func ClassifyToolDanger(call ToolCall) (category string, level string, summary s
 		return "git-push", "high", "git push", true
 	case ToolGitPull:
 		return "git-pull", "medium", "git pull", true
+	case ToolRemoteRepoConnect:
+		platform, _ := call.Parameters["platform"].(string)
+		return "remote-repo-connect", "medium", "remote repo connect " + strings.TrimSpace(platform), true
+	case ToolRemoteRepoCloneOrOpen:
+		repoURL, _ := call.Parameters["repo_url"].(string)
+		return "remote-repo-open", "high", "remote repo open " + strings.TrimSpace(repoURL), true
+	case ToolRemoteRepoCheckout:
+		branch, _ := call.Parameters["branch"].(string)
+		return "remote-repo-checkout", "medium", "remote repo checkout " + strings.TrimSpace(branch), true
+	case ToolRemoteRepoCommitAndPush:
+		return "remote-repo-push", "high", "remote repo commit and push", true
+	case ToolRemoteRepoCreatePR:
+		return "remote-repo-pr", "high", "remote repo create pr", true
+	case ToolRemoteRepoCreateMR:
+		return "remote-repo-mr", "high", "remote repo create mr", true
+	case ToolRemoteRepoDisconnect:
+		return "remote-repo-disconnect", "medium", "remote repo disconnect", true
+	case ToolRemoteRepoStatus:
+		return "", "low", "remote repo status", false
 	case ToolGitReset:
 		if t, ok := call.Parameters["target"].(string); ok && strings.TrimSpace(t) != "" {
 			return "git-reset", "high", "git reset " + strings.TrimSpace(t), true
@@ -194,9 +218,46 @@ func ClassifyToolDanger(call ToolCall) (category string, level string, summary s
 		return "git-add", "low", "git add", false
 	case ToolGitStatus, ToolGitBranchList, ToolGitDiff, ToolGitLog, ToolGitShow:
 		return "", "low", call.Tool, false
+	case ToolWebSearch:
+		return "web:search", "low", "web search: " + extractParamSummary(call.Parameters), false
+	case ToolWebFetch:
+		url, _ := call.Parameters["url"].(string)
+		if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://localhost") {
+			return "web:fetch", "medium", "non-HTTPS web fetch: " + url, true
+		}
+		return "web:fetch", "low", "web fetch: " + url, false
+	case ToolSuggestMemory:
+		return "memory:suggest", "low", "suggest memory", false
+	case ToolEnterWorktree:
+		return "git:worktree", "medium", "create git worktree", false
+	case ToolMCPListResources, ToolMCPReadResource, ToolStructuredOutput, ToolSnip, ToolBrowserStatus:
+		return "", "low", call.Tool, false
+	case ToolPowerShell:
+		return "shell:powershell", "high", "powershell", true
+	case ToolTeamCreate, ToolTeamDelete:
+		return "team", "medium", call.Tool, true
+	case ToolTeamSendMsg:
+		return "", "low", "team_send_message", false
 	}
 
 	return "unknown", "low", call.Tool, false
+}
+
+// extractParamSummary extracts a short summary from tool parameters for display
+func extractParamSummary(params map[string]interface{}) string {
+	if params == nil {
+		return ""
+	}
+	// Try common parameter names
+	for _, key := range []string{"query", "command", "path", "url", "message"} {
+		if v, ok := params[key].(string); ok && v != "" {
+			if len(v) > 80 {
+				return v[:80] + "..."
+			}
+			return v
+		}
+	}
+	return ""
 }
 
 // ClassifyBashDanger 分类 Bash 命令危险等级

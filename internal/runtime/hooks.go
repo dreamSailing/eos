@@ -1,10 +1,24 @@
 package runtime
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	ai "github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/hooks"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/internal/tools/shell"
+	"io"
+	stdhttp "net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,23 +27,18 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/hooks"
-	ai "github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/tools"
-	"github.com/dreamSailing/vb-coding/internal/tools/shell"
 
 	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
 )
 
 type HookManager struct {
-	mu     sync.RWMutex
-	base   hooks.Config
-	loaded bool
-	tm     *tools.Manager
-	mdl    AIModel
-	agentEval func(context.Context, string) (string, error)
+	mu         sync.RWMutex
+	base       hooks.Config
+	loaded     bool
+	tm         *tools.Manager
+	mdl        AIModel
+	agentEval  func(context.Context, string) (string, error)
 	hookModels map[string]AIModel
 	agentEvals map[string]func(context.Context, string) (string, error)
 	onceSeen   map[string]bool
@@ -63,8 +72,8 @@ func (hm *HookManager) SetOnMeta(fn func(string)) {
 	hm.onMeta = fn
 }
 
-func (hm *HookManager) LoadFromDefaultLocations() error {
-	cfg, err := loadHookConfig()
+func (hm *HookManager) LoadFromDefaultLocations(ctx context.Context) error {
+	cfg, err := loadHookConfig(tools.WorkspaceRootFromContext(ctx))
 	if err != nil {
 		return err
 	}
@@ -101,6 +110,72 @@ func (hm *HookManager) SessionStart(ctx context.Context, source string, model st
 	})
 }
 
+func (hm *HookManager) SessionEnd(ctx context.Context, reason string, durationMs int64) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "SessionEnd", strings.TrimSpace(reason), nil, nil, map[string]any{
+		"reason":      strings.TrimSpace(reason),
+		"duration_ms": durationMs,
+	})
+}
+
+func (hm *HookManager) StopFailure(ctx context.Context, reason string, lastAssistantMessage string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "StopFailure", strings.TrimSpace(reason), nil, nil, map[string]any{
+		"reason":                 strings.TrimSpace(reason),
+		"last_assistant_message": strings.TrimSpace(lastAssistantMessage),
+	})
+}
+
+func (hm *HookManager) SubagentStart(ctx context.Context, agentType string, task string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "SubagentStart", strings.TrimSpace(agentType), nil, nil, map[string]any{
+		"agent_type": strings.TrimSpace(agentType),
+		"task":       strings.TrimSpace(task),
+	})
+}
+
+func (hm *HookManager) TaskCreated(ctx context.Context, taskID string, taskType string, description string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "TaskCreated", "", nil, nil, map[string]any{
+		"task_id":     strings.TrimSpace(taskID),
+		"task_type":   strings.TrimSpace(taskType),
+		"description": strings.TrimSpace(description),
+	})
+}
+
+func (hm *HookManager) Elicitation(ctx context.Context, elicitationType string, prompt string, options []string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "Elicitation", strings.TrimSpace(elicitationType), nil, nil, map[string]any{
+		"elicitation_type": strings.TrimSpace(elicitationType),
+		"prompt":           strings.TrimSpace(prompt),
+		"options":          options,
+	})
+}
+
+func (hm *HookManager) ElicitationResult(ctx context.Context, elicitationType string, selectedOption string, responseText string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "ElicitationResult", strings.TrimSpace(elicitationType), nil, nil, map[string]any{
+		"elicitation_type": strings.TrimSpace(elicitationType),
+		"selected_option":  strings.TrimSpace(selectedOption),
+		"response_text":    strings.TrimSpace(responseText),
+	})
+}
+
+func (hm *HookManager) InstructionsLoaded(ctx context.Context, source string, instructionCount int) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "InstructionsLoaded", strings.TrimSpace(source), nil, nil, map[string]any{
+		"source":            strings.TrimSpace(source),
+		"instruction_count": instructionCount,
+	})
+}
+
+func (hm *HookManager) CwdChanged(ctx context.Context, oldCwd string, newCwd string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "CwdChanged", "", nil, nil, map[string]any{
+		"old_cwd": strings.TrimSpace(oldCwd),
+		"new_cwd": strings.TrimSpace(newCwd),
+	})
+}
+
+func (hm *HookManager) FileChanged(ctx context.Context, filePath string, changeType string) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "FileChanged", strings.TrimSpace(filePath), nil, nil, map[string]any{
+		"file_path":   strings.TrimSpace(filePath),
+		"change_type": strings.TrimSpace(changeType),
+	})
+}
+
 func (hm *HookManager) Notification(ctx context.Context, notificationType string, message string, title string) (hooks.Decision, error) {
 	return hm.runWithExtra(ctx, "Notification", strings.TrimSpace(notificationType), nil, nil, map[string]any{
 		"notification_type": strings.TrimSpace(notificationType),
@@ -113,6 +188,14 @@ func (hm *HookManager) PreCompact(ctx context.Context, trigger string, customIns
 	return hm.runWithExtra(ctx, "PreCompact", strings.TrimSpace(trigger), nil, nil, map[string]any{
 		"trigger":             strings.TrimSpace(trigger),
 		"custom_instructions": strings.TrimSpace(customInstructions),
+	})
+}
+
+func (hm *HookManager) PostCompact(ctx context.Context, trigger string, originalTokens, savedTokens int) (hooks.Decision, error) {
+	return hm.runWithExtra(ctx, "PostCompact", strings.TrimSpace(trigger), nil, nil, map[string]any{
+		"trigger":         strings.TrimSpace(trigger),
+		"original_tokens": originalTokens,
+		"saved_tokens":    savedTokens,
 	})
 }
 
@@ -172,15 +255,15 @@ func (hm *HookManager) UserPromptSubmit(ctx context.Context, prompt string) (hoo
 
 func (hm *HookManager) Stop(ctx context.Context, lastAssistantMessage string, stopHookActive bool) (hooks.Decision, error) {
 	return hm.runWithExtra(ctx, "Stop", "", nil, nil, map[string]any{
-		"stop_hook_active":      stopHookActive,
+		"stop_hook_active":       stopHookActive,
 		"last_assistant_message": strings.TrimSpace(lastAssistantMessage),
 	})
 }
 
 func (hm *HookManager) SubagentStop(ctx context.Context, agentType string, lastAssistantMessage string, stopHookActive bool) (hooks.Decision, error) {
 	return hm.runWithExtra(ctx, "SubagentStop", agentType, nil, nil, map[string]any{
-		"stop_hook_active":      stopHookActive,
-		"agent_type":            strings.TrimSpace(agentType),
+		"stop_hook_active":       stopHookActive,
+		"agent_type":             strings.TrimSpace(agentType),
 		"last_assistant_message": strings.TrimSpace(lastAssistantMessage),
 	})
 }
@@ -206,6 +289,7 @@ func (hm *HookManager) runWithExtra(ctx context.Context, event string, toolName 
 			"project_settings": true,
 			"local_settings":   true,
 			"skills":           true,
+			"plugins":          true,
 		}
 	}
 
@@ -227,6 +311,8 @@ func (hm *HookManager) runWithExtra(ctx context.Context, event string, toolName 
 					if allowHookSource(enabledSources, "skills") {
 						for i := range hs {
 							hs[i].Source = "skills"
+							hs[i].BaseDir = strings.TrimSpace(s.BaseDir)
+							hs[i].SourcePath = strings.TrimSpace(s.SkillMdPath)
 							groups = append(groups, hs[i])
 						}
 					}
@@ -236,10 +322,12 @@ func (hm *HookManager) runWithExtra(ctx context.Context, event string, toolName 
 	}
 
 	type workItem struct {
-		idx int
-		key string
-		typ string
-		h   hooks.Handler
+		idx     int
+		key     string
+		typ     string
+		source  string
+		baseDir string
+		h       hooks.Handler
 	}
 	items := make([]workItem, 0, 8)
 	seen := map[string]bool{}
@@ -265,7 +353,14 @@ func (hm *HookManager) runWithExtra(ctx context.Context, event string, toolName 
 				continue
 			}
 			seen[key] = true
-			items = append(items, workItem{idx: idx, key: key, typ: ht, h: h})
+			items = append(items, workItem{
+				idx:     idx,
+				key:     key,
+				typ:     ht,
+				source:  strings.TrimSpace(g.Source),
+				baseDir: strings.TrimSpace(g.BaseDir),
+				h:       h,
+			})
 			idx++
 		}
 	}
@@ -296,18 +391,18 @@ func (hm *HookManager) runWithExtra(ctx context.Context, event string, toolName 
 				to = 600
 			}
 			if h.Async {
-				go func(cmd string, timeout int) {
+				go func(cmd string, source string, baseDir string, timeout int) {
 					c2, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 					defer cancel()
-					_, _ = runHookCommand(c2, event, cmd, toolName, toolInput, toolResult, extra, time.Duration(timeout)*time.Second)
-				}(cmd, to)
+					_, _ = runHookCommand(c2, event, cmd, toolName, toolInput, toolResult, extra, source, baseDir, time.Duration(timeout)*time.Second)
+				}(cmd, it.source, it.baseDir, to)
 				continue
 			}
 			pending++
-			go func(i int, cmd string, timeout int) {
-				dec, err := runHookCommand(ctx, event, cmd, toolName, toolInput, toolResult, extra, time.Duration(timeout)*time.Second)
+			go func(i int, cmd string, source string, baseDir string, timeout int) {
+				dec, err := runHookCommand(ctx, event, cmd, toolName, toolInput, toolResult, extra, source, baseDir, time.Duration(timeout)*time.Second)
 				ch <- res{idx: i, dec: dec, err: err}
-			}(it.idx, cmd, to)
+			}(it.idx, cmd, it.source, it.baseDir, to)
 		case "prompt":
 			p := strings.TrimSpace(h.Prompt)
 			if p == "" {
@@ -358,6 +453,19 @@ func (hm *HookManager) runWithExtra(ctx context.Context, event string, toolName 
 				dec, err := runHookAgent(ctx, eval, event, prompt, payload, time.Duration(timeout)*time.Second)
 				ch <- res{idx: i, dec: dec, err: err}
 			}(it.idx, p, to, h.Model)
+		case "http":
+			if onMeta != nil && strings.TrimSpace(h.StatusMessage) != "" {
+				onMeta("phase.note:HOOK_STATUS:" + strings.TrimSpace(h.StatusMessage))
+			}
+			to := h.Timeout
+			if to <= 0 {
+				to = 30
+			}
+			pending++
+			go func(i int, handler hooks.Handler, timeout int) {
+				dec, err := runHookHTTP(ctx, handler, payload, time.Duration(timeout)*time.Second)
+				ch <- res{idx: i, dec: dec, err: err}
+			}(it.idx, h, to)
 		}
 	}
 
@@ -518,7 +626,9 @@ func hookInputPayload(ctx context.Context, event string, toolName string, toolIn
 	if tid := tools.TraceIDFromContext(ctx); strings.TrimSpace(tid) != "" {
 		payload["trace_id"] = tid
 	}
-	if wd, err := os.Getwd(); err == nil {
+	if wd := strings.TrimSpace(tools.WorkspaceRootFromContext(ctx)); wd != "" {
+		payload["cwd"] = filepath.ToSlash(wd)
+	} else if wd, err := os.Getwd(); err == nil {
 		payload["cwd"] = filepath.ToSlash(wd)
 	}
 	return payload
@@ -538,6 +648,13 @@ func hookMatcherMatch(matcher string, toolName string) bool {
 	if m == "" || m == "*" {
 		return true
 	}
+
+	// Check if this is a glob pattern (contains *, ?, [, but not regex chars)
+	if isGlobPattern(m) {
+		return globMatch(m, toolName)
+	}
+
+	// Default: regex matching
 	re, err := regexp.Compile(m)
 	if err != nil {
 		return false
@@ -545,7 +662,49 @@ func hookMatcherMatch(matcher string, toolName string) bool {
 	return re.MatchString(toolName)
 }
 
-func runHookCommand(ctx context.Context, event string, command string, toolName string, toolInput map[string]any, toolResult map[string]any, extra map[string]any, timeout time.Duration) (hooks.Decision, error) {
+// isGlobPattern detects if a pattern is a glob (not a regex)
+func isGlobPattern(pattern string) bool {
+	// If it contains glob-specific characters without regex escaping
+	hasGlob := strings.ContainsAny(pattern, "?[")
+	// Simple heuristic: if it has * but not .* or similar regex patterns
+	if strings.Contains(pattern, "*") && !strings.Contains(pattern, ".*") {
+		hasGlob = true
+	}
+	return hasGlob && !strings.ContainsAny(pattern, `+\()|`)
+}
+
+// globMatch performs simple glob matching
+func globMatch(pattern, name string) bool {
+	// Simple glob: convert glob to regex
+	regexPattern := globToRegex(pattern)
+	re, err := regexp.Compile("(?i)^" + regexPattern + "$")
+	if err != nil {
+		return false
+	}
+	return re.MatchString(name)
+}
+
+// globToRegex converts a glob pattern to a regex pattern
+func globToRegex(glob string) string {
+	var sb strings.Builder
+	sb.Grow(len(glob) * 2)
+	for _, ch := range glob {
+		switch ch {
+		case '*':
+			sb.WriteString(".*")
+		case '?':
+			sb.WriteString(".")
+		case '.', '^', '$', '|', '+', '(', ')', '{', '}', '\\':
+			sb.WriteRune('\\')
+			sb.WriteRune(ch)
+		default:
+			sb.WriteRune(ch)
+		}
+	}
+	return sb.String()
+}
+
+func runHookCommand(ctx context.Context, event string, command string, toolName string, toolInput map[string]any, toolResult map[string]any, extra map[string]any, source string, baseDir string, timeout time.Duration) (hooks.Decision, error) {
 	call := tools.ToolCall{Tool: "bash", Parameters: map[string]any{"command": command}}
 	if tools.SafetyGateClassify != nil {
 		category, _, summary, dangerous := tools.SafetyGateClassify(call)
@@ -577,7 +736,9 @@ func runHookCommand(ctx context.Context, event string, command string, toolName 
 	if tid := tools.TraceIDFromContext(ctx); strings.TrimSpace(tid) != "" {
 		payload["trace_id"] = tid
 	}
-	if wd, err := os.Getwd(); err == nil {
+	if wd := strings.TrimSpace(tools.WorkspaceRootFromContext(ctx)); wd != "" {
+		payload["cwd"] = filepath.ToSlash(wd)
+	} else if wd, err := os.Getwd(); err == nil {
 		payload["cwd"] = filepath.ToSlash(wd)
 	}
 	in, _ := json.Marshal(payload)
@@ -588,7 +749,9 @@ func runHookCommand(ctx context.Context, event string, command string, toolName 
 		defer cancel()
 	}
 
-	stdout, stderr, exitCode, err := shell.ExecuteWithStdin(ctx, command, "", string(in))
+	workingDir := currentHookWorkingDir(ctx)
+	env := hookCommandEnv(source, baseDir, workingDir)
+	stdout, stderr, exitCode, err := shell.ExecuteWithStdinEnv(ctx, command, workingDir, string(in), env)
 	if exitCode == 2 {
 		msg := strings.TrimSpace(stderr)
 		if msg == "" && err != nil {
@@ -824,6 +987,104 @@ func decisionForOkFalse(event string) string {
 	}
 }
 
+// runHookHTTP executes an HTTP-based hook handler
+func runHookHTTP(ctx context.Context, h hooks.Handler, payload map[string]any, timeout time.Duration) (hooks.Decision, error) {
+	// Extract HTTP config from handler
+	// The HTTP config is encoded in the Command field as JSON or URL
+	url := strings.TrimSpace(h.Command)
+	if url == "" {
+		return hooks.Decision{Decision: "allow"}, nil
+	}
+
+	// Check if Command is a JSON-encoded HTTP config
+	if strings.HasPrefix(url, "{") {
+		var httpCfg hooks.HTTPHandler
+		if err := json.Unmarshal([]byte(url), &httpCfg); err == nil && httpCfg.URL != "" {
+			return executeHTTPHook(ctx, &httpCfg, payload, timeout)
+		}
+	}
+
+	// Treat Command as a plain URL
+	method := "POST"
+	if h.Prompt != "" {
+		method = strings.ToUpper(strings.TrimSpace(h.Prompt))
+	}
+
+	httpCfg := &hooks.HTTPHandler{
+		URL:     url,
+		Method:  method,
+		Timeout: int(timeout.Seconds()),
+		Headers: map[string]string{"Content-Type": "application/json"},
+	}
+
+	return executeHTTPHook(ctx, httpCfg, payload, timeout)
+}
+
+// executeHTTPHook performs the actual HTTP request for a hook
+func executeHTTPHook(ctx context.Context, cfg *hooks.HTTPHandler, payload map[string]any, timeout time.Duration) (hooks.Decision, error) {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return hooks.Decision{}, fmt.Errorf("marshal hook payload: %w", err)
+	}
+
+	req, err := stdhttp.NewRequestWithContext(ctx, cfg.Method, cfg.URL, bytes.NewReader(body))
+	if err != nil {
+		return hooks.Decision{}, fmt.Errorf("create hook request: %w", err)
+	}
+
+	for k, v := range cfg.Headers {
+		req.Header.Set(k, v)
+	}
+	if req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := stdhttp.DefaultClient.Do(req)
+	if err != nil {
+		return hooks.Decision{}, fmt.Errorf("execute hook request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return hooks.Decision{}, fmt.Errorf("read hook response: %w", err)
+	}
+
+	expectedStatus := cfg.ExpectedStatus
+	if expectedStatus == 0 {
+		expectedStatus = 200
+	}
+
+	if resp.StatusCode != expectedStatus {
+		return hooks.Decision{Decision: "allow"}, nil
+	}
+
+	// Parse response as JSON
+	ok, reason, sysMsg, suppress, perr := parseHookOk(string(respBody))
+	if perr != nil {
+		return hooks.Decision{}, perr
+	}
+	if ok {
+		dec := hooks.Decision{Decision: "allow", AdditionalContext: sysMsg}
+		if suppress {
+			dec.AdditionalContext = ""
+		}
+		return dec, nil
+	}
+	dec := hooks.Decision{Decision: "block", Reason: strings.TrimSpace(reason), AdditionalContext: sysMsg}
+	if suppress {
+		dec.AdditionalContext = ""
+	}
+	return dec, nil
+}
+
 func parseHookOk(s string) (ok bool, reason string, sysMsg string, suppress bool, err error) {
 	raw := strings.TrimSpace(s)
 	if raw == "" {
@@ -887,9 +1148,10 @@ func asMapStringAny(v any) map[string]any {
 	return out
 }
 
-func loadHookConfig() (hooks.Config, error) {
+func loadHookConfig(workspaceRoot string) (hooks.Config, error) {
 	var cfg hooks.Config
 	cfg.Hooks = map[string][]hooks.MatcherGroup{}
+	workspaceRoot = resolveHookWorkspaceRoot(workspaceRoot)
 
 	home, _ := os.UserHomeDir()
 	type p2 struct {
@@ -913,23 +1175,37 @@ func loadHookConfig() (hooks.Config, error) {
 	}
 
 	if home != "" {
-		vbUser := filepath.Join(home, ".vb", "settings.json")
-		if fileExists(vbUser) {
-			addIfExists(vbUser, "user_settings")
+		eosUser := filepath.Join(home, ".eos", "settings.json")
+		if fileExists(eosUser) {
+			addIfExists(eosUser, "user_settings")
 		} else {
 			addIfExists(filepath.Join(home, ".claude", "settings.json"), "user_settings")
 			addIfExists(filepath.Join(home, ".trae", "settings.json"), "user_settings")
 		}
 	}
 
-	if wd, err := os.Getwd(); err == nil {
-		vbProject := filepath.Join(wd, ".vb", "settings.json")
-		vbLocal := filepath.Join(wd, ".vb", "settings.local.json")
-		workspaceUsesVB := fileExists(vbProject) || fileExists(vbLocal)
+	if wd := strings.TrimSpace(workspaceRoot); wd != "" {
+		eosProject := filepath.Join(wd, ".eos", "settings.json")
+		eosLocal := filepath.Join(wd, ".eos", "settings.local.json")
+		workspaceUsesEOS := fileExists(eosProject) || fileExists(eosLocal)
 
-		if workspaceUsesVB {
-			addIfExists(vbProject, "project_settings")
-			addIfExists(vbLocal, "local_settings")
+		if workspaceUsesEOS {
+			addIfExists(eosProject, "project_settings")
+			addIfExists(eosLocal, "local_settings")
+		} else {
+			addIfExists(filepath.Join(wd, ".claude", "settings.json"), "project_settings")
+			addIfExists(filepath.Join(wd, ".claude", "settings.local.json"), "local_settings")
+			addIfExists(filepath.Join(wd, ".trae", "settings.json"), "project_settings")
+			addIfExists(filepath.Join(wd, ".trae", "settings.local.json"), "local_settings")
+		}
+	} else if wd, err := os.Getwd(); err == nil {
+		eosProject := filepath.Join(wd, ".eos", "settings.json")
+		eosLocal := filepath.Join(wd, ".eos", "settings.local.json")
+		workspaceUsesEOS := fileExists(eosProject) || fileExists(eosLocal)
+
+		if workspaceUsesEOS {
+			addIfExists(eosProject, "project_settings")
+			addIfExists(eosLocal, "local_settings")
 		} else {
 			addIfExists(filepath.Join(wd, ".claude", "settings.json"), "project_settings")
 			addIfExists(filepath.Join(wd, ".claude", "settings.local.json"), "local_settings")
@@ -947,23 +1223,75 @@ func loadHookConfig() (hooks.Config, error) {
 		if e := json.Unmarshal(b, &raw); e != nil {
 			continue
 		}
-		if raw.DisableAllHooks {
-			cfg.DisableAllHooks = true
+		mergeHookConfig(&cfg, raw, it.source, it.path, workspaceRoot, true)
+	}
+
+	appCfg, _ := config.Load()
+	plugins, _ := pluginpkg.Discover(workspaceRoot)
+	for _, plugin := range plugins {
+		if !plugin.HasHooks {
+			continue
 		}
-		if raw.ManagedHooksOnly {
-			cfg.ManagedHooksOnly = true
+		enabled := true
+		if cfgEnabled, ok := config.PluginEnabled(&appCfg, plugin.Name); ok {
+			enabled = cfgEnabled
 		}
-		if len(raw.EnabledHookSources) > 0 {
-			cfg.EnabledHookSources = append(cfg.EnabledHookSources, raw.EnabledHookSources...)
+		if !enabled {
+			continue
 		}
-		for ev, groups := range raw.Hooks {
-			for i := range groups {
-				groups[i].Source = it.source
-			}
-			cfg.Hooks[ev] = append(cfg.Hooks[ev], groups...)
+		b, err := os.ReadFile(plugin.HookConfigPath())
+		if err != nil {
+			continue
 		}
+		var raw struct {
+			Description string                          `json:"description"`
+			Hooks       map[string][]hooks.MatcherGroup `json:"hooks"`
+		}
+		if err := json.Unmarshal(b, &raw); err != nil {
+			continue
+		}
+		mergeHookConfig(&cfg, hooks.Config{Hooks: raw.Hooks}, "plugin:"+strings.TrimSpace(plugin.Name), plugin.HookConfigPath(), plugin.RootDir, false)
 	}
 	return cfg, nil
+}
+
+func mergeHookConfig(dst *hooks.Config, raw hooks.Config, source string, sourcePath string, baseDir string, includeFlags bool) {
+	if dst == nil {
+		return
+	}
+	if dst.Hooks == nil {
+		dst.Hooks = map[string][]hooks.MatcherGroup{}
+	}
+	if includeFlags {
+		if raw.DisableAllHooks {
+			dst.DisableAllHooks = true
+		}
+		if raw.ManagedHooksOnly {
+			dst.ManagedHooksOnly = true
+		}
+		if len(raw.EnabledHookSources) > 0 {
+			dst.EnabledHookSources = append(dst.EnabledHookSources, raw.EnabledHookSources...)
+		}
+	}
+	for ev, groups := range raw.Hooks {
+		for i := range groups {
+			groups[i].Source = source
+			groups[i].BaseDir = strings.TrimSpace(baseDir)
+			groups[i].SourcePath = strings.TrimSpace(sourcePath)
+		}
+		dst.Hooks[ev] = append(dst.Hooks[ev], groups...)
+	}
+}
+
+func resolveHookWorkspaceRoot(workspaceRoot string) string {
+	workspaceRoot = strings.TrimSpace(workspaceRoot)
+	if workspaceRoot != "" {
+		return workspaceRoot
+	}
+	if wd, err := os.Getwd(); err == nil {
+		return strings.TrimSpace(wd)
+	}
+	return ""
 }
 
 func normalizeSources(in []string) map[string]bool {
@@ -988,5 +1316,76 @@ func allowHookSource(enabled map[string]bool, src string) bool {
 	if s == "" {
 		s = "unknown"
 	}
-	return enabled[s]
+	if enabled[s] {
+		return true
+	}
+	base := hookSourceCategory(s)
+	if enabled[base] {
+		return true
+	}
+	if base == "plugin" && enabled["plugins"] {
+		return true
+	}
+	return false
+}
+
+func hookSourceCategory(src string) string {
+	src = strings.ToLower(strings.TrimSpace(src))
+	if src == "" {
+		return "unknown"
+	}
+	if idx := strings.Index(src, ":"); idx > 0 {
+		return src[:idx]
+	}
+	return src
+}
+
+func currentHookWorkingDir(ctx context.Context) string {
+	if wd := strings.TrimSpace(tools.WorkspaceRootFromContext(ctx)); wd != "" {
+		return wd
+	}
+	if wd, err := os.Getwd(); err == nil {
+		return strings.TrimSpace(wd)
+	}
+	return ""
+}
+
+func hookCommandEnv(source string, baseDir string, projectDir string) []string {
+	env := append([]string{}, os.Environ()...)
+	if strings.TrimSpace(projectDir) != "" {
+		env = setHookEnv(env, "CLAUDE_PROJECT_DIR", projectDir)
+	}
+	if hookSourceCategory(source) == "plugin" && strings.TrimSpace(baseDir) != "" {
+		env = setHookEnv(env, "CLAUDE_PLUGIN_ROOT", baseDir)
+		pluginName := ""
+		if plugin, ok := pluginpkg.FindOwningManifest(baseDir); ok {
+			pluginName = strings.TrimSpace(plugin.Name)
+		}
+		if pluginName == "" {
+			parts := strings.SplitN(strings.TrimSpace(source), ":", 2)
+			if len(parts) == 2 {
+				pluginName = strings.TrimSpace(parts[1])
+			}
+		}
+		if dataDir := pluginpkg.PersistentDataDir(pluginName); strings.TrimSpace(dataDir) != "" {
+			env = setHookEnv(env, "CLAUDE_PLUGIN_DATA", dataDir)
+		}
+	}
+	return env
+}
+
+func setHookEnv(env []string, key string, value string) []string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return env
+	}
+	entry := key + "=" + strings.TrimSpace(value)
+	prefix := key + "="
+	for i := range env {
+		if strings.HasPrefix(strings.ToUpper(env[i]), strings.ToUpper(prefix)) {
+			env[i] = entry
+			return env
+		}
+	}
+	return append(env, entry)
 }

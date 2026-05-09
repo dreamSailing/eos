@@ -1,14 +1,20 @@
 package tools
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/document"
+	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/i18n"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
 func (m *Manager) readStructured(ctx context.Context, params map[string]any) ToolResult {
@@ -42,7 +48,7 @@ func (m *Manager) readStructured(ctx context.Context, params map[string]any) Too
 
 	switch mode {
 	case "file", "":
-		return m.readFileContent(ctx, ap, rel)
+		return m.readFileContent(ctx, ap, rel, params)
 	case "directory":
 		return m.listDirectoryContent(ctx, ap, rel)
 	case "exists":
@@ -54,7 +60,7 @@ func (m *Manager) readStructured(ctx context.Context, params map[string]any) Too
 	}
 }
 
-func (m *Manager) readFileContent(ctx context.Context, ap, rel string) ToolResult {
+func (m *Manager) readFileContent(ctx context.Context, ap, rel string, params map[string]any) ToolResult {
 	lang := LanguageFromContext(ctx)
 	exists, isDir, errPE := m.fileOps.PathExists(ap)
 	if errPE != nil {
@@ -69,6 +75,43 @@ func (m *Manager) readFileContent(ctx context.Context, ap, rel string) ToolResul
 		slog.Error("read_file.is_directory", "component", utils.ComponentTool, "path", ap)
 		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: i18n.T("tool.error.is_directory", lang)}
 	}
+
+	// Check for special binary file types that we can handle
+	ext := strings.ToLower(filepath.Ext(ap))
+	switch ext {
+	case ".docx":
+		model, err := document.ReadDOCX(ap)
+		if err != nil {
+			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("错误：读取 DOCX 失败：%s", err.Error())}
+		}
+		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": model.PlainText(), "format": "docx", "structured": model, "warnings": model.Warnings}, Display: fmt.Sprintf("已读取 DOCX：%s", rel)}
+	case ".xlsx":
+		model, err := document.ReadXLSX(ap)
+		if err != nil {
+			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("错误：读取 XLSX 失败：%s", err.Error())}
+		}
+		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": model.PlainText(), "format": "xlsx", "structured": model, "warnings": model.Warnings}, Display: fmt.Sprintf("已读取 XLSX：%s", rel)}
+	case ".pdf":
+		model, err := document.ReadPDF(ap)
+		if err != nil {
+			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("错误：读取 PDF 失败：%s", err.Error())}
+		}
+		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": model.PlainText(), "format": "pdf", "structured": model, "warnings": model.Warnings}, Display: fmt.Sprintf("已读取 PDF：%s", rel)}
+	case ".ipynb":
+		content, err := ReadNotebook(ap, 2000)
+		if err != nil {
+			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("错误：读取 Notebook 失败：%s", err.Error())}
+		}
+		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: map[string]interface{}{"path": rel, "content": content, "format": "notebook"}, Display: fmt.Sprintf("已读取 Notebook：%s", rel)}
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
+		desc, data, err := ReadImage(ap)
+		if err != nil {
+			return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: err.Error(), Display: fmt.Sprintf("错误：读取图片失败：%s", err.Error())}
+		}
+		result := ToolResult{Type: "tool_result", Tool: ToolRead, Status: "success", Data: data, Display: desc}
+		return result
+	}
+
 	if !m.fileOps.IsTextFile(ap) {
 		slog.Error("read_file.unsupported", "component", utils.ComponentTool, "path", ap)
 		return ToolResult{Type: "tool_result", Tool: ToolRead, Status: "error", Error: i18n.T("tool.error.unsupported_file", lang)}

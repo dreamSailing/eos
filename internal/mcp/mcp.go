@@ -1,16 +1,24 @@
 // Package mcp 提供 MCP (Model Context Protocol) 服务管理和工具集成
 package mcp
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 
 	"github.com/cloudwego/eino/components/tool"
 	mcpclient "github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 
 	einomcp "github.com/cloudwego/eino-ext/components/tool/mcp"
@@ -18,10 +26,12 @@ import (
 
 // Manager MCP 服务管理器，管理多个 MCP 客户端并提供工具集成
 type Manager struct {
-	clients map[string]mcpclient.MCPClient // name -> client
-	tools   map[string][]tool.BaseTool     // name -> tools
-	status  map[string]ServerStatus        // name -> status (last reload)
-	mu      sync.RWMutex
+	clients   map[string]mcpclient.MCPClient // name -> client
+	tools     map[string][]tool.BaseTool     // name -> tools
+	resources map[string][]mcp.Resource      // name -> resources (from ListResources)
+	prompts   map[string][]mcp.Prompt        // name -> prompts (from ListPrompts)
+	status    map[string]ServerStatus        // name -> status (last reload)
+	mu        sync.RWMutex
 }
 
 type ServerStatus struct {
@@ -35,9 +45,11 @@ type ServerStatus struct {
 // NewManager 创建 MCP 管理器
 func NewManager() *Manager {
 	return &Manager{
-		clients: make(map[string]mcpclient.MCPClient),
-		tools:   make(map[string][]tool.BaseTool),
-		status:  make(map[string]ServerStatus),
+		clients:   make(map[string]mcpclient.MCPClient),
+		tools:     make(map[string][]tool.BaseTool),
+		resources: make(map[string][]mcp.Resource),
+		prompts:   make(map[string][]mcp.Prompt),
+		status:    make(map[string]ServerStatus),
 	}
 }
 
@@ -97,13 +109,45 @@ func (m *Manager) loadServer(ctx context.Context, server config.MCPEntry) error 
 		for k, v := range server.Envs {
 			envSlice = append(envSlice, k+"="+v)
 		}
+		// Inject auth into environment variables for stdio
+		if server.Auth != nil {
+			if server.Auth.Token != "" {
+				envSlice = append(envSlice, "MCP_AUTH_TOKEN="+server.Auth.Token)
+			}
+			for k, v := range server.Auth.HeadersEnv {
+				if envVal := os.Getenv(v); envVal != "" {
+					envSlice = append(envSlice, k+"="+envVal)
+				}
+			}
+		}
 		cli, err = mcpclient.NewStdioMCPClient(server.Command, envSlice, server.Args...)
 		if err != nil {
 			slog.Error("mcp.manager.create_stdio_client.error", "component", utils.ComponentSystem, "name", server.Name, "error", err.Error())
 			return fmt.Errorf("create_stdio_client: %w", err)
 		}
 	case config.MCPTypeSSE:
-		sseCli, err := mcpclient.NewSSEMCPClient(server.BaseURL)
+		var sseOpts []transport.ClientOption
+		// Inject auth headers for SSE client
+		if server.Auth != nil {
+			authHeaders := make(map[string]string)
+			if server.Auth.Token != "" {
+				switch server.Auth.Type {
+				case "bearer":
+					authHeaders["Authorization"] = "Bearer " + server.Auth.Token
+				case "api_key":
+					authHeaders["X-API-Key"] = server.Auth.Token
+				default:
+					authHeaders["Authorization"] = server.Auth.Token
+				}
+			}
+			for k, v := range server.Auth.Headers {
+				authHeaders[k] = v
+			}
+			if len(authHeaders) > 0 {
+				sseOpts = append(sseOpts, transport.WithHeaders(authHeaders))
+			}
+		}
+		sseCli, err := mcpclient.NewSSEMCPClient(server.BaseURL, sseOpts...)
 		if err != nil {
 			slog.Error("mcp.manager.create_sse_client.error", "component", utils.ComponentSystem, "name", server.Name, "error", err.Error())
 			return fmt.Errorf("create_sse_client: %w", err)
@@ -114,6 +158,29 @@ func (m *Manager) loadServer(ctx context.Context, server config.MCPEntry) error 
 			return fmt.Errorf("start_sse_client: %w", err)
 		}
 		cli = sseCli
+	case config.MCPTypeStreamableHTTP:
+		envs := server.Envs
+		if envs == nil {
+			envs = make(map[string]string)
+		}
+		// Inject auth headers for streamable HTTP
+		if server.Auth != nil {
+			if server.Auth.Token != "" {
+				switch server.Auth.Type {
+				case "bearer":
+					envs["Authorization"] = "Bearer " + server.Auth.Token
+				case "api_key":
+					envs["X-API-Key"] = server.Auth.Token
+				default:
+					envs["Authorization"] = server.Auth.Token
+				}
+			}
+			for k, v := range server.Auth.Headers {
+				envs[k] = v
+			}
+		}
+		shCli := NewStreamableHTTPAdapter(server.BaseURL, envs)
+		cli = shCli
 	default:
 		slog.Warn("mcp.manager.unknown_server_type", "component", utils.ComponentSystem, "name", server.Name, "type", server.Type)
 		return nil
@@ -123,7 +190,7 @@ func (m *Manager) loadServer(ctx context.Context, server config.MCPEntry) error 
 	initReq := mcp.InitializeRequest{}
 	initReq.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
 	initReq.Params.ClientInfo = mcp.Implementation{
-		Name:    "vb-coding",
+		Name:    "eos",
 		Version: "1.0.0",
 	}
 	if _, err := cli.Initialize(ctx, initReq); err != nil {
@@ -140,6 +207,31 @@ func (m *Manager) loadServer(ctx context.Context, server config.MCPEntry) error 
 
 	m.clients[server.Name] = cli
 	m.tools[server.Name] = tools
+
+	// Fetch resources from the MCP server
+	res, err := cli.ListResources(ctx, mcp.ListResourcesRequest{})
+	if err != nil {
+		slog.Warn("mcp.manager.list_resources.error", "component", utils.ComponentSystem, "name", server.Name, "error", err.Error())
+		// Non-fatal: continue without resources
+	} else if res != nil {
+		m.resources[server.Name] = res.Resources
+		slog.Info("mcp.manager.list_resources.success", "component", utils.ComponentSystem, "name", server.Name, "resources_count", len(res.Resources))
+	}
+
+	// Fetch prompts from the MCP server
+	// Fix R2: Check if client supports ListPrompts before calling
+	if promptsCli, ok := cli.(interface{ ListPrompts(ctx context.Context, req mcp.ListPromptsRequest) (*mcp.ListPromptsResult, error) }); ok {
+		promptRes, promptErr := promptsCli.ListPrompts(ctx, mcp.ListPromptsRequest{})
+		if promptErr != nil {
+			slog.Warn("mcp.manager.list_prompts.error", "component", utils.ComponentSystem, "name", server.Name, "error", promptErr.Error())
+			// Non-fatal: continue without prompts
+		} else if promptRes != nil {
+			m.prompts[server.Name] = promptRes.Prompts
+			slog.Info("mcp.manager.list_prompts.success", "component", utils.ComponentSystem, "name", server.Name, "prompts_count", len(promptRes.Prompts))
+		}
+	} else {
+		slog.Debug("mcp.manager.list_prompts.skip", "component", utils.ComponentSystem, "name", server.Name, "reason", "client_does_not_support_prompts")
+	}
 
 	slog.Info("mcp.manager.load_server.success", "component", utils.ComponentSystem, "name", server.Name, "tools_count", len(tools))
 	return nil
@@ -162,6 +254,41 @@ func (m *Manager) GetToolsByServer(name string) []tool.BaseTool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.tools[name]
+}
+
+// GetAllPrompts returns all prompts from all MCP servers
+func (m *Manager) GetAllPrompts() map[string][]mcp.Prompt {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	out := make(map[string][]mcp.Prompt, len(m.prompts))
+	for k, v := range m.prompts {
+		out[k] = v
+	}
+	return out
+}
+
+// GetPrompt retrieves a specific prompt from an MCP server
+func (m *Manager) GetPrompt(ctx context.Context, serverName, promptName string, args map[string]interface{}) (*mcp.GetPromptResult, error) {
+	m.mu.RLock()
+	cli, ok := m.clients[serverName]
+	m.mu.RUnlock()
+
+	if !ok {
+		return nil, fmt.Errorf("MCP server %q not found", serverName)
+	}
+
+	stringArgs := make(map[string]string)
+	for k, v := range args {
+		stringArgs[k] = fmt.Sprintf("%v", v)
+	}
+
+	return cli.GetPrompt(ctx, mcp.GetPromptRequest{
+		Params: mcp.GetPromptParams{
+			Name:      promptName,
+			Arguments: stringArgs,
+		},
+	})
 }
 
 // ListServers 列出已加载的服务名称
@@ -209,7 +336,40 @@ func (m *Manager) Close() {
 	for name := range m.clients {
 		delete(m.clients, name)
 		delete(m.tools, name)
+		delete(m.resources, name)
 		delete(m.status, name)
 	}
 	slog.Info("mcp.manager.close.success", "component", utils.ComponentSystem)
+}
+
+// GetAllResources 获取所有 MCP 资源
+func (m *Manager) GetAllResources() map[string][]mcp.Resource {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	out := make(map[string][]mcp.Resource, len(m.resources))
+	for name, res := range m.resources {
+		out[name] = res
+	}
+	return out
+}
+
+// GetResourcesByServer 获取指定服务的资源
+func (m *Manager) GetResourcesByServer(name string) []mcp.Resource {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.resources[name]
+}
+
+// ReadResource 从指定 MCP 服务器读取资源
+func (m *Manager) ReadResource(ctx context.Context, serverName, uri string) (*mcp.ReadResourceResult, error) {
+	m.mu.RLock()
+	cli, ok := m.clients[serverName]
+	m.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("MCP server not found: %s", serverName)
+	}
+	return cli.ReadResource(ctx, mcp.ReadResourceRequest{
+		Params: mcp.ReadResourceParams{URI: uri},
+	})
 }

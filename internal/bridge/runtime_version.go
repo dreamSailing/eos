@@ -1,10 +1,16 @@
 package bridge
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/dreamSailing/vb-coding/internal/tools/fileops"
+	"github.com/dreamSailing/eos/internal/tools/fileops"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,10 +18,30 @@ import (
 	"time"
 )
 
+func (rc *RuntimeCore) versionFilesDirForPath(absPath string) (string, string, error) {
+	rel, err := rc.relWithinRoot(absPath)
+	if err != nil {
+		return "", "", filepath.SkipDir
+	}
+	root := rc.workingRoot()
+	currentDir := filepath.Join(fileops.VersionFilesRoot(root), filepath.FromSlash(rel))
+	legacyDir := filepath.Join(fileops.LegacyVersionFilesRoot(root), filepath.FromSlash(rel))
+	return chooseRuntimeVersionDir(currentDir, legacyDir), rel, nil
+}
+
+func chooseRuntimeVersionDir(currentDir, legacyDir string) string {
+	if info, err := os.Stat(currentDir); err == nil && info.IsDir() {
+		return currentDir
+	}
+	if info, err := os.Stat(legacyDir); err == nil && info.IsDir() {
+		return legacyDir
+	}
+	return currentDir
+}
+
 // ListVersionFiles 列出所有有版本的文件
 func (rc *RuntimeCore) ListVersionFiles() ([]fileops.VersionFileEntry, error) {
-	wd, _ := os.Getwd()
-	versionsDir := filepath.Join(wd, ".vb", "versions")
+	versionsDir := rc.versionsRoot()
 	if _, err := os.Stat(versionsDir); err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -42,6 +68,9 @@ func (rc *RuntimeCore) ListVersionFiles() ([]fileops.VersionFileEntry, error) {
 			if e == nil && strings.HasPrefix(rel, "_") {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if d.Name() == "meta.json" || d.Name() == "_index.jsonl" {
 			return nil
 		}
 		if !strings.HasSuffix(d.Name(), ".content") {
@@ -89,13 +118,10 @@ func (rc *RuntimeCore) ListVersionFiles() ([]fileops.VersionFileEntry, error) {
 
 // ListVersionsForPath 列出指定文件的所有版本
 func (rc *RuntimeCore) ListVersionsForPath(absPath string) ([]fileops.VersionMeta, error) {
-	wd, _ := os.Getwd()
-	rel, err := filepath.Rel(wd, absPath)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return nil, filepath.SkipDir
+	versionsDir, rel, err := rc.versionFilesDirForPath(absPath)
+	if err != nil {
+		return nil, err
 	}
-
-	versionsDir := filepath.Join(wd, ".vb", "versions", filepath.FromSlash(rel))
 	entries, err := os.ReadDir(versionsDir)
 	if err != nil {
 		return nil, err
@@ -157,8 +183,7 @@ func (rc *RuntimeCore) DeleteVersion(path, versionID string) string {
 		return "Tools manager not initialized"
 	}
 
-	wd, _ := os.Getwd()
-	absPath := filepath.Join(wd, filepath.FromSlash(path))
+	absPath := rc.resolveWithinRoot(path)
 
 	vs, err := rc.ListVersionsForPath(absPath)
 	if err != nil {

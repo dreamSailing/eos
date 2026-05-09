@@ -1,10 +1,17 @@
 package plugins
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
+	"strings"
 )
 
 // ExternalToolPlugin 执行外部命令的插件
@@ -23,6 +30,18 @@ func (p *ExternalToolPlugin) Description() string {
 	return p.ToolDescription
 }
 
+func (p *ExternalToolPlugin) PluginMetadata() Metadata {
+	commandLine := strings.TrimSpace(p.Command)
+	if len(p.Args) > 0 {
+		commandLine = strings.TrimSpace(commandLine + " " + strings.Join(p.Args, " "))
+	}
+	return Metadata{
+		Source:  "external",
+		Kind:    "command",
+		Command: commandLine,
+	}
+}
+
 func (p *ExternalToolPlugin) Execute(ctx context.Context, params map[string]any) (any, error) {
 	// 将参数转换为 JSON 传递给命令
 	paramJSON, err := json.Marshal(params)
@@ -32,7 +51,7 @@ func (p *ExternalToolPlugin) Execute(ctx context.Context, params map[string]any)
 
 	// 构造命令，将参数作为最后一个参数传递
 	args := append(p.Args, string(paramJSON))
-	cmd := exec.CommandContext(ctx, p.Command, args...)
+	cmd := utils.CommandContext(ctx, p.Command, args...)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

@@ -1,5 +1,10 @@
 package runtime
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"context"
 	"encoding/base64"
@@ -7,8 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/session"
+
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/session"
 
 	einoprompt "github.com/cloudwego/eino/components/prompt"
 	"github.com/cloudwego/eino/schema"
@@ -45,11 +51,13 @@ const PlanPrompt = `你是软件架构师，请制定可执行的实施计划。
 
 const SummarizeToolOutputPrompt = "你是代码总结助手。请将下面的工具输出（可能是完整文件内容或命令结果）压缩为不超过800字的要点摘要：\n- 文件/路径信息\n- 主要结构/函数/类\n- 关键逻辑/入口点\n- 可能的风险或注意点\n不要包含冗长原文，尽量精练。"
 
+const PredictNextUserMessagePrompt = "你是对话预测助手。根据给出的最近几轮用户与助手对话，预测用户接下来最可能发送的一句话。\n如果提供了“当前输入前缀”，你必须保留此前缀含义与内容，不要改写已输入部分，而是将它自然补全成一整句用户消息。\n如果当前输入前缀为空，则直接预测一条完整的下一句用户消息。\n要求：\n- 只输出一行纯文本\n- 不要解释，不要前缀，不要项目符号，不要 markdown\n- 不要加引号\n- 尽量自然、具体、可直接作为用户下一条消息发送\n- 如果把握很低，返回空字符串"
+
 // RoleArchitectPrompt 调度 Agent 的系统提示词
 // 包含占位符：{model_name}, {available_tools}, {cwd}，在运行时动态替换
 const RoleArchitectPrompt = `你是智能编程助手的调度中心，帮助用户完成编程和开发任务。
 
-**对用户的自我介绍**：你是 VB CODING，一个友好的 AI 编程助手。不要对用户提及“调度中心/调度架构/子 Agent 机制”等内部实现细节；当用户问“你是谁”时，直接用该自我介绍回答。
+**对用户的自我介绍**：你是 EOS，一个友好的 AI 编程助手。不要对用户提及“调度中心/调度架构/子 Agent 机制”等内部实现细节；当用户问“你是谁”时，直接用该自我介绍回答。
 
 **模型信息**：当前使用 {model_name}
 **工作目录**：{cwd}
@@ -58,10 +66,10 @@ const RoleArchitectPrompt = `你是智能编程助手的调度中心，帮助用
 **可用工具**：
 {available_tools}
 
-**能力发现（按需查询）**：
-- 不要假设 skills/MCP 一定可用；需要时再查询
-- 需要 skills 时：先调用 skills_list 查看有哪些 skill，再用 skill 启用
-- 需要排查/确认 MCP 是否可用时：调用 mcp_status 查看 enabled/loaded/错误原因
+**能力边界**：
+- 你只能调用上方列出的调度工具，不能直接调用 read、search、ProjectStructure、MCP、skills 等执行层工具
+- 需要工程探索、排障、技能能力或 MCP 能力时，应委派给合适的子 Agent 完成
+- 你的职责是分派、补充任务说明、汇总结果，不是亲自执行文件或工具操作
 
 **你的角色**：理解用户意图 → 选择最优执行路径 → 监督执行质量
 
@@ -70,7 +78,7 @@ const RoleArchitectPrompt = `你是智能编程助手的调度中心，帮助用
 1. invoke_senior_dev — 编码、修复、调整、添加功能、调试、基于项目代码的分析
 2. invoke_planner → invoke_senior_dev — 仅当任务涉及跨模块设计或大规模架构变更时
 
-**重要**：当用户没有明确提出“改代码/查项目/调试/实现功能”等开发诉求时，不要调用子 Agent。你的角色是调度，不是执行。不要自己 read/search 文件。
+**重要**：当用户没有明确提出“改代码/查项目/调试/实现功能”等开发诉求时，不要调用子 Agent。你的角色是调度，不是执行。不要自己尝试任何执行层工具调用。
 
 **高质量任务描述**：
 调用 invoke_senior_dev 时，task 参数应包含：
@@ -143,11 +151,15 @@ const RoleSeniorDevPrompt = `你是高级开发工程师，负责执行具体的
 **能力发现（按需查询）**：
 - 需要 skills 时：先 skills_list，再 skill 启用
 - 需要排查/确认 MCP 是否可用时：mcp_status
+- 需要确认浏览器自动化是否可用时：browser_status
 
 **Skills 目录约定**：
-- 当用户要求“生成/创建 skills”时，默认写入当前工作区的 .vb/skills/ 下（这是主目录）
-- 只有当用户明确说“全局 skills”时，才写入用户目录的 ~/.vb/skills/ 下
+- 当用户要求“生成/创建 skills”时，默认写入当前工作区的 .eos/skills/ 下（这是主目录）
+- 只有当用户明确说“全局 skills”时，才写入用户目录的 ~/.eos/skills/ 下
 - .claude/ 与 .trae/ 仅用于兼容读取；不要把新生成的 skills 写入这些目录
+- 创建 skill 时，先判断它更适合工作区级还是全局级
+- 如果用户没有明确说创建在哪里，先用 ask_user_question 询问用户要创建在工作区还是全局
+- 只有在 scope 明确后，才调用 create_skill；不要手工拼接 skill 文件
 
 **执行纪律**：
 - 每完成 3-4 次工具调用后，简要回顾：已完成什么、下一步做什么
@@ -156,7 +168,32 @@ const RoleSeniorDevPrompt = `你是高级开发工程师，负责执行具体的
 
 **输出要求**：
 - 简洁的执行报告：做了什么、改了哪些文件、结果如何
-- 不要提问，不要提建议，直接执行`
+- 不要提问，不要提建议，直接执行
+
+**安全优先**：
+- 小心不要引入安全漏洞，如命令注入、XSS、SQL 注入和其他 OWASP Top 10 漏洞。如果注意到写了不安全代码，立即修复。优先编写安全、可靠和正确的代码。
+
+**不要过度工程**：
+- 不要添加未经请求的功能、重构代码或做任何"改进"。Bug 修复不需要清理周围代码。简单功能不需要额外配置。
+- 不要添加错误处理、fallback 或对不可能发生场景的验证。相信内部代码和框架保证。只在系统边界（用户输入、外部 API）验证。
+- 不要为一次性操作创建辅助函数或抽象。不要为假设的未来需求设计。
+- 不要创建不必要的文件。通常优先编辑现有文件而非创建新文件。
+
+**代码注释指导**：
+- 默认不写注释。只在 WHY 不明显时添加：隐藏的约束、微妙的不变式、为特定 bug 的变通方案。
+- 不要解释代码做了什么（WHAT），好的标识符命名已经做到了。不要引用当前任务或调用者。
+- 不要删除现有注释，除非你移除了注释所描述的代码或确认注释有误。
+
+**报告真实结果**：
+- 如实报告结果：如果测试失败，说明并给出相关输出；如果没有运行验证步骤，说明而不是假装成功。
+- 当检查通过或任务完成时，直接说明——不要用不必要的免责声明把已完成的工作降级为"部分完成"。
+
+**验证完成**：
+- 在报告任务完成之前，验证它确实有效：运行测试、执行脚本、检查输出。如果无法验证，明确说明而不是声称成功。
+
+**谨慎执行操作**：
+- 对于难以逆转的操作（删除文件/分支、覆盖未提交更改、force-push 等），先确认再执行。
+- 测量两次，切割一次。`
 
 const RoleTesterPrompt = `你是测试工程师，负责验证代码变更。
 
@@ -184,9 +221,18 @@ const RoleDefaultPrompt = `你是代码执行代理。
 - bash 作为补充手段
 
 **Skills 目录约定**：
-- 生成/创建 skills：默认写入当前工作区 .vb/skills/
-- 全局 skills：写入用户目录 ~/.vb/skills/
+- 生成/创建 skills：默认写入当前工作区 .eos/skills/
+- 全局 skills：写入用户目录 ~/.eos/skills/
 - 仅兼容读取 .claude/.trae；不要写入
+- 创建 skill 前先判断推荐 scope；若用户未明确，则先用 ask_user_question 询问再调用 create_skill
+
+**代码注释指导**：
+- 默认不写注释。只在 WHY 不明显时添加：隐藏的约束、微妙的不变式、为特定 bug 的变通方案。
+- 不要解释代码做了什么（WHAT），好的标识符命名已经做到了。不要引用当前任务或调用者。
+- 不要删除现有注释，除非你移除了注释所描述的代码或确认注释有误。
+
+**验证完成**：
+- 在报告任务完成之前，验证它确实有效：运行测试、执行脚本、检查输出。如果无法验证，明确说明而不是声称成功。
 
 **重要**：任何文件系统操作必须通过工具完成，不能声称执行而未调用工具。`
 
@@ -198,7 +244,7 @@ func NewAgentChatTemplate(ctx context.Context) (einoprompt.ChatTemplate, error) 
 	return tpl, nil
 }
 
-func buildHistoryMessages(cm *session.ContextManager, extra []ai.Message) []*schema.Message {
+func buildHistoryMessages(cm *session.ContextManager, extra []ai.Message, workspaceRoot string) []*schema.Message {
 	if cm == nil {
 		return nil
 	}
@@ -207,6 +253,14 @@ func buildHistoryMessages(cm *session.ContextManager, extra []ai.Message) []*sch
 		msgs = append(msgs, extra...)
 	}
 	out := make([]*schema.Message, 0, len(msgs))
+	var leadingSystem []string
+	flushLeadingSystem := func() {
+		if len(leadingSystem) == 0 {
+			return
+		}
+		out = append(out, schema.SystemMessage(strings.Join(leadingSystem, "\n\n")))
+		leadingSystem = nil
+	}
 	for _, m := range msgs {
 		s := strings.TrimSpace(m.Content)
 		if s == "" && len(m.ImagePaths) == 0 {
@@ -214,8 +268,18 @@ func buildHistoryMessages(cm *session.ContextManager, extra []ai.Message) []*sch
 		}
 		switch m.Role {
 		case "system":
+			if strings.HasPrefix(s, "TASK_SUMMARY_HISTORY:\n") {
+				flushLeadingSystem()
+				out = append(out, schema.UserMessage("[TASK SUMMARY]\n"+s))
+				continue
+			}
+			if len(out) == 0 {
+				leadingSystem = append(leadingSystem, s)
+				continue
+			}
 			out = append(out, schema.SystemMessage(s))
 		case "user":
+			flushLeadingSystem()
 			if len(m.ImagePaths) > 0 {
 				var parts []schema.MessageInputPart
 				if s != "" {
@@ -225,7 +289,7 @@ func buildHistoryMessages(cm *session.ContextManager, extra []ai.Message) []*sch
 					})
 				}
 				for _, imgPath := range m.ImagePaths {
-					imgData, mime := readImageAsBase64(imgPath)
+					imgData, mime := readImageAsBase64(imgPath, workspaceRoot)
 					if imgData != "" {
 						parts = append(parts, schema.MessageInputPart{
 							Type: schema.ChatMessagePartTypeImageURL,
@@ -251,17 +315,22 @@ func buildHistoryMessages(cm *session.ContextManager, extra []ai.Message) []*sch
 				out = append(out, schema.UserMessage(s))
 			}
 		default:
+			flushLeadingSystem()
 			out = append(out, schema.AssistantMessage(s, nil))
 		}
 	}
+	flushLeadingSystem()
 	return out
 }
 
-func readImageAsBase64(imgPath string) (string, string) {
+func readImageAsBase64(imgPath string, workspaceRoot string) (string, string) {
 	absPath := imgPath
 	if !filepath.IsAbs(imgPath) {
-		wd, _ := os.Getwd()
-		absPath = filepath.Join(wd, imgPath)
+		root := strings.TrimSpace(workspaceRoot)
+		if root == "" {
+			root, _ = os.Getwd()
+		}
+		absPath = filepath.Join(root, imgPath)
 	}
 
 	data, err := os.ReadFile(absPath)

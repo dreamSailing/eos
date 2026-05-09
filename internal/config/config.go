@@ -1,5 +1,10 @@
 package config
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"encoding/json"
 	"errors"
@@ -42,12 +47,19 @@ type SkillsDirEntry struct {
 	Enabled bool   `json:"enabled"` // 是否启用
 }
 
+// PluginEntry 插件配置条目
+type PluginEntry struct {
+	Name    string `json:"name"`    // 插件名称
+	Enabled bool   `json:"enabled"` // 是否启用
+}
+
 // MCPClientType MCP客户端类型
 type MCPClientType string
 
 const (
-	MCPTypeStdio MCPClientType = "stdio" // 本地命令行工具
-	MCPTypeSSE   MCPClientType = "sse"   // 远程SSE服务
+	MCPTypeStdio          MCPClientType = "stdio"           // 本地命令行工具
+	MCPTypeSSE            MCPClientType = "sse"             // 远程SSE服务
+	MCPTypeStreamableHTTP MCPClientType = "streamable-http" // Streamable HTTP MCP transport
 )
 
 // MCPEntry MCP服务配置条目
@@ -59,15 +71,24 @@ type MCPEntry struct {
 	Envs    map[string]string `json:"envs,omitempty"`     // stdio: 环境变量
 	BaseURL string            `json:"base_url,omitempty"` // sse: 服务URL
 	Enabled bool              `json:"enabled"`            // 是否启用
+	Auth    *MCPAuth          `json:"auth,omitempty"`     // 认证配置
+}
+
+// MCPAuth defines authentication configuration for MCP servers
+type MCPAuth struct {
+	Type       string            `json:"type"`                  // "bearer", "basic", "api_key"
+	Token      string            `json:"token,omitempty"`       // Bearer token or API key value
+	Headers    map[string]string `json:"headers,omitempty"`     // Custom headers to inject
+	HeadersEnv map[string]string `json:"headers_env,omitempty"` // Header names whose values come from env vars
 }
 
 // LSPConfig LSP 配置
 type LSPConfig struct {
 	Enabled    *bool           `json:"enabled,omitempty"`     // 是否启用 LSP（默认 true）
 	AutoDetect *bool           `json:"auto_detect,omitempty"` // 自动检测语言服务器（默认 true）
-	Go         LSPServerConfig `json:"go,omitempty"`         // Go 语言配置
-	Python     LSPServerConfig `json:"python,omitempty"`     // Python 语言配置
-	TypeScript LSPServerConfig `json:"typescript,omitempty"` // TypeScript 语言配置
+	Go         LSPServerConfig `json:"go,omitempty"`          // Go 语言配置
+	Python     LSPServerConfig `json:"python,omitempty"`      // Python 语言配置
+	TypeScript LSPServerConfig `json:"typescript,omitempty"`  // TypeScript 语言配置
 }
 
 func (c LSPConfig) EnabledValue() bool {
@@ -91,16 +112,86 @@ type LSPServerConfig struct {
 	Args    []string `json:"args,omitempty"`    // 自定义参数
 }
 
+// PermissionsConfig defines tool permissions in config
+type PermissionsConfig struct {
+	AllowedTools []string `json:"allowed_tools,omitempty"`
+	DeniedTools  []string `json:"denied_tools,omitempty"`
+}
+
+// RemotePlatformType 远程仓库平台类型
+type RemotePlatformType string
+
+const (
+	RemotePlatformGitHub RemotePlatformType = "github"
+	RemotePlatformGitee  RemotePlatformType = "gitee"
+)
+
+// RemoteOAuthAppConfig 远程平台 OAuth 应用配置
+type RemoteOAuthAppConfig struct {
+	ClientID     string `json:"client_id,omitempty"`
+	ClientSecret string `json:"client_secret,omitempty"`
+	RedirectURI  string `json:"redirect_uri,omitempty"`
+}
+
+// RemoteProviderConfig 远程平台配置
+type RemoteProviderConfig struct {
+	OAuth       RemoteOAuthAppConfig `json:"oauth,omitempty"`
+	AccessToken string               `json:"access_token,omitempty"` // 可选：预置 token，便于服务端或 CI 场景
+	Username    string               `json:"username,omitempty"`     // 可选：与预置 token 搭配使用
+}
+
+// RemoteAuthToken 持久化保存的授权令牌
+type RemoteAuthToken struct {
+	Platform     RemotePlatformType `json:"platform"`
+	AccountID    string             `json:"account_id,omitempty"`
+	AccountName  string             `json:"account_name,omitempty"`
+	Login        string             `json:"login,omitempty"`
+	AccessToken  string             `json:"access_token,omitempty"`
+	RefreshToken string             `json:"refresh_token,omitempty"`
+	TokenType    string             `json:"token_type,omitempty"`
+	Scope        string             `json:"scope,omitempty"`
+	ExpiryUnix   int64              `json:"expiry_unix,omitempty"`
+}
+
+// RemoteRepoEntry 远程仓库缓存信息
+type RemoteRepoEntry struct {
+	Platform      RemotePlatformType `json:"platform"`
+	RepoURL       string             `json:"repo_url"`
+	Owner         string             `json:"owner,omitempty"`
+	Repo          string             `json:"repo,omitempty"`
+	DefaultBranch string             `json:"default_branch,omitempty"`
+	LocalPath     string             `json:"local_path,omitempty"`
+	LastBranch    string             `json:"last_branch,omitempty"`
+	LastUsedUnix  int64              `json:"last_used_unix,omitempty"`
+}
+
 type Config struct {
-	Models   []ModelEntry     `json:"models,omitempty"`
-	Active   string           `json:"active_model,omitempty"`
-	Thinking ThinkingConfig   `json:"thinking,omitempty"` // 思考模式配置
-	Agent    AgentConfig      `json:"agent,omitempty"`
-	MCP      []MCPEntry       `json:"mcp,omitempty"`      // MCP服务配置
-	Skills   []SkillsDirEntry `json:"skills,omitempty"`   // Skills 目录配置
-	LSP      LSPConfig        `json:"lsp,omitempty"`      // LSP 配置
-	TrustedWorkspaces []string `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
-	Language string           `json:"language,omitempty"` // 语言设置 (zh, en)
+	Models                       []ModelEntry                    `json:"models,omitempty"`
+	Active                       string                          `json:"active_model,omitempty"`
+	Thinking                     ThinkingConfig                  `json:"thinking,omitempty"` // 思考模式配置
+	NextMessagePredictionEnabled *bool                           `json:"next_message_prediction_enabled,omitempty"`
+	Agent                        AgentConfig                     `json:"agent,omitempty"`
+	MCP                          []MCPEntry                      `json:"mcp,omitempty"`                // MCP服务配置
+	Skills                       []SkillsDirEntry                `json:"skills,omitempty"`             // Skills 目录配置
+	DisabledSkills               []string                        `json:"disabled_skills,omitempty"`    // 被禁用的 skill 名称
+	Plugins                      []PluginEntry                   `json:"plugins,omitempty"`            // 插件启停覆盖配置
+	LSP                          LSPConfig                       `json:"lsp,omitempty"`                // LSP 配置
+	KnownWorkspaces              []string                        `json:"known_workspaces,omitempty"`   // 已知工作区（绝对路径）
+	LastWorkspace                string                          `json:"last_workspace,omitempty"`     // 上次前台工作区（绝对路径）
+	TrustedWorkspaces            []string                        `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
+	Language                     string                          `json:"language,omitempty"`           // 语言设置 (zh, en)
+	FastModel                    string                          `json:"fast_model,omitempty"`         // Fast mode model name
+	Permissions                  *PermissionsConfig              `json:"permissions,omitempty"`        // Tool permissions
+	RemoteProviders              map[string]RemoteProviderConfig `json:"remote_providers,omitempty"`   // GitHub/Gitee OAuth/Token 配置
+	RemoteAuth                   map[string]RemoteAuthToken      `json:"remote_auth,omitempty"`        // 已授权账号（按平台）
+	RemoteRepos                  []RemoteRepoEntry               `json:"remote_repos,omitempty"`       // 最近访问的远程仓库
+}
+
+func NextMessagePredictionEnabled(cfg *Config) bool {
+	if cfg == nil || cfg.NextMessagePredictionEnabled == nil {
+		return true
+	}
+	return *cfg.NextMessagePredictionEnabled
 }
 
 func Path() string {
@@ -108,9 +199,9 @@ func Path() string {
 	if err != nil {
 		slog.Error("config.path.user_home_dir.error",
 			"error", err)
-		return ".vb.json"
+		return ".eos.json"
 	}
-	return filepath.Join(home, ".vb.json")
+	return filepath.Join(home, ".eos.json")
 }
 
 func Load() (Config, string) {
@@ -128,6 +219,11 @@ func Load() (Config, string) {
 			"path", p,
 			"data_size", len(b),
 			"error", err)
+	}
+	if NormalizeWorkspaceState(&cfg) {
+		if err := Save(cfg, p); err != nil {
+			slog.Warn("config.load.normalize_workspace_state.save.error", "path", p, "error", err.Error())
+		}
 	}
 
 	if len(cfg.MCP) == 0 {
@@ -270,6 +366,12 @@ func Save(cfg Config, p string) error {
 			"error", err)
 		return err
 	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		slog.Error("config.save.mkdir_all.error",
+			"path", p,
+			"error", err)
+		return err
+	}
 	if err := os.WriteFile(p, bs, 0600); err != nil {
 		slog.Error("config.save.write_file.error",
 			"path", p,
@@ -287,13 +389,16 @@ func Save(cfg Config, p string) error {
 func InferDefaultModel(base string) string {
 	// 内置服务商的默认模型映射
 	providerDefaults := map[string]string{
-		"api.deepseek.com":          "deepseek-chat",
-		"dashscope.aliyuncs.com":    "qwen3.5-plus",
-		"ark.cn-beijing.volces.com": "doubao-seed-1.6",
-		"open.bigmodel.cn":          "glm-4-plus",
-		"api.moonshot.cn":           "kimi-k2-5",
-		"api.openai.com":            "gpt-4o",
-		"api.anthropic.com":         "claude-4.5-sonnet",
+		"api.deepseek.com":             "deepseek-chat",
+		"dashscope.aliyuncs.com":       "qwen3.6-plus",
+		"ark.cn-beijing.volces.com":    "doubao-seed-code-preview-251028",
+		"open.bigmodel.cn":             "glm-5",
+		"api.moonshot.cn":              "kimi-k2.5",
+		"api.minimaxi.com":             "MiniMax-M2.7",
+		"api.minimax.io":               "MiniMax-M2.7",
+		"token-plan-cn.xiaomimimo.com": "mimo-v2-pro",
+		"api.openai.com":               "gpt-4o",
+		"api.anthropic.com":            "claude-4.5-sonnet",
 	}
 
 	b := strings.ToLower(strings.TrimSpace(base))
@@ -316,10 +421,16 @@ func InferDefaultModel(base string) string {
 
 	// 回退到旧的检测逻辑
 	if strings.Contains(b, "dashscope.aliyuncs.com") && strings.Contains(b, "compatible-mode") {
-		return "qwen3.5-plus"
+		return "qwen3.6-plus"
 	}
-	if strings.Contains(b, "api.kimi.com") && strings.Contains(b, "/coding/") {
-		return "kimi-for-coding"
+	if strings.Contains(b, "api.moonshot.cn") {
+		return "kimi-k2.5"
+	}
+	if strings.Contains(b, "api.minimaxi.com") || strings.Contains(b, "api.minimax.io") {
+		return "MiniMax-M2.7"
+	}
+	if strings.Contains(b, "xiaomimimo.com") {
+		return "mimo-v2-pro"
 	}
 
 	return ""
@@ -510,4 +621,102 @@ func ToggleSkillsDir(cfg *Config, path string) bool {
 		}
 	}
 	return false
+}
+
+// IsSkillDisabled 检查 skill 是否被禁用
+func IsSkillDisabled(cfg *Config, name string) bool {
+	if cfg == nil {
+		return false
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	for _, skillName := range cfg.DisabledSkills {
+		if strings.EqualFold(strings.TrimSpace(skillName), name) {
+			return true
+		}
+	}
+	return false
+}
+
+// SetSkillDisabled 设置 skill 禁用状态
+func SetSkillDisabled(cfg *Config, name string, disabled bool) bool {
+	if cfg == nil {
+		return false
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	idx := -1
+	for i, skillName := range cfg.DisabledSkills {
+		if strings.EqualFold(strings.TrimSpace(skillName), name) {
+			idx = i
+			break
+		}
+	}
+	if disabled {
+		if idx >= 0 {
+			return false
+		}
+		cfg.DisabledSkills = append(cfg.DisabledSkills, name)
+		return true
+	}
+	if idx < 0 {
+		return false
+	}
+	cfg.DisabledSkills = append(cfg.DisabledSkills[:idx], cfg.DisabledSkills[idx+1:]...)
+	return true
+}
+
+// PluginEnabled 获取插件启用状态，未配置时默认启用。
+func PluginEnabled(cfg *Config, name string) (bool, bool) {
+	if cfg == nil {
+		return true, false
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return true, false
+	}
+	for _, plugin := range cfg.Plugins {
+		if strings.EqualFold(strings.TrimSpace(plugin.Name), name) {
+			return plugin.Enabled, true
+		}
+	}
+	return true, false
+}
+
+// SetPluginEnabled 设置插件启用状态。默认状态为启用，因此启用时会清理显式覆盖。
+func SetPluginEnabled(cfg *Config, name string, enabled bool) bool {
+	if cfg == nil {
+		return false
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	idx := -1
+	for i, plugin := range cfg.Plugins {
+		if strings.EqualFold(strings.TrimSpace(plugin.Name), name) {
+			idx = i
+			break
+		}
+	}
+	if enabled {
+		if idx < 0 {
+			return false
+		}
+		cfg.Plugins = append(cfg.Plugins[:idx], cfg.Plugins[idx+1:]...)
+		return true
+	}
+	if idx >= 0 {
+		if !cfg.Plugins[idx].Enabled {
+			return false
+		}
+		cfg.Plugins[idx].Enabled = false
+		return true
+	}
+	cfg.Plugins = append(cfg.Plugins, PluginEntry{Name: name, Enabled: false})
+	return true
 }

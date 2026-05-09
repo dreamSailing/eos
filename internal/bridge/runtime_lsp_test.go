@@ -3,11 +3,18 @@
 
 package bridge
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"strings"
 	"testing"
 
-	"github.com/dreamSailing/vb-coding/internal/lsp"
+	codectx "github.com/dreamSailing/eos/internal/context"
+	"github.com/dreamSailing/eos/internal/lsp"
 )
 
 func TestFormatProblemsAndDiagnosticsMarkdown(t *testing.T) {
@@ -42,3 +49,24 @@ func TestURIToLocalPath_WindowsDrive(t *testing.T) {
 	}
 }
 
+func TestRuntimeCore_LSPStatus_UsesActiveRoot(t *testing.T) {
+	first := t.TempDir()
+	second := t.TempDir()
+
+	mgr := codectx.NewMultiEngine()
+	mgr.AddRoot(first)
+	mgr.AddRoot(second)
+	mgr.SetActive(first)
+
+	rc := &RuntimeCore{workspaceMgr: mgr}
+	if status := rc.LSPStatus(); status.Workspace != first {
+		t.Fatalf("expected first workspace %q, got %q", first, status.Workspace)
+	}
+
+	if rc.SetActiveWorkspaceRoot(second) == nil {
+		t.Fatalf("expected second workspace to become active")
+	}
+	if status := rc.LSPStatus(); status.Workspace != second {
+		t.Fatalf("expected second workspace %q, got %q", second, status.Workspace)
+	}
+}

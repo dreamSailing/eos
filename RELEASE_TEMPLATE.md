@@ -1,8 +1,8 @@
-# VB Coding 发布模板（GitHub Release）
+# EOS 发布模板（GitHub Release）
 
 ## 标题
 
-`VB Coding v<版本号>`
+`EOS v<版本号>`
 
 ## 概要
 
@@ -11,17 +11,17 @@
 ## 下载
 
 - Windows x64 安装包（Inno Setup）  
-  `vb-coding-setup-<版本号>.exe`
+  `eos-setup-<版本号>.exe`
 - Windows x64 便携版  
-  `vb-coding-<版本号>-windows-amd64.zip`
+  `eos-<版本号>-windows-amd64.zip`
 - 校验文件  
   `SHA256SUMS.txt`
 
 ## 校验（SHA256）
 
 ```text
-<sha256>  vb-coding-setup-<版本号>.exe
-<sha256>  vb-coding-<版本号>-windows-amd64.zip
+<sha256>  eos-setup-<版本号>.exe
+<sha256>  eos-<版本号>-windows-amd64.zip
 ```
 
 ## 更新内容
@@ -34,7 +34,7 @@
 ### 变更
 
 - 仓库地址、安装包发布链接与文档链接统一更新为 GitHub 正式地址。
-- Go 模块路径升级为 `github.com/dreamSailing/vb-coding`。
+- Go 模块路径升级为 `github.com/dreamSailing/eos`。
 
 ### 修复
 
@@ -43,7 +43,7 @@
 ## 升级说明
 
 - 直接覆盖安装或卸载旧版本后重装均可。
-- 首次启动前请配置模型参数：`VB_API_BASE`、`VB_API_KEY`、`VB_MODEL`。
+- 首次启动前请配置模型参数：`EOS_API_BASE`、`EOS_API_KEY`、`EOS_MODEL`。
 
 ## 已知事项
 

@@ -1,18 +1,24 @@
 package shell
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"strings"
 
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
 type MvdanExecutor struct {
@@ -28,7 +34,7 @@ func NewMvdanExecutor() Executor {
 func (e *MvdanExecutor) Execute(ctx context.Context, command string, workingDir string) (stdout, stderr string, err error) {
 	var stdoutBuf, stderrBuf bytes.Buffer
 
-	runner, err := e.createRunner(&stdoutBuf, &stderrBuf, workingDir)
+	runner, err := e.createRunner(ctx, &stdoutBuf, &stderrBuf, workingDir)
 	if err != nil {
 		slog.Error("shell.mvdan.create_runner.error", "component", utils.ComponentTool,
 			"command", command,
@@ -52,7 +58,8 @@ func (e *MvdanExecutor) Execute(ctx context.Context, command string, workingDir 
 	stderrStr := stderrBuf.String()
 
 	if err != nil {
-		if exitStatus, ok := interp.IsExitStatus(err); ok {
+		var exitStatus interp.ExitStatus
+		if errors.As(err, &exitStatus) {
 			slog.Debug("shell.mvdan.execute.exit_status", "component", utils.ComponentTool,
 				"command", command,
 				"working_dir", workingDir,
@@ -83,10 +90,10 @@ func (e *MvdanExecutor) Execute(ctx context.Context, command string, workingDir 
 	return stdoutStr, stderrStr, nil
 }
 
-func (e *MvdanExecutor) createRunner(stdout, stderr io.Writer, workingDir string) (*interp.Runner, error) {
+func (e *MvdanExecutor) createRunner(ctx context.Context, stdout, stderr io.Writer, workingDir string) (*interp.Runner, error) {
 	opts := []interp.RunnerOption{
 		interp.StdIO(nil, stdout, stderr),
-		interp.Env(expand.ListEnviron(os.Environ()...)),
+		interp.Env(expand.ListEnviron(envFromContext(ctx)...)),
 		interp.ExecHandlers(e.execHandler()),
 		interp.OpenHandler(e.openHandler()),
 	}
@@ -117,7 +124,7 @@ func (e *MvdanExecutor) execHandler() func(next interp.ExecHandlerFunc) interp.E
 				)
 			}
 
-			return interp.DefaultExecHandler(2 * 60 * 1e9)(ctx, args)
+			return interp.DefaultExecHandler(2*60*1e9)(ctx, args)
 		}
 	}
 }

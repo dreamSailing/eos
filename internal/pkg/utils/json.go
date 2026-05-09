@@ -1,5 +1,11 @@
 package utils
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"encoding/json"
 	"log/slog"
@@ -66,9 +72,7 @@ func FixJSONEscapeSequences(data string) string {
 	for i < len(data) {
 		if data[i] == '\\' && i+1 < len(data) {
 			next := data[i+1]
-			escape := string([]byte{'\\', next})
-
-			if validEscapes[escape] {
+			if validEscapes[string([]byte{'\\', next})] {
 				result.WriteByte(data[i])
 				result.WriteByte(next)
 				i += 2

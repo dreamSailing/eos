@@ -1,5 +1,11 @@
 package config
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"os"
 	"strings"
@@ -18,9 +24,9 @@ func NewManager(path string) *Manager {
 }
 
 func (m *Manager) ResolveAPIConfig() (string, string, string, string) {
-	base := os.Getenv("VB_API_BASE")
-	key := os.Getenv("VB_API_KEY")
-	model := os.Getenv("VB_MODEL")
+	base := os.Getenv("EOS_API_BASE")
+	key := os.Getenv("EOS_API_KEY")
+	model := os.Getenv("EOS_MODEL")
 	if base == "" || key == "" || model == "" {
 		if entry, ok := m.GetActiveModel(); ok {
 			if base == "" {
@@ -97,9 +103,9 @@ func (m *Manager) GetActiveModel() (ModelEntry, bool) {
 }
 
 func (m *Manager) SyncEnvModel() (string, bool) {
-	base := os.Getenv("VB_API_BASE")
-	key := os.Getenv("VB_API_KEY")
-	model := os.Getenv("VB_MODEL")
+	base := os.Getenv("EOS_API_BASE")
+	key := os.Getenv("EOS_API_KEY")
+	model := os.Getenv("EOS_MODEL")
 	if strings.TrimSpace(base) == "" || strings.TrimSpace(key) == "" {
 		return "", false
 	}

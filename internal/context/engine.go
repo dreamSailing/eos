@@ -1,6 +1,12 @@
 package codectx
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
+	"bufio"
 	"encoding/json"
 	"go/ast"
 	"go/parser"
@@ -39,16 +45,42 @@ type Engine struct {
 }
 
 func NewEngine(root string) *Engine {
-	return &Engine{
+	e := &Engine{
 		Root:           root,
 		Index:          map[string]*FileMeta{},
 		inv:            map[string]map[string]int{},
 		docFreq:        map[string]int{},
 		imports:        map[string]map[string]struct{}{},
 		rimports:       map[string]map[string]struct{}{},
-		ignorePatterns: []string{".git", ".vb", ".claude", "node_modules", "dist", "build", "vendor", ".idea", ".vscode"},
+		ignorePatterns: []string{".git", ".eos", ".claude", "node_modules", "dist", "build", "vendor", ".idea", ".vscode"},
 		debounceMs:     300,
 	}
+	// Load .eosignore patterns and merge into ignorePatterns.
+	if extra := loadEOSIgnorePatterns(root); len(extra) > 0 {
+		e.ignorePatterns = append(e.ignorePatterns, extra...)
+	}
+	return e
+}
+
+// loadEOSIgnorePatterns reads .eosignore from the project root and returns patterns.
+// Duplicated from tools.DotIgnore to avoid circular import (internal/tools -> internal/context).
+func loadEOSIgnorePatterns(root string) []string {
+	ignorePath := filepath.Join(root, ".eosignore")
+	f, err := os.Open(ignorePath)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var patterns []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		patterns = append(patterns, line)
+	}
+	return patterns
 }
 
 func (e *Engine) BuildIndex() error {
@@ -82,6 +114,13 @@ func (e *Engine) BuildIndex() error {
 				}
 			}
 			return nil
+		}
+		// Check .eosignore patterns for files (basename match).
+		base := filepath.Base(path)
+		for _, ig := range e.ignorePatterns {
+			if matched, _ := filepath.Match(ig, base); matched {
+				return nil
+			}
 		}
 		// only index text-like files
 		ext := strings.ToLower(filepath.Ext(path))

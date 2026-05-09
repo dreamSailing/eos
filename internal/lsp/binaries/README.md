@@ -76,7 +76,7 @@ To verify the embedded gopls is working:
 go build -tags with_gopls
 
 # Check the diagnostics panel
-./vb-coding
+./eos
 # Type: /diagnostics
 # Should show "LSP enabled" if gopls is embedded and working
 ```

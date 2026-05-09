@@ -1,11 +1,17 @@
 package fileops
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -37,20 +43,167 @@ type VersionExtra struct {
 	Operation string
 }
 
-func (f *FileOperations) versionsDirFor(absPath string) (string, string, error) {
+type versionWorkspaceMeta struct {
+	WorkspacePath string `json:"workspace_path"`
+	WorkspaceID   string `json:"workspace_id"`
+	CreatedAt     string `json:"created_at"`
+	LastSeenAt    string `json:"last_seen_at"`
+}
+
+func resolveVersionWorkspaceRoot(root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		root, _ = os.Getwd()
+	}
+	if strings.TrimSpace(root) == "" {
+		return ""
+	}
+	if !filepath.IsAbs(root) {
+		if abs, err := filepath.Abs(root); err == nil {
+			root = abs
+		}
+	}
+	return filepath.Clean(root)
+}
+
+func GlobalVersionsBaseDir() string {
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return filepath.Join(home, ".eos", "versions")
+	}
+	if wd, err := os.Getwd(); err == nil && strings.TrimSpace(wd) != "" {
+		return filepath.Join(filepath.Clean(wd), ".eos", "versions")
+	}
+	return filepath.Join(".eos", "versions")
+}
+
+func workspaceVersionNamespaceID(root string) string {
+	normalized := strings.ToLower(filepath.ToSlash(resolveVersionWorkspaceRoot(root)))
+	if normalized == "" {
+		return "default"
+	}
+	sum := sha256.Sum256([]byte(normalized))
+	return hex.EncodeToString(sum[:8])
+}
+
+func VersionWorkspaceRoot(root string) string {
+	return filepath.Join(GlobalVersionsBaseDir(), "workspaces", workspaceVersionNamespaceID(root))
+}
+
+func VersionFilesRoot(root string) string {
+	return filepath.Join(VersionWorkspaceRoot(root), "files")
+}
+
+func LegacyVersionWorkspaceRoot(root string) string {
+	root = resolveVersionWorkspaceRoot(root)
+	if root == "" {
+		return filepath.Join(".eos", "versions")
+	}
+	return filepath.Join(root, ".eos", "versions")
+}
+
+func LegacyVersionFilesRoot(root string) string {
+	return LegacyVersionWorkspaceRoot(root)
+}
+
+func ExistingVersionWorkspaceRoot(root string) string {
+	current := VersionWorkspaceRoot(root)
+	if info, err := os.Stat(current); err == nil && info.IsDir() {
+		return current
+	}
+	legacy := LegacyVersionWorkspaceRoot(root)
+	if info, err := os.Stat(legacy); err == nil && info.IsDir() {
+		return legacy
+	}
+	return current
+}
+
+func ExistingVersionFilesRoot(root string) string {
+	current := VersionFilesRoot(root)
+	if info, err := os.Stat(current); err == nil && info.IsDir() {
+		return current
+	}
+	legacy := LegacyVersionFilesRoot(root)
+	if info, err := os.Stat(legacy); err == nil && info.IsDir() {
+		return legacy
+	}
+	return current
+}
+
+func ensureVersionWorkspaceMeta(root string) error {
+	workspaceRoot := resolveVersionWorkspaceRoot(root)
+	if workspaceRoot == "" {
+		return nil
+	}
+	dir := VersionWorkspaceRoot(workspaceRoot)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "meta.json")
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	meta := versionWorkspaceMeta{
+		WorkspacePath: workspaceRoot,
+		WorkspaceID:   workspaceVersionNamespaceID(workspaceRoot),
+		LastSeenAt:    now,
+	}
+	if raw, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(raw, &meta)
+		if strings.TrimSpace(meta.WorkspacePath) == "" {
+			meta.WorkspacePath = workspaceRoot
+		}
+		if strings.TrimSpace(meta.WorkspaceID) == "" {
+			meta.WorkspaceID = workspaceVersionNamespaceID(workspaceRoot)
+		}
+	}
+	if strings.TrimSpace(meta.CreatedAt) == "" {
+		meta.CreatedAt = now
+	}
+	meta.LastSeenAt = now
+	raw, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, raw, 0o644)
+}
+
+func (f *FileOperations) versionWorkspaceForPath(absPath string) (string, string, error) {
 	wd := ""
 	if f != nil {
 		wd = strings.TrimSpace(f.root)
 	}
-	if wd == "" {
-		wd, _ = os.Getwd()
-	}
+	wd = resolveVersionWorkspaceRoot(wd)
 	rel, err := filepath.Rel(wd, absPath)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return "", "", err
 	}
-	dir := filepath.Join(wd, ".vb", "versions", filepath.FromSlash(rel))
+	return wd, filepath.ToSlash(rel), nil
+}
+
+func (f *FileOperations) versionsDirFor(absPath string) (string, string, error) {
+	wd, rel, err := f.versionWorkspaceForPath(absPath)
+	if err != nil {
+		return "", "", err
+	}
+	dir := filepath.Join(VersionFilesRoot(wd), filepath.FromSlash(rel))
 	return dir, rel, nil
+}
+
+func (f *FileOperations) legacyVersionsDirFor(absPath string) (string, string, error) {
+	wd, rel, err := f.versionWorkspaceForPath(absPath)
+	if err != nil {
+		return "", "", err
+	}
+	dir := filepath.Join(LegacyVersionFilesRoot(wd), filepath.FromSlash(rel))
+	return dir, rel, nil
+}
+
+func chooseExistingVersionDir(currentDir, legacyDir string) string {
+	if info, err := os.Stat(currentDir); err == nil && info.IsDir() {
+		return currentDir
+	}
+	if info, err := os.Stat(legacyDir); err == nil && info.IsDir() {
+		return legacyDir
+	}
+	return currentDir
 }
 
 func (f *FileOperations) SaveVersion(absPath string, oldContent string) (VersionMeta, error) {
@@ -135,13 +288,11 @@ func (f *FileOperations) SaveVersionWithExtra(absPath string, oldContent string,
 		)
 		return vm, err
 	}
-	wd := ""
-	if f != nil {
-		wd = strings.TrimSpace(f.root)
+	wd, _, rootErr := f.versionWorkspaceForPath(absPath)
+	if rootErr != nil {
+		wd = resolveVersionWorkspaceRoot(f.Root())
 	}
-	if wd == "" {
-		wd, _ = os.Getwd()
-	}
+	_ = ensureVersionWorkspaceMeta(wd)
 	writeVersionIndexUnder(wd, rel, vm, extra)
 	if strings.TrimSpace(extra.TraceID) != "" {
 		_ = recordCheckpointUnder(wd, strings.TrimSpace(extra.TraceID), filepath.ToSlash(rel), vm.ID)
@@ -166,11 +317,8 @@ func checkpointPathUnder(root string, traceID string) (string, error) {
 	if traceID == "" {
 		return "", fmt.Errorf("trace_id required")
 	}
-	wd := strings.TrimSpace(root)
-	if wd == "" {
-		wd, _ = os.Getwd()
-	}
-	dir := filepath.Join(wd, ".vb", "versions", "_checkpoints")
+	wd := resolveVersionWorkspaceRoot(root)
+	dir := filepath.Join(VersionWorkspaceRoot(wd), "_checkpoints")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}
@@ -188,7 +336,12 @@ func LoadCheckpointUnder(root string, traceID string) (*Checkpoint, error) {
 	}
 	b, err := os.ReadFile(p)
 	if err != nil {
-		return nil, err
+		legacyPath := filepath.Join(LegacyVersionWorkspaceRoot(root), "_checkpoints", strings.TrimSpace(traceID)+".json")
+		if legacyBytes, legacyErr := os.ReadFile(legacyPath); legacyErr == nil {
+			b = legacyBytes
+		} else {
+			return nil, err
+		}
 	}
 	var cp Checkpoint
 	if err := json.Unmarshal(b, &cp); err != nil {
@@ -263,11 +416,9 @@ func recordCheckpointUnder(root string, traceID string, pathRel string, versionI
 }
 
 func writeVersionIndexUnder(root string, pathRel string, vm VersionMeta, extra VersionExtra) {
-	wd := strings.TrimSpace(root)
-	if wd == "" {
-		wd, _ = os.Getwd()
-	}
-	p := filepath.Join(wd, ".vb", "versions", "_index.jsonl")
+	wd := resolveVersionWorkspaceRoot(root)
+	_ = ensureVersionWorkspaceMeta(wd)
+	p := filepath.Join(VersionWorkspaceRoot(wd), "_index.jsonl")
 	dir := filepath.Dir(p)
 	_ = os.MkdirAll(dir, 0755)
 	type row struct {
@@ -298,7 +449,7 @@ func writeVersionIndexUnder(root string, pathRel string, vm VersionMeta, extra V
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	_, _ = f.Write(append(b, '\n'))
 }
 
@@ -316,11 +467,8 @@ func ListCheckpoints(limit int) ([]CheckpointSummary, error) {
 }
 
 func ListCheckpointsUnder(root string, limit int) ([]CheckpointSummary, error) {
-	wd := strings.TrimSpace(root)
-	if wd == "" {
-		wd, _ = os.Getwd()
-	}
-	dir := filepath.Join(wd, ".vb", "versions", "_checkpoints")
+	wd := resolveVersionWorkspaceRoot(root)
+	dir := filepath.Join(ExistingVersionWorkspaceRoot(wd), "_checkpoints")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -409,6 +557,11 @@ func (f *FileOperations) ListVersions(absPath string) ([]VersionMeta, error) {
 		)
 		return nil, err
 	}
+	legacyDir, _, legacyErr := f.legacyVersionsDirFor(absPath)
+	if legacyErr != nil {
+		legacyDir = ""
+	}
+	dir = chooseExistingVersionDir(dir, legacyDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		slog.Error("fileops.list_versions.readdir.error", "component", utils.ComponentTool,
@@ -448,6 +601,11 @@ func (f *FileOperations) ReadVersion(absPath, id string) (string, error) {
 		)
 		return "", err
 	}
+	legacyDir, _, legacyErr := f.legacyVersionsDirFor(absPath)
+	if legacyErr != nil {
+		legacyDir = ""
+	}
+	dir = chooseExistingVersionDir(dir, legacyDir)
 	p := filepath.Join(dir, id+".content")
 	b, err := os.ReadFile(p)
 	if err != nil {
@@ -474,7 +632,11 @@ func (f *FileOperations) DeleteVersion(absPath, versionID string) (int, error) {
 		)
 		return 0, err
 	}
-
+	legacyDir, _, legacyErr := f.legacyVersionsDirFor(absPath)
+	if legacyErr != nil {
+		legacyDir = ""
+	}
+	dir = chooseExistingVersionDir(dir, legacyDir)
 	// 删除版本文件
 	contentPath := filepath.Join(dir, versionID+".content")
 	metaPath := filepath.Join(dir, versionID+".meta")
@@ -524,7 +686,11 @@ func (f *FileOperations) DeleteAllVersions(absPath string) error {
 		)
 		return err
 	}
-
+	legacyDir, _, legacyErr := f.legacyVersionsDirFor(absPath)
+	if legacyErr != nil {
+		legacyDir = ""
+	}
+	dir = chooseExistingVersionDir(dir, legacyDir)
 	// 删除整个版本目录
 	err = os.RemoveAll(dir)
 	if err != nil {

@@ -1,7 +1,14 @@
 package tools
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
+	"os/exec"
 	"os"
 	"path/filepath"
 	"testing"
@@ -32,6 +39,9 @@ func TestGlob_FindFiles(t *testing.T) {
 }
 
 func TestBash_RunEcho(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skipf("bash not available on PATH: %v", err)
+	}
 	m := NewManager()
 	ctx := WithAllowedTools(context.Background(), map[string]bool{"bash": true})
 	r := m.execStructured(ctx, ToolCall{Tool: "bash", Parameters: map[string]interface{}{"command": "echo test"}})

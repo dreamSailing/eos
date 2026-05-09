@@ -2,7 +2,14 @@
 
 package lsp
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"context"
 	"fmt"
 	"os"
@@ -85,7 +92,7 @@ func (d *Detector) DetectLanguage(rootPath string) LanguageType {
 	tsCount := 0
 	jsCount := 0
 
-	filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
@@ -222,7 +229,7 @@ func (d *Detector) findPythonServer() (*ServerInfo, error) {
 	// 测试是否可以运行 pylsp
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, pythonCmd, "-m", "pylsp", "--help")
+	cmd := utils.CommandContext(ctx, pythonCmd, "-m", "pylsp", "--help")
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("pylsp not available")
 	}

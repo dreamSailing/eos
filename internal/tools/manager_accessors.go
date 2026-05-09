@@ -1,8 +1,14 @@
 package tools
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
-	"github.com/dreamSailing/vb-coding/internal/mcp"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/mcp"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // GetToolTraces returns tool call trace records
@@ -54,4 +60,21 @@ func (m *Manager) GetSkillManager() *SkillManager {
 
 func (m *Manager) SetMCPManager(mm *mcp.Manager) {
 	m.mcpManager = mm
+}
+
+// SetHookRunner sets the HookRunner for tool execution hooks
+func (m *Manager) SetHookRunner(hr HookRunner) {
+	m.hookRunner = hr
+}
+
+// SetResultBudget sets the tool result budget tracker
+func (m *Manager) SetResultBudget(b *ToolResultBudget) {
+	m.resultBudget = b
+}
+
+// ResetResultBudget resets the tool result budget for a new turn
+func (m *Manager) ResetResultBudget() {
+	if m.resultBudget != nil {
+		m.resultBudget.Reset()
+	}
 }

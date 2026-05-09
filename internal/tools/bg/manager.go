@@ -1,6 +1,13 @@
 package bg
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"bufio"
 	"context"
 	"fmt"
@@ -131,7 +138,7 @@ func (m *Manager) Start(command string, opts *StartOptions) (TaskInfo, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	execName, execArgs := shellCommand(command)
-	cmd := exec.CommandContext(ctx, execName, execArgs...)
+	cmd := utils.CommandContext(ctx, execName, execArgs...)
 	if opts != nil {
 		if strings.TrimSpace(opts.WorkingDir) != "" {
 			cmd.Dir = opts.WorkingDir
@@ -347,11 +354,9 @@ func (m *Manager) Tail(id string, opts *TailOptions) (tailResult, error) {
 			break
 		}
 	}
-	nextSeq := from
+	nextSeq := t.nextSeq
 	if len(out) > 0 {
 		nextSeq = out[len(out)-1].Seq + 1
-	} else {
-		nextSeq = t.nextSeq
 	}
 
 	return tailResult{

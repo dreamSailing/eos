@@ -1,11 +1,17 @@
 package tools
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"log/slog"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
 func (m *Manager) skillStructured(ctx context.Context, params map[string]any) ToolResult {
@@ -33,6 +39,9 @@ func (m *Manager) skillStructured(ctx context.Context, params map[string]any) To
 	if !ok || s == nil {
 		available := m.skillManager.FormatSkillsForPrompt()
 		errorMsg := fmt.Sprintf("skill not found: %s\n\nAvailable skills:\n%s", command, available)
+		if m.skillManager.IsDisabled(command) {
+			errorMsg = fmt.Sprintf("skill disabled: %s\n\nAvailable skills:\n%s", command, available)
+		}
 
 		suggestion := m.suggestSkill(command)
 		if suggestion != "" {
@@ -93,6 +102,9 @@ func (m *Manager) skillStructured(ctx context.Context, params map[string]any) To
 
 		available := m.skillManager.FormatSkillsForPrompt()
 		errorMsg := fmt.Sprintf("skill not found: %s\n\nAvailable skills:\n%s", command, available)
+		if m.skillManager.IsDisabled(command) || strings.Contains(strings.ToLower(err.Error()), "skill disabled") {
+			errorMsg = fmt.Sprintf("skill disabled: %s\n\nAvailable skills:\n%s", command, available)
+		}
 
 		suggestion := m.suggestSkill(command)
 		if suggestion != "" {

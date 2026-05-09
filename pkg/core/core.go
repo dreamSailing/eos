@@ -1,40 +1,60 @@
 package core
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/bridge"
-	"github.com/dreamSailing/vb-coding/internal/config"
-	sharedruntime "github.com/dreamSailing/vb-coding/internal/runtime"
-	"github.com/dreamSailing/vb-coding/internal/session"
-	"github.com/dreamSailing/vb-coding/internal/tools"
-	"github.com/dreamSailing/vb-coding/internal/tools/bg"
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/bridge"
+	"github.com/dreamSailing/eos/internal/config"
+	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	sharedruntime "github.com/dreamSailing/eos/internal/runtime"
+	"github.com/dreamSailing/eos/internal/session"
+	skillspkg "github.com/dreamSailing/eos/internal/skills"
+	"github.com/dreamSailing/eos/internal/state"
+	"github.com/dreamSailing/eos/internal/toolapi"
+	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/internal/tools/bg"
+	"github.com/dreamSailing/eos/pkg/protocol"
 )
 
 type Event struct {
 	Type      string
 	RequestID string
 	Message   string
+	Data      map[string]any
 }
 
 type Runtime struct {
-	core *bridge.RuntimeCore
+	core                   *bridge.RuntimeCore
+	workspaceMu            sync.Mutex
+	stateChangesMu         sync.RWMutex
+	stateChangeSubscribers map[int]chan StateChangeEvent
+	nextStateSubscriberID  int
 }
 
 type Model struct {
-	Name     string
-	APIBase  string
-	APIKey   string
-	Model    string
-	Source   string
-	IsActive bool
+	Name                    string
+	APIBase                 string
+	APIKey                  string
+	Model                   string
+	Source                  string
+	IsActive                bool
+	SupportsReasoningEffort bool
 }
 
 type BackgroundTask struct {
@@ -43,12 +63,73 @@ type BackgroundTask struct {
 	StartedAt time.Time
 	Label     string
 	CanKill   bool
+	Workspace string
 }
 
 type Workspace struct {
 	Path    string
 	Trusted bool
 	Active  bool
+}
+
+type Worktree struct {
+	Name      string
+	Path      string
+	Branch    string
+	Head      string
+	Active    bool
+	Removable bool
+}
+
+type WorkspaceSnapshot struct {
+	Path             string
+	Name             string
+	Trusted          bool
+	Active           bool
+	SessionCount     int
+	CurrentSessionID string
+}
+
+type SessionMeta struct {
+	ID      string
+	SavedAt time.Time
+	Model   string
+	Summary string
+	Preview string
+	Title   string
+	Rounds  int
+	Tokens  int
+}
+
+type SessionSnapshot struct {
+	ID             string
+	WorkspacePath  string
+	Title          string
+	Preview        string
+	UpdatedAt      time.Time
+	Running        bool
+	NeedsAttention bool
+	MessageCount   int
+	PendingPrompts int
+	Active         bool
+}
+
+type SessionMessage struct {
+	Role       string
+	Type       string
+	Content    string
+	Time       time.Time
+	ImagePaths []string
+	Metadata   map[string]any `json:"metadata,omitempty"`
+}
+
+type RuntimeSnapshot struct {
+	ForegroundWorkspace string
+	Workspaces          []WorkspaceSnapshot
+	Sessions            []SessionSnapshot
+	CurrentSession      *SessionSnapshot
+	Messages            []SessionMessage
+	Tasks               []BackgroundTask
 }
 
 type MCPServer struct {
@@ -77,6 +158,44 @@ type LSPServer struct {
 	Command  string
 }
 
+type PermissionSnapshot struct {
+	ExecutionMode     string
+	SandboxMode       string
+	AllowAll          bool
+	AllowedCategories []string
+	HasPendingDiff    bool
+	PendingDiffPath   string
+}
+
+type PendingReview struct {
+	Path    string
+	Diff    string
+	HasDiff bool
+}
+
+type SkillInfo struct {
+	Name                   string
+	Description            string
+	Source                 string
+	ArgumentHint           string
+	Location               string
+	BaseDir                string
+	AllowedTools           []string
+	Enabled                bool
+	Active                 bool
+	DisableModelInvocation bool
+	UserInvocable          bool
+	UserInvocableDefined   bool
+}
+
+type PluginInfo struct {
+	Name        string
+	Description string
+	Source      string
+	Command     string
+	Enabled     bool
+}
+
 type CostItem struct {
 	Time      time.Time
 	Model     string
@@ -93,12 +212,17 @@ func NewRuntime() *Runtime {
 }
 
 func (r *Runtime) Invoke(ctx context.Context, input string) (<-chan Event, error) {
+	return r.InvokeWithImages(ctx, input, nil)
+}
+
+func (r *Runtime) InvokeWithImages(ctx context.Context, input string, imagePaths []string) (<-chan Event, error) {
+	imagePaths = compactCoreImagePaths(imagePaths)
 	out := make(chan Event, 64)
 	go func() {
 		defer close(out)
 		done := make(chan error, 1)
 		go func() {
-			_, err := r.core.GraphInvokePlanWithImages(ctx, input, r.core.ExecutionMode(), nil)
+			_, err := r.core.GraphInvokePlanWithImages(ctx, input, r.core.ExecutionMode(), imagePaths)
 			done <- err
 		}()
 		for {
@@ -111,6 +235,17 @@ func (r *Runtime) Invoke(ctx context.Context, input string) (<-chan Event, error
 					out <- mapped
 				}
 			case err := <-done:
+			drain:
+				for {
+					select {
+					case ev := <-r.core.Events():
+						if mapped, ok := mapBridgeEvent(ev); ok {
+							out <- mapped
+						}
+					default:
+						break drain
+					}
+				}
 				if err != nil {
 					out <- Event{Type: "Error", Message: err.Error()}
 				}
@@ -136,12 +271,178 @@ func (r *Runtime) RunBash(ctx context.Context, input string) (<-chan Event, erro
 	return out, nil
 }
 
+func (r *Runtime) InvokeProtocol(ctx context.Context, input string) (<-chan protocol.Envelope, error) {
+	return r.InvokeProtocolWithImages(ctx, input, nil)
+}
+
+func (r *Runtime) InvokeProtocolWithImages(ctx context.Context, input string, imagePaths []string) (<-chan protocol.Envelope, error) {
+	sessionID, _ := r.CurrentSessionID()
+	sessionID = strings.TrimSpace(sessionID)
+	threadID := sessionID
+	requestID := newCoreRequestID("req")
+	input = strings.TrimSpace(input)
+	imagePaths = compactCoreImagePaths(imagePaths)
+	out := make(chan protocol.Envelope, 64)
+	go func() {
+		defer close(out)
+		out <- newCoreRequestEvent(protocol.EventTypeRequestStarted, sessionID, threadID, requestID, map[string]any{
+			"input":       input,
+			"mode":        r.ExecutionMode(),
+			"input_kind":  "prompt",
+			"image_count": len(imagePaths),
+		})
+		done := make(chan error, 1)
+		go func() {
+			_, err := r.core.GraphInvokePlanWithImages(ctx, input, r.core.ExecutionMode(), imagePaths)
+			done <- err
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
+					"error":       ctx.Err().Error(),
+					"input":       input,
+					"mode":        r.ExecutionMode(),
+					"input_kind":  "prompt",
+					"image_count": len(imagePaths),
+					"summary":     ctx.Err().Error(),
+				})
+				return
+			case ev := <-r.core.Events():
+				if mapped, ok := bridgeEventToProtocol(ev, sessionID, threadID, requestID, time.Now()); ok {
+					out <- mapped
+				}
+			case err := <-done:
+				drain:
+					for {
+						select {
+						case ev := <-r.core.Events():
+							if mapped, ok := bridgeEventToProtocol(ev, sessionID, threadID, requestID, time.Now()); ok {
+								out <- mapped
+							}
+						default:
+							break drain
+						}
+					}
+				if err != nil {
+					out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
+						"error":       err.Error(),
+						"input":       input,
+						"mode":        r.ExecutionMode(),
+						"input_kind":  "prompt",
+						"image_count": len(imagePaths),
+						"summary":     err.Error(),
+					})
+				} else {
+					out <- newCoreRequestEvent(protocol.EventTypeRequestDone, sessionID, threadID, requestID, map[string]any{
+						"input":       input,
+						"mode":        r.ExecutionMode(),
+						"input_kind":  "prompt",
+						"image_count": len(imagePaths),
+						"message":     "request completed",
+						"status":      "success",
+						"summary":     "request completed",
+					})
+				}
+				return
+			}
+		}
+	}()
+	return out, nil
+}
+
+func compactCoreImagePaths(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	seen := map[string]struct{}{}
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		key := strings.ToLower(filepath.Clean(path))
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, path)
+	}
+	return out
+}
+
+func (r *Runtime) RunBashProtocol(ctx context.Context, input string) (<-chan protocol.Envelope, error) {
+	sessionID, _ := r.CurrentSessionID()
+	sessionID = strings.TrimSpace(sessionID)
+	threadID := sessionID
+	requestID := newCoreRequestID("bash")
+	input = strings.TrimSpace(input)
+
+	out := make(chan protocol.Envelope, 8)
+	go func() {
+		defer close(out)
+		out <- newCoreRequestEvent(protocol.EventTypeRequestStarted, sessionID, threadID, requestID, map[string]any{
+			"input":      input,
+			"mode":       "bash",
+			"input_kind": "bash",
+		})
+		out <- protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     time.Now(),
+			Source:        protocol.SourceCore,
+			Payload:       protocol.TextPayloadMap(protocol.TextPayload{Text: "执行命令: " + input}),
+		})
+
+		result, err := r.core.ExecuteBash(ctx, input)
+		if err != nil {
+			out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
+				"error":      err.Error(),
+				"input":      input,
+				"mode":       "bash",
+				"input_kind": "bash",
+				"summary":    err.Error(),
+			})
+			return
+		}
+
+		out <- protocol.NewEvent(protocol.EventTypeTextFinal, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     time.Now(),
+			Source:        protocol.SourceCore,
+			Payload:       protocol.TextPayloadMap(protocol.TextPayload{Text: result}),
+		})
+		out <- newCoreRequestEvent(protocol.EventTypeRequestDone, sessionID, threadID, requestID, map[string]any{
+			"input":      input,
+			"mode":       "bash",
+			"input_kind": "bash",
+			"message":    "request completed",
+			"status":     "success",
+			"summary":    "request completed",
+		})
+	}()
+	return out, nil
+}
+
 func (r *Runtime) SetExecutionMode(mode string) {
 	r.core.SetExecutionMode(toRuntimeMode(mode))
+	r.notifyStateChanged(StateTopicSettings, "execution_mode")
 }
 
 func (r *Runtime) ExecutionMode() string {
 	return fromRuntimeMode(r.core.ExecutionMode())
+}
+
+func (r *Runtime) SetSandboxMode(mode string) {
+	r.core.SetSandboxMode(toolapi.NormalizeSandboxMode(mode))
+	r.notifyStateChanged(StateTopicSettings, "sandbox_mode")
+}
+
+func (r *Runtime) SandboxMode() string {
+	return toolapi.NormalizeSandboxMode(r.core.SandboxMode())
 }
 
 func (r *Runtime) ResolveConfirmation(requestID string, approve bool) {
@@ -152,21 +453,32 @@ func (r *Runtime) ResolveConfirmation(requestID string, approve bool) {
 	r.core.SubmitPromptResponse(requestID, bridge.PromptResponse{Decision: decision})
 }
 
+func (r *Runtime) ResolveInquiry(requestID string, option, text string) {
+	r.core.SubmitPromptResponse(requestID, bridge.PromptResponse{
+		Decision: "resolve",
+		Option:   option,
+		Text:     text,
+	})
+}
+
 func (r *Runtime) Close() {
 	r.core.Shutdown()
+	r.closeStateChangeSubscribers()
 }
 
 func (r *Runtime) ListModels() []Model {
 	cfg, _ := r.core.LoadFullModelConfig()
 	out := make([]Model, 0, len(cfg.Models))
 	for _, m := range cfg.Models {
+		supportsReasoning := m.SupportsReasoningEffort || ai.SupportsReasoningEffort(m.Model)
 		out = append(out, Model{
-			Name:     m.Name,
-			APIBase:  m.APIBase,
-			APIKey:   m.APIKey,
-			Model:    m.Model,
-			Source:   m.Source,
-			IsActive: strings.TrimSpace(cfg.Active) == strings.TrimSpace(m.Name),
+			Name:                    m.Name,
+			APIBase:                 m.APIBase,
+			APIKey:                  m.APIKey,
+			Model:                   m.Model,
+			Source:                  m.Source,
+			IsActive:                strings.TrimSpace(cfg.Active) == strings.TrimSpace(m.Name),
+			SupportsReasoningEffort: supportsReasoning,
 		})
 	}
 	return out
@@ -180,14 +492,16 @@ func (r *Runtime) UpsertModel(name, base, key, model string) error {
 		return errors.New("name, api base, model required")
 	}
 	entry := config.ModelEntry{
-		Name:    name,
-		APIBase: base,
-		APIKey:  strings.TrimSpace(key),
-		Model:   model,
+		Name:                    name,
+		APIBase:                 base,
+		APIKey:                  strings.TrimSpace(key),
+		Model:                   model,
+		SupportsReasoningEffort: ai.SupportsReasoningEffort(model),
 	}
 	if !r.core.UpdateModel(entry) && !r.core.AddModel(entry) {
 		return errors.New("upsert model failed")
 	}
+	r.notifyStateChanged(StateTopicModels, "model.upsert")
 	return nil
 }
 
@@ -195,6 +509,89 @@ func (r *Runtime) ActivateModel(name string) error {
 	if !r.core.SetActiveModel(strings.TrimSpace(name)) {
 		return errors.New("model not found")
 	}
+	if err := r.core.Reload(); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicModels, "model.activate")
+	return nil
+}
+
+func (r *Runtime) ReasoningLevel() string {
+	cfg, _ := config.Load()
+	active := strings.TrimSpace(cfg.Active)
+	if active == "" {
+		if !cfg.Thinking.Enabled || !state.Thinking() {
+			return "off"
+		}
+		return normalizeReasoningLevel(cfg.Thinking.ReasoningEffort)
+	}
+	for _, model := range cfg.Models {
+		if !strings.EqualFold(strings.TrimSpace(model.Name), active) {
+			continue
+		}
+		supportsReasoning := model.SupportsReasoningEffort || ai.SupportsReasoningEffort(model.Model)
+		if !supportsReasoning || !model.ThinkingEnabled || !cfg.Thinking.Enabled || !state.Thinking() {
+			return "off"
+		}
+		return normalizeReasoningLevel(cfg.Thinking.ReasoningEffort)
+	}
+	if !cfg.Thinking.Enabled || !state.Thinking() {
+		return "off"
+	}
+	return normalizeReasoningLevel(cfg.Thinking.ReasoningEffort)
+}
+
+func (r *Runtime) SetReasoningLevel(level string) error {
+	cfg, cfgPath := config.Load()
+	if strings.TrimSpace(cfgPath) == "" {
+		return errors.New("config path empty")
+	}
+
+	level = normalizeReasoningLevel(level)
+	active := strings.TrimSpace(cfg.Active)
+	foundActive := false
+
+	cfg.Thinking.Enabled = true
+	cfg.Thinking.AutoDetect = true
+
+	for i := range cfg.Models {
+		cfg.Models[i].SupportsReasoningEffort = cfg.Models[i].SupportsReasoningEffort || ai.SupportsReasoningEffort(cfg.Models[i].Model)
+		if !strings.EqualFold(strings.TrimSpace(cfg.Models[i].Name), active) {
+			continue
+		}
+		foundActive = true
+		if level == "off" {
+			cfg.Models[i].ThinkingEnabled = false
+			break
+		}
+		if !cfg.Models[i].SupportsReasoningEffort {
+			return errors.New("当前模型不支持推理强度")
+		}
+		cfg.Models[i].ThinkingEnabled = true
+		cfg.Thinking.ReasoningEffort = level
+	}
+
+	if !foundActive {
+		if level == "off" {
+			cfg.Thinking.Enabled = false
+		} else {
+			cfg.Thinking.ReasoningEffort = level
+		}
+	}
+
+	if err := config.Save(cfg, cfgPath); err != nil {
+		return err
+	}
+
+	state.SetThinking(true)
+	if !foundActive && level == "off" {
+		state.SetThinking(false)
+	}
+
+	if err := r.core.Reload(); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicSettings, "reasoning_level")
 	return nil
 }
 
@@ -202,6 +599,7 @@ func (r *Runtime) DeleteModel(name string) error {
 	if !r.core.DeleteModel(strings.TrimSpace(name)) {
 		return errors.New("model not found")
 	}
+	r.notifyStateChanged(StateTopicModels, "model.delete")
 	return nil
 }
 
@@ -215,6 +613,7 @@ func (r *Runtime) ListTasks() []BackgroundTask {
 			StartedAt: t.StartedAt,
 			Label:     t.Command,
 			CanKill:   t.Status == bg.StatusRunning,
+			Workspace: normalizeWorkspacePath(t.WorkingDir),
 		})
 	}
 	slices.SortFunc(out, func(a, b BackgroundTask) int {
@@ -251,18 +650,27 @@ func (r *Runtime) KillTask(taskID string) error {
 		return errors.New("task id required")
 	}
 	_, err := bg.Default().Kill(taskID)
-	return err
+	if err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicTasks, "task.kill")
+	return nil
 }
 
 func (r *Runtime) CleanupTasks() int {
-	return bg.Default().CleanupFinished()
+	n := bg.Default().CleanupFinished()
+	if n > 0 {
+		r.notifyStateChanged(StateTopicTasks, "task.cleanup")
+	}
+	return n
 }
 
 func (r *Runtime) ListWorkspaces() []Workspace {
 	active := normalizeWorkspacePath(r.core.GetActiveRoot())
 	roots := r.core.GetWorkspaceRoots()
 	trusted := trustedWorkspaceSet()
-	out := make([]Workspace, 0, len(roots)+len(trusted))
+	known := knownWorkspaceSet()
+	out := make([]Workspace, 0, len(roots)+len(trusted)+len(known))
 	seen := map[string]struct{}{}
 	for _, raw := range roots {
 		p := normalizeWorkspacePath(raw)
@@ -282,6 +690,14 @@ func (r *Runtime) ListWorkspaces() []Workspace {
 			continue
 		}
 		out = append(out, Workspace{Path: p, Trusted: true, Active: pathsEqual(p, active)})
+		seen[p] = struct{}{}
+	}
+	for p := range known {
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		_, ok := trusted[p]
+		out = append(out, Workspace{Path: p, Trusted: ok, Active: pathsEqual(p, active)})
 	}
 	slices.SortFunc(out, func(a, b Workspace) int { return strings.Compare(a.Path, b.Path) })
 	return out
@@ -292,7 +708,11 @@ func (r *Runtime) AddWorkspace(path string) error {
 	if err != nil {
 		return err
 	}
+	if err := rememberWorkspaceConfig(p, false); err != nil {
+		return err
+	}
 	r.core.AddWorkspaceRoot(p)
+	r.notifyStateChanged(StateTopicWorkspace, "workspace.add")
 	return nil
 }
 
@@ -301,7 +721,17 @@ func (r *Runtime) RemoveWorkspace(path string) error {
 	if err != nil {
 		return err
 	}
+	if pathsEqual(p, config.DefaultWorkspacePath()) {
+		return errors.New("default workspace cannot be removed")
+	}
+	if err := removeTrustedWorkspace(p); err != nil {
+		return err
+	}
+	if err := forgetWorkspaceConfig(p); err != nil {
+		return err
+	}
 	r.core.RemoveWorkspaceRoot(p)
+	r.notifyStateChanged(StateTopicWorkspace, "workspace.remove")
 	return nil
 }
 
@@ -310,15 +740,80 @@ func (r *Runtime) UseWorkspace(path string) error {
 	if err != nil {
 		return err
 	}
+	if err := rememberWorkspaceConfig(p, true); err != nil {
+		return err
+	}
+	r.core.AddWorkspaceRoot(p)
 	if r.core.SetActiveWorkspaceRoot(p) == nil {
 		return errors.New("workspace not found")
 	}
+	if err := r.ReloadSkills(); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicWorkspace, "workspace.use")
 	return nil
+}
+
+func (r *Runtime) RememberWorkspace(path string, foreground bool) error {
+	p, err := resolveWorkspacePath(path)
+	if err != nil {
+		return err
+	}
+	if err := rememberWorkspaceConfig(p, foreground); err != nil {
+		return err
+	}
+	r.core.AddWorkspaceRoot(p)
+	r.notifyStateChanged(StateTopicWorkspace, "workspace.remember")
+	return nil
+}
+
+func (r *Runtime) ForgetWorkspace(path string) error {
+	p, err := resolveWorkspacePath(path)
+	if err != nil {
+		return err
+	}
+	if pathsEqual(p, config.DefaultWorkspacePath()) {
+		return errors.New("default workspace cannot be removed")
+	}
+	if err := forgetWorkspaceConfig(p); err != nil {
+		return err
+	}
+	r.core.RemoveWorkspaceRoot(p)
+	if err := removeTrustedWorkspace(p); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicWorkspace, "workspace.forget")
+	return nil
+}
+
+func (r *Runtime) LastWorkspace() string {
+	cfg, _ := config.Load()
+	return config.ResolveForegroundWorkspace(cfg, "")
+}
+
+func (r *Runtime) DefaultWorkspacePath() string {
+	return config.DefaultWorkspacePath()
+}
+
+func (r *Runtime) ResolveForegroundWorkspace(preferred string) (string, error) {
+	cfg, _ := config.Load()
+	target := config.ResolveForegroundWorkspace(cfg, preferred)
+	target = normalizeWorkspacePath(target)
+	if target == "" {
+		return "", errors.New("workspace path required")
+	}
+	if err := r.RememberWorkspace(target, true); err != nil {
+		return "", err
+	}
+	return target, nil
 }
 
 func (r *Runtime) TrustWorkspace(path string) error {
 	p, err := resolveWorkspacePath(path)
 	if err != nil {
+		return err
+	}
+	if err := rememberWorkspaceConfig(p, false); err != nil {
 		return err
 	}
 	cfg, cfgPath := config.Load()
@@ -332,7 +827,394 @@ func (r *Runtime) TrustWorkspace(path string) error {
 		}
 	}
 	cfg.TrustedWorkspaces = append(cfg.TrustedWorkspaces, want)
-	return config.Save(cfg, cfgPath)
+	if err := config.Save(cfg, cfgPath); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicWorkspace, "workspace.trust")
+	return nil
+}
+
+func (r *Runtime) SetForegroundWorkspace(path string) error {
+	return r.UseWorkspace(path)
+}
+
+func (r *Runtime) ListWorktrees() []Worktree {
+	root := r.workingRoot()
+	items, err := listGitWorktrees(root)
+	if err != nil {
+		return nil
+	}
+	active := normalizeWorkspacePath(root)
+	for index := range items {
+		items[index].Active = pathsEqual(items[index].Path, active)
+		items[index].Removable = !items[index].Active
+	}
+	return items
+}
+
+func (r *Runtime) CreateWorktree(name string) (Worktree, error) {
+	root := r.workingRoot()
+	if strings.TrimSpace(root) == "" {
+		return Worktree{}, errors.New("workspace path required")
+	}
+	name, err := sanitizeWorktreeName(name)
+	if err != nil {
+		return Worktree{}, err
+	}
+	baseDir := filepath.Join(root, ".eos", "worktrees")
+	target := filepath.Join(baseDir, name)
+	if err := ensurePathWithin(baseDir, target); err != nil {
+		return Worktree{}, err
+	}
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		return Worktree{}, err
+	}
+	if _, err := runGitCommand(root, "worktree", "add", target); err != nil {
+		return Worktree{}, err
+	}
+	for _, item := range r.ListWorktrees() {
+		if pathsEqual(item.Path, target) {
+			r.notifyStateChanged(StateTopicWorkspace, "worktree.create")
+			return item, nil
+		}
+	}
+	item := Worktree{
+		Name:      name,
+		Path:      normalizeWorkspacePath(target),
+		Branch:    name,
+		Active:    false,
+		Removable: true,
+	}
+	r.notifyStateChanged(StateTopicWorkspace, "worktree.create")
+	return item, nil
+}
+
+func (r *Runtime) RemoveWorktree(path string, force bool) error {
+	target, err := resolveWorkspacePath(path)
+	if err != nil {
+		return err
+	}
+	found := false
+	active := false
+	for _, item := range r.ListWorktrees() {
+		if !pathsEqual(item.Path, target) {
+			continue
+		}
+		found = true
+		active = item.Active
+		break
+	}
+	if !found {
+		return errors.New("worktree not found")
+	}
+	if active {
+		return errors.New("active worktree cannot be removed")
+	}
+	args := []string{"worktree", "remove"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, target)
+	_, err = runGitCommand(r.workingRoot(), args...)
+	if err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicWorkspace, "worktree.remove")
+	return nil
+}
+
+func (r *Runtime) ListWorkspaceSessions(workspacePath string) ([]SessionMeta, error) {
+	resolved, err := resolveWorkspacePath(workspacePath)
+	if err != nil {
+		return nil, err
+	}
+	items, err := r.core.ListSessionsForWorkspaceRoot(resolved)
+	if err != nil {
+		return nil, err
+	}
+	return sessionMetasFromPersisted(items), nil
+}
+
+func (r *Runtime) CreateWorkspaceSession(workspacePath, title string, messages []SessionMessage) (SessionMeta, error) {
+	return withRuntimeWorkspace(r, workspacePath, func(resolved string) (SessionMeta, error) {
+		var zero SessionMeta
+		if err := rememberWorkspaceConfig(resolved, false); err != nil {
+			return zero, err
+		}
+		sessionID, err := r.SaveSessionMessages("", messages)
+		if err != nil {
+			return zero, err
+		}
+		if strings.TrimSpace(title) != "" {
+			if err := r.UpdateSessionTitle(sessionID, title); err != nil {
+				return zero, err
+			}
+		}
+		if err := r.SetCurrentSession(sessionID); err != nil {
+			return zero, err
+		}
+		for _, meta := range r.listCurrentWorkspaceSessions() {
+			if strings.TrimSpace(meta.ID) == sessionID {
+				return meta, nil
+			}
+		}
+		return SessionMeta{
+			ID:      sessionID,
+			SavedAt: time.Now(),
+			Title:   strings.TrimSpace(title),
+			Preview: sessionPreview(messages),
+			Summary: sessionPreview(messages),
+			Rounds:  len(messages),
+		}, nil
+	})
+}
+
+func (r *Runtime) SaveWorkspaceSessionMessages(workspacePath, id string, messages []SessionMessage) (string, error) {
+	return withRuntimeWorkspace(r, workspacePath, func(_ string) (string, error) {
+		return r.SaveSessionMessages(id, messages)
+	})
+}
+
+func (r *Runtime) LoadWorkspaceSessionMessages(workspacePath, id string) ([]SessionMessage, error) {
+	resolved, err := resolveWorkspacePath(workspacePath)
+	if err != nil {
+		return nil, err
+	}
+	items, err := r.core.LoadSessionMessagesForWorkspaceRoot(resolved, strings.TrimSpace(id))
+	if err != nil {
+		return nil, err
+	}
+	return sessionMessagesFromBridge(items), nil
+}
+
+func (r *Runtime) GetWorkspaceCurrentSession(workspacePath string) (string, error) {
+	resolved, err := resolveWorkspacePath(workspacePath)
+	if err != nil {
+		return "", err
+	}
+	return r.core.CurrentSessionIDForWorkspaceRoot(resolved)
+}
+
+func (r *Runtime) SetWorkspaceCurrentSession(workspacePath, id string) error {
+	_, err := withRuntimeWorkspace(r, workspacePath, func(_ string) (struct{}, error) {
+		return struct{}{}, r.SetCurrentSession(id)
+	})
+	return err
+}
+
+func (r *Runtime) UpdateWorkspaceSessionTitle(workspacePath, id, title string) error {
+	_, err := withRuntimeWorkspace(r, workspacePath, func(_ string) (struct{}, error) {
+		return struct{}{}, r.UpdateSessionTitle(id, title)
+	})
+	return err
+}
+
+func (r *Runtime) ResumeWorkspaceSession(workspacePath, id string) error {
+	_, err := withRuntimeWorkspace(r, workspacePath, func(_ string) (struct{}, error) {
+		return struct{}{}, r.ResumeSession(id)
+	})
+	return err
+}
+
+func (r *Runtime) DeleteWorkspaceSession(workspacePath, id string) error {
+	_, err := withRuntimeWorkspace(r, workspacePath, func(_ string) (struct{}, error) {
+		return struct{}{}, r.DeleteSession(id)
+	})
+	return err
+}
+
+func (r *Runtime) ResolveSessionWorkspace(sessionID string) (string, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return "", errors.New("session id required")
+	}
+	for _, workspace := range r.ListWorkspaces() {
+		metas, err := r.ListWorkspaceSessions(workspace.Path)
+		if err != nil {
+			continue
+		}
+		for _, meta := range metas {
+			if strings.TrimSpace(meta.ID) == sessionID {
+				return workspace.Path, nil
+			}
+		}
+	}
+	return "", os.ErrNotExist
+}
+
+func (r *Runtime) RuntimeSnapshot() RuntimeSnapshot {
+	foreground := normalizeWorkspacePath(r.core.GetActiveRoot())
+	workspaces := r.ListWorkspaces()
+	if foreground == "" {
+		foreground = normalizeWorkspacePath(r.LastWorkspace())
+	}
+	if foreground == "" && len(workspaces) > 0 {
+		foreground = workspaces[0].Path
+	}
+
+	out := RuntimeSnapshot{
+		ForegroundWorkspace: foreground,
+		Workspaces:          make([]WorkspaceSnapshot, 0, len(workspaces)),
+		Sessions:            make([]SessionSnapshot, 0),
+		Tasks:               r.ListTasks(),
+	}
+
+	for _, workspace := range workspaces {
+		currentID, _ := r.GetWorkspaceCurrentSession(workspace.Path)
+		metas, err := r.ListWorkspaceSessions(workspace.Path)
+		if err != nil {
+			metas = nil
+		}
+		out.Workspaces = append(out.Workspaces, WorkspaceSnapshot{
+			Path:             workspace.Path,
+			Name:             workspaceDisplayName(workspace.Path),
+			Trusted:          workspace.Trusted,
+			Active:           pathsEqual(workspace.Path, foreground) || workspace.Active,
+			SessionCount:     len(metas),
+			CurrentSessionID: strings.TrimSpace(currentID),
+		})
+
+		for _, meta := range metas {
+			messageCount := meta.Rounds
+			var messages []SessionMessage
+			isActiveSession := pathsEqual(workspace.Path, foreground) && strings.TrimSpace(currentID) == strings.TrimSpace(meta.ID)
+			if isActiveSession {
+				if loaded, err := r.LoadWorkspaceSessionMessages(workspace.Path, meta.ID); err == nil {
+					messages = loaded
+					if len(loaded) > 0 {
+						messageCount = len(loaded)
+					}
+				}
+			}
+			snapshot := SessionSnapshot{
+				ID:             meta.ID,
+				WorkspacePath:  workspace.Path,
+				Title:          strings.TrimSpace(meta.Title),
+				Preview:        fallbackText(strings.TrimSpace(meta.Preview), strings.TrimSpace(meta.Summary)),
+				UpdatedAt:      meta.SavedAt,
+				MessageCount:   messageCount,
+				PendingPrompts: 0,
+				Active:         isActiveSession,
+			}
+			out.Sessions = append(out.Sessions, snapshot)
+			if snapshot.Active {
+				current := snapshot
+				out.CurrentSession = &current
+				out.Messages = cloneSessionMessages(messages)
+			}
+		}
+	}
+
+	slices.SortFunc(out.Sessions, func(a, b SessionSnapshot) int {
+		if a.UpdatedAt.After(b.UpdatedAt) {
+			return -1
+		}
+		if a.UpdatedAt.Before(b.UpdatedAt) {
+			return 1
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
+	return out
+}
+
+func (r *Runtime) ListSessions() []SessionMeta {
+	return r.listCurrentWorkspaceSessions()
+}
+
+func (r *Runtime) SaveSession(id string) (string, error) {
+	sessionID, err := r.core.SaveSession(context.Background(), strings.TrimSpace(id))
+	if err != nil {
+		return "", err
+	}
+	r.notifyStateChanged(StateTopicSessions, "session.save")
+	return sessionID, nil
+}
+
+func (r *Runtime) SaveSessionMessages(id string, messages []SessionMessage) (string, error) {
+	items := make([]bridge.SessionTranscriptMessage, 0, len(messages))
+	for _, msg := range messages {
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		ts := int64(0)
+		if !msg.Time.IsZero() {
+			ts = msg.Time.Unix()
+		}
+		items = append(items, bridge.SessionTranscriptMessage{
+			Role:       strings.TrimSpace(msg.Role),
+			Type:       strings.TrimSpace(msg.Type),
+			Content:    content,
+			Timestamp:  ts,
+			ImagePaths: append([]string{}, msg.ImagePaths...),
+			Metadata:   cloneSessionMessageMetadata(msg.Metadata),
+		})
+	}
+	sessionID, err := r.core.SaveSessionMessages(context.Background(), strings.TrimSpace(id), items)
+	if err != nil {
+		return "", err
+	}
+	r.notifyStateChanged(StateTopicSessions, "session.messages.save")
+	return sessionID, nil
+}
+
+func (r *Runtime) LoadSessionMessages(id string) ([]SessionMessage, error) {
+	items, err := r.core.LoadSessionMessages(strings.TrimSpace(id))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SessionMessage, 0, len(items))
+	for _, item := range items {
+		var ts time.Time
+		if item.Timestamp > 0 {
+			ts = time.Unix(item.Timestamp, 0)
+		}
+		out = append(out, SessionMessage{
+			Role:       item.Role,
+			Type:       item.Type,
+			Content:    item.Content,
+			Time:       ts,
+			ImagePaths: append([]string{}, item.ImagePaths...),
+			Metadata:   cloneSessionMessageMetadata(item.Metadata),
+		})
+	}
+	return out, nil
+}
+
+func (r *Runtime) CurrentSessionID() (string, error) {
+	return r.core.CurrentSessionID()
+}
+
+func (r *Runtime) SetCurrentSession(id string) error {
+	if err := r.core.SetCurrentSession(strings.TrimSpace(id)); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicSessions, "session.current")
+	return nil
+}
+
+func (r *Runtime) UpdateSessionTitle(id, title string) error {
+	if err := r.core.UpdateSessionTitle(strings.TrimSpace(id), strings.TrimSpace(title)); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicSessions, "session.title")
+	return nil
+}
+
+func (r *Runtime) ResumeSession(id string) error {
+	if err := r.core.ResumeSession(context.Background(), strings.TrimSpace(id)); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicSessions, "session.resume")
+	return nil
+}
+
+func (r *Runtime) DeleteSession(id string) error {
+	if err := r.core.DeleteSession(strings.TrimSpace(id)); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicSessions, "session.delete")
+	return nil
 }
 
 func (r *Runtime) ListMCP() []MCPServer {
@@ -373,15 +1255,187 @@ func (r *Runtime) UpsertMCP(name, kind, target string, enabled bool) error {
 		entry.Command = target
 	}
 	if !r.core.UpdateMCPServer(entry) {
-		return r.core.AddMCPServers([]config.MCPEntry{entry})
+		if err := r.core.AddMCPServers([]config.MCPEntry{entry}); err != nil {
+			return err
+		}
+		r.notifyStateChanged(StateTopicMCP, "mcp.add")
+		return nil
 	}
+	r.notifyStateChanged(StateTopicMCP, "mcp.update")
 	return nil
+}
+
+func (r *Runtime) ImportMCPJSON(raw string) error {
+	entries, err := parseMCPImportJSON(raw)
+	if err != nil {
+		return err
+	}
+	if err := r.core.AddMCPServers(entries); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicMCP, "mcp.import")
+	return nil
+}
+
+func parseMCPImportJSON(raw string) ([]config.MCPEntry, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, errors.New("empty config")
+	}
+
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &top); err == nil {
+		if body, ok := top["mcp"]; ok {
+			return parseMCPEntriesJSON(body)
+		}
+		if _, ok := top["mcpServers"]; ok {
+			entries, err := config.ParseLegacyMCPServersJSON([]byte(raw))
+			if err != nil {
+				return nil, err
+			}
+			return validateMCPImportEntries(entries)
+		}
+	} else {
+		var probe []json.RawMessage
+		if arrayErr := json.Unmarshal([]byte(raw), &probe); arrayErr != nil {
+			return nil, fmt.Errorf("invalid JSON: %w", err)
+		}
+	}
+
+	return parseMCPEntriesJSON(json.RawMessage(raw))
+}
+
+func parseMCPEntriesJSON(raw json.RawMessage) ([]config.MCPEntry, error) {
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, fmt.Errorf("mcp must be an array: %w", err)
+	}
+	if len(items) == 0 {
+		return nil, errors.New("empty config")
+	}
+
+	entries := make([]config.MCPEntry, 0, len(items))
+	for _, item := range items {
+		var entry config.MCPEntry
+		if err := json.Unmarshal(item, &entry); err != nil {
+			return nil, fmt.Errorf("invalid mcp entry: %w", err)
+		}
+
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(item, &obj); err == nil {
+			if _, ok := obj["enabled"]; !ok {
+				entry.Enabled = true
+			}
+			if len(entry.Envs) == 0 {
+				if envRaw, ok := obj["env"]; ok {
+					entry.Envs = parseMCPStringMap(envRaw)
+				}
+			}
+			if entry.BaseURL == "" {
+				if urlRaw, ok := obj["url"]; ok {
+					entry.BaseURL = parseMCPString(urlRaw)
+				}
+			}
+		}
+
+		entries = append(entries, normalizeMCPEntry(entry))
+	}
+	return validateMCPImportEntries(entries)
+}
+
+func normalizeMCPEntry(entry config.MCPEntry) config.MCPEntry {
+	entry.Name = strings.TrimSpace(entry.Name)
+	entry.Type = config.MCPClientType(strings.ToLower(strings.TrimSpace(string(entry.Type))))
+	entry.Command = strings.TrimSpace(entry.Command)
+	entry.BaseURL = strings.TrimSpace(entry.BaseURL)
+
+	args := make([]string, 0, len(entry.Args))
+	for _, arg := range entry.Args {
+		if arg = strings.TrimSpace(arg); arg != "" {
+			args = append(args, arg)
+		}
+	}
+	entry.Args = args
+
+	if len(entry.Envs) > 0 {
+		envs := make(map[string]string, len(entry.Envs))
+		for key, value := range entry.Envs {
+			if key = strings.TrimSpace(key); key != "" {
+				envs[key] = value
+			}
+		}
+		entry.Envs = envs
+	}
+
+	if entry.Type == "" {
+		if entry.BaseURL != "" {
+			entry.Type = config.MCPTypeSSE
+		} else {
+			entry.Type = config.MCPTypeStdio
+		}
+	}
+	return entry
+}
+
+func validateMCPImportEntries(entries []config.MCPEntry) ([]config.MCPEntry, error) {
+	if len(entries) == 0 {
+		return nil, errors.New("empty config")
+	}
+	seen := make(map[string]struct{}, len(entries))
+	for i := range entries {
+		entries[i] = normalizeMCPEntry(entries[i])
+		entry := entries[i]
+		if entry.Name == "" {
+			return nil, errors.New("missing server name")
+		}
+		if _, ok := seen[entry.Name]; ok {
+			return nil, fmt.Errorf("duplicate server name: %s", entry.Name)
+		}
+		seen[entry.Name] = struct{}{}
+
+		switch entry.Type {
+		case config.MCPTypeStdio:
+			if entry.Command == "" {
+				return nil, fmt.Errorf("missing command for server: %s", entry.Name)
+			}
+		case config.MCPTypeSSE, config.MCPTypeStreamableHTTP:
+			if entry.BaseURL == "" {
+				return nil, fmt.Errorf("missing base_url for server: %s", entry.Name)
+			}
+		default:
+			return nil, fmt.Errorf("unsupported mcp type for server %s: %s", entry.Name, entry.Type)
+		}
+	}
+	return entries, nil
+}
+
+func parseMCPString(raw json.RawMessage) string {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+func parseMCPStringMap(raw json.RawMessage) map[string]string {
+	var values map[string]string
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		if key = strings.TrimSpace(key); key != "" {
+			out[key] = value
+		}
+	}
+	return out
 }
 
 func (r *Runtime) DeleteMCP(name string) error {
 	if !r.core.DeleteMCPServer(strings.TrimSpace(name)) {
 		return errors.New("mcp server not found")
 	}
+	r.notifyStateChanged(StateTopicMCP, "mcp.delete")
 	return nil
 }
 
@@ -399,6 +1453,7 @@ func (r *Runtime) SetMCPEnabled(name string, enabled bool) error {
 			return nil
 		}
 		if r.core.ToggleMCPServer(name) {
+			r.notifyStateChanged(StateTopicMCP, "mcp.enabled")
 			return nil
 		}
 		return errors.New("toggle mcp server failed")
@@ -428,7 +1483,11 @@ func (r *Runtime) SaveRules(v string) error {
 	if content == "" {
 		content = sharedruntime.RulesMdTemplate()
 	}
-	return os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicRules, "rules.save")
+	return nil
 }
 
 func (r *Runtime) ResetRules() error {
@@ -445,7 +1504,7 @@ func (r *Runtime) GetSettings() Settings {
 	return Settings{
 		Language:       cur.Language,
 		Theme:          cur.Theme,
-		MidRiskConfirm: true,
+		MidRiskConfirm: false,
 	}
 }
 
@@ -458,7 +1517,11 @@ func (r *Runtime) SaveSettings(v Settings) error {
 	if strings.TrimSpace(v.Theme) != "" {
 		cur.Theme = strings.TrimSpace(v.Theme)
 	}
-	return r.core.SaveSettings(path, &cur)
+	if err := r.core.SaveSettings(path, &cur); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicSettings, "settings.save")
+	return nil
 }
 
 func (r *Runtime) ListVersions() []VersionItem {
@@ -466,10 +1529,10 @@ func (r *Runtime) ListVersions() []VersionItem {
 	if err != nil || len(files) == 0 {
 		return nil
 	}
-	wd, _ := os.Getwd()
+	root := r.workingRoot()
 	out := make([]VersionItem, 0)
 	for _, f := range files {
-		abs := filepath.Join(wd, filepath.FromSlash(f.PathRel))
+		abs := filepath.Join(root, filepath.FromSlash(f.PathRel))
 		versions, verErr := r.core.ListVersionsForPath(abs)
 		if verErr != nil {
 			continue
@@ -511,6 +1574,7 @@ func (r *Runtime) RollbackVersion(id string) error {
 	if e := resultToError(res); e != nil {
 		return e
 	}
+	r.notifyStateChanged(StateTopicVersions, "version.rollback")
 	return nil
 }
 
@@ -527,6 +1591,7 @@ func (r *Runtime) DeleteVersion(id string) error {
 	if e := resultToError(res); e != nil {
 		return e
 	}
+	r.notifyStateChanged(StateTopicVersions, "version.delete")
 	return nil
 }
 
@@ -548,6 +1613,7 @@ func (r *Runtime) DeleteFileVersions(file string) int {
 	if resultToError(res) != nil {
 		return 0
 	}
+	r.notifyStateChanged(StateTopicVersions, "version.file.clear")
 	return count
 }
 
@@ -560,6 +1626,7 @@ func (r *Runtime) ClearVersions() int {
 	if resultToError(res) != nil {
 		return 0
 	}
+	r.notifyStateChanged(StateTopicVersions, "versions.clear")
 	return len(items)
 }
 
@@ -598,10 +1665,13 @@ func (r *Runtime) DetectLSP(language string) string {
 			continue
 		}
 		if !it.Found {
+			r.notifyStateChanged(StateTopicLSP, "lsp.detect")
 			return it.Language + " server not found"
 		}
+		r.notifyStateChanged(StateTopicLSP, "lsp.detect")
 		return it.Language + ": " + strings.TrimSpace(it.Command)
 	}
+	r.notifyStateChanged(StateTopicLSP, "lsp.detect")
 	return "language not supported: " + language
 }
 
@@ -615,6 +1685,7 @@ func (r *Runtime) StartLSP(language string) string {
 	}
 	st := r.core.LSPStatus()
 	if strings.EqualFold(strings.TrimSpace(st.ActiveLanguage), lang) && strings.TrimSpace(st.ActiveServer) != "" {
+		r.notifyStateChanged(StateTopicLSP, "lsp.start")
 		return st.ActiveLanguage + " already running"
 	}
 	for _, it := range st.Servers {
@@ -622,10 +1693,13 @@ func (r *Runtime) StartLSP(language string) string {
 			continue
 		}
 		if !it.Found {
+			r.notifyStateChanged(StateTopicLSP, "lsp.start")
 			return it.Language + " server not found"
 		}
+		r.notifyStateChanged(StateTopicLSP, "lsp.start")
 		return "LSP auto-starts when needed: " + it.Language
 	}
+	r.notifyStateChanged(StateTopicLSP, "lsp.start")
 	return "language not supported: " + language
 }
 
@@ -644,6 +1718,242 @@ func (r *Runtime) LSPDiagnostics() []string {
 		out = append(out, line)
 	}
 	return out
+}
+
+func (r *Runtime) PermissionSnapshot() PermissionSnapshot {
+	snap := r.core.PermissionSnapshot()
+	return PermissionSnapshot{
+		ExecutionMode:     strings.TrimSpace(snap.ExecutionMode),
+		SandboxMode:       toolapi.NormalizeSandboxMode(snap.SandboxMode),
+		AllowAll:          snap.AllowAll,
+		AllowedCategories: append([]string(nil), snap.AllowedCategories...),
+		HasPendingDiff:    snap.HasPendingDiff,
+		PendingDiffPath:   strings.TrimSpace(snap.PendingDiffPath),
+	}
+}
+
+func (r *Runtime) PendingReview() PendingReview {
+	diff := strings.TrimSpace(r.core.GetPendingDiff())
+	path := strings.TrimSpace(r.core.GetPendingDiffPath())
+	return PendingReview{
+		Path:    path,
+		Diff:    diff,
+		HasDiff: diff != "",
+	}
+}
+
+func (r *Runtime) ClearPendingReview() {
+	r.core.ClearPendingDiff()
+	r.notifyStateChanged(StateTopicReview, "review.clear")
+}
+
+func (r *Runtime) ListSkills() []SkillInfo {
+	var raw []*skillspkg.Skill
+	if loader := r.core.GetSkillsLoader(); loader != nil {
+		raw = loader.List()
+	}
+	sm := r.core.GetSkillManager()
+	if len(raw) == 0 && sm != nil {
+		raw = sm.List()
+	}
+	active := map[string]bool{}
+	if sm != nil {
+		for name := range sm.GetActive() {
+			active[strings.TrimSpace(name)] = true
+		}
+	}
+	cfg, _ := config.Load()
+	out := make([]SkillInfo, 0, len(raw))
+	for _, skill := range raw {
+		if skill == nil {
+			continue
+		}
+		name := strings.TrimSpace(skill.Name)
+		enabled := sm == nil || !sm.IsDisabled(name)
+		if sm == nil {
+			enabled = !config.IsSkillDisabled(&cfg, name)
+		}
+		item := SkillInfo{
+			Name:                   name,
+			Description:            strings.TrimSpace(skill.Description),
+			Source:                 skillInfoSource(skill),
+			ArgumentHint:           strings.TrimSpace(skill.ArgumentHint),
+			Location:               strings.TrimSpace(skill.Location),
+			BaseDir:                strings.TrimSpace(skill.BaseDir),
+			AllowedTools:           skill.AllowedTools.Values(),
+			Enabled:                enabled,
+			Active:                 enabled && active[name],
+			DisableModelInvocation: skill.DisableModelInvocation,
+		}
+		if skill.UserInvocable != nil {
+			item.UserInvocableDefined = true
+			item.UserInvocable = *skill.UserInvocable
+		}
+		out = append(out, item)
+	}
+	slices.SortFunc(out, func(a, b SkillInfo) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+	return out
+}
+
+func (r *Runtime) ReloadSkills() error {
+	cfg, _ := config.Load()
+	skillDirs := skillspkg.ResolveScanDirs(runtimePluginWorkspaceRoot(r), &cfg)
+	if sm := r.core.GetSkillManager(); sm != nil {
+		if loader := sm.GetLoader(); loader != nil {
+			loader.SetSkillsDirs(skillDirs)
+		}
+		sm.SetDisabledSkills(cfg.DisabledSkills)
+		if err := sm.ReloadPreserveActive(); err != nil {
+			return err
+		}
+		r.notifyStateChanged(StateTopicSkills, "skills.reload")
+		return nil
+	}
+	if loader := r.core.GetSkillsLoader(); loader != nil {
+		loader.SetSkillsDirs(skillDirs)
+		if err := loader.Reload(); err != nil {
+			return err
+		}
+		r.notifyStateChanged(StateTopicSkills, "skills.reload")
+		return nil
+	}
+	r.notifyStateChanged(StateTopicSkills, "skills.reload")
+	return nil
+}
+
+func (r *Runtime) SetSkillEnabled(name string, enabled bool) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("name required")
+	}
+	found := false
+	currentEnabled := true
+	for _, item := range r.ListSkills() {
+		if !strings.EqualFold(strings.TrimSpace(item.Name), name) {
+			continue
+		}
+		found = true
+		name = item.Name
+		currentEnabled = item.Enabled
+		break
+	}
+	if !found {
+		return errors.New("skill not found")
+	}
+	if currentEnabled == enabled {
+		if sm := r.core.GetSkillManager(); sm != nil {
+			sm.SetDisabled(name, !enabled)
+		}
+		return nil
+	}
+	cfg, cfgPath := config.Load()
+	if strings.TrimSpace(cfgPath) == "" {
+		return errors.New("config path empty")
+	}
+	config.SetSkillDisabled(&cfg, name, !enabled)
+	if err := config.Save(cfg, cfgPath); err != nil {
+		return err
+	}
+	if sm := r.core.GetSkillManager(); sm != nil {
+		sm.SetDisabled(name, !enabled)
+	}
+	r.notifyStateChanged(StateTopicSkills, "skill.enabled")
+	return nil
+}
+
+func (r *Runtime) ListPlugins() []PluginInfo {
+	items := pluginpkg.DefaultRegistry().List()
+	out := make([]PluginInfo, 0, len(items))
+	cfg, _ := config.Load()
+	seen := map[string]struct{}{}
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		name := strings.TrimSpace(item.Name())
+		if name == "" {
+			continue
+		}
+		seen[strings.ToLower(name)] = struct{}{}
+		enabled := pluginpkg.DefaultRegistry().IsEnabled(name)
+		if cfgEnabled, ok := config.PluginEnabled(&cfg, name); ok {
+			enabled = cfgEnabled
+		}
+		meta := pluginpkg.MetadataOf(item)
+		out = append(out, PluginInfo{
+			Name:        name,
+			Description: strings.TrimSpace(item.Description()),
+			Source:      strings.TrimSpace(meta.Source),
+			Command:     strings.TrimSpace(meta.Command),
+			Enabled:     enabled,
+		})
+	}
+	workspaceRoot := runtimePluginWorkspaceRoot(r)
+	discovered, _ := pluginpkg.Discover(workspaceRoot)
+	for _, item := range discovered {
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[strings.ToLower(name)]; ok {
+			continue
+		}
+		enabled := true
+		if cfgEnabled, ok := config.PluginEnabled(&cfg, name); ok {
+			enabled = cfgEnabled
+		}
+		out = append(out, PluginInfo{
+			Name:        name,
+			Description: strings.TrimSpace(item.Description),
+			Source:      "directory:" + strings.TrimSpace(item.Location),
+			Enabled:     enabled,
+		})
+	}
+	slices.SortFunc(out, func(a, b PluginInfo) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+	return out
+}
+
+func (r *Runtime) SetPluginEnabled(name string, enabled bool) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("name required")
+	}
+	found := false
+	currentEnabled := true
+	for _, item := range r.ListPlugins() {
+		if !strings.EqualFold(strings.TrimSpace(item.Name), name) {
+			continue
+		}
+		found = true
+		name = item.Name
+		currentEnabled = item.Enabled
+		break
+	}
+	if !found {
+		return errors.New("plugin not found")
+	}
+	if currentEnabled == enabled {
+		pluginpkg.DefaultRegistry().SetEnabled(name, enabled)
+		return nil
+	}
+	cfg, cfgPath := config.Load()
+	if strings.TrimSpace(cfgPath) == "" {
+		return errors.New("config path empty")
+	}
+	config.SetPluginEnabled(&cfg, name, enabled)
+	if err := config.Save(cfg, cfgPath); err != nil {
+		return err
+	}
+	pluginpkg.DefaultRegistry().SetEnabled(name, enabled)
+	if err := r.ReloadSkills(); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicPlugins, "plugin.enabled")
+	return nil
 }
 
 func (r *Runtime) ContextPreview() []string {
@@ -672,11 +1982,13 @@ func (r *Runtime) CompactContext() string {
 	beforeCount, beforeTokens := r.ContextStats()
 	r.core.CompactContext()
 	afterCount, afterTokens := r.ContextStats()
+	r.notifyStateChanged(StateTopicContext, "context.compact")
 	return fmt.Sprintf("context compacted: messages %d→%d, tokens %d→%d", beforeCount, afterCount, beforeTokens, afterTokens)
 }
 
 func (r *Runtime) ClearContext() {
 	r.core.ClearContext()
+	r.notifyStateChanged(StateTopicContext, "context.clear")
 }
 
 func (r *Runtime) ExportContext(path string) error {
@@ -686,8 +1998,7 @@ func (r *Runtime) ExportContext(path string) error {
 	}
 	abs := path
 	if !filepath.IsAbs(abs) {
-		wd, _ := os.Getwd()
-		abs = filepath.Join(wd, path)
+		abs = filepath.Join(r.workingRoot(), path)
 	}
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		return err
@@ -727,27 +2038,33 @@ func (r *Runtime) CostItems() []CostItem {
 }
 
 func (r *Runtime) projectRulesPath() string {
-	root := strings.TrimSpace(r.core.GetActiveRoot())
-	if root == "" {
-		if wd, err := os.Getwd(); err == nil {
-			root = wd
-		}
-	}
+	root := r.workingRoot()
 	if strings.TrimSpace(root) == "" {
-		return filepath.Join(".vb", "Rules.md")
+		return filepath.Join(".eos", "Rules.md")
 	}
-	return filepath.Join(root, ".vb", "Rules.md")
+	return filepath.Join(root, ".eos", "Rules.md")
+}
+
+func (r *Runtime) workingRoot() string {
+	root := strings.TrimSpace(r.core.GetActiveRoot())
+	if root != "" {
+		return root
+	}
+	if wd, err := os.Getwd(); err == nil {
+		return wd
+	}
+	return ""
 }
 
 func (r *Runtime) settingsPath() string {
 	root := strings.TrimSpace(r.core.GetActiveRoot())
 	if root != "" {
-		return filepath.Join(root, ".vb", "settings.json")
+		return filepath.Join(root, ".eos", "settings.json")
 	}
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		return filepath.Join(home, ".vb", "settings.json")
+		return filepath.Join(home, ".eos", "settings.json")
 	}
-	return filepath.Join(".vb", "settings.json")
+	return filepath.Join(".eos", "settings.json")
 }
 
 func (r *Runtime) findVersionByID(id string) (VersionItem, error) {
@@ -757,6 +2074,129 @@ func (r *Runtime) findVersionByID(id string) (VersionItem, error) {
 		}
 	}
 	return VersionItem{}, errors.New("version not found")
+}
+
+func listGitWorktrees(root string) ([]Worktree, error) {
+	out, err := runGitCommand(root, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n")
+	items := make([]Worktree, 0)
+	current := Worktree{}
+	flush := func() {
+		if strings.TrimSpace(current.Path) == "" {
+			return
+		}
+		current.Path = normalizeWorkspacePath(current.Path)
+		if strings.TrimSpace(current.Name) == "" {
+			current.Name = filepath.Base(current.Path)
+		}
+		if strings.TrimSpace(current.Branch) == "" {
+			current.Branch = "detached"
+		}
+		items = append(items, current)
+		current = Worktree{}
+	}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			flush()
+			current.Path = strings.TrimSpace(strings.TrimPrefix(line, "worktree "))
+		case strings.HasPrefix(line, "HEAD "):
+			current.Head = strings.TrimSpace(strings.TrimPrefix(line, "HEAD "))
+			if len(current.Head) > 12 {
+				current.Head = current.Head[:12]
+			}
+		case strings.HasPrefix(line, "branch "):
+			current.Branch = shortGitRef(strings.TrimSpace(strings.TrimPrefix(line, "branch ")))
+		case line == "detached":
+			current.Branch = "detached"
+		case line == "bare":
+			current.Branch = "bare"
+		}
+	}
+	flush()
+	slices.SortFunc(items, func(a, b Worktree) int {
+		if a.Active != b.Active {
+			if a.Active {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+	return items, nil
+}
+
+func runGitCommand(root string, args ...string) (string, error) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return "", errors.New("workspace path required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := utils.CommandContext(ctx, "git", append([]string{"-C", root}, args...)...)
+	out, err := cmd.CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if err != nil {
+		if text != "" {
+			return "", fmt.Errorf("%w: %s", err, text)
+		}
+		return "", err
+	}
+	return text, nil
+}
+
+func shortGitRef(value string) string {
+	value = strings.TrimSpace(value)
+	for _, prefix := range []string{"refs/heads/", "refs/remotes/"} {
+		if strings.HasPrefix(value, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(value, prefix))
+		}
+	}
+	return value
+}
+
+func sanitizeWorktreeName(raw string) (string, error) {
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		name = fmt.Sprintf("worktree-%d", time.Now().Unix())
+	}
+	name = strings.ReplaceAll(name, " ", "-")
+	if name == "." || name == ".." || strings.Contains(name, "..") {
+		return "", errors.New("invalid worktree name")
+	}
+	for _, ch := range name {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' || ch == '.' {
+			continue
+		}
+		return "", errors.New("worktree name can only contain letters, numbers, dot, dash, and underscore")
+	}
+	return name, nil
+}
+
+func ensurePathWithin(base, target string) error {
+	baseAbs, err := filepath.Abs(base)
+	if err != nil {
+		return err
+	}
+	targetAbs, err := filepath.Abs(target)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(baseAbs, targetAbs)
+	if err != nil {
+		return err
+	}
+	if rel == "." || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return errors.New("worktree path escapes workspace worktree directory")
+	}
+	return nil
 }
 
 func resultToError(s string) error {
@@ -771,50 +2211,53 @@ func resultToError(s string) error {
 }
 
 func resolveWorkspacePath(raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", errors.New("workspace path required")
-	}
-	if raw == "~" || strings.HasPrefix(raw, "~"+string(os.PathSeparator)) || strings.HasPrefix(raw, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil || strings.TrimSpace(home) == "" {
-			return "", errors.New("failed to resolve home path")
-		}
-		rest := strings.TrimPrefix(raw, "~")
-		rest = strings.TrimPrefix(rest, "/")
-		rest = strings.TrimPrefix(rest, "\\")
-		raw = filepath.Join(home, rest)
-	}
-	abs, err := filepath.Abs(raw)
-	if err != nil {
-		return "", err
-	}
-	return normalizeWorkspacePath(abs), nil
+	return config.ResolveWorkspacePath(raw)
 }
 
 func normalizeWorkspacePath(p string) string {
-	p = strings.TrimSpace(p)
-	if p == "" {
-		return ""
-	}
-	p = filepath.Clean(filepath.FromSlash(p))
-	if vol := filepath.VolumeName(p); vol != "" {
-		rest := strings.TrimPrefix(p, vol)
-		p = strings.ToUpper(vol) + rest
-	}
-	return p
+	return config.NormalizeWorkspacePath(p)
 }
 
 func pathsEqual(a, b string) bool {
-	a = strings.TrimSpace(a)
-	b = strings.TrimSpace(b)
-	if a == "" || b == "" {
-		return false
+	return config.PathsEqual(a, b)
+}
+
+func skillInfoSource(skill *skillspkg.Skill) string {
+	if skill == nil {
+		return ""
 	}
-	if strings.EqualFold(filepath.VolumeName(a), filepath.VolumeName(b)) {
-		return strings.EqualFold(a, b)
+	if strings.TrimSpace(skill.PluginName) != "" {
+		return "plugin:" + strings.TrimSpace(skill.PluginName)
 	}
-	return a == b
+	source := strings.TrimSpace(skill.Location)
+	if source != "" {
+		return source
+	}
+	if strings.TrimSpace(skill.BaseDir) != "" {
+		return "scanner"
+	}
+	return ""
+}
+
+func runtimePluginWorkspaceRoot(r *Runtime) string {
+	if r == nil || r.core == nil {
+		if wd, err := os.Getwd(); err == nil {
+			return normalizeWorkspacePath(wd)
+		}
+		return ""
+	}
+	if root := normalizeWorkspacePath(r.core.GetActiveRoot()); root != "" {
+		return root
+	}
+	for _, root := range r.core.GetWorkspaceRoots() {
+		if normalized := normalizeWorkspacePath(root); normalized != "" {
+			return normalized
+		}
+	}
+	if wd, err := os.Getwd(); err == nil {
+		return normalizeWorkspacePath(wd)
+	}
+	return ""
 }
 
 func trustedWorkspaceSet() map[string]struct{} {
@@ -830,22 +2273,622 @@ func trustedWorkspaceSet() map[string]struct{} {
 	return out
 }
 
+func knownWorkspaceSet() map[string]struct{} {
+	cfg, _ := config.Load()
+	out := map[string]struct{}{}
+	for _, path := range config.NormalizeKnownWorkspaces(cfg.KnownWorkspaces) {
+		normalized := normalizeWorkspacePath(path)
+		if normalized == "" {
+			continue
+		}
+		out[normalized] = struct{}{}
+	}
+	return out
+}
+
+func (r *Runtime) listCurrentWorkspaceSessions() []SessionMeta {
+	items, err := r.core.ListSessions()
+	if err != nil {
+		return nil
+	}
+	return sessionMetasFromPersisted(items)
+}
+
+func sessionMetasFromPersisted(items []bridge.PersistedSessionMeta) []SessionMeta {
+	out := make([]SessionMeta, 0, len(items))
+	for _, it := range items {
+		out = append(out, SessionMeta{
+			ID:      it.ID,
+			SavedAt: time.Unix(it.SavedAt, 0),
+			Model:   it.Model,
+			Summary: it.Summary,
+			Preview: it.Preview,
+			Title:   it.Title,
+			Rounds:  it.Rounds,
+			Tokens:  it.Tokens,
+		})
+	}
+	return out
+}
+
+func sessionMessagesFromBridge(items []bridge.SessionTranscriptMessage) []SessionMessage {
+	out := make([]SessionMessage, 0, len(items))
+	for _, item := range items {
+		var ts time.Time
+		if item.Timestamp > 0 {
+			ts = time.Unix(item.Timestamp, 0)
+		}
+		out = append(out, SessionMessage{
+			Role:       item.Role,
+			Type:       item.Type,
+			Content:    item.Content,
+			Time:       ts,
+			ImagePaths: append([]string{}, item.ImagePaths...),
+			Metadata:   cloneSessionMessageMetadata(item.Metadata),
+		})
+	}
+	return out
+}
+
+func cloneSessionMessageMetadata(metadata map[string]any) map[string]any {
+	if len(metadata) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(metadata))
+	for key, value := range metadata {
+		out[key] = cloneSessionMessageMetadataValue(value)
+	}
+	return out
+}
+
+func cloneSessionMessageMetadataValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return cloneSessionMessageMetadata(typed)
+	case []any:
+		out := make([]any, len(typed))
+		for index := range typed {
+			out[index] = cloneSessionMessageMetadataValue(typed[index])
+		}
+		return out
+	case []map[string]any:
+		out := make([]map[string]any, len(typed))
+		for index := range typed {
+			out[index] = cloneSessionMessageMetadata(typed[index])
+		}
+		return out
+	case []string:
+		return append([]string{}, typed...)
+	case []int:
+		return append([]int{}, typed...)
+	case []int64:
+		return append([]int64{}, typed...)
+	case []float64:
+		return append([]float64{}, typed...)
+	case []bool:
+		return append([]bool{}, typed...)
+	default:
+		return value
+	}
+}
+
+func cloneSessionMessages(messages []SessionMessage) []SessionMessage {
+	if len(messages) == 0 {
+		return nil
+	}
+	out := make([]SessionMessage, len(messages))
+	copy(out, messages)
+	for index := range out {
+		out[index].ImagePaths = append([]string{}, out[index].ImagePaths...)
+		out[index].Metadata = cloneSessionMessageMetadata(out[index].Metadata)
+	}
+	return out
+}
+
+func withRuntimeWorkspace[T any](r *Runtime, workspacePath string, fn func(string) (T, error)) (T, error) {
+	var zero T
+	resolved, err := resolveWorkspacePath(workspacePath)
+	if err != nil {
+		return zero, err
+	}
+
+	r.workspaceMu.Lock()
+	defer r.workspaceMu.Unlock()
+
+	previous := normalizeWorkspacePath(r.core.GetActiveRoot())
+	if !pathsEqual(previous, resolved) {
+		r.core.AddWorkspaceRoot(resolved)
+		if r.core.SetActiveWorkspaceRoot(resolved) == nil {
+			return zero, errors.New("workspace not found")
+		}
+	}
+
+	defer func() {
+		if previous == "" || pathsEqual(previous, resolved) {
+			return
+		}
+		_ = r.core.SetActiveWorkspaceRoot(previous)
+	}()
+
+	return fn(resolved)
+}
+
+func sessionPreview(messages []SessionMessage) string {
+	for _, msg := range messages {
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		content = strings.ReplaceAll(content, "\r", " ")
+		content = strings.ReplaceAll(content, "\n", " ")
+		if len(content) > 96 {
+			content = content[:96]
+		}
+		return content
+	}
+	return ""
+}
+
+func workspaceDisplayName(path string) string {
+	base := filepath.Base(strings.TrimSpace(path))
+	if base == "." || base == string(filepath.Separator) || strings.TrimSpace(base) == "" {
+		return strings.TrimSpace(path)
+	}
+	return base
+}
+
+func fallbackText(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value != "" {
+		return value
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func normalizeReasoningLevel(level string) string {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "low":
+		return "low"
+	case "high":
+		return "high"
+	case "medium":
+		return "medium"
+	default:
+		return "off"
+	}
+}
+
+func removeTrustedWorkspace(path string) error {
+	cfg, cfgPath := config.Load()
+	if strings.TrimSpace(cfgPath) == "" {
+		return errors.New("config path empty")
+	}
+	filtered, changed := filterTrustedWorkspaces(cfg.TrustedWorkspaces, path)
+	if !changed {
+		return nil
+	}
+	cfg.TrustedWorkspaces = filtered
+	return config.Save(cfg, cfgPath)
+}
+
+func rememberWorkspaceConfig(path string, foreground bool) error {
+	cfg, cfgPath := config.Load()
+	if strings.TrimSpace(cfgPath) == "" {
+		return errors.New("config path empty")
+	}
+	if !config.RememberWorkspace(&cfg, path, foreground) {
+		return nil
+	}
+	return config.Save(cfg, cfgPath)
+}
+
+func forgetWorkspaceConfig(path string) error {
+	cfg, cfgPath := config.Load()
+	if strings.TrimSpace(cfgPath) == "" {
+		return errors.New("config path empty")
+	}
+	if !config.ForgetWorkspace(&cfg, path) {
+		return nil
+	}
+	return config.Save(cfg, cfgPath)
+}
+
+func filterTrustedWorkspaces(trusted []string, target string) ([]string, bool) {
+	want := normalizeWorkspacePath(target)
+	if want == "" {
+		return append([]string(nil), trusted...), false
+	}
+	filtered := make([]string, 0, len(trusted))
+	changed := false
+	for _, cur := range trusted {
+		if pathsEqual(normalizeWorkspacePath(cur), want) {
+			changed = true
+			continue
+		}
+		filtered = append(filtered, cur)
+	}
+	return filtered, changed
+}
+
+func newCoreRequestID(prefix string) string {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		prefix = "req"
+	}
+	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
+}
+
+func newCoreRequestEvent(eventType protocol.EventType, sessionID, threadID, requestID string, payload map[string]any) protocol.Envelope {
+	return protocol.NewEvent(eventType, protocol.EventOptions{
+		SessionID:     strings.TrimSpace(sessionID),
+		ThreadID:      strings.TrimSpace(threadID),
+		RequestID:     strings.TrimSpace(requestID),
+		CorrelationID: strings.TrimSpace(requestID),
+		Timestamp:     time.Now(),
+		Source:        protocol.SourceCore,
+		Payload:       payload,
+	})
+}
+
+func bridgeEventToProtocol(ev bridge.Event, sessionID, threadID, fallbackRequestID string, ts time.Time) (protocol.Envelope, bool) {
+	eventType := strings.TrimSpace(ev.Type)
+	requestID := strings.TrimSpace(ev.RID)
+	if requestID == "" {
+		requestID = strings.TrimSpace(fallbackRequestID)
+	}
+	payload := protocol.ClonePayload(ev.Data)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+
+	switch eventType {
+	case "meta", "delta", string(protocol.EventTypeTextDelta):
+		if _, ok := payload["text"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["text"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "final", string(protocol.EventTypeTextFinal):
+		if _, ok := payload["text"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["text"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeTextFinal, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "reasoning", "phase.note", string(protocol.EventTypeTextReasoning):
+		if _, ok := payload["text"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["text"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeTextReasoning, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "tool_call", string(protocol.EventTypeToolCall):
+		if _, ok := payload["tool_name"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["tool_name"] = ev.Content
+		}
+		if _, ok := payload["id"]; !ok && requestID != "" {
+			payload["id"] = requestID
+		}
+		return protocol.NewEvent(protocol.EventTypeToolCall, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "related_call_id", "id", "tool_call_id"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "tool_result", string(protocol.EventTypeToolResult):
+		if _, ok := payload["display"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["display"] = ev.Content
+		}
+		if _, ok := payload["id"]; !ok && requestID != "" {
+			payload["id"] = requestID
+		}
+		return protocol.NewEvent(protocol.EventTypeToolResult, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "related_call_id", "id", "tool_call_id"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "prompt.request", string(protocol.EventTypeApprovalReq), string(protocol.EventTypeInquiryReq):
+		kind := strings.ToLower(strings.TrimSpace(firstCoreString(payload, "kind")))
+		if eventType == string(protocol.EventTypeInquiryReq) || kind == "inquiry" {
+			if _, ok := payload["inquiry_id"]; !ok && requestID != "" {
+				payload["inquiry_id"] = requestID
+			}
+			if _, ok := payload["question"]; !ok && strings.TrimSpace(ev.Content) != "" {
+				payload["question"] = ev.Content
+			}
+			return protocol.NewEvent(protocol.EventTypeInquiryReq, protocol.EventOptions{
+				SessionID:     sessionID,
+				ThreadID:      threadID,
+				RequestID:     requestID,
+				CorrelationID: firstCoreString(payload, "related_call_id"),
+				Timestamp:     ts,
+				Source:        protocol.SourceCore,
+				Payload:       payload,
+			}), true
+		}
+		if _, ok := payload["approval_id"]; !ok && requestID != "" {
+			payload["approval_id"] = requestID
+		}
+		if _, ok := payload["message"]; !ok {
+			payload["message"] = firstCoreString(payload, "summary", "question")
+			if strings.TrimSpace(firstCoreString(payload, "message")) == "" && strings.TrimSpace(ev.Content) != "" {
+				payload["message"] = ev.Content
+			}
+		}
+		return protocol.NewEvent(protocol.EventTypeApprovalReq, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "related_call_id"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case string(protocol.EventTypeAgentStarted):
+		if _, ok := payload["agent_name"]; !ok && requestID != "" {
+			payload["agent_name"] = requestID
+		}
+		if _, ok := payload["task"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["task"] = ev.Content
+		}
+		if _, ok := payload["message"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["message"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeAgentStarted, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "agent_id", "agent_name"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "agent.task", string(protocol.EventTypeAgentProgress):
+		if _, ok := payload["agent_name"]; !ok && requestID != "" {
+			payload["agent_name"] = requestID
+		}
+		if _, ok := payload["task"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["task"] = ev.Content
+		}
+		if _, ok := payload["message"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["message"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeAgentProgress, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "agent_id", "agent_name"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "agent.final", string(protocol.EventTypeAgentDone):
+		if _, ok := payload["agent_name"]; !ok && requestID != "" {
+			payload["agent_name"] = requestID
+		}
+		if _, ok := payload["text"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["text"] = ev.Content
+		}
+		if _, ok := payload["message"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["message"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeAgentDone, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "agent_id", "agent_name"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case string(protocol.EventTypeAgentFailed):
+		if _, ok := payload["agent_name"]; !ok && requestID != "" {
+			payload["agent_name"] = requestID
+		}
+		if _, ok := payload["error"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["error"] = ev.Content
+		}
+		if _, ok := payload["message"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["message"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeAgentFailed, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "agent_id", "agent_name"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case string(protocol.EventTypeAgentCancelled):
+		if _, ok := payload["agent_name"]; !ok && requestID != "" {
+			payload["agent_name"] = requestID
+		}
+		if _, ok := payload["reason"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["reason"] = ev.Content
+		}
+		if _, ok := payload["message"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["message"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeAgentCancelled, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: firstCoreString(payload, "agent_id", "agent_name"),
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	case "error", string(protocol.EventTypeRequestFailed), string(protocol.EventTypeTaskFailed):
+		if _, ok := payload["error"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["error"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeRequestFailed, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	default:
+		if strings.TrimSpace(ev.Content) == "" && len(payload) == 0 {
+			return protocol.Envelope{}, false
+		}
+		if _, ok := payload["text"]; !ok && strings.TrimSpace(ev.Content) != "" {
+			payload["text"] = ev.Content
+		}
+		return protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
+			SessionID:     sessionID,
+			ThreadID:      threadID,
+			RequestID:     requestID,
+			CorrelationID: requestID,
+			Timestamp:     ts,
+			Source:        protocol.SourceCore,
+			Payload:       payload,
+		}), true
+	}
+}
+
+func legacyEventToProtocol(ev Event, sessionID, threadID string, ts time.Time) protocol.Envelope {
+	requestID := strings.TrimSpace(ev.RequestID)
+	correlationID := requestID
+	payload := protocol.ClonePayload(ev.Data)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+
+	eventType := protocol.EventTypeTextDelta
+	switch strings.TrimSpace(ev.Type) {
+	case "TextDelta":
+		eventType = protocol.EventTypeTextDelta
+		payload["text"] = ev.Message
+	case "TextFinal":
+		eventType = protocol.EventTypeTextFinal
+		payload["text"] = ev.Message
+	case "ToolStep":
+		eventType = protocol.EventTypeToolStep
+		payload["message"] = ev.Message
+	case "ConfirmRequired":
+		eventType = protocol.EventTypeApprovalReq
+		payload["approval_id"] = requestID
+		if _, ok := payload["message"]; !ok {
+			payload["message"] = ev.Message
+		}
+	case "Inquiry":
+		eventType = protocol.EventTypeInquiryReq
+		payload["inquiry_id"] = requestID
+		if _, ok := payload["question"]; !ok {
+			payload["question"] = ev.Message
+		}
+	case "Error":
+		eventType = protocol.EventTypeRequestFailed
+		payload["error"] = ev.Message
+	default:
+		if strings.TrimSpace(ev.Message) != "" {
+			payload["text"] = ev.Message
+		}
+	}
+
+	return protocol.NewEvent(eventType, protocol.EventOptions{
+		SessionID:     sessionID,
+		ThreadID:      threadID,
+		RequestID:     requestID,
+		CorrelationID: correlationID,
+		Timestamp:     ts,
+		Source:        protocol.SourceCore,
+		Payload:       payload,
+	})
+}
+
 func mapBridgeEvent(ev bridge.Event) (Event, bool) {
 	switch ev.Type {
-	case "prompt.request":
+	case "prompt.request", string(protocol.EventTypeApprovalReq), string(protocol.EventTypeInquiryReq):
 		msg := strings.TrimSpace(ev.Content)
 		if v, ok := ev.Data["question"].(string); ok && strings.TrimSpace(v) != "" {
 			msg = strings.TrimSpace(v)
 		}
-		return Event{Type: "ConfirmRequired", RequestID: ev.RID, Message: msg}, true
-	case "final":
+		if ev.Type == string(protocol.EventTypeInquiryReq) {
+			if v, ok := ev.Data["question"].(string); ok && strings.TrimSpace(v) != "" {
+				msg = strings.TrimSpace(v)
+			}
+			return Event{Type: "Inquiry", RequestID: ev.RID, Message: msg, Data: ev.Data}, true
+		}
+		if kind, ok := ev.Data["kind"].(string); ok && kind == "inquiry" {
+			return Event{Type: "Inquiry", RequestID: ev.RID, Message: msg, Data: ev.Data}, true
+		}
+		if v, ok := ev.Data["message"].(string); ok && strings.TrimSpace(v) != "" {
+			msg = strings.TrimSpace(v)
+		}
+		return Event{Type: "ConfirmRequired", RequestID: ev.RID, Message: msg, Data: ev.Data}, true
+	case "final", string(protocol.EventTypeTextFinal):
+		if v, ok := ev.Data["text"].(string); ok && strings.TrimSpace(v) != "" {
+			return Event{Type: "TextFinal", RequestID: ev.RID, Message: strings.TrimSpace(v), Data: ev.Data}, true
+		}
 		return Event{Type: "TextFinal", RequestID: ev.RID, Message: ev.Content}, true
-	case "error":
+	case "error", string(protocol.EventTypeRequestFailed), string(protocol.EventTypeAgentFailed), string(protocol.EventTypeAgentCancelled), string(protocol.EventTypeTaskFailed):
+		if v, ok := ev.Data["error"].(string); ok && strings.TrimSpace(v) != "" {
+			return Event{Type: "Error", RequestID: ev.RID, Message: strings.TrimSpace(v), Data: ev.Data}, true
+		}
 		return Event{Type: "Error", RequestID: ev.RID, Message: ev.Content}, true
-	case "delta":
+	case "meta", "delta", string(protocol.EventTypeTextDelta):
+		if v, ok := ev.Data["text"].(string); ok && strings.TrimSpace(v) != "" {
+			return Event{Type: "TextDelta", RequestID: ev.RID, Message: strings.TrimSpace(v), Data: ev.Data}, true
+		}
 		return Event{Type: "TextDelta", RequestID: ev.RID, Message: ev.Content}, true
-	case "tool_call", "tool_result", "reasoning":
-		return Event{Type: "ToolStep", RequestID: ev.RID, Message: ev.Content}, true
+	case "tool_call", "tool_result", "reasoning", "phase.note",
+		string(protocol.EventTypeToolCall), string(protocol.EventTypeToolResult), string(protocol.EventTypeTextReasoning),
+		string(protocol.EventTypeAgentStarted), string(protocol.EventTypeAgentProgress), string(protocol.EventTypeAgentDone),
+		string(protocol.EventTypeTaskStarted), string(protocol.EventTypeTaskUpdated), string(protocol.EventTypeTaskDone):
+		msg := strings.TrimSpace(ev.Content)
+		if msg == "" {
+			msg = firstCoreString(ev.Data, "message", "display", "tool_name", "task", "text", "label")
+		}
+		if msg == "" {
+			msg = firstCoreString(ev.Data, "tool_name")
+		}
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: msg, Data: ev.Data}, true
+	case "agent.task":
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: strings.TrimSpace(ev.Content), Data: ev.Data}, true
+	case "agent.final":
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: strings.TrimSpace(ev.Content), Data: ev.Data}, true
+	case string(protocol.EventTypeRequestDone):
+		return Event{Type: "TextFinal", RequestID: ev.RID, Message: firstCoreString(ev.Data, "text", "message"), Data: ev.Data}, true
+	case string(protocol.EventTypeRequestStarted):
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: firstCoreString(ev.Data, "message", "text"), Data: ev.Data}, true
+	case string(protocol.EventTypeSessionUpdated):
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: firstCoreString(ev.Data, "message", "title", "preview"), Data: ev.Data}, true
+	case string(protocol.EventTypeApprovalDone), string(protocol.EventTypeInquiryDone):
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: firstCoreString(ev.Data, "message", "decision", "option", "text"), Data: ev.Data}, true
+	case string(protocol.EventTypeToolStep):
+		return Event{Type: "ToolStep", RequestID: ev.RID, Message: firstCoreString(ev.Data, "message", "text", "display", "tool_name"), Data: ev.Data}, true
 	default:
 		if strings.TrimSpace(ev.Content) == "" {
 			return Event{}, false
@@ -854,24 +2897,38 @@ func mapBridgeEvent(ev bridge.Event) (Event, bool) {
 	}
 }
 
+func firstCoreString(payload map[string]any, keys ...string) string {
+	for _, key := range keys {
+		raw, ok := payload[key]
+		if !ok {
+			continue
+		}
+		if text, ok := raw.(string); ok {
+			text = strings.TrimSpace(text)
+			if text != "" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
 func toRuntimeMode(mode string) string {
 	switch strings.TrimSpace(mode) {
-	case "计划优先", "plan":
+	case "计划优先", "先出计划", "plan":
 		return "plan"
-	case "自动无人值守", "auto":
-		return "auto"
 	default:
-		return "manual"
+		return toolapi.NormalizeExecutionMode(mode)
 	}
 }
 
 func fromRuntimeMode(mode string) string {
-	switch strings.TrimSpace(strings.ToLower(mode)) {
+	switch toolapi.NormalizeExecutionMode(mode) {
 	case "plan":
-		return "计划优先"
+		return "plan"
 	case "auto":
-		return "自动无人值守"
+		return "auto"
 	default:
-		return "手动确认"
+		return "auto"
 	}
 }

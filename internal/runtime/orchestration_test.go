@@ -1,8 +1,16 @@
 package runtime
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
+	"strings"
 	"testing"
 
+	"github.com/dreamSailing/eos/internal/session"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -34,3 +42,70 @@ func TestShouldBypassArchitect_PlanPreferenceFirst(t *testing.T) {
 	}
 }
 
+func TestNormalizeDispatchHistory_FoldsLeadingSystemMessagesIntoPrompt(t *testing.T) {
+	systemPrompt, history := normalizeDispatchHistory("BASE_PROMPT", []*schema.Message{
+		schema.SystemMessage("DOC:EOS.md\ncontent"),
+		schema.SystemMessage("DOC:.eos/Rules.md\nrules"),
+		schema.UserMessage("你好"),
+	})
+
+	if len(history) != 1 {
+		t.Fatalf("history len = %d, want 1", len(history))
+	}
+	if history[0].Role != schema.User || strings.TrimSpace(history[0].Content) != "你好" {
+		t.Fatalf("unexpected history[0]: role=%v content=%q", history[0].Role, history[0].Content)
+	}
+	if !strings.Contains(systemPrompt, "BASE_PROMPT") {
+		t.Fatalf("system prompt missing base prompt: %q", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "## 前置上下文") {
+		t.Fatalf("system prompt missing leading context section: %q", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "DOC:EOS.md\ncontent") || !strings.Contains(systemPrompt, "DOC:.eos/Rules.md\nrules") {
+		t.Fatalf("system prompt missing folded system content: %q", systemPrompt)
+	}
+}
+
+func TestNormalizeDispatchHistory_FoldsTrailingSystemMessagesIntoPrompt(t *testing.T) {
+	systemPrompt, history := normalizeDispatchHistory("BASE_PROMPT", []*schema.Message{
+		schema.UserMessage("你好"),
+		schema.SystemMessage("STOP_HOOK: retry"),
+	})
+
+	if !strings.Contains(systemPrompt, "BASE_PROMPT") {
+		t.Fatalf("system prompt missing base prompt: %q", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "STOP_HOOK: retry") {
+		t.Fatalf("system prompt missing folded trailing system content: %q", systemPrompt)
+	}
+	if len(history) != 1 {
+		t.Fatalf("history len = %d, want 1", len(history))
+	}
+	if history[0].Role != schema.User || strings.TrimSpace(history[0].Content) != "你好" {
+		t.Fatalf("unexpected remaining history: role=%v content=%q", history[0].Role, history[0].Content)
+	}
+}
+
+func TestBindPlanUpdatesForwardsPlanAndEmitsReady(t *testing.T) {
+	cm := session.NewContextManager()
+	rt := &EinoRuntime{}
+
+	var gotPlan string
+	var gotMeta string
+	rt.WithOnPlanUpdate(func(plan string) {
+		gotPlan = strings.TrimSpace(plan)
+	})
+	rt.WithOnMeta(func(meta string) {
+		gotMeta = strings.TrimSpace(meta)
+	})
+
+	rt.bindPlanUpdates(cm)
+	cm.SetLastPlan("# Test Plan\n\n- item")
+
+	if gotPlan != "# Test Plan\n\n- item" {
+		t.Fatalf("got plan = %q", gotPlan)
+	}
+	if gotMeta != EventPlanReady {
+		t.Fatalf("got meta = %q, want %q", gotMeta, EventPlanReady)
+	}
+}

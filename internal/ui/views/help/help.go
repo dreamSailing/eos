@@ -1,14 +1,25 @@
 package help
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/i18n"
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/ui/features/slash"
+	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+const (
+	keyColumnWidth     = 12
+	commandColumnWidth = 14
 )
 
 // HelpView 帮助视图
@@ -103,49 +114,7 @@ func (h *HelpView) View() string {
 	h.relayout()
 
 	lang := h.language
-	var b strings.Builder
-
-	// 标题
-	b.WriteString(h.styles.PanelTitle.Render(i18n.T("help.title", lang)))
-	b.WriteString("\n\n")
-
-	// 全局快捷键
-	b.WriteString(h.styles.TextInfo.Render(i18n.T("help.global", lang) + "\n"))
-	b.WriteString(h.renderKey("F2", i18n.T("help.key.f2", lang)) + "\n")
-	b.WriteString(h.renderKey("Tab", i18n.T("help.key.tab", lang)) + "\n")
-	b.WriteString(h.renderKey("Alt+M", i18n.T("help.key.alt_m", lang)) + "\n")
-	b.WriteString(h.renderKey("Alt+V", i18n.T("help.key.alt_v", lang)) + "\n")
-	b.WriteString(h.renderKey("Ctrl+J", i18n.T("help.key.ctrl_j", lang)) + "\n")
-	b.WriteString(h.renderKey("Esc Esc", i18n.T("help.key.esc_esc", lang)) + "\n")
-	b.WriteString(h.renderKey("Ctrl+C", i18n.T("help.key.ctrl_c", lang)) + "\n")
-	b.WriteString(h.renderKey("PgUp/PgDn", i18n.T("help.key.pgup_pgdn", lang)) + "\n")
-	b.WriteString(h.renderKey("Home / End", i18n.T("help.key.home_end", lang)) + "\n")
-	b.WriteString(h.renderKey("↑/↓", i18n.T("help.key.up_down", lang)) + "\n")
-	b.WriteString("\n")
-
-	// 斜杠命令
-	b.WriteString(h.styles.TextInfo.Render(i18n.T("help.slash_commands", lang) + "\n"))
-	b.WriteString(h.renderCmd("/help", i18n.T("help.cmd.help", lang)) + "\n")
-	b.WriteString(h.renderCmd("/clear", i18n.T("help.cmd.clear", lang)) + "\n")
-	b.WriteString(h.renderCmd("/exit", i18n.T("help.cmd.exit", lang)) + "\n")
-	b.WriteString(h.renderCmd("/history", i18n.T("help.cmd.history", lang)) + "\n")
-	b.WriteString(h.renderCmd("/models", i18n.T("help.cmd.models", lang)) + "\n")
-	b.WriteString(h.renderCmd("/mcp", i18n.T("help.cmd.mcp", lang)) + "\n")
-	b.WriteString(h.renderCmd("/ctx", i18n.T("help.cmd.ctx", lang)) + "\n")
-	b.WriteString(h.renderCmd("/cost", i18n.T("help.cmd.cost", lang)) + "\n")
-	b.WriteString(h.renderCmd("/tasks", i18n.T("help.cmd.tasks", lang)) + "\n")
-	b.WriteString(h.renderCmd("/lsp", i18n.T("help.cmd.lsp", lang)) + "\n")
-	b.WriteString(h.renderCmd("/rules", i18n.T("help.cmd.rules", lang)) + "\n")
-	b.WriteString(h.renderCmd("/workspace", i18n.T("help.cmd.workspace", lang)) + "\n")
-	b.WriteString(h.renderCmd("/git", i18n.T("help.cmd.git", lang)) + "\n")
-	b.WriteString(h.renderCmd("/lang zh|en", i18n.T("help.cmd.lang", lang)) + "\n")
-	b.WriteString(h.renderCmd("/compact", i18n.T("help.cmd.compact", lang)) + "\n")
-	b.WriteString(h.renderCmd("/settings", i18n.T("help.cmd.settings", lang)) + "\n")
-	b.WriteString("\n")
-
-	b.WriteString(h.styles.TextMuted.Render(i18n.T("footer.close_help", lang)))
-
-	next := b.String()
+	next := h.renderContent(lang)
 	if next != h.content {
 		h.content = next
 		h.vp.SetContent(next)
@@ -167,26 +136,66 @@ func (h *HelpView) View() string {
 	return panelStyle.Render(h.vp.View())
 }
 
+func (h *HelpView) renderContent(lang string) string {
+	var b strings.Builder
+
+	// 标题
+	b.WriteString(h.styles.PanelTitle.Render(i18n.T("help.title", lang)))
+	b.WriteString("\n\n")
+
+	// 全局快捷键
+	b.WriteString(h.styles.TextInfo.Render(i18n.T("help.global", lang)))
+	b.WriteString("\n")
+	b.WriteString(h.renderKey("F2", i18n.T("help.key.f2", lang)) + "\n")
+	b.WriteString(h.renderKey("Tab", i18n.T("help.key.tab", lang)) + "\n")
+	b.WriteString(h.renderKey("Alt+V", i18n.T("help.key.alt_v", lang)) + "\n")
+	b.WriteString(h.renderKey("→", i18n.T("help.key.right", lang)) + "\n")
+	b.WriteString(h.renderKey("Ctrl+J", i18n.T("help.key.ctrl_j", lang)) + "\n")
+	b.WriteString(h.renderKey("Esc", i18n.T("help.key.esc_esc", lang)) + "\n")
+	b.WriteString(h.renderKey("Ctrl+C", i18n.T("help.key.ctrl_c", lang)) + "\n")
+	b.WriteString(h.renderKey("PgUp/PgDn", i18n.T("help.key.pgup_pgdn", lang)) + "\n")
+	b.WriteString(h.renderKey("Home / End", i18n.T("help.key.home_end", lang)) + "\n")
+	b.WriteString(h.renderKey("↑/↓", i18n.T("help.key.up_down", lang)) + "\n")
+	b.WriteString("\n")
+
+	// 斜杠命令
+	for _, group := range slash.GroupedVisibleCommands(lang) {
+		b.WriteString(h.styles.TextInfo.Render(group.Label))
+		b.WriteString("\n")
+		for _, cmd := range group.Commands {
+			b.WriteString(h.renderCmd(cmd.DisplayText(), cmd.Description(lang)) + "\n")
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString(h.styles.TextMuted.Render(i18n.T("footer.close_help", lang)))
+	return b.String()
+}
+
 // renderKey 渲染快捷键
 func (h *HelpView) renderKey(key, desc string) string {
-	keyStyle := h.styles.TextInfo.Copy().Bold(true)
-	keyText := key
-	pad := 12 - lipgloss.Width(keyText)
-	if pad < 1 {
-		pad = 1
-	}
-	return keyStyle.Render(keyText) + strings.Repeat(" ", pad) + h.styles.TextMuted.Render(desc)
+	keyStyle := h.styles.TextInfo.Bold(true)
+	return h.renderAlignedRow(key, desc, keyColumnWidth, keyStyle, h.styles.TextMuted)
 }
 
 // renderCmd 渲染命令
 func (h *HelpView) renderCmd(cmd, desc string) string {
-	cmdStyle := h.styles.TextInfo.Copy().Bold(true)
-	cmdText := cmd
-	pad := 14 - lipgloss.Width(cmdText)
-	if pad < 1 {
-		pad = 1
+	cmdStyle := h.styles.TextInfo.Bold(true)
+	return h.renderAlignedRow(cmd, "- "+desc, commandColumnWidth, cmdStyle, h.styles.TextMuted)
+}
+
+func (h *HelpView) renderAlignedRow(label, desc string, labelColumnWidth int, labelStyle, descStyle lipgloss.Style) string {
+	label = strings.TrimSpace(label)
+	desc = strings.TrimSpace(desc)
+
+	labelText := labelStyle.Render(label)
+	descText := descStyle.Render(desc)
+	labelWidth := lipgloss.Width(label)
+	if labelWidth >= labelColumnWidth {
+		return labelText + "\n" + strings.Repeat(" ", labelColumnWidth) + descText
 	}
-	return cmdStyle.Render(cmdText) + strings.Repeat(" ", pad) + h.styles.TextMuted.Render("- "+desc)
+
+	return labelText + strings.Repeat(" ", labelColumnWidth-labelWidth) + descText
 }
 
 // LanguageChangeMsg 语言切换消息

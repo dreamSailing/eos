@@ -1,5 +1,11 @@
 package ai
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"encoding/json"
@@ -77,7 +83,7 @@ func fetchContextWindowOpenAICompatible(ctx context.Context, baseURL string, api
 	if err != nil {
 		return 0, false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return 0, false
 	}
@@ -108,9 +114,7 @@ func fetchContextWindowOpenAICompatible(ctx context.Context, baseURL string, api
 		idTrim := strings.TrimSpace(id)
 		modelTrim := strings.TrimSpace(model)
 		if !strings.EqualFold(idTrim, modelTrim) {
-			if name, _ := mm["model"].(string); strings.EqualFold(strings.TrimSpace(name), modelTrim) {
-				id = name
-			} else {
+			if name, _ := mm["model"].(string); !strings.EqualFold(strings.TrimSpace(name), modelTrim) {
 				continue
 			}
 		}

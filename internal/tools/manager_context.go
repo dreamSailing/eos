@@ -1,5 +1,10 @@
 package tools
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"context"
 	"strings"
@@ -8,11 +13,11 @@ import (
 type ctxKey string
 
 const (
-	ctxKeyRole         ctxKey = "vb.role"
-	ctxKeyAllowedTools ctxKey = "vb.allowed_tools"
-	ctxKeyLanguage     ctxKey = "vb.language"
-	ctxKeyTraceID      ctxKey = "vb.trace_id"
-	ctxKeyWorkspaceRoot ctxKey = "vb.workspace_root"
+	ctxKeyRole          ctxKey = "eos.role"
+	ctxKeyAllowedTools  ctxKey = "eos.allowed_tools"
+	ctxKeyLanguage      ctxKey = "eos.language"
+	ctxKeyTraceID       ctxKey = "eos.trace_id"
+	ctxKeyWorkspaceRoot ctxKey = "eos.workspace_root"
 )
 
 var OnToolCall func(traceID string, toolName string)
@@ -101,11 +106,15 @@ func WithWorkspaceRoot(ctx context.Context, root string) context.Context {
 }
 
 func WorkspaceRootFromContext(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	if v, ok := ctx.Value(ctxKeyWorkspaceRoot).(string); ok {
-		return strings.TrimSpace(v)
+	if ctx != nil {
+		if traceID := TraceIDFromContext(ctx); traceID != "" {
+			if remote, ok := GetRemoteRepoContext(traceID); ok && strings.TrimSpace(remote.LocalPath) != "" {
+				return strings.TrimSpace(remote.LocalPath)
+			}
+		}
+		if v, ok := ctx.Value(ctxKeyWorkspaceRoot).(string); ok {
+			return strings.TrimSpace(v)
+		}
 	}
 	return ""
 }

@@ -1,10 +1,16 @@
 package setup
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"fmt"
 	"strings"
 
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
+	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -175,10 +181,10 @@ func (v *SetupView) View() string {
 	var content strings.Builder
 
 	// 标题
-	titleStyle := v.styles.PanelTitle.Copy().
+	titleStyle := v.styles.PanelTitle.
 		Width(v.width - 4).
 		Align(lipgloss.Center)
-	content.WriteString(titleStyle.Render("Welcome to VB Coding"))
+	content.WriteString(titleStyle.Render("Welcome to EOS"))
 	content.WriteString("\n\n")
 
 	// 进度指示器
@@ -222,8 +228,8 @@ func (v *SetupView) View() string {
 
 	// 包装在面板样式中
 	panelStyle := lipgloss.NewStyle().
-		Width(v.width - 4).
-		Height(v.height - 2).
+		Width(v.width-4).
+		Height(v.height-2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(v.styles.Theme.Primary).
 		Padding(2, 4)
@@ -239,7 +245,7 @@ func (v *SetupView) renderProgress() string {
 	for i, step := range steps {
 		style := v.styles.TextMuted
 		if i == int(v.step) {
-			style = v.styles.TextInfo.Copy().Bold(true)
+			style = v.styles.TextInfo.Bold(true)
 		} else if i < int(v.step) {
 			style = v.styles.TextSuccess
 		}
@@ -255,7 +261,7 @@ func (v *SetupView) renderProviders() string {
 	for i, p := range v.providers {
 		style := v.styles.TextMuted
 		if i == v.focusIndex {
-			style = v.styles.TextInfo.Copy().Bold(true).Background(v.styles.Theme.SurfaceAlt)
+			style = v.styles.TextInfo.Bold(true).Background(v.styles.Theme.SurfaceAlt)
 		}
 		parts = append(parts, style.Render(" "+p+" "))
 	}

@@ -1,11 +1,17 @@
 package session
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
+	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"math"
 	"strings"
 	"sync"
-	"github.com/dreamSailing/vb-coding/internal/ai"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 )
 
 // CompressionStrategy 压缩策略类型
@@ -77,6 +83,14 @@ type ContextManager struct {
 	autoCompressEnabled bool                // 是否启用自动压缩
 	compressThreshold   float64             // 自动压缩阈值 (0-1)
 	onPreCompact        func(trigger string, customInstructions string)
+	onPostCompact       func(trigger string, originalTokens, savedTokens int)
+	sessionMemoryMgr    *SessionMemoryManager
+
+	// snipCheck is a callback that checks if a message content hash should be snipped.
+	// Returns true if the message should be excluded from context.
+	snipCheck func(content string) bool
+	// snipReasonFor returns the reason for snipping a message
+	snipReasonFor func(content string) string
 }
 
 // NewContextManager 创建新的上下文管理器
@@ -133,15 +147,13 @@ func (c *ContextManager) setModelLocked(model string) {
 	// 根据模型上下文窗口动态设定上限
 	// 128K 模型：最多使用 80K
 	// 200K+ 模型：最多使用 120K
-	maxLimit := 80000
+	maxLimit := 16000
 	if window >= 200000 {
 		maxLimit = 120000
 	} else if window >= 128000 {
 		maxLimit = 80000
 	} else if window >= 32000 {
 		maxLimit = 24000
-	} else {
-		maxLimit = 16000
 	}
 	if maxPrompt > maxLimit {
 		maxPrompt = maxLimit
@@ -161,6 +173,27 @@ func (c *ContextManager) SetOnPreCompact(cb func(trigger string, customInstructi
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.onPreCompact = cb
+}
+
+// SetOnPostCompact sets the callback invoked after context compression completes
+func (c *ContextManager) SetOnPostCompact(cb func(trigger string, originalTokens, savedTokens int)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onPostCompact = cb
+}
+
+// SetSessionMemoryManager sets the session memory manager instance
+func (c *ContextManager) SetSessionMemoryManager(mgr *SessionMemoryManager) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.sessionMemoryMgr = mgr
+}
+
+// GetSessionMemoryManager returns the session memory manager instance
+func (c *ContextManager) GetSessionMemoryManager() *SessionMemoryManager {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.sessionMemoryMgr
 }
 
 // SetMaxChars 设置上下文最大字符数

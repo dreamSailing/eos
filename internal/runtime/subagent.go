@@ -1,14 +1,21 @@
 package runtime
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 // SubAgentType 子代理类型
@@ -89,15 +96,15 @@ func (t SubAgentType) ContextStrategy() ContextStrategy {
 func (t SubAgentType) AllowedTools() []string {
 	switch t {
 	case SubAgentTypeExplore:
-		return []string{"glob", "grep", "read", "search"}
+		return []string{"glob", "grep", tools.ToolRead, tools.ToolSearch, tools.ToolTodoRead, tools.ToolProjectStructure}
 	case SubAgentTypeReviewer:
-		return []string{"read", "diff", "glob", "grep", "search"}
+		return []string{tools.ToolRead, "diff", "glob", "grep", tools.ToolSearch, tools.ToolTodoRead, tools.ToolProjectStructure}
 	case SubAgentTypeTester:
 		return []string{"read", "write", "glob", "grep"}
 	case SubAgentTypeSecurity:
-		return []string{"glob", "grep", "read", "search"}
+		return []string{"glob", "grep", tools.ToolRead, tools.ToolSearch, tools.ToolTodoRead, tools.ToolProjectStructure}
 	case SubAgentTypeArchitect:
-		return []string{"glob", "grep", "read", "search", "diff"}
+		return []string{"glob", "grep", tools.ToolRead, tools.ToolSearch, "diff", tools.ToolTodoRead, tools.ToolProjectStructure}
 	default:
 		return nil // 使用默认工具集
 	}
@@ -128,6 +135,43 @@ func (s ContextStrategy) String() string {
 	}
 }
 
+type AgentStatus string
+
+const (
+	AgentStatusPending   AgentStatus = "pending"
+	AgentStatusRunning   AgentStatus = "running"
+	AgentStatusCompleted AgentStatus = "completed"
+	AgentStatusFailed    AgentStatus = "failed"
+	AgentStatusCancelled AgentStatus = "cancelled"
+)
+
+func (s AgentStatus) terminal() bool {
+	switch s {
+	case AgentStatusCompleted, AgentStatusFailed, AgentStatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+type AgentSnapshot struct {
+	ID           string
+	Name         string
+	Task         string
+	Status       AgentStatus
+	Error        string
+	Result       string
+	StartedAt    time.Time
+	UpdatedAt    time.Time
+	CompletedAt  time.Time
+	Messages     int
+	Strategy     string
+	AllowedTools []string
+	CanResume    bool
+	CanClose     bool
+	CanSendInput bool
+}
+
 // SubAgentContext 子代理隔离上下文
 type SubAgentContext struct {
 	id           string            // 唯一 ID
@@ -136,11 +180,28 @@ type SubAgentContext struct {
 	messages     []*schema.Message // 独立消息历史
 	strategy     ContextStrategy   // 上下文策略
 	allowedTools []string          // 允许的工具列表
+	task         string            // 最近一次执行的任务
+	status       AgentStatus       // 当前生命周期状态
+	errorMsg     string            // 最近一次错误
 	createdAt    time.Time         // 创建时间
 	updatedAt    time.Time         // 更新时间
+	completedAt  time.Time         // 最近一次完成时间
+	runCount     int               // 已执行次数
 	completed    bool              // 是否完成
-	result       string            // 最终结果
-	mu           sync.RWMutex      // 保护并发访问
+	cancel       context.CancelFunc
+	doneCh       chan struct{}
+	cancelReq    bool
+	result       string       // 最终结果
+	mu           sync.RWMutex // 保护并发访问
+}
+
+func (c *SubAgentContext) ID() string {
+	if c == nil {
+		return ""
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.id
 }
 
 // SubAgentResult 子代理执行结果
@@ -148,6 +209,7 @@ type SubAgentResult struct {
 	ID        string        // 子代理 ID
 	Type      SubAgentType  // 代理类型
 	Task      string        // 执行的任务
+	Status    AgentStatus   // 完成状态
 	Result    string        // 结果摘要
 	Messages  int           // 产生的消息数量
 	Duration  time.Duration // 执行时长
@@ -211,8 +273,10 @@ func (m *SubAgentManager) GetOrCreateRequestContext(
 		messages:     msgs,
 		strategy:     agentType.ContextStrategy(),
 		allowedTools: agentType.AllowedTools(),
+		status:       AgentStatusPending,
 		createdAt:    time.Now(),
 		updatedAt:    time.Now(),
+		doneCh:       make(chan struct{}),
 	}
 
 	m.agents[id] = ctx
@@ -287,16 +351,32 @@ func (m *SubAgentManager) ClearRequest(requestID string) {
 		return
 	}
 
+	prefix := requestID + "|"
+	toRemove := make([]struct {
+		key string
+		id  string
+	}, 0)
+
+	m.mu.RLock()
+	for k, id := range m.requestIndex {
+		if strings.HasPrefix(k, prefix) {
+			toRemove = append(toRemove, struct {
+				key string
+				id  string
+			}{key: k, id: id})
+		}
+	}
+	m.mu.RUnlock()
+
+	for _, item := range toRemove {
+		_ = m.RequestCancel(item.id)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	prefix := requestID + "|"
-	for k, id := range m.requestIndex {
-		if !strings.HasPrefix(k, prefix) {
-			continue
-		}
-		delete(m.agents, id)
-		delete(m.requestIndex, k)
+	for _, item := range toRemove {
+		delete(m.agents, item.id)
+		delete(m.requestIndex, item.key)
 	}
 }
 
@@ -319,8 +399,10 @@ func (m *SubAgentManager) CreateContext(agentType SubAgentType, parentCtx contex
 		messages:     msgs,
 		strategy:     agentType.ContextStrategy(),
 		allowedTools: agentType.AllowedTools(),
+		status:       AgentStatusPending,
 		createdAt:    time.Now(),
 		updatedAt:    time.Now(),
+		doneCh:       make(chan struct{}),
 	}
 
 	m.agents[id] = ctx
@@ -381,8 +463,10 @@ func (m *SubAgentManager) CreateContextWithStrategy(
 		messages:     msgs,
 		strategy:     strategy,
 		allowedTools: allowedTools,
+		status:       AgentStatusPending,
 		createdAt:    time.Now(),
 		updatedAt:    time.Now(),
+		doneCh:       make(chan struct{}),
 	}
 
 	m.agents[id] = ctx
@@ -441,6 +525,187 @@ func (m *SubAgentManager) GetMessages(id string) []*schema.Message {
 	return msgs
 }
 
+func closeDoneCh(ch chan struct{}) {
+	if ch == nil {
+		return
+	}
+	select {
+	case <-ch:
+		return
+	default:
+		close(ch)
+	}
+}
+
+func snapshotFromContext(ctx *SubAgentContext) AgentSnapshot {
+	if ctx == nil {
+		return AgentSnapshot{}
+	}
+	ctx.mu.RLock()
+	defer ctx.mu.RUnlock()
+	return AgentSnapshot{
+		ID:           ctx.id,
+		Name:         ctx.agentType.String(),
+		Task:         ctx.task,
+		Status:       ctx.status,
+		Error:        ctx.errorMsg,
+		Result:       ctx.result,
+		StartedAt:    ctx.createdAt,
+		UpdatedAt:    ctx.updatedAt,
+		CompletedAt:  ctx.completedAt,
+		Messages:     len(ctx.messages),
+		Strategy:     ctx.strategy.String(),
+		AllowedTools: append([]string(nil), ctx.allowedTools...),
+		CanResume:    ctx.status.terminal(),
+		CanClose:     true,
+		CanSendInput: ctx.status != AgentStatusRunning,
+	}
+}
+
+func snapshotFromHistory(res SubAgentResult) AgentSnapshot {
+	return AgentSnapshot{
+		ID:           res.ID,
+		Name:         res.Type.String(),
+		Task:         res.Task,
+		Status:       res.Status,
+		Error:        res.Error,
+		Result:       res.Result,
+		StartedAt:    res.Timestamp.Add(-res.Duration),
+		UpdatedAt:    res.Timestamp,
+		CompletedAt:  res.Timestamp,
+		Messages:     res.Messages,
+		Strategy:     res.Type.ContextStrategy().String(),
+		AllowedTools: append([]string(nil), res.Type.AllowedTools()...),
+		CanResume:    false,
+		CanClose:     false,
+		CanSendInput: false,
+	}
+}
+
+func appendHistoryBounded(history []SubAgentResult, maxHistory int, res SubAgentResult) []SubAgentResult {
+	history = append(history, res)
+	if len(history) > maxHistory {
+		history = history[len(history)-maxHistory:]
+	}
+	return history
+}
+
+func (m *SubAgentManager) MarkRunning(id string, task string, cancel context.CancelFunc) error {
+	m.mu.RLock()
+	ctx, ok := m.agents[id]
+	m.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("subagent context not found: %s", id)
+	}
+
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	if ctx.status == AgentStatusRunning {
+		return fmt.Errorf("subagent already running: %s", id)
+	}
+	ctx.task = strings.TrimSpace(task)
+	ctx.status = AgentStatusRunning
+	ctx.errorMsg = ""
+	ctx.completed = false
+	ctx.completedAt = time.Time{}
+	ctx.updatedAt = time.Now()
+	ctx.cancel = cancel
+	ctx.cancelReq = false
+	ctx.runCount++
+	ctx.doneCh = make(chan struct{})
+	return nil
+}
+
+func (m *SubAgentManager) RequestCancel(id string) error {
+	m.mu.RLock()
+	ctx, ok := m.agents[id]
+	m.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("subagent context not found: %s", id)
+	}
+
+	var cancel context.CancelFunc
+	ctx.mu.Lock()
+	if ctx.status != AgentStatusRunning {
+		ctx.mu.Unlock()
+		return nil
+	}
+	ctx.cancelReq = true
+	ctx.updatedAt = time.Now()
+	cancel = ctx.cancel
+	ctx.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	return nil
+}
+
+func (m *SubAgentManager) Wait(ctx context.Context, id string) (AgentSnapshot, error) {
+	m.mu.RLock()
+	subCtx, ok := m.agents[id]
+	m.mu.RUnlock()
+	if !ok {
+		return AgentSnapshot{}, fmt.Errorf("subagent context not found: %s", id)
+	}
+
+	subCtx.mu.RLock()
+	doneCh := subCtx.doneCh
+	status := subCtx.status
+	subCtx.mu.RUnlock()
+
+	if status.terminal() {
+		return snapshotFromContext(subCtx), nil
+	}
+
+	select {
+	case <-ctx.Done():
+		return snapshotFromContext(subCtx), ctx.Err()
+	case <-doneCh:
+		return snapshotFromContext(subCtx), nil
+	}
+}
+
+func (m *SubAgentManager) Remove(id string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.agents[id]; !ok {
+		return false
+	}
+	delete(m.agents, id)
+	for key, agentID := range m.requestIndex {
+		if agentID == id {
+			delete(m.requestIndex, key)
+		}
+	}
+	return true
+}
+
+func (m *SubAgentManager) ListSnapshots() []AgentSnapshot {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	snaps := make([]AgentSnapshot, 0, len(m.agents)+len(m.history))
+	seen := make(map[string]struct{}, len(m.agents))
+	for _, ctx := range m.agents {
+		snap := snapshotFromContext(ctx)
+		snaps = append(snaps, snap)
+		seen[snap.ID] = struct{}{}
+	}
+	for i := len(m.history) - 1; i >= 0; i-- {
+		res := m.history[i]
+		if _, ok := seen[res.ID]; ok {
+			continue
+		}
+		snaps = append(snaps, snapshotFromHistory(res))
+		seen[res.ID] = struct{}{}
+	}
+	sort.Slice(snaps, func(i, j int) bool {
+		return snaps[i].UpdatedAt.After(snaps[j].UpdatedAt)
+	})
+	return snaps
+}
+
 // Complete 标记子代理完成，并生成结果摘要
 func (m *SubAgentManager) Complete(id string, task string, success bool, errorMsg string) SubAgentResult {
 	m.mu.Lock()
@@ -459,34 +724,59 @@ func (m *SubAgentManager) Complete(id string, task string, success bool, errorMs
 	ctx.mu.Lock()
 	defer ctx.mu.Unlock()
 
+	if ctx.status == AgentStatusCancelled {
+		return SubAgentResult{
+			ID:        id,
+			Type:      ctx.agentType,
+			Task:      ctx.task,
+			Status:    AgentStatusCancelled,
+			Result:    ctx.result,
+			Messages:  len(ctx.messages),
+			Duration:  ctx.completedAt.Sub(ctx.createdAt),
+			Success:   false,
+			Error:     ctx.errorMsg,
+			Timestamp: ctx.completedAt,
+		}
+	}
+
 	ctx.completed = true
+	ctx.task = strings.TrimSpace(task)
 	ctx.updatedAt = time.Now()
+	ctx.completedAt = ctx.updatedAt
+	ctx.errorMsg = strings.TrimSpace(errorMsg)
+	ctx.cancel = nil
+	ctx.cancelReq = false
 
 	// 生成结果摘要
 	result := m.generateSummary(ctx)
 	if !success {
 		result = fmt.Sprintf("执行失败: %s", errorMsg)
 	}
+	ctx.result = strings.TrimSpace(result)
+	if success {
+		ctx.status = AgentStatusCompleted
+	} else {
+		ctx.status = AgentStatusFailed
+	}
 
-	duration := ctx.updatedAt.Sub(ctx.createdAt)
+	duration := ctx.completedAt.Sub(ctx.createdAt)
 
 	res := SubAgentResult{
 		ID:        id,
 		Type:      ctx.agentType,
-		Task:      task,
+		Task:      ctx.task,
+		Status:    ctx.status,
 		Result:    result,
 		Messages:  len(ctx.messages),
 		Duration:  duration,
 		Success:   success,
-		Error:     errorMsg,
-		Timestamp: time.Now(),
+		Error:     ctx.errorMsg,
+		Timestamp: ctx.completedAt,
 	}
 
 	// 添加到历史记录
-	m.history = append(m.history, res)
-	if len(m.history) > m.maxHistory {
-		m.history = m.history[1:]
-	}
+	m.history = appendHistoryBounded(m.history, m.maxHistory, res)
+	closeDoneCh(ctx.doneCh)
 
 	slog.Debug("subagent.complete",
 		"id", id,
@@ -497,6 +787,62 @@ func (m *SubAgentManager) Complete(id string, task string, success bool, errorMs
 	)
 
 	return res
+}
+
+func (m *SubAgentManager) Cancel(id string, reason string) (SubAgentResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	ctx, ok := m.agents[id]
+	if !ok {
+		return SubAgentResult{}, fmt.Errorf("subagent context not found: %s", id)
+	}
+
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+
+	if ctx.status == AgentStatusCancelled {
+		return SubAgentResult{
+			ID:        id,
+			Type:      ctx.agentType,
+			Task:      ctx.task,
+			Status:    AgentStatusCancelled,
+			Result:    ctx.result,
+			Messages:  len(ctx.messages),
+			Duration:  ctx.completedAt.Sub(ctx.createdAt),
+			Success:   false,
+			Error:     ctx.errorMsg,
+			Timestamp: ctx.completedAt,
+		}, nil
+	}
+
+	ctx.completed = true
+	ctx.status = AgentStatusCancelled
+	ctx.errorMsg = strings.TrimSpace(reason)
+	ctx.updatedAt = time.Now()
+	ctx.completedAt = ctx.updatedAt
+	ctx.cancel = nil
+	ctx.cancelReq = false
+	if strings.TrimSpace(ctx.result) == "" {
+		ctx.result = "执行已取消"
+	}
+
+	res := SubAgentResult{
+		ID:        id,
+		Type:      ctx.agentType,
+		Task:      ctx.task,
+		Status:    AgentStatusCancelled,
+		Result:    ctx.result,
+		Messages:  len(ctx.messages),
+		Duration:  ctx.completedAt.Sub(ctx.createdAt),
+		Success:   false,
+		Error:     ctx.errorMsg,
+		Timestamp: ctx.completedAt,
+	}
+
+	m.history = appendHistoryBounded(m.history, m.maxHistory, res)
+	closeDoneCh(ctx.doneCh)
+	return res, nil
 }
 
 // generateSummary 生成子代理执行摘要

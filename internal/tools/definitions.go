@@ -1,5 +1,10 @@
 package tools
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import "github.com/cloudwego/eino/schema"
 
 // ToolExample 工具使用示例
@@ -10,11 +15,12 @@ type ToolExample struct {
 
 // ToolDefinition 工具定义，包含工具的名称、描述和参数信息
 type ToolDefinition struct {
-	Name        string                           // 工具名称
-	Description string                           // 工具描述
-	Params      map[string]*schema.ParameterInfo // 参数定义
-	RiskLevel   ToolRiskLevel                    // 风险等级：low/medium/high
-	Examples    []ToolExample                    // 使用示例（提升模型理解复杂参数的准确率）
+	Name            string                           // 工具名称
+	Description     string                           // 工具描述
+	Params          map[string]*schema.ParameterInfo // 参数定义
+	RiskLevel       ToolRiskLevel                    // 风险等级：low/medium/high
+	Examples        []ToolExample                    // 使用示例（提升模型理解复杂参数的准确率）
+	ConcurrencySafe bool                             // 标记工具是否可安全并行执行
 }
 
 // ToolRiskLevel 工具风险等级
@@ -28,54 +34,100 @@ const (
 
 // ToolNames 所有工具名称的常量定义
 const (
-	ToolRead             = "read"
-	ToolFS               = "fs"
-	ToolEdit             = "edit"
-	ToolHistory          = "history"
-	ToolSearch           = "search"
-	ToolToolSearch       = "tool_search" // 工具搜索工具
-	ToolSkill            = "skill"       // Agent Skills meta-tool
-	ToolSkillsList       = "skills_list"
-	ToolTimeNow          = "time_now"
-	ToolUserConfirm      = "user_confirm"
-	ToolUserInput        = "user_input"
-	ToolUserSelect       = "user_select"
-	ToolBash             = "bash"
-	ToolBashSession      = "bash_session"
-	ToolBGTask           = "bg_task"
-	ToolPlanSteps        = "plan_steps"
-	ToolTodoRead         = "todo_read"
-	ToolTodoWrite        = "todo_write"
-	ToolMCPStatus        = "mcp_status"
-	ToolGitStatus        = "git_status"
-	ToolGitAdd           = "git_add"
-	ToolGitCommit        = "git_commit"
-	ToolGitBranchList    = "git_branch_list"
-	ToolGitCheckout      = "git_checkout"
-	ToolGitInit          = "git_init"
-	ToolGitPull          = "git_pull"
-	ToolGitPush          = "git_push"
-	ToolGitDiff          = "git_diff"
-	ToolGitLog           = "git_log"
-	ToolGitShow          = "git_show"
-	ToolGitStash         = "git_stash"
-	ToolGitReset         = "git_reset"
-	ToolGitRevert        = "git_revert"
-	ToolGitMerge         = "git_merge"
-	ToolGitRebase        = "git_rebase"
-	ToolProjectStructure = "ProjectStructure"
+	ToolRead                    = "read"
+	ToolFS                      = "fs"
+	ToolEdit                    = "edit"
+	ToolHistory                 = "history"
+	ToolSearch                  = "search"
+	ToolToolSearch              = "tool_search" // 工具搜索工具
+	ToolSkill                   = "skill"       // Agent Skills meta-tool
+	ToolSkillsList              = "skills_list"
+	ToolCreateSkill             = "create_skill"
+	ToolTimeNow                 = "time_now"
+	ToolUserConfirm             = "user_confirm"
+	ToolUserInput               = "user_input"
+	ToolUserSelect              = "user_select"
+	ToolBash                    = "bash"
+	ToolBashSession             = "bash_session"
+	ToolBGTask                  = "bg_task"
+	ToolPlanSteps               = "plan_steps"
+	ToolTodoRead                = "todo_read"
+	ToolTodoWrite               = "todo_write"
+	ToolMCPStatus               = "mcp_status"
+	ToolBrowserStatus           = "browser_status"
+	ToolGitStatus               = "git_status"
+	ToolGitAdd                  = "git_add"
+	ToolGitCommit               = "git_commit"
+	ToolGitBranchList           = "git_branch_list"
+	ToolGitCheckout             = "git_checkout"
+	ToolGitInit                 = "git_init"
+	ToolGitPull                 = "git_pull"
+	ToolGitPush                 = "git_push"
+	ToolGitDiff                 = "git_diff"
+	ToolGitLog                  = "git_log"
+	ToolGitShow                 = "git_show"
+	ToolGitStash                = "git_stash"
+	ToolGitReset                = "git_reset"
+	ToolGitRevert               = "git_revert"
+	ToolGitMerge                = "git_merge"
+	ToolGitRebase               = "git_rebase"
+	ToolProjectStructure        = "ProjectStructure"
+	ToolAskUserQuestion         = "ask_user_question"
+	ToolEnterPlanMode           = "enter_plan_mode"
+	ToolExitPlanMode            = "exit_plan_mode"
+	ToolAgent                   = "agent"
+	ToolSuggestMemory           = "suggest_memory"
+	ToolWebSearch               = "web_search"
+	ToolWebFetch                = "web_fetch"
+	ToolEnterWorktree           = "enter_worktree"
+	ToolExitWorktree            = "exit_worktree"
+	ToolNotebookEdit            = "notebook_edit"
+	ToolDocumentGenerate        = "document_generate"
+	ToolDocumentConvert         = "document_convert"
+	ToolMCPListResources        = "mcp_list_resources"
+	ToolMCPReadResource         = "mcp_read_resource"
+	ToolMCPListPrompts          = "mcp_list_prompts"
+	ToolMCPGetPrompt            = "mcp_get_prompt"
+	ToolPowerShell              = "powershell"
+	ToolStructuredOutput        = "structured_output"
+	ToolSnip                    = "snip"
+	ToolTeamCreate              = "team_create"
+	ToolTeamDelete              = "team_delete"
+	ToolTeamSendMsg             = "team_send_message"
+	ToolRemoteRepoConnect       = "remote_repo_connect"
+	ToolRemoteRepoStatus        = "remote_repo_status"
+	ToolRemoteRepoCloneOrOpen   = "remote_repo_clone_or_open"
+	ToolRemoteRepoCheckout      = "remote_repo_checkout"
+	ToolRemoteRepoCommitAndPush = "remote_repo_commit_and_push"
+	ToolRemoteRepoCreatePR      = "remote_repo_create_pr"
+	ToolRemoteRepoCreateMR      = "remote_repo_create_mr"
+	ToolRemoteRepoDisconnect    = "remote_repo_disconnect"
 )
 
 // GetAllToolDefinitions 返回所有工具的定义
 func GetAllToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
 		{
+			Name:        ToolAskUserQuestion,
+			Description: "向用户提问并获取用户的选择或文本回答。可提供选项列表。",
+			Params: map[string]*schema.ParameterInfo{
+				"question": {Type: schema.String, Required: true, Desc: "要询问用户的问题"},
+				"options":  {Type: schema.Array, Required: false, Desc: "可选：提供给用户的选项列表（字符串数组）"},
+			},
+			RiskLevel:       RiskLevelLow,
+			ConcurrencySafe: true,
+			Examples: []ToolExample{
+				{Description: "询问用户一个开放性问题", Input: map[string]any{"question": "你需要什么帮助？"}},
+				{Description: "询问用户并提供选项", Input: map[string]any{"question": "选择操作模式", "options": []string{"自动", "手动"}}},
+			},
+		},
+		{
 			Name:        ToolTimeNow,
-			Description: "获取本机当前日期时间（本地时区），并返回常用格式（本地/UTC、Unix 时间戳等）。",
+			Description: "获取权威日期时间（NTP 校准，国内外通用）。返回本地/UTC时间、Unix时间戳、星期、ISO周数、季度等丰富信息。time_source 标识时间来源(ntp/system)。",
 			Params:      map[string]*schema.ParameterInfo{},
 			RiskLevel:   RiskLevelLow,
 			Examples: []ToolExample{
-				{Description: "获取本地日期时间", Input: map[string]any{}},
+				{Description: "获取权威日期时间（NTP 校准）", Input: map[string]any{}},
 			},
 		},
 		{
@@ -139,6 +191,15 @@ func GetAllToolDefinitions() []ToolDefinition {
 			},
 		},
 		{
+			Name:        ToolBrowserStatus,
+			Description: "查询浏览器 MCP（推荐 Playwright）是否已配置、启用和成功加载。",
+			Params:      map[string]*schema.ParameterInfo{},
+			RiskLevel:   RiskLevelLow,
+			Examples: []ToolExample{
+				{Description: "检查浏览器能力是否可用", Input: map[string]any{}},
+			},
+		},
+		{
 			Name:        ToolSkillsList,
 			Description: "查询当前可用 skills 列表与扫描目录（按需排障用）。",
 			Params:      map[string]*schema.ParameterInfo{},
@@ -148,11 +209,56 @@ func GetAllToolDefinitions() []ToolDefinition {
 			},
 		},
 		{
+			Name:        ToolCreateSkill,
+			Description: "根据用户需求创建一个新的 skill。调用前必须先判断该 skill 更适合工作区还是全局；如果用户未说明创建位置，应先用 ask_user_question 询问，再带上明确的 scope 调用本工具。",
+			Params: map[string]*schema.ParameterInfo{
+				"name":               {Type: schema.String, Required: false, Desc: "可选：skill 名称；为空时会尝试从需求或生成结果中推导"},
+				"request":            {Type: schema.String, Required: true, Desc: "用户的自然语言需求，用于生成完整 SKILL.md"},
+				"scope":              {Type: schema.String, Required: true, Desc: "创建范围：workspace 或 user"},
+				"description":        {Type: schema.String, Required: false, Desc: "可选：覆盖或补充 skill 描述"},
+				"allowed_tools":      {Type: schema.Array, Required: false, Desc: "可选：写入 allowed-tools 的工具名称列表"},
+				"model":              {Type: schema.String, Required: false, Desc: "可选：写入 skill frontmatter 的 model"},
+				"argument_hint":      {Type: schema.String, Required: false, Desc: "可选：写入 argument-hint"},
+				"user_invocable":     {Type: schema.Boolean, Required: false, Desc: "可选：写入 user-invocable"},
+				"context":            {Type: schema.String, Required: false, Desc: "可选：写入 context，例如 fork"},
+				"agent":              {Type: schema.String, Required: false, Desc: "可选：写入 agent"},
+				"keywords":           {Type: schema.Array, Required: false, Desc: "可选：写入 keywords"},
+				"include_scripts":    {Type: schema.Boolean, Required: false, Desc: "是否创建 scripts/ 目录"},
+				"include_references": {Type: schema.Boolean, Required: false, Desc: "是否创建 references/ 目录"},
+				"include_assets":     {Type: schema.Boolean, Required: false, Desc: "是否创建 assets/ 目录"},
+				"overwrite":          {Type: schema.Boolean, Required: false, Desc: "若目标 skill 已存在，是否允许覆盖"},
+				"activate":           {Type: schema.Boolean, Required: false, Desc: "创建后是否重新加载 skills（默认 true）"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{
+					Description: "在当前工作区创建一个项目专属 skill",
+					Input: map[string]any{
+						"name":    "repo-review",
+						"request": "创建一个用于本仓库代码审查的 skill，重点检查 API 兼容性、数据库迁移和测试缺失。",
+						"scope":   "workspace",
+					},
+				},
+				{
+					Description: "创建一个可跨项目复用的全局 skill",
+					Input: map[string]any{
+						"request": "创建一个通用的 release notes 生成 skill，可复用于多个项目。",
+						"scope":   "user",
+						"keywords": []any{
+							"release",
+							"notes",
+						},
+					},
+				},
+			},
+		},
+		{
 			Name:        ToolRead,
 			Description: "统一读取工具。注意：path 参数必须是有效的文件系统路径，不要包含 '@' 等特殊前缀。",
 			Params: map[string]*schema.ParameterInfo{
-				"mode": {Type: schema.String, Required: false, Desc: "读取模式: file (默认, 读取文件内容), directory (列出目录条目), exists (检查路径是否存在), resolve (解析路径并返回候选路径与状态)"},
-				"path": {Type: schema.String, Required: true, Desc: "要读取的绝对或相对路径 (e.g., 'main.go', 'internal/utils')"},
+				"mode":  {Type: schema.String, Required: false, Desc: "读取模式: file (默认, 读取文件内容), directory (列出目录条目), exists (检查路径是否存在), resolve (解析路径并返回候选路径与状态)"},
+				"path":  {Type: schema.String, Required: true, Desc: "要读取的绝对或相对路径 (e.g., 'main.go', 'internal/utils')"},
+				"pages": {Type: schema.String, Required: false, Desc: "PDF 页面范围 (如 '1-5', '10-20')，仅 PDF 格式必填"},
 			},
 			RiskLevel: RiskLevelLow,
 			Examples: []ToolExample{
@@ -172,6 +278,37 @@ func GetAllToolDefinitions() []ToolDefinition {
 					Description: "检查文件是否存在",
 					Input:       map[string]any{"mode": "exists", "path": "README.md"},
 				},
+			},
+		},
+		{
+			Name:        ToolDocumentGenerate,
+			Description: "生成 DOCX/XLSX/PDF 文档。支持纯文本内容和结构化内容输入。",
+			Params: map[string]*schema.ParameterInfo{
+				"format":             {Type: schema.String, Required: true, Desc: "输出格式：docx、xlsx 或 pdf"},
+				"path":               {Type: schema.String, Required: true, Desc: "输出文件路径"},
+				"title":              {Type: schema.String, Required: false, Desc: "文档标题"},
+				"content":            {Type: schema.String, Required: false, Desc: "纯文本正文"},
+				"structured_content": {Type: schema.Object, Required: false, Desc: "结构化内容，可传入文档块/工作表 JSON"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "生成 DOCX", Input: map[string]any{"format": "docx", "path": "out/report.docx", "title": "周报", "content": "第一段\n\n第二段"}},
+				{Description: "生成 XLSX", Input: map[string]any{"format": "xlsx", "path": "out/table.xlsx", "structured_content": map[string]any{"sheets": []map[string]any{{"name": "Sheet1", "rows": [][]string{{"A", "B"}, {"1", "2"}}}}}}},
+			},
+		},
+		{
+			Name:        ToolDocumentConvert,
+			Description: "在 DOCX/XLSX/PDF 之间进行文档转换。默认优先高保真转换，必要时回退为内容级转换并附带告警。",
+			Params: map[string]*schema.ParameterInfo{
+				"source_path":      {Type: schema.String, Required: true, Desc: "源文件路径"},
+				"target_format":    {Type: schema.String, Required: true, Desc: "目标格式：docx、xlsx 或 pdf"},
+				"destination_path": {Type: schema.String, Required: false, Desc: "输出文件路径；为空时自动推导"},
+				"fidelity":         {Type: schema.String, Required: false, Desc: "转换保真度：high（默认）或 content"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "高保真转换为 PDF", Input: map[string]any{"source_path": "report.docx", "target_format": "pdf", "fidelity": "high"}},
+				{Description: "内容级转换为 XLSX", Input: map[string]any{"source_path": "notes.pdf", "target_format": "xlsx", "fidelity": "content"}},
 			},
 		},
 		{
@@ -510,6 +647,80 @@ func GetAllToolDefinitions() []ToolDefinition {
 			RiskLevel: RiskLevelHigh,
 		},
 		{
+			Name:        ToolRemoteRepoConnect,
+			Description: "连接远程 GitHub 或 Gitee 账号，优先复用已保存授权；若未授权，则返回 OAuth 授权信息。",
+			Params: map[string]*schema.ParameterInfo{
+				"platform": {Type: schema.String, Required: true, Desc: "平台: github 或 gitee"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolRemoteRepoStatus,
+			Description: "查看当前会话绑定的远程仓库上下文、授权账号和本地目录。",
+			Params:      nil,
+			RiskLevel:   RiskLevelLow,
+		},
+		{
+			Name:        ToolRemoteRepoCloneOrOpen,
+			Description: "克隆远程 GitHub/Gitee 仓库到隔离目录，或复用本地副本，并将后续工具切换到远程仓库上下文。",
+			Params: map[string]*schema.ParameterInfo{
+				"platform":    {Type: schema.String, Required: true, Desc: "平台: github 或 gitee"},
+				"repo_url":    {Type: schema.String, Required: true, Desc: "远程仓库地址"},
+				"base_branch": {Type: schema.String, Required: false, Desc: "可选：要切换/克隆的基线分支"},
+			},
+			RiskLevel: RiskLevelHigh,
+		},
+		{
+			Name:        ToolRemoteRepoCheckout,
+			Description: "在当前远程仓库上下文中切换或创建分支。",
+			Params: map[string]*schema.ParameterInfo{
+				"branch": {Type: schema.String, Required: true, Desc: "目标分支名"},
+				"create": {Type: schema.Boolean, Required: false, Desc: "是否创建新分支"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolRemoteRepoCommitAndPush,
+			Description: "在当前远程仓库上下文中执行 add/commit/push，并返回分支与提交信息。",
+			Params: map[string]*schema.ParameterInfo{
+				"message":      {Type: schema.String, Required: true, Desc: "提交信息"},
+				"branch":       {Type: schema.String, Required: false, Desc: "可选：推送分支；为空时使用当前分支"},
+				"author_name":  {Type: schema.String, Required: false, Desc: "可选：提交作者名"},
+				"author_email": {Type: schema.String, Required: false, Desc: "可选：提交作者邮箱"},
+			},
+			RiskLevel: RiskLevelHigh,
+		},
+		{
+			Name:        ToolRemoteRepoCreatePR,
+			Description: "为当前 GitHub 远程仓库创建 Pull Request。",
+			Params: map[string]*schema.ParameterInfo{
+				"title": {Type: schema.String, Required: true, Desc: "PR 标题"},
+				"body":  {Type: schema.String, Required: false, Desc: "PR 描述"},
+				"base":  {Type: schema.String, Required: false, Desc: "目标基线分支"},
+				"head":  {Type: schema.String, Required: false, Desc: "源分支"},
+			},
+			RiskLevel: RiskLevelHigh,
+		},
+		{
+			Name:        ToolRemoteRepoCreateMR,
+			Description: "为当前 Gitee 远程仓库创建 Pull Request / Merge Request。",
+			Params: map[string]*schema.ParameterInfo{
+				"title": {Type: schema.String, Required: true, Desc: "标题"},
+				"body":  {Type: schema.String, Required: false, Desc: "描述"},
+				"base":  {Type: schema.String, Required: false, Desc: "目标基线分支"},
+				"head":  {Type: schema.String, Required: false, Desc: "源分支"},
+			},
+			RiskLevel: RiskLevelHigh,
+		},
+		{
+			Name:        ToolRemoteRepoDisconnect,
+			Description: "断开当前会话的远程仓库上下文，可选清理本地克隆目录。",
+			Params: map[string]*schema.ParameterInfo{
+				"cleanup_local": {Type: schema.Boolean, Required: false, Desc: "是否删除本地副本"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
 			Name:        ToolGitDiff,
 			Description: "生成与 HEAD 的统一差异",
 			Params: map[string]*schema.ParameterInfo{
@@ -552,9 +763,9 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Name:        ToolGitStash,
 			Description: "Git stash 操作（save/list/pop/apply/drop）",
 			Params: map[string]*schema.ParameterInfo{
-				"action":           {Type: schema.String, Required: true, Desc: "动作: save, list, pop, apply, drop"},
-				"message":          {Type: schema.String, Required: false, Desc: "save 时可选：stash message"},
-				"index":            {Type: schema.Integer, Required: false, Desc: "pop/apply/drop 时可选：stash 序号（默认 0）"},
+				"action":            {Type: schema.String, Required: true, Desc: "动作: save, list, pop, apply, drop"},
+				"message":           {Type: schema.String, Required: false, Desc: "save 时可选：stash message"},
+				"index":             {Type: schema.Integer, Required: false, Desc: "pop/apply/drop 时可选：stash 序号（默认 0）"},
 				"include_untracked": {Type: schema.Boolean, Required: false, Desc: "save 时可选：是否包含未跟踪文件（默认 false）"},
 			},
 			RiskLevel: RiskLevelHigh,
@@ -675,6 +886,194 @@ func GetAllToolDefinitions() []ToolDefinition {
 					Input:       map[string]any{"command": "code-review"},
 				},
 			},
+		},
+		{
+			Name:        ToolEnterPlanMode,
+			Description: "进入计划模式。在计划模式下，所有写操作和危险操作将被拒绝，你只能读取文件、搜索和规划。当你的计划准备好后，使用 exit_plan_mode 退出。",
+			Params: map[string]*schema.ParameterInfo{
+				"reason": {Type: schema.String, Required: false, Desc: "进入计划模式的原因"},
+			},
+			RiskLevel:       RiskLevelLow,
+			ConcurrencySafe: true,
+		},
+		{
+			Name:        ToolExitPlanMode,
+			Description: "退出计划模式，恢复到之前的执行模式。提供 plan_summary 以总结你在计划模式中制定的计划。",
+			Params: map[string]*schema.ParameterInfo{
+				"plan_summary": {Type: schema.String, Required: false, Desc: "计划摘要"},
+			},
+			RiskLevel:       RiskLevelLow,
+			ConcurrencySafe: true,
+		},
+		{
+			Name:        ToolAgent,
+			Description: "委派任务给子代理执行。子代理可以在隔离的上下文中独立运行，支持同步和异步两种模式。\n\n可用子代理类型:\n- explore: 只读探索代理，用于搜索和阅读代码\n- general-purpose: 通用代理，拥有完整工具集\n- plan: 规划专用代理\n- verification: 验证专用代理",
+			Params: map[string]*schema.ParameterInfo{
+				"prompt":            {Type: schema.String, Required: true, Desc: "子代理任务描述"},
+				"subagent_type":     {Type: schema.String, Required: false, Desc: "子代理类型: explore, general-purpose, plan, verification (默认 general-purpose)"},
+				"run_in_background": {Type: schema.Boolean, Required: false, Desc: "是否异步执行 (默认 false)"},
+				"description":       {Type: schema.String, Required: false, Desc: "任务简短描述 (用于显示)"},
+				"model":             {Type: schema.String, Required: false, Desc: "可选：指定模型"},
+			},
+			RiskLevel: RiskLevelLow,
+			Examples: []ToolExample{
+				{Description: "同步探索代码库", Input: map[string]any{"prompt": "查找所有处理用户认证的文件", "subagent_type": "explore"}},
+				{Description: "异步执行通用任务", Input: map[string]any{"prompt": "为 auth 模块编写单元测试", "subagent_type": "general-purpose", "run_in_background": true}},
+			},
+		},
+		{
+			Name:        ToolSuggestMemory,
+			Description: "将长期有效的信息写入独立记忆体系。优先写项目记忆；只有跨项目适用的用户偏好才写全局记忆。避免写入临时任务噪声、一次性状态或短期上下文。",
+			Params: map[string]*schema.ParameterInfo{
+				"file":    {Type: schema.String, Required: false, Desc: "可选：遗留兼容字段。留空时自动路由到全局或项目记忆文件"},
+				"type":    {Type: schema.String, Required: false, Desc: "记忆类型：global 或 project；若省略则默认 project"},
+				"content": {Type: schema.String, Required: true, Desc: "要沉淀的长期记忆内容"},
+				"section": {Type: schema.String, Required: false, Desc: "可选：逻辑分组标题，如“用户偏好”“任务结论”"},
+			},
+			RiskLevel:       RiskLevelMedium,
+			ConcurrencySafe: true,
+			Examples: []ToolExample{
+				{Description: "沉淀项目约定", Input: map[string]any{"type": "project", "content": "变更前先查看相关测试与现有配置约束", "section": "项目约定"}},
+				{Description: "沉淀全局用户偏好", Input: map[string]any{"type": "global", "content": "默认使用中文回答，优先给出最小改动方案", "section": "用户偏好"}},
+			},
+		},
+		{
+			Name:        ToolWebSearch,
+			Description: "Search the web using DuckDuckGo. Returns search results with titles, URLs, and snippets.",
+			Params: map[string]*schema.ParameterInfo{
+				"query":       {Type: schema.String, Required: true, Desc: "Search query"},
+				"max_results": {Type: schema.Integer, Required: false, Desc: "Maximum number of results (default 5)"},
+			},
+			RiskLevel: RiskLevelLow,
+		},
+		{
+			Name:        ToolWebFetch,
+			Description: "Fetch content from a URL. Returns the raw content from the web page.",
+			Params: map[string]*schema.ParameterInfo{
+				"url":    {Type: schema.String, Required: true, Desc: "URL to fetch"},
+				"format": {Type: schema.String, Required: false, Desc: "Output format: text (default) or markdown"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolEnterWorktree,
+			Description: "Create an isolated git worktree for working on changes without affecting the main working directory.",
+			Params: map[string]*schema.ParameterInfo{
+				"name": {Type: schema.String, Required: false, Desc: "Worktree name (auto-generated if empty)"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolExitWorktree,
+			Description: "Remove or prune a git worktree.",
+			Params: map[string]*schema.ParameterInfo{
+				"path":   {Type: schema.String, Required: true, Desc: "Worktree path to remove"},
+				"remove": {Type: schema.Boolean, Required: false, Desc: "Whether to remove the worktree directory (default true)"},
+			},
+			RiskLevel: RiskLevelHigh,
+		},
+		{
+			Name:        ToolNotebookEdit,
+			Description: "Edit a Jupyter notebook (.ipynb) file. Supports replace, insert, and delete cell operations.",
+			Params: map[string]*schema.ParameterInfo{
+				"path":         {Type: schema.String, Required: true, Desc: "Path to .ipynb file"},
+				"cell_id":      {Type: schema.String, Required: false, Desc: "Cell ID to edit (required for replace/delete)"},
+				"cell_type":    {Type: schema.String, Required: false, Desc: "Cell type: code or markdown (for insert)"},
+				"source":       {Type: schema.String, Required: false, Desc: "New cell content"},
+				"edit_mode":    {Type: schema.String, Required: false, Desc: "Edit mode: replace (default), insert, delete"},
+				"insert_after": {Type: schema.String, Required: false, Desc: "Cell ID after which to insert (for insert mode)"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolMCPListResources,
+			Description: "列出 MCP 服务器暴露的资源（模板、静态数据等）。可按服务器名筛选。",
+			Params: map[string]*schema.ParameterInfo{
+				"server": {Type: schema.String, Required: false, Desc: "可选：指定 MCP 服务器名称"},
+			},
+			RiskLevel:       RiskLevelLow,
+			ConcurrencySafe: true,
+		},
+		{
+			Name:        ToolMCPReadResource,
+			Description: "读取指定 MCP 服务器的指定资源 URI 内容。",
+			Params: map[string]*schema.ParameterInfo{
+				"server": {Type: schema.String, Required: true, Desc: "MCP 服务器名称"},
+				"uri":    {Type: schema.String, Required: true, Desc: "资源 URI"},
+			},
+			RiskLevel: RiskLevelLow,
+		},
+		{
+			Name:        ToolMCPListPrompts,
+			Description: "列出所有 MCP 服务器提供的 prompt 模板。",
+			Params:      map[string]*schema.ParameterInfo{},
+			RiskLevel:   RiskLevelLow,
+		},
+		{
+			Name:        ToolMCPGetPrompt,
+			Description: "获取指定 MCP 服务器的指定 prompt 模板内容。",
+			Params: map[string]*schema.ParameterInfo{
+				"server":    {Type: schema.String, Required: true, Desc: "MCP 服务器名称"},
+				"name":      {Type: schema.String, Required: true, Desc: "prompt 名称"},
+				"arguments": {Type: schema.String, Required: false, Desc: "可选的 prompt 参数（JSON 格式）"},
+			},
+			RiskLevel: RiskLevelLow,
+		},
+		{
+			Name:        ToolPowerShell,
+			Description: "执行 PowerShell 命令（Windows 上使用 powershell.exe，跨平台使用 pwsh）。",
+			Params: map[string]*schema.ParameterInfo{
+				"command": {Type: schema.String, Required: true, Desc: "要执行的 PowerShell 命令"},
+			},
+			RiskLevel: RiskLevelHigh,
+		},
+		{
+			Name:        ToolStructuredOutput,
+			Description: "生成符合 JSON Schema 的结构化输出。接收 schema 和 data 参数，验证 data 符合 schema 后返回。",
+			Params: map[string]*schema.ParameterInfo{
+				"schema": {Type: schema.String, Required: true, Desc: "JSON Schema 字符串"},
+				"data":   {Type: schema.String, Required: true, Desc: "要验证的 JSON 数据字符串"},
+			},
+			RiskLevel:       RiskLevelLow,
+			ConcurrencySafe: true,
+		},
+		{
+			Name:        ToolSnip,
+			Description: "标记上下文中可裁剪的消息。Agent 主动标记不再需要的上下文内容以释放 token 空间。",
+			Params: map[string]*schema.ParameterInfo{
+				"message_id": {Type: schema.String, Required: true, Desc: "要裁剪的消息 ID"},
+				"reason":     {Type: schema.String, Required: false, Desc: "裁剪原因"},
+			},
+			RiskLevel:       RiskLevelLow,
+			ConcurrencySafe: true,
+		},
+		{
+			Name:        ToolTeamCreate,
+			Description: "创建命名 team，配置多个 agent 角色并行协作执行任务。",
+			Params: map[string]*schema.ParameterInfo{
+				"name":   {Type: schema.String, Required: true, Desc: "Team 名称"},
+				"agents": {Type: schema.Array, Required: true, Desc: "Agent 配置列表（每个元素包含 role, prompt, subagent_type）"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolTeamDelete,
+			Description: "停止并清理指定 team。",
+			Params: map[string]*schema.ParameterInfo{
+				"name": {Type: schema.String, Required: true, Desc: "Team 名称"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolTeamSendMsg,
+			Description: "在 team 内的 agent 之间发送消息。",
+			Params: map[string]*schema.ParameterInfo{
+				"team":       {Type: schema.String, Required: true, Desc: "Team 名称"},
+				"from_agent": {Type: schema.String, Required: true, Desc: "发送方 agent 角色"},
+				"to_agent":   {Type: schema.String, Required: true, Desc: "接收方 agent 角色"},
+				"message":    {Type: schema.String, Required: true, Desc: "消息内容"},
+			},
+			RiskLevel: RiskLevelLow,
 		},
 	}
 }

@@ -1,10 +1,17 @@
 package runtime
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/tools"
 
 	"github.com/cloudwego/eino/components/tool"
 )
@@ -122,6 +129,80 @@ func GetAvailableToolsDescription(ctx context.Context, mcpTools []tool.BaseTool)
 	}
 
 	return sb.String()
+}
+
+// GetDispatchToolsDescription returns the actual invocable tools available to the
+// dispatch agent, rather than the full runtime tool catalog.
+func GetDispatchToolsDescription() string {
+	var sb strings.Builder
+	sb.WriteString("**调度工具**：\n")
+	for _, ti := range GetDispatchToolsInfo() {
+		name, _ := ti["name"].(string)
+		desc, _ := ti["description"].(string)
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("- `%s` — %s\n", name, desc))
+		params, _ := ti["parameters"].(map[string]any)
+		sb.WriteString(formatDispatchToolParams(params))
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+func formatDispatchToolParams(params map[string]any) string {
+	if len(params) == 0 {
+		return ""
+	}
+	props, _ := params["properties"].(map[string]any)
+	if len(props) == 0 {
+		return ""
+	}
+	requiredSet := map[string]bool{}
+	switch req := params["required"].(type) {
+	case []string:
+		for _, key := range req {
+			requiredSet[key] = true
+		}
+	case []any:
+		for _, item := range req {
+			if key, ok := item.(string); ok {
+				requiredSet[key] = true
+			}
+		}
+	}
+
+	names := make([]string, 0, len(props))
+	for name := range props {
+		names = append(names, name)
+	}
+	// Keep output stable for tests and prompt caching.
+	sort.Strings(names)
+
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		prop, _ := props[name].(map[string]any)
+		desc, _ := prop["description"].(string)
+		part := name
+		if strings.TrimSpace(desc) != "" {
+			short := desc
+			if idx := strings.IndexAny(short, "。；;（("); idx > 0 && idx < 60 {
+				short = short[:idx]
+			}
+			if len(short) > 50 {
+				short = short[:50] + "..."
+			}
+			part = fmt.Sprintf("%s: %s", name, short)
+		}
+		if requiredSet[name] {
+			part += " [required]"
+		}
+		parts = append(parts, part)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "  参数: " + strings.Join(parts, ", ") + "\n"
 }
 
 // formatExampleParams 将示例参数格式化为可读字符串

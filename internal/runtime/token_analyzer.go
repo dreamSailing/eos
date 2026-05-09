@@ -1,11 +1,17 @@
 package runtime
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"sort"
 	"strings"
 	"sync"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
 
 	"github.com/cloudwego/eino/schema"
 	"log/slog"
@@ -213,7 +219,8 @@ func EstimateCost(modelName string, inputTokens, outputTokens int64) float64 {
 	outputPricePerMillion := 15.0
 
 	switch {
-	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "qwen3.5-plus"):
+	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "qwen3.6-plus"),
+		strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "qwen3.5-plus"):
 		inputPricePerMillion = 800.0
 		outputPricePerMillion = 4800.0
 	}

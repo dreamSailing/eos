@@ -1,5 +1,11 @@
 package skills
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"os"
 	"path/filepath"
@@ -45,7 +51,7 @@ func TestLoaderUserOverridesProjectForSameName(t *testing.T) {
 		t.Fatalf("home: %v", err)
 	}
 
-	base := filepath.Join(home, ".vb", "skills")
+	base := filepath.Join(home, ".eos", "skills")
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		t.Fatalf("mkdir base: %v", err)
 	}

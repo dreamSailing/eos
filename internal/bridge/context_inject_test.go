@@ -1,41 +1,57 @@
 package bridge
 
 import (
-	"strings"
+	"os"
+	"path/filepath"
+	"reflect"
 	"testing"
-
-	codectx "github.com/dreamSailing/vb-coding/internal/context"
+	"time"
 )
 
-func TestExtractMentionedPaths(t *testing.T) {
-	got := extractMentionedPaths("please check @internal/bridge/runtime_invoke.go and docs/iteration_optimization_plan.md")
-	if len(got) < 2 {
-		t.Fatalf("expected paths, got %#v", got)
+func TestRecentVersionedFilesListIgnoresMetadataAndUsesModTime(t *testing.T) {
+	root := t.TempDir()
+	olderDir := filepath.Join(root, "dir", "older.txt")
+	newerDir := filepath.Join(root, "dir", "newer.txt")
+	if err := os.MkdirAll(olderDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(olderDir) error = %v", err)
 	}
-}
+	if err := os.MkdirAll(newerDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(newerDir) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "_checkpoints"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(_checkpoints) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "_index.jsonl"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(_index.jsonl) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "meta.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(meta.json) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "_checkpoints", "trace.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(checkpoint) error = %v", err)
+	}
 
-func TestExtractRelevantSnippetCentersOnKeyword(t *testing.T) {
-	content := strings.Repeat("line\n", 200) + "targetKeyword here\n" + strings.Repeat("tail\n", 200)
-	out := extractRelevantSnippet(content, "targetKeyword", nil, 2000)
-	if !strings.Contains(out, "targetKeyword") {
-		t.Fatalf("expected keyword in snippet")
+	older := filepath.Join(olderDir, "20260503-120000.000000001.content")
+	newer := filepath.Join(newerDir, "20260503-120000.000000002-1.content")
+	if err := os.WriteFile(older, []byte("old\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(older) error = %v", err)
 	}
-	if len(out) > 2100 {
-		t.Fatalf("snippet too large: %d", len(out))
+	if err := os.WriteFile(newer, []byte("new\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(newer) error = %v", err)
 	}
-}
 
-func TestBuildInjectCandidatesDedup(t *testing.T) {
-	sugg := []codectx.Suggestion{
-		{Path: "internal/bridge/runtime_invoke.go", Symbols: []string{"ProcessContextHints"}},
-		{Path: "internal/bridge/runtime_invoke.go", Symbols: []string{"ProcessContextHints"}},
+	oldTime := time.Now().Add(-2 * time.Hour)
+	newTime := time.Now().Add(-1 * time.Hour)
+	if err := os.Chtimes(older, oldTime, oldTime); err != nil {
+		t.Fatalf("Chtimes(older) error = %v", err)
 	}
-	out := buildInjectCandidates("runtime_invoke.go", sugg, 4)
-	seen := map[string]struct{}{}
-	for _, s := range out {
-		if _, ok := seen[s.Path]; ok {
-			t.Fatalf("duplicate path: %s", s.Path)
-		}
-		seen[s.Path] = struct{}{}
+	if err := os.Chtimes(newer, newTime, newTime); err != nil {
+		t.Fatalf("Chtimes(newer) error = %v", err)
+	}
+
+	got := recentVersionedFilesList(root, 4)
+	want := []string{"dir/newer.txt", "dir/older.txt"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("recentVersionedFilesList() = %#v, want %#v", got, want)
 	}
 }

@@ -3,21 +3,26 @@
 
 package bridge
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"fmt"
 	"log/slog"
 	"net/url"
-	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/config"
-	"github.com/dreamSailing/vb-coding/internal/lsp"
-	"github.com/dreamSailing/vb-coding/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/lsp"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // lspManagerEntry LSP 管理器条目
@@ -38,10 +43,9 @@ func (rc *RuntimeCore) initLSPManager() *lspManagerEntry {
 		return nil
 	}
 
-	// 获取工作区根目录
-	wd, err := filepath.Abs(".")
-	if err != nil {
-		slog.Debug("bridge.init_lsp.no_working_dir", "component", utils.ComponentSystem, "error", err.Error())
+	wd := strings.TrimSpace(rc.workingRoot())
+	if wd == "" {
+		slog.Debug("bridge.init_lsp.no_working_dir", "component", utils.ComponentSystem, "config_file", cfgPath)
 		return nil
 	}
 
@@ -77,6 +81,27 @@ func (rc *RuntimeCore) initLSPManager() *lspManagerEntry {
 		rootDir:  wd,
 		langType: langType,
 	}
+}
+
+func (rc *RuntimeCore) refreshLSPManager() {
+	if rc == nil {
+		return
+	}
+
+	root := strings.TrimSpace(rc.workingRoot())
+	rc.mu.RLock()
+	current := rc.lspManager
+	rc.mu.RUnlock()
+	if current != nil && strings.EqualFold(filepath.Clean(current.rootDir), filepath.Clean(root)) {
+		return
+	}
+
+	next := rc.initLSPManager()
+	rc.mu.Lock()
+	old := rc.lspManager
+	rc.lspManager = next
+	rc.mu.Unlock()
+	rc.ShutdownLSPManager(old)
 }
 
 // ProcessLSPDiagnostics 处理 LSP 诊断信息并添加到上下文
@@ -120,7 +145,7 @@ func (rc *RuntimeCore) ProblemsAndDiagnosticsMarkdown() string {
 }
 
 func (rc *RuntimeCore) LSPServersMarkdown() string {
-	wd, _ := os.Getwd()
+	wd := strings.TrimSpace(rc.workingRoot())
 	cfg, cfgPath := config.Load()
 	enabled := cfg.LSP.EnabledValue()
 	autoDetect := cfg.LSP.AutoDetectValue()
@@ -196,7 +221,7 @@ func (rc *RuntimeCore) LSPServersMarkdown() string {
 }
 
 func (rc *RuntimeCore) LSPStatus() LSPStatus {
-	wd, _ := os.Getwd()
+	wd := strings.TrimSpace(rc.workingRoot())
 	cfg, cfgPath := config.Load()
 	enabled := cfg.LSP.EnabledValue()
 	autoDetect := cfg.LSP.AutoDetectValue()

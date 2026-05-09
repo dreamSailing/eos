@@ -1,11 +1,17 @@
 package git
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"bytes"
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -178,7 +184,7 @@ func (m *CheckpointManager) isGitRepo() bool {
 
 // writeTree 创建 Git tree 对象
 func (m *CheckpointManager) writeTree() (string, error) {
-	cmd := exec.Command("git", "write-tree")
+	cmd := utils.Command("git", "write-tree")
 	cmd.Dir = m.rootDir
 
 	var stdout bytes.Buffer
@@ -195,7 +201,7 @@ func (m *CheckpointManager) writeTree() (string, error) {
 
 // getCurrentBranch 获取当前分支
 func (m *CheckpointManager) getCurrentBranch() (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd := utils.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
 	cmd.Dir = m.rootDir
 
 	var stdout bytes.Buffer
@@ -213,14 +219,14 @@ func (m *CheckpointManager) getCurrentBranch() (string, error) {
 // restoreTree 恢复到指定 tree
 func (m *CheckpointManager) restoreTree(cp *Checkpoint) error {
 	// 读取 tree 内容到索引
-	cmd := exec.Command("git", "read-tree", cp.TreeHash)
+	cmd := utils.Command("git", "read-tree", cp.TreeHash)
 	cmd.Dir = m.rootDir
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("git read-tree failed: %w", err)
 	}
 
 	// 检出索引内容
-	cmd = exec.Command("git", "checkout-index", "-f", "-a")
+	cmd = utils.Command("git", "checkout-index", "-f", "-a")
 	cmd.Dir = m.rootDir
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("git checkout-index failed: %w", err)
@@ -276,7 +282,7 @@ func DefaultCheckpointConfig() *CheckpointConfig {
 	return &CheckpointConfig{
 		AutoCreate:       true,
 		MaxCheckpoints:   50,
-		ExcludedPaths:    []string{".vb", "node_modules", ".git"},
+		ExcludedPaths:    []string{".eos", "node_modules", ".git"},
 		IncludeUntracked: false,
 	}
 }

@@ -1,11 +1,17 @@
 package git
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/session"
+	"github.com/dreamSailing/eos/internal/tools"
 	"strings"
-	"github.com/dreamSailing/vb-coding/internal/session"
-	"github.com/dreamSailing/vb-coding/internal/tools"
 )
 
 // UI 接口，用于回调 UI 显示和权限询问，解耦 UI 与逻辑
@@ -159,7 +165,6 @@ func (m *Manager) HandleCommand(ui UI, name []string) bool {
 				if len(rest) > 0 {
 					if n, ok := tryParseInt(rest[0]); ok {
 						idx = n
-						rest = rest[1:]
 					}
 				}
 			}

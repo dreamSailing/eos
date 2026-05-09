@@ -3,7 +3,11 @@
 
 package bridge
 
-import "os"
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 
 // lspManagerEntry LSP 管理器条目（stub 版本）
 
@@ -13,6 +17,8 @@ type lspManagerEntry struct{}
 func (rc *RuntimeCore) initLSPManager() *lspManagerEntry {
 	return nil
 }
+
+func (rc *RuntimeCore) refreshLSPManager() {}
 
 // ProcessLSPDiagnostics 处理 LSP 诊断信息（stub 版本）
 func (rc *RuntimeCore) ProcessLSPDiagnostics(lspEntry *lspManagerEntry) {
@@ -28,10 +34,9 @@ func (rc *RuntimeCore) LSPServersMarkdown() string {
 }
 
 func (rc *RuntimeCore) LSPStatus() LSPStatus {
-	wd, _ := os.Getwd()
 	return LSPStatus{
 		Enabled:   false,
-		Workspace: wd,
+		Workspace: rc.workingRoot(),
 		Message:   "disabled_build_tag",
 	}
 }

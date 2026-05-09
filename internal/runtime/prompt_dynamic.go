@@ -1,5 +1,10 @@
 package runtime
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"io/fs"
 	"os"
@@ -9,9 +14,21 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/memory"
+	mcppkg "github.com/dreamSailing/eos/internal/mcp"
+	plugpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
 )
 
 func BuildProjectPromptAdditions(cwd string) string {
+	return buildProjectPromptAdditions(cwd, false)
+}
+
+func BuildDispatchPromptAdditions(cwd string) string {
+	return buildProjectPromptAdditions(cwd, true)
+}
+
+func buildProjectPromptAdditions(cwd string, dispatchOnly bool) string {
 	var sb strings.Builder
 
 	sb.WriteString("**项目约定**：\n")
@@ -29,25 +46,61 @@ func BuildProjectPromptAdditions(cwd string) string {
 		addSnippetPath(rel, filepath.Join(cwd, rel), max)
 	}
 
-	addSnippet("VB.md", 8000)
-	addSnippet(filepath.Join(".vb", "Rules.md"), 8000)
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		addSnippetPath(filepath.Join("~", ".vb", "Rules.md"), filepath.Join(home, ".vb", "Rules.md"), 8000)
-	}
-	addSnippet(filepath.Join(".vb", "prompt.md"), 4000)
+	addSnippet("EOS.md", 8000)
+	addSnippetPath(memory.GlobalMemoryDocID, memory.GlobalMemoryPath(), 6000)
+	addSnippetPath(memory.ProjectMemoryDocID, memory.ProjectMemoryPath(cwd), 6000)
+	addSnippetPath(memory.ProjectIndexDocID, memory.ProjectMemoryIndexPath(cwd), 4000)
 
-	sb.WriteString("\n**规范文件约定**：\n")
-	sb.WriteString("- 项目规范文件：.vb/Rules.md（默认写这里）\n")
-	sb.WriteString("- 全局规范文件：~/.vb/Rules.md（仅用户明确要求“全局规则”时写这里）\n")
-	sb.WriteString("- 项目指导文件只使用 VB.md，不使用 CLAUDE.md\n")
-	sb.WriteString("- 用户要求“写/更新规则”时，直接更新对应 Rules.md 文件内容\n")
-	sb.WriteString("- 生成/更新规范时使用固定模板；若文件已存在，更新其对应章节，不要整文件重写或重复追加标题\n")
-	sb.WriteString("```\n")
-	sb.WriteString(strings.TrimSpace(RulesMdTemplate()))
-	sb.WriteString("\n```\n")
+	sessionMemPath := filepath.Join(cwd, ".eos", "session-memory", "session.md")
+	if memContent, ok := readTextFileBestEffort(sessionMemPath, 4000); ok {
+		sb.WriteString("\n\n**会话记忆**：\n```\n")
+		sb.WriteString(strings.TrimSpace(memContent))
+		sb.WriteString("\n```\n")
+	}
+
+	if !dispatchOnly {
+		sb.WriteString("\n\n## 自动记忆指南\n")
+		sb.WriteString("当你在对话中发现长期有效的信息时，使用 suggest_memory 工具沉淀到独立 memory 文件体系。\n")
+		sb.WriteString("- 跨项目稳定适用的用户偏好 -> 全局记忆 `~/.eos/memory/user.md`\n")
+		sb.WriteString("- 仅当前仓库适用的约定、结论、排障经验 -> 项目记忆 `.eos/memory/project.md`\n")
+		sb.WriteString("- 临时任务状态、一次性计划、短期上下文不要写入长期记忆\n")
+	}
+
+	cfg, _ := config.Load()
+	cfg.MCP = plugpkg.MergeMCPEntries(&cfg, cwd)
+	browserStatus := mcppkg.DetectBrowserStatus(&cfg, nil)
+	if !dispatchOnly {
+		sb.WriteString("\n\n## 浏览器能力\n")
+		if browserStatus.Configured && browserStatus.Enabled {
+			sb.WriteString("- 已配置浏览器 MCP（推荐 Playwright）；涉及网页点击、输入、选择、截图、等待页面变化时，优先使用浏览器工具，而不是只依赖 web_fetch\n")
+		} else {
+			sb.WriteString("- 当前未确认可用的浏览器 MCP；如果任务需要真实网页交互，先用 browser_status 检查，并建议用户在 /mcp 中启用 Playwright 预设\n")
+		}
+		sb.WriteString("- web_fetch 适合只读抓取网页内容；浏览器 MCP 适合真实页面交互与行为验证\n")
+	}
+
+	addSnippet(filepath.Join(".eos", "Rules.md"), 8000)
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		addSnippetPath(filepath.Join("~", ".eos", "Rules.md"), filepath.Join(home, ".eos", "Rules.md"), 8000)
+	}
+	addSnippet(filepath.Join(".eos", "prompt.md"), 4000)
+
+	if !dispatchOnly {
+		sb.WriteString("\n**规范文件约定**：\n")
+		sb.WriteString("- 项目记忆文件：.eos/memory/project.md\n")
+		sb.WriteString("- 全局用户记忆文件：~/.eos/memory/user.md\n")
+		sb.WriteString("- 项目规范文件：.eos/Rules.md\n")
+		sb.WriteString("- 全局规范文件：~/.eos/Rules.md\n")
+		sb.WriteString("- 项目指导文件只使用 EOS.md，不使用 CLAUDE.md\n")
+		sb.WriteString("- 用户要求“写/更新规则”时，直接更新对应 Rules.md 文件内容；不要把规则和记忆混写\n")
+		sb.WriteString("- 生成/更新规范时使用固定模板；若文件已存在，更新其对应章节，不要整文件重写或重复追加标题\n")
+		sb.WriteString("```\n")
+		sb.WriteString(strings.TrimSpace(RulesMdTemplate()))
+		sb.WriteString("\n```\n")
+	}
 
 	if recent := recentVersionedFiles(cwd, 8); recent != "" {
-		sb.WriteString("\n**最近修改（基于 .vb/versions）**：\n")
+		sb.WriteString("\n**最近修改（基于 .eos/versions）**：\n")
 		sb.WriteString(recent)
 		sb.WriteString("\n")
 	}
@@ -182,7 +235,7 @@ func recentVersionedFiles(cwd string, limit int) string {
 	if limit <= 0 {
 		limit = 8
 	}
-	root := filepath.Join(cwd, ".vb", "versions")
+	root := filepath.Join(cwd, ".eos", "versions")
 	_, err := os.Stat(root)
 	if err != nil {
 		return ""

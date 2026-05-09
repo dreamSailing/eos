@@ -1,5 +1,11 @@
 package ai
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"testing"
 )
@@ -63,7 +69,7 @@ func TestGetModelInfo(t *testing.T) {
 		},
 		{
 			name:          "Qwen Thinking",
-			modelName:     "qwen3.5-plus",
+			modelName:     "qwen3.6-plus",
 			wantFound:     true,
 			wantThinking:  ThinkingHigh,
 			wantReasoning: false,
@@ -99,7 +105,7 @@ func TestSupportsReasoningEffort(t *testing.T) {
 		{"gpt-4o", false},
 		{"gpt-4o-mini", false},
 		{"deepseek-r1", false},
-		{"qwen3.5-plus", false},
+		{"qwen3.6-plus", false},
 		{"unknown-model", false},
 		{"", false},
 	}
@@ -123,7 +129,7 @@ func TestSupportsThinking(t *testing.T) {
 		{"o1-mini", true},
 		{"o1-preview", true},
 		{"deepseek-r1", true},
-		{"qwen3.5-plus", true},
+		{"qwen3.6-plus", true},
 		{"gpt-4o", false},
 		{"gpt-4o-mini", false},
 		{"unknown-model", false},

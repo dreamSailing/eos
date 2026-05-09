@@ -1,12 +1,21 @@
 package panels
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
+	"context"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/toolapi"
+	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
+	"github.com/dreamSailing/eos/internal/tools/bg"
+	"github.com/dreamSailing/eos/internal/ui/styles"
 	"strings"
 	"time"
-	"github.com/dreamSailing/vb-coding/internal/i18n"
-	"github.com/dreamSailing/vb-coding/internal/tools/bg"
-	"github.com/dreamSailing/vb-coding/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -19,12 +28,13 @@ type TasksPanel struct {
 	styles   *styles.Styles
 	language string
 
-	table  table.Model
-	tasks  []bg.TaskInfo
+	table   table.Model
+	tasks   []toolapi.TaskInfo
 	viewing bool
 
 	viewID    string
 	viewSeq   int64
+	viewTask  toolapi.TaskInfo
 	viewInfo  bg.TaskInfo
 	viewLines []string
 	vp        viewport.Model
@@ -54,10 +64,10 @@ func NewTasksPanel(styles *styles.Styles, lang string) *TasksPanel {
 
 	p := &TasksPanel{
 		BasePanel: NewBasePanel("tasks"),
-		styles:   styles,
-		language: lang,
-		table:    t,
-		vp:       vp,
+		styles:    styles,
+		language:  lang,
+		table:     t,
+		vp:        vp,
 	}
 	p.refresh()
 	return p
@@ -169,6 +179,7 @@ func (p *TasksPanel) ResetView() {
 	p.viewing = false
 	p.viewID = ""
 	p.viewSeq = 0
+	p.viewTask = toolapi.TaskInfo{}
 	p.viewLines = nil
 	p.vp.SetContent("")
 }
@@ -185,13 +196,18 @@ func (p *TasksPanel) selectedID() string {
 }
 
 func (p *TasksPanel) refresh() {
-	p.tasks = bg.Default().List()
+	items, err := toolapiimpl.NewServices().Tasks().List(context.Background())
+	if err != nil {
+		p.tasks = nil
+	} else {
+		p.tasks = items
+	}
 	w, _ := p.GetSize()
 	tableW := w - 6
 	if tableW < 40 {
 		tableW = 40
 	}
-	fixed := 14 + 10 + 7 + 16
+	fixed := 14 + 12 + 10 + 16
 	gaps := 8
 	cmdW := tableW - fixed - gaps
 	if cmdW < 20 {
@@ -199,25 +215,40 @@ func (p *TasksPanel) refresh() {
 	}
 	cols := []table.Column{
 		{Title: i18n.T("tasks.col.id", p.language), Width: 14},
+		{Title: "Kind", Width: 12},
 		{Title: i18n.T("tasks.col.status", p.language), Width: 10},
-		{Title: i18n.T("tasks.col.pid", p.language), Width: 7},
 		{Title: i18n.T("tasks.col.started", p.language), Width: 16},
 		{Title: i18n.T("tasks.col.command", p.language), Width: cmdW},
 	}
 	rows := make([]table.Row, 0, len(p.tasks))
 	for _, t := range p.tasks {
-		start := t.StartedAt.Format("01-02 15:04:05")
-		cmd := t.Command
+		start := t.UpdatedAt
+		if start.IsZero() {
+			start = t.StartedAt
+		}
+		cmd := strings.TrimSpace(t.Label)
+		if cmd == "" {
+			cmd = strings.TrimSpace(t.Summary)
+		}
 		if lipgloss.Width(cmd) > cmdW {
 			runes := []rune(cmd)
 			if len(runes) > cmdW-1 && cmdW > 1 {
 				cmd = string(runes[:cmdW-1]) + "…"
 			}
 		}
-		rows = append(rows, table.Row{t.ID, string(t.Status), fmt.Sprintf("%d", t.PID), start, cmd})
+		rows = append(rows, table.Row{t.ID, t.Kind, t.Status, start.Format("01-02 15:04:05"), cmd})
 	}
 	p.table.SetColumns(cols)
 	p.table.SetRows(rows)
+}
+
+func (p *TasksPanel) findTask(id string) (toolapi.TaskInfo, bool) {
+	for _, task := range p.tasks {
+		if task.ID == id {
+			return task, true
+		}
+	}
+	return toolapi.TaskInfo{}, false
 }
 
 func (p *TasksPanel) openView(id string) {
@@ -225,12 +256,37 @@ func (p *TasksPanel) openView(id string) {
 	p.viewID = id
 	p.viewSeq = 0
 	p.viewLines = nil
+	if task, ok := p.findTask(id); ok {
+		p.viewTask = task
+	}
 	p.vp.GotoTop()
 	p.refreshView()
 }
 
 func (p *TasksPanel) refreshView() {
 	if strings.TrimSpace(p.viewID) == "" {
+		return
+	}
+	if task, ok := p.findTask(p.viewID); ok {
+		p.viewTask = task
+	}
+	if p.viewTask.Kind != "shell_task" {
+		lines := make([]string, 0, 8)
+		if strings.TrimSpace(p.viewTask.Summary) != "" {
+			lines = append(lines, p.viewTask.Summary)
+		}
+		if len(p.viewTask.Metadata) > 0 {
+			lines = append(lines, "")
+			for key, value := range p.viewTask.Metadata {
+				lines = append(lines, fmt.Sprintf("%s: %v", key, value))
+			}
+		}
+		if len(lines) == 0 {
+			lines = append(lines, "(no details)")
+		}
+		p.viewLines = lines
+		p.vp.SetContent(strings.Join(p.viewLines, "\n"))
+		p.vp.GotoTop()
 		return
 	}
 	res, err := bg.Default().Tail(p.viewID, &bg.TailOptions{FromSeq: p.viewSeq, Limit: 400})
@@ -257,12 +313,21 @@ func (p *TasksPanel) refreshView() {
 
 func (p *TasksPanel) viewDetail() string {
 	title := fmt.Sprintf("%s %s", i18n.T("tasks.detail", p.language), p.viewID)
-	info := p.viewInfo
-	status := string(info.Status)
-	meta := fmt.Sprintf("%s: %s  PID: %d  %s: %s",
-		i18n.T("tasks.meta.status", p.language), status,
-		info.PID,
-		i18n.T("tasks.meta.started", p.language), info.StartedAt.Format("2006-01-02 15:04:05"))
+	meta := ""
+	if p.viewTask.Kind == "shell_task" {
+		info := p.viewInfo
+		status := string(info.Status)
+		meta = fmt.Sprintf("%s: %s  PID: %d  %s: %s",
+			i18n.T("tasks.meta.status", p.language), status,
+			info.PID,
+			i18n.T("tasks.meta.started", p.language), info.StartedAt.Format("2006-01-02 15:04:05"))
+	} else {
+		started := p.viewTask.StartedAt.Format("2006-01-02 15:04:05")
+		meta = fmt.Sprintf("%s: %s  Kind: %s  %s: %s",
+			i18n.T("tasks.meta.status", p.language), p.viewTask.Status,
+			p.viewTask.Kind,
+			i18n.T("tasks.meta.started", p.language), started)
+	}
 
 	var b strings.Builder
 	b.WriteString(p.styles.TextInfo.Render(title))

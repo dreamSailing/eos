@@ -1,16 +1,51 @@
 package bridge
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"context"
 	"errors"
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/vb-coding/internal/notify"
-	"github.com/dreamSailing/vb-coding/internal/tools"
+	"github.com/dreamSailing/eos/internal/notify"
+	"github.com/dreamSailing/eos/internal/runtime"
+	"github.com/dreamSailing/eos/internal/toolapi"
+	"github.com/dreamSailing/eos/internal/tools"
 
 	"github.com/google/uuid"
 )
+
+var autoModePromptCategories = map[string]bool{
+	"tool-delete":       true,
+	"delete_file":       true,
+	"git-push":          true,
+	"git-reset":         true,
+	"git-revert":        true,
+	"git-merge":         true,
+	"git-rebase":        true,
+	"git-stash-apply":   true,
+	"git-stash-drop":    true,
+	"bg-task-start":     true,
+	"bg-task-kill":      true,
+	"bash-session-kill": true,
+}
+
+func promptNeedsSafetyConfirmation(kind PromptKind, category, summary string) bool {
+	if kind != PromptKindPermission {
+		return false
+	}
+	category = strings.ToLower(strings.TrimSpace(category))
+	summary = strings.ToLower(strings.TrimSpace(summary))
+	if autoModePromptCategories[category] {
+		return true
+	}
+	return strings.Contains(summary, "restore checkpoint") || strings.Contains(summary, "恢复检查点")
+}
 
 type PromptKind string
 
@@ -95,7 +130,14 @@ func (rc *RuntimeCore) waitPrompt(ctx context.Context, req PromptRequest) (Promp
 			desktopEnabled = *s.DesktopNotifications
 		}
 	}
-	if desktopEnabled && rc.securityMgr != nil && rc.securityMgr.ExecutionMode() != "auto" {
+	shouldNotify := desktopEnabled
+	if shouldNotify && rc.securityMgr != nil {
+		mode := rc.securityMgr.ExecutionMode()
+		if mode == "auto" {
+			shouldNotify = promptNeedsSafetyConfirmation(req.Kind, req.Category, req.Summary)
+		}
+	}
+	if shouldNotify {
 		switch req.Kind {
 		case PromptKindPermission, PromptKindUserConfirm:
 			title := strings.TrimSpace(req.Title)
@@ -110,24 +152,12 @@ func (rc *RuntimeCore) waitPrompt(ctx context.Context, req PromptRequest) (Promp
 		}
 	}
 
-	rc.eventsCh <- Event{
-		Type:    "prompt.request",
-		RID:     req.ID,
-		Content: req.Question,
-		Data: map[string]any{
-			"kind":       string(req.Kind),
-			"title":      req.Title,
-			"question":   req.Question,
-			"options":    req.Options,
-			"category":   req.Category,
-			"summary":    req.Summary,
-			"diff":       req.Diff,
-			"diff_path":  req.DiffPath,
-			"allow_text": req.AllowText,
-			"text_hint":  req.TextHint,
-			"ts":         time.Now().Unix(),
-		},
+	ev := bridgePromptEvent(req)
+	if ev.Data == nil {
+		ev.Data = map[string]any{}
 	}
+	ev.Data["ts"] = time.Now().Unix()
+	rc.eventsCh <- ev
 
 	select {
 	case r := <-ch:
@@ -138,9 +168,29 @@ func (rc *RuntimeCore) waitPrompt(ctx context.Context, req PromptRequest) (Promp
 }
 
 func (rc *RuntimeCore) promptPermission(ctx context.Context, category, summary string) string {
-	if rc != nil && rc.securityMgr != nil && rc.securityMgr.ExecutionMode() == "auto" {
-		rc.ClearPendingDiff()
-		return "allow"
+	if rc != nil && rc.securityMgr != nil {
+		mode := toolapi.NormalizeExecutionMode(rc.securityMgr.ExecutionMode())
+		switch mode {
+		case "plan":
+			rc.ClearPendingDiff()
+			return "deny"
+		case "auto":
+			// Use classifier for auto mode decisions
+			classifier := runtime.NewClassifier()
+			result := classifier.Classify(category, summary)
+			switch result.Action {
+			case runtime.ActionAllow:
+				rc.ClearPendingDiff()
+				return "allow"
+			case runtime.ActionDeny:
+				// Fall through to UI prompt for dangerous operations
+			}
+			// For ActionAsk or ActionDeny that should still show UI
+			if !promptNeedsSafetyConfirmation(PromptKindPermission, category, summary) {
+				rc.ClearPendingDiff()
+				return "allow"
+			}
+		}
 	}
 	req := PromptRequest{
 		Kind:     PromptKindPermission,
@@ -168,15 +218,6 @@ func (rc *RuntimeCore) promptPermission(ctx context.Context, category, summary s
 }
 
 func (rc *RuntimeCore) userConfirmPrompt(ctx context.Context, req tools.UserConfirmRequest) (tools.UserConfirmResponse, error) {
-	if rc != nil && rc.securityMgr != nil && rc.securityMgr.ExecutionMode() == "auto" {
-		opt := ""
-		optIdx := -1
-		if len(req.Options) > 0 {
-			opt = strings.TrimSpace(req.Options[0])
-			optIdx = 0
-		}
-		return tools.UserConfirmResponse{Confirmed: true, Option: opt, OptionIndex: optIdx}, nil
-	}
 	title := strings.TrimSpace(req.Title)
 	question := strings.TrimSpace(req.Question)
 	if question == "" {
@@ -209,5 +250,33 @@ func (rc *RuntimeCore) userConfirmPrompt(ctx context.Context, req tools.UserConf
 		Option:      strings.TrimSpace(r.Option),
 		OptionIndex: r.OptionIndex,
 		Text:        strings.TrimSpace(r.Text),
+	}, nil
+}
+
+func (rc *RuntimeCore) askUserQuestionPrompt(ctx context.Context, req tools.AskUserQuestionRequest) (tools.AskUserQuestionResponse, error) {
+	question := strings.TrimSpace(req.Question)
+	if question == "" {
+		return tools.AskUserQuestionResponse{}, errors.New("question required")
+	}
+	opts := make([]string, 0, len(req.Options))
+	for _, s := range req.Options {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			opts = append(opts, s)
+		}
+	}
+
+	r, err := rc.waitPrompt(ctx, PromptRequest{
+		Kind:     "inquiry",
+		Question: question,
+		Options:  opts,
+	})
+	if err != nil {
+		return tools.AskUserQuestionResponse{}, err
+	}
+
+	return tools.AskUserQuestionResponse{
+		Option: strings.TrimSpace(r.Option),
+		Text:   strings.TrimSpace(r.Text),
 	}, nil
 }

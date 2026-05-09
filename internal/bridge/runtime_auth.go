@@ -1,5 +1,10 @@
 package bridge
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 // GetPendingDiff 获取待处理的差异
 func (rc *RuntimeCore) GetPendingDiff() string {
 	return rc.securityMgr.GetPendingDiff()
@@ -47,4 +52,25 @@ func (rc *RuntimeCore) ExecutionMode() string {
 		return ""
 	}
 	return rc.securityMgr.ExecutionMode()
+}
+
+func (rc *RuntimeCore) SetSandboxMode(mode string) {
+	if rc == nil || rc.securityMgr == nil {
+		return
+	}
+	rc.securityMgr.SetSandboxMode(mode)
+}
+
+func (rc *RuntimeCore) SandboxMode() string {
+	if rc == nil || rc.securityMgr == nil {
+		return ""
+	}
+	return rc.securityMgr.SandboxMode()
+}
+
+func (rc *RuntimeCore) PermissionSnapshot() PermissionSnapshot {
+	if rc == nil || rc.securityMgr == nil {
+		return PermissionSnapshot{}
+	}
+	return rc.securityMgr.Snapshot()
 }

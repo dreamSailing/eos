@@ -1,5 +1,11 @@
 package utils
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
+
 import (
 	"bytes"
 	"io"
@@ -126,7 +132,7 @@ var textExtensions = map[string]bool{
 	".pm":            true,
 	".r":             true,
 	".sql":           true,
-	".vb":            true,
+	".eos":            true,
 	".vbs":           true,
 	".dockerfile":    true,
 	".env":           true,
@@ -227,6 +233,8 @@ func isBinaryByExtension(path string) bool {
 		".db":     true,
 		".sqlite": true,
 		".pdf":    true,
+		".docx":   true,
+		".xlsx":   true,
 		".zip":    true,
 		".tar":    true,
 		".gz":     true,
