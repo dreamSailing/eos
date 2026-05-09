@@ -24,6 +24,8 @@ go.work
 # IDE files
 .vscode/
 .idea/
+.trae/
+.claude/
 *.swp
 *.swo
 *~
