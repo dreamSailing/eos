@@ -5,7 +5,6 @@ package messages
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"fmt"
 	"sort"
@@ -74,7 +73,12 @@ type AIMessage struct {
 	Tokens    int
 	Duration  time.Duration
 	Done      bool
-	CopyLabel string
+	Actions   []BubbleAction
+}
+
+type BubbleAction struct {
+	Kind  string
+	Label string
 }
 
 func (m *AIMessage) Type() MessageType { return MsgTypeAI }
@@ -111,13 +115,9 @@ func (m *AIMessage) Render(s *styles.Styles, width int) string {
 			footer := s.MsgAIFooter.Render(strings.Join(footerParts, " · "))
 			result.WriteString(footer)
 		}
-		if strings.TrimSpace(m.Content) != "" {
-			label := strings.TrimSpace(m.CopyLabel)
-			if label == "" {
-				label = "Copy"
-			}
+		if strings.TrimSpace(m.Content) != "" && len(m.Actions) > 0 {
 			result.WriteString("\n")
-			result.WriteString(lipgloss.PlaceHorizontal(bw-4, lipgloss.Right, s.MsgCopyButton.Render(label)))
+			result.WriteString(renderBubbleActions(s, bw-4, m.Actions))
 		}
 	}
 
@@ -135,7 +135,7 @@ type AgentBubbleMessage struct {
 	Tokens    int
 	Duration  time.Duration
 	Done      bool
-	CopyLabel string
+	Actions   []BubbleAction
 }
 
 func (m *AgentBubbleMessage) Type() MessageType { return MsgTypeAgent }
@@ -206,16 +206,30 @@ func (m *AgentBubbleMessage) Render(s *styles.Styles, width int) string {
 		}
 	}
 
-	if m.Done && strings.TrimSpace(m.Content) != "" {
-		label := strings.TrimSpace(m.CopyLabel)
-		if label == "" {
-			label = "Copy"
-		}
+	if m.Done && strings.TrimSpace(m.Content) != "" && len(m.Actions) > 0 {
 		result.WriteString("\n")
-		result.WriteString(lipgloss.PlaceHorizontal(bw-4, lipgloss.Right, s.MsgCopyButton.Render(label)))
+		result.WriteString(renderBubbleActions(s, bw-4, m.Actions))
 	}
 
 	return s.MsgAgentBorder.Render(result.String())
+}
+
+func renderBubbleActions(s *styles.Styles, width int, actions []BubbleAction) string {
+	if len(actions) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(actions))
+	for _, action := range actions {
+		label := strings.TrimSpace(action.Label)
+		if label == "" {
+			continue
+		}
+		parts = append(parts, s.MsgActionButton.Render(label))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return lipgloss.PlaceHorizontal(width, lipgloss.Right, strings.Join(parts, " "))
 }
 
 func splitAndWrapANSI(text string, maxWidth int) []string {

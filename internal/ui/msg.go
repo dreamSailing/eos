@@ -64,6 +64,8 @@ func ConvertEvent(e bridge.Event) Msg {
 		}
 	case "prompt.request", string(protocol.EventTypeApprovalReq), string(protocol.EventTypeInquiryReq):
 		return convertPromptEvent(e)
+	case string(protocol.EventTypeModeChanged):
+		return ModeChangedMsg{Mode: eventString(e.Data, "new_mode"), PreviousMode: eventString(e.Data, "old_mode")}
 	case "error", string(protocol.EventTypeRequestFailed), string(protocol.EventTypeAgentFailed), string(protocol.EventTypeTaskFailed):
 		return AIResponseMsg{Type: "error", Content: eventText(e, "error", "message", "text"), RID: e.RID}
 	default:
@@ -274,6 +276,11 @@ type AgentFinalMsg struct {
 	Content   string
 }
 
+type ModeChangedMsg struct {
+	Mode         string
+	PreviousMode string
+}
+
 type PromptRequestMsg struct {
 	ID        string
 	Kind      string
@@ -341,6 +348,7 @@ func (ToolCallMsg) msgType()         {}
 func (ToolResultMsg) msgType()       {}
 func (AgentTaskMsg) msgType()        {}
 func (AgentFinalMsg) msgType()       {}
+func (ModeChangedMsg) msgType()      {}
 func (PromptRequestMsg) msgType()    {}
 func (PromptResultMsg) msgType()     {}
 func (PanelOpenMsg) msgType()        {}

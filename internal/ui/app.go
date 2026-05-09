@@ -18,6 +18,7 @@ import (
 	mcppkg "github.com/dreamSailing/eos/internal/mcp"
 	"github.com/dreamSailing/eos/internal/memory"
 	"github.com/dreamSailing/eos/internal/pkg/clip"
+	"github.com/dreamSailing/eos/internal/pkg/filedialog"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/state"
 	"github.com/dreamSailing/eos/internal/tools/bg"
@@ -86,9 +87,10 @@ type AppModel struct {
 	delegatedThisRound bool
 	lastAgentFinal     string
 
-	copyHits []copyHit
+	actionHits []bubbleActionHit
 
-	pendingImagePaths []string
+	pendingImagePaths   []string
+	pendingPlanDownload *planDownloadRequest
 
 	predictionText    string
 	predictionSeq     int
@@ -100,12 +102,25 @@ type AppModel struct {
 	stopRequested      bool
 }
 
-type copyHit struct {
-	y    int
-	x0   int
-	x1   int
-	idx  int
-	text string
+type bubbleActionHit struct {
+	y      int
+	x0     int
+	x1     int
+	idx    int
+	action string
+	text   string
+}
+
+type planDownloadRequest struct {
+	HistoryIndex int
+}
+
+var choosePlanDownloadDirectory = filedialog.ChooseDirectory
+var writePlanDownloadFile = os.WriteFile
+var planDownloadNow = time.Now
+
+func (r bubbleActionHit) matches(action string) bool {
+	return strings.EqualFold(strings.TrimSpace(r.action), strings.TrimSpace(action))
 }
 
 type ctxUsageTickMsg struct{}
@@ -219,30 +234,6 @@ func (m *AppModel) refreshAILive() {
 
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
 
-func (m *AppModel) copyMarks() []string {
-	marks := []string{
-		i18n.T("op.copy", m.state.Language),
-		i18n.T("op.copied", m.state.Language),
-		"Copy",
-		"Copied",
-		"已复制",
-	}
-	uniq := make([]string, 0, len(marks))
-	seen := map[string]struct{}{}
-	for _, s := range marks {
-		s = strings.TrimSpace(s)
-		if s == "" {
-			continue
-		}
-		if _, ok := seen[s]; ok {
-			continue
-		}
-		seen[s] = struct{}{}
-		uniq = append(uniq, s)
-	}
-	return uniq
-}
-
 type clearCopiedMsg struct {
 	idx int
 }
@@ -255,21 +246,23 @@ type toolTrack struct {
 }
 
 type historyEntry struct {
-	kind        string
-	content     string
-	timestamp   time.Time
-	tokens      int
-	duration    time.Duration
-	level       string
-	toolID      string
-	toolName    string
-	toolParams  map[string]any
-	toolOutput  string
-	toolSuccess bool
-	toolStatus  string
-	agentName   string
-	task        string
-	copiedAt    time.Time
+	kind          string
+	content       string
+	timestamp     time.Time
+	tokens        int
+	duration      time.Duration
+	level         string
+	toolID        string
+	toolName      string
+	toolParams    map[string]any
+	toolOutput    string
+	toolSuccess   bool
+	toolStatus    string
+	agentName     string
+	task          string
+	executionMode string
+	rawMarkdown   string
+	copiedAt      time.Time
 }
 
 func resolveShellWelcomeInfo(adapter *adapter.RuntimeAdapter) (string, string) {
@@ -488,7 +481,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseMsg:
 		if m.activeView == "shell" && msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-			if cmd := m.tryCopyBubbleAt(msg.X, msg.Y); cmd != nil {
+			if cmd := m.tryHandleBubbleActionAt(msg.X, msg.Y); cmd != nil {
 				cmds = append(cmds, cmd)
 				return m, tea.Batch(cmds...)
 			}
@@ -746,6 +739,13 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
+	case ModeChangedMsg:
+		mode := strings.TrimSpace(msg.Mode)
+		if mode != "" {
+			m.state.ExecutionMode = mode
+			m.shell.SetExecutionMode(mode)
+		}
+
 	case AgentTaskMsg:
 		m.delegatedThisRound = true
 		m.shell.ClearLive()
@@ -756,7 +756,14 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.delegatedThisRound = true
 		m.shell.ClearLive()
 		m.lastAgentFinal = msg.Content
-		m.appendHistory(historyEntry{kind: "agent.final", agentName: msg.AgentName, content: msg.Content, timestamp: time.Now()})
+		m.appendHistory(historyEntry{
+			kind:          "agent.final",
+			agentName:     msg.AgentName,
+			content:       msg.Content,
+			rawMarkdown:   msg.Content,
+			executionMode: m.state.ExecutionMode,
+			timestamp:     time.Now(),
+		})
 		m.state.Processing = false
 		m.shell.SetProcessing(false)
 
@@ -883,6 +890,41 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			rememberKnownWorkspace(p, false)
 			m.refreshWorkspacePanel()
 			m.appendSystem("已添加工作区: "+p, "success")
+			m.confirmView = nil
+			if m.prevView != "" {
+				m.activeView = m.prevView
+				m.prevView = ""
+			} else {
+				m.activeView = "shell"
+			}
+			if m.activeView == "shell" {
+				m.shell.FocusInput()
+			}
+			return m, nil
+		}
+		if msg.Kind == "plan_download_path" {
+			req := m.pendingPlanDownload
+			m.pendingPlanDownload = nil
+			if msg.Decision != "confirm" || req == nil {
+				m.confirmView = nil
+				if m.prevView != "" {
+					m.activeView = m.prevView
+					m.prevView = ""
+				} else {
+					m.activeView = "shell"
+				}
+				if m.activeView == "shell" {
+					m.shell.FocusInput()
+				}
+				return m, nil
+			}
+			dir := strings.TrimSpace(msg.Text)
+			path, err := m.savePlanHistoryEntryToDir(req.HistoryIndex, dir)
+			if err != nil {
+				m.appendSystem(err.Error(), "error")
+			} else {
+				m.appendSystem(fmt.Sprintf(i18n.T("plan.download.saved", m.state.Language), path), "success")
+			}
 			m.confirmView = nil
 			if m.prevView != "" {
 				m.activeView = m.prevView
@@ -1053,6 +1095,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.adapter.GetCore().ClearContext()
 		m.shell.ClearContent()
 		m.history = m.history[:0]
+		m.actionHits = nil
 		m.appendSystem(i18n.T("context.cleared", m.state.Language), "success")
 		m.refreshContextPanel()
 	case panels.ContextExportMsg:
@@ -1213,6 +1256,7 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 		m.shell.ClearInput()
 		m.shell.ClearLive()
 		m.history = m.history[:0]
+		m.actionHits = nil
 	case "/exit":
 		return tea.Quit
 	case "/init":
@@ -2006,7 +2050,7 @@ func (m *AppModel) renderHistoryEntry(e historyEntry) string {
 	case "user":
 		return m.msgRenderer.RenderUserInputAt(e.content, e.timestamp)
 	case "ai":
-		return m.msgRenderer.RenderAIResponseAtWithCopy(e.content, e.tokens, e.duration, true, e.timestamp, m.copyButtonLabel(e))
+		return m.msgRenderer.RenderAIResponseAtWithActions(e.content, e.tokens, e.duration, true, e.timestamp, m.bubbleActionsForEntry(e))
 	case "agent.task":
 		return m.msgRenderer.RenderAgentTaskAt(e.agentName, e.task, e.timestamp)
 	case "tool":
@@ -2022,7 +2066,7 @@ func (m *AppModel) renderHistoryEntry(e historyEntry) string {
 		}
 		return m.msgRenderer.RenderToolEvent(e.toolName, e.toolParams, status, e.toolOutput, e.duration)
 	case "agent.final":
-		return m.msgRenderer.RenderAgentFinalAtWithCopy(e.agentName, e.content, e.timestamp, m.copyButtonLabel(e))
+		return m.msgRenderer.RenderAgentFinalAtWithActions(e.agentName, e.content, e.timestamp, m.bubbleActionsForEntry(e))
 	case "system":
 		return m.msgRenderer.RenderSystem(e.content, e.level)
 	default:
@@ -2037,10 +2081,26 @@ func (m *AppModel) copyButtonLabel(e historyEntry) string {
 	return i18n.T("op.copy", m.state.Language)
 }
 
+func (m *AppModel) bubbleActionsForEntry(e historyEntry) []messages.BubbleAction {
+	if (e.kind != "ai" && e.kind != "agent.final") || strings.TrimSpace(e.content) == "" {
+		return nil
+	}
+	actions := []messages.BubbleAction{
+		{Kind: "copy", Label: m.copyButtonLabel(e)},
+	}
+	if strings.EqualFold(strings.TrimSpace(e.executionMode), "plan") && strings.TrimSpace(e.rawMarkdown) != "" {
+		actions = append(actions, messages.BubbleAction{
+			Kind:  "download",
+			Label: i18n.T("op.download", m.state.Language),
+		})
+	}
+	return actions
+}
+
 func (m *AppModel) appendHistory(e historyEntry) {
 	m.history = append(m.history, e)
 	rendered := m.renderHistoryEntry(e)
-	m.trackCopyHitAt(m.shell.ContentLineCount(), len(m.history)-1, e, rendered)
+	m.trackBubbleActionsAt(m.shell.ContentLineCount(), len(m.history)-1, e, rendered)
 	block := "\n" + rendered + "\n\n"
 	m.shell.AppendContent(block)
 }
@@ -2055,12 +2115,12 @@ func (m *AppModel) rebuildHistoryContent() {
 	if len(m.history) == 0 {
 		return
 	}
-	m.copyHits = nil
+	m.actionHits = nil
 	var sb strings.Builder
 	lineCount := 1
 	for idx, e := range m.history {
 		rendered := m.renderHistoryEntry(e)
-		m.trackCopyHitAt(lineCount, idx, e, rendered)
+		m.trackBubbleActionsAt(lineCount, idx, e, rendered)
 		sb.WriteString("\n")
 		sb.WriteString(rendered)
 		sb.WriteString("\n\n")
@@ -2086,11 +2146,12 @@ func runeIndex(s string, byteIdx int) int {
 	return len([]rune(s[:byteIdx]))
 }
 
-func (m *AppModel) trackCopyHitAt(startLine int, idx int, e historyEntry, rendered string) {
+func (m *AppModel) trackBubbleActionsAt(startLine int, idx int, e historyEntry, rendered string) {
 	if m.msgRenderer == nil {
 		return
 	}
-	if e.kind != "ai" && e.kind != "agent.final" {
+	actions := m.bubbleActionsForEntry(e)
+	if len(actions) == 0 {
 		return
 	}
 	payload := strings.TrimSpace(e.content)
@@ -2098,36 +2159,31 @@ func (m *AppModel) trackCopyHitAt(startLine int, idx int, e historyEntry, render
 		return
 	}
 	lines := strings.Split(stripANSI(rendered), "\n")
-	marks := m.copyMarks()
 	for i, line := range lines {
-		found := false
-		bi := -1
-		markLen := 0
-		for _, mark := range marks {
-			bi = strings.LastIndex(line, " "+mark+" ")
-			markLen = len([]rune(" " + mark + " "))
-			if bi >= 0 {
-				found = true
-				break
+		for _, action := range actions {
+			label := strings.TrimSpace(action.Label)
+			if label == "" {
+				continue
 			}
-			bi = strings.LastIndex(line, mark)
-			markLen = len([]rune(mark))
-			if bi >= 0 {
-				found = true
-				break
+			bi := strings.LastIndex(line, label)
+			if bi < 0 {
+				continue
 			}
+			x0 := runeIndex(line, bi)
+			x1 := x0 + len([]rune(label)) - 1
+			m.actionHits = append(m.actionHits, bubbleActionHit{
+				y:      startLine + i,
+				x0:     x0,
+				x1:     x1,
+				idx:    idx,
+				action: action.Kind,
+				text:   payload,
+			})
 		}
-		if !found {
-			continue
-		}
-		x0 := runeIndex(line, bi)
-		x1 := x0 + markLen - 1
-		m.copyHits = append(m.copyHits, copyHit{y: startLine + i, x0: x0, x1: x1, idx: idx, text: payload})
-		return
 	}
 }
 
-func (m *AppModel) tryCopyBubbleAt(x, y int) tea.Cmd {
+func (m *AppModel) tryHandleBubbleActionAt(x, y int) tea.Cmd {
 	ox, oy := m.shell.ContentOrigin()
 	if x < ox || y < oy {
 		return nil
@@ -2138,25 +2194,153 @@ func (m *AppModel) tryCopyBubbleAt(x, y int) tea.Cmd {
 		return nil
 	}
 	line := m.shell.ContentYOffset() + ly
-	for _, h := range m.copyHits {
+	for _, h := range m.actionHits {
 		if h.y != line {
 			continue
 		}
 		if lx < h.x0 || lx > h.x1 {
 			continue
 		}
-		if err := clipboard.WriteAll(h.text); err != nil {
-			m.appendSystem(i18n.T("tool.error.copy_error", m.state.Language, err), "error")
-			return func() tea.Msg { return nil }
+		switch {
+		case h.matches("copy"):
+			if err := clipboard.WriteAll(h.text); err != nil {
+				m.appendSystem(i18n.T("tool.error.copy_error", m.state.Language, err), "error")
+				return func() tea.Msg { return nil }
+			}
+			if h.idx >= 0 && h.idx < len(m.history) {
+				m.history[h.idx].copiedAt = time.Now()
+			}
+			m.rebuildHistoryContent()
+			m.appendSystem(i18n.T("clipboard.copied", m.state.Language), "success")
+			return tea.Tick(1600*time.Millisecond, func(time.Time) tea.Msg { return clearCopiedMsg{idx: h.idx} })
+		case h.matches("download"):
+			return m.handlePlanDownloadAction(h.idx)
 		}
-		if h.idx >= 0 && h.idx < len(m.history) {
-			m.history[h.idx].copiedAt = time.Now()
-		}
-		m.rebuildHistoryContent()
-		m.appendSystem(i18n.T("clipboard.copied", m.state.Language), "success")
-		return tea.Tick(1600*time.Millisecond, func(time.Time) tea.Msg { return clearCopiedMsg{idx: h.idx} })
 	}
 	return nil
+}
+
+func (m *AppModel) handlePlanDownloadAction(idx int) tea.Cmd {
+	if _, ok := m.planDownloadEntry(idx); !ok {
+		m.appendSystem(i18n.T("plan.download.unavailable", m.state.Language), "warning")
+		return func() tea.Msg { return nil }
+	}
+	dir, err := choosePlanDownloadDirectory(i18n.T("plan.download.chooser.title", m.state.Language))
+	switch {
+	case err == nil:
+		path, saveErr := m.savePlanHistoryEntryToDir(idx, dir)
+		if saveErr != nil {
+			m.appendSystem(saveErr.Error(), "error")
+		} else {
+			m.appendSystem(fmt.Sprintf(i18n.T("plan.download.saved", m.state.Language), path), "success")
+		}
+	case filedialog.IsCanceled(err):
+		return func() tea.Msg { return nil }
+	case filedialog.IsUnavailable(err):
+		m.pendingPlanDownload = &planDownloadRequest{HistoryIndex: idx}
+		m.openConfirm(confirm.Request{
+			Kind:      "plan_download_path",
+			Title:     i18n.T("plan.download.fallback.title", m.state.Language),
+			Question:  i18n.T("plan.download.fallback.question", m.state.Language),
+			Options:   []string{i18n.T("op.save", m.state.Language)},
+			AllowText: true,
+			TextHint:  i18n.T("plan.download.fallback.hint", m.state.Language),
+		})
+	default:
+		m.appendSystem(fmt.Sprintf(i18n.T("plan.download.failed", m.state.Language), err), "error")
+	}
+	return func() tea.Msg { return nil }
+}
+
+func (m *AppModel) planDownloadEntry(idx int) (historyEntry, bool) {
+	if idx < 0 || idx >= len(m.history) {
+		return historyEntry{}, false
+	}
+	entry := m.history[idx]
+	if !strings.EqualFold(strings.TrimSpace(entry.executionMode), "plan") {
+		return historyEntry{}, false
+	}
+	if strings.TrimSpace(entry.rawMarkdown) == "" {
+		return historyEntry{}, false
+	}
+	return entry, true
+}
+
+func (m *AppModel) savePlanHistoryEntryToDir(idx int, rawDir string) (string, error) {
+	entry, ok := m.planDownloadEntry(idx)
+	if !ok {
+		return "", fmt.Errorf("%s", i18n.T("plan.download.unavailable", m.state.Language))
+	}
+	dir, err := resolveWorkspaceInputPath(rawDir)
+	if err != nil {
+		return "", err
+	}
+	fi, err := os.Stat(dir)
+	if err != nil || fi == nil || !fi.IsDir() {
+		return "", fmt.Errorf(i18n.T("plan.download.not_directory", m.state.Language), dir)
+	}
+	path := filepath.Join(dir, m.nextPlanDownloadFileName(entry.timestamp))
+	path = uniqueAvailablePath(path)
+	if err := writePlanDownloadFile(path, []byte(entry.rawMarkdown), 0o644); err != nil {
+		return "", fmt.Errorf(i18n.T("plan.download.failed", m.state.Language), err)
+	}
+	return path, nil
+}
+
+func (m *AppModel) nextPlanDownloadFileName(ts time.Time) string {
+	stamp := ts
+	if stamp.IsZero() {
+		stamp = planDownloadNow()
+	}
+	name := "plan"
+	if m != nil && m.adapter != nil && m.adapter.GetCore() != nil {
+		if sessionID, err := m.adapter.GetCore().CurrentSessionID(); err == nil {
+			if cleaned := sanitizePlanFileNameSegment(sessionID); cleaned != "" {
+				name += "-" + cleaned
+			}
+		}
+	}
+	return fmt.Sprintf("%s-%s.md", name, stamp.Format("20060102-150405"))
+}
+
+func sanitizePlanFileNameSegment(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	var b strings.Builder
+	lastDash := false
+	for _, r := range raw {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		case r == '-' || r == '_' || r == '.':
+			b.WriteRune(r)
+			lastDash = false
+		default:
+			if !lastDash {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+func uniqueAvailablePath(path string) string {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return path
+	}
+	dir := filepath.Dir(path)
+	ext := filepath.Ext(path)
+	base := strings.TrimSuffix(filepath.Base(path), ext)
+	for i := 2; ; i++ {
+		candidate := filepath.Join(dir, fmt.Sprintf("%s-%d%s", base, i, ext))
+		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+			return candidate
+		}
+	}
 }
 
 func (m *AppModel) appendSystem(text, level string) {
@@ -2351,7 +2535,15 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 		mainContent := strings.TrimSpace(msg.Content)
 		agentContent := strings.TrimSpace(m.lastAgentFinal)
 		if !(m.delegatedThisRound && mainContent != "" && agentContent != "" && mainContent == agentContent) {
-			m.appendHistory(historyEntry{kind: "ai", content: msg.Content, timestamp: time.Now(), tokens: m.currentAITokens, duration: duration})
+			m.appendHistory(historyEntry{
+				kind:          "ai",
+				content:       msg.Content,
+				rawMarkdown:   msg.Content,
+				executionMode: m.state.ExecutionMode,
+				timestamp:     time.Now(),
+				tokens:        m.currentAITokens,
+				duration:      duration,
+			})
 		}
 		m.state.Processing = false
 		m.shell.SetProcessing(false)
