@@ -49,17 +49,32 @@ func TestRightKeyAcceptsPredictionOnlyWhenInputEmpty(t *testing.T) {
 	}
 }
 
-func TestRightKeyDoesNotOverrideExistingInput(t *testing.T) {
+func TestRightKeyAppendsPredictionSuffixForExistingInput(t *testing.T) {
 	s := styles.NewStyles(styles.GetTheme("dark"))
 	model := New(100, 30, s, "zh")
-	model.SetInputValue("已有输入")
+	model.SetInputValue("请继续")
 	model.SetPrediction("请继续展开这个方案")
 
 	handled, _ := model.HandleKey(tea.KeyMsg{Type: tea.KeyRight})
-	if handled {
-		t.Fatalf("expected right key to fall through when input already exists")
+	if !handled {
+		t.Fatalf("expected right key to accept suffix prediction")
 	}
-	if got := model.GetInputValue(); got != "已有输入" {
-		t.Fatalf("input=%q, want original input", got)
+	if got := model.GetInputValue(); got != "请继续展开这个方案" {
+		t.Fatalf("input=%q, want accepted prediction", got)
+	}
+}
+
+func TestTabKeyAcceptsPredictionWhenHintsHidden(t *testing.T) {
+	s := styles.NewStyles(styles.GetTheme("dark"))
+	model := New(100, 30, s, "zh")
+	model.SetInputValue("请继续")
+	model.SetPrediction("请继续展开这个方案")
+
+	handled, _ := model.HandleKey(tea.KeyMsg{Type: tea.KeyTab})
+	if !handled {
+		t.Fatalf("expected tab key to accept suffix prediction")
+	}
+	if got := model.GetInputValue(); got != "请继续展开这个方案" {
+		t.Fatalf("input=%q, want accepted prediction", got)
 	}
 }

@@ -110,11 +110,34 @@ func (m *Model) Prediction() string {
 	return m.prediction
 }
 
+func (m *Model) PredictionSuffix() string {
+	value := m.textarea.Value()
+	if strings.TrimSpace(value) == "" {
+		return m.prediction
+	}
+	if m.prediction == "" {
+		return ""
+	}
+	if !strings.HasPrefix(m.prediction, value) {
+		return ""
+	}
+	return m.prediction[len(value):]
+}
+
+func (m *Model) CanAcceptPrediction() bool {
+	return strings.TrimSpace(m.PredictionSuffix()) != ""
+}
+
 func (m *Model) AcceptPrediction() bool {
-	if strings.TrimSpace(m.textarea.Value()) != "" || strings.TrimSpace(m.prediction) == "" {
+	suffix := strings.TrimSpace(m.PredictionSuffix())
+	if suffix == "" {
 		return false
 	}
-	m.textarea.SetValue(m.prediction)
+	if strings.TrimSpace(m.textarea.Value()) == "" {
+		m.textarea.SetValue(m.prediction)
+	} else {
+		m.textarea.SetValue(m.textarea.Value() + m.PredictionSuffix())
+	}
 	m.prediction = ""
 	m.refreshPlaceholder()
 	m.adjustHeight()
@@ -243,10 +266,12 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 	before := m.textarea.Value()
-	hadPrediction := m.prediction != ""
 	m.textarea, cmd = m.textarea.Update(msg)
 	after := m.textarea.Value()
-	if hadPrediction && before == "" && after != "" {
+	if m.prediction != "" && after != "" && !strings.HasPrefix(m.prediction, after) {
+		m.prediction = ""
+	}
+	if before != after && after == "" && strings.TrimSpace(m.prediction) == "" {
 		m.prediction = ""
 	}
 	m.refreshPlaceholder()
@@ -327,5 +352,9 @@ func (m Model) View() string {
 	if m.focused {
 		style = m.focusStyle
 	}
-	return style.Render(m.textarea.View())
+	view := m.textarea.View()
+	if suffix := m.PredictionSuffix(); strings.TrimSpace(m.textarea.Value()) != "" && strings.TrimSpace(suffix) != "" {
+		view += lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(suffix)
+	}
+	return style.Render(view)
 }

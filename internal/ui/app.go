@@ -90,9 +90,10 @@ type AppModel struct {
 
 	pendingImagePaths []string
 
-	predictionText    string
-	predictionSeq     int
-	predictionEnabled bool
+	predictionText        string
+	predictionSeq         int
+	predictionDebounceSeq int
+	predictionEnabled     bool
 
 	trustPendingPath   string
 	trustPendingAction string
@@ -109,6 +110,10 @@ type copyHit struct {
 }
 
 type ctxUsageTickMsg struct{}
+type predictionDebounceMsg struct {
+	Seq   int
+	Draft string
+}
 
 func (m *AppModel) ctxUsageTick() tea.Cmd {
 	return tea.Tick(900*time.Millisecond, func(time.Time) tea.Msg { return ctxUsageTickMsg{} })
@@ -140,6 +145,8 @@ func (m *AppModel) clearPrediction() {
 	if m == nil {
 		return
 	}
+	m.predictionSeq++
+	m.predictionDebounceSeq++
 	m.predictionText = ""
 	if m.shell != nil {
 		m.shell.ClearPrediction()
@@ -155,23 +162,44 @@ func (m *AppModel) syncPredictionState() {
 	}
 }
 
-func (m *AppModel) requestPrediction() tea.Cmd {
+func (m *AppModel) canPredict() bool {
+	return m != nil &&
+		m.adapter != nil &&
+		m.shell != nil &&
+		m.predictionEnabled &&
+		m.activeView == "shell" &&
+		m.state.Mode == "ai" &&
+		!m.state.Processing
+}
+
+func (m *AppModel) schedulePrediction(draft string) tea.Cmd {
+	if !m.canPredict() {
+		m.clearPrediction()
+		return nil
+	}
+	m.predictionDebounceSeq++
+	seq := m.predictionDebounceSeq
+	return tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg {
+		return predictionDebounceMsg{Seq: seq, Draft: draft}
+	})
+}
+
+func (m *AppModel) requestPrediction(draft string) tea.Cmd {
 	if m == nil || m.adapter == nil || m.shell == nil {
 		return nil
 	}
-	if !m.predictionEnabled || m.activeView != "shell" || m.state.Mode != "ai" || m.state.Processing {
+	if !m.canPredict() {
 		m.clearPrediction()
 		return nil
 	}
 	m.predictionSeq++
 	seq := m.predictionSeq
-	m.clearPrediction()
 	return func() tea.Msg {
-		text, err := m.adapter.GetCore().PredictNextUserMessage(context.Background())
+		text, err := m.adapter.GetCore().PredictNextUserMessage(context.Background(), draft)
 		if err != nil {
-			return PredictionUpdateMsg{Seq: seq}
+			return PredictionUpdateMsg{Seq: seq, Draft: draft}
 		}
-		return PredictionUpdateMsg{Seq: seq, Text: text}
+		return PredictionUpdateMsg{Seq: seq, Draft: draft, Text: text}
 	}
 }
 
@@ -593,6 +621,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd := m.handleGlobalKey(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		} else {
+			inputBeforeKey := m.shell.GetInputValue()
+
 			// 检查是否是 / 键（显示斜杠命令提示）- 只在输入框为空时触发
 			if msg.String() == "/" && m.shell.GetInputValue() == "" {
 				cmds = append(cmds, func() tea.Msg {
@@ -669,10 +699,32 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if shouldRefreshHints {
 				m.updateHintsBasedOnInput()
 			}
+
+			inputAfterKey := m.shell.GetInputValue()
+			if inputAfterKey != inputBeforeKey {
+				if cmd := m.schedulePrediction(inputAfterKey); cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
 		}
 
 	case bridge.Event:
 		return m.handleBridgeEvent(msg)
+
+	case predictionDebounceMsg:
+		if msg.Seq != m.predictionDebounceSeq {
+			return m, nil
+		}
+		if !m.canPredict() {
+			m.clearPrediction()
+			return m, nil
+		}
+		if m.shell.GetInputValue() != msg.Draft {
+			return m, nil
+		}
+		if cmd := m.requestPrediction(msg.Draft); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 
 	case AIResponseMsg:
 		if msg.Type == "delta" && !m.state.Processing {
@@ -705,18 +757,24 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Seq != m.predictionSeq {
 			return m, nil
 		}
-		if !m.predictionEnabled || m.activeView != "shell" || m.state.Mode != "ai" || m.state.Processing {
+		if !m.canPredict() {
 			m.clearPrediction()
 			return m, nil
 		}
-		if strings.TrimSpace(m.shell.GetInputValue()) != "" {
-			m.clearPrediction()
+		if m.shell.GetInputValue() != msg.Draft {
 			return m, nil
 		}
 		text := strings.TrimSpace(msg.Text)
 		if text == "" {
 			m.clearPrediction()
 			return m, nil
+		}
+		currentInput := m.shell.GetInputValue()
+		if currentInput != "" {
+			if !strings.HasPrefix(text, currentInput) || text == currentInput {
+				m.clearPrediction()
+				return m, nil
+			}
 		}
 		m.predictionText = text
 		m.shell.SetPrediction(text)
@@ -2268,6 +2326,11 @@ func (m *AppModel) handleGlobalKey(msg tea.KeyMsg) tea.Cmd {
 
 	case "tab":
 		if m.activeView == "shell" && m.shell.GetMode() == shell.ModeAI && !m.shell.IsHintsVisible() {
+			if m.shell.CanAcceptPrediction() {
+				m.shell.HandleKey(msg)
+				m.syncPredictionState()
+				return func() tea.Msg { return nil }
+			}
 			state.SetThinking(!state.Thinking())
 			m.refreshAILive()
 			return func() tea.Msg { return nil }
@@ -2355,7 +2418,7 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 		}
 		m.state.Processing = false
 		m.shell.SetProcessing(false)
-		return m.requestPrediction()
+		return m.schedulePrediction(m.shell.GetInputValue())
 	case "error":
 		m.clearPrediction()
 		m.shell.ClearLive()
