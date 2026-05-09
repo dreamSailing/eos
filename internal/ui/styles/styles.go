@@ -5,7 +5,6 @@ package styles
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import "github.com/charmbracelet/lipgloss"
 
 // Styles 是应用程序中使用的所有样式的集合
@@ -89,6 +88,7 @@ type Styles struct {
 	MsgAgentRunning lipgloss.Style
 	MsgAgentDone    lipgloss.Style
 	MsgAgentBorder  lipgloss.Style
+	MsgActionButton lipgloss.Style
 	MsgCopyButton   lipgloss.Style
 
 	// 计划消息
@@ -320,11 +320,12 @@ func NewStyles(theme *Theme) *Styles {
 		BorderForeground(theme.Secondary).
 		Padding(0, 1)
 
-	s.MsgCopyButton = lipgloss.NewStyle().
+	s.MsgActionButton = lipgloss.NewStyle().
 		Foreground(theme.Background).
 		Background(theme.Primary).
 		Bold(true).
 		Padding(0, 1)
+	s.MsgCopyButton = s.MsgActionButton
 
 	// 计划消息
 	s.MsgPlan = lipgloss.NewStyle().

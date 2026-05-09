@@ -818,7 +818,7 @@ func (m *AppModel) restoreSessionHistory(id string) {
 	}
 	m.cancelProcessingUI()
 	m.history = m.history[:0]
-	m.copyHits = nil
+	m.actionHits = nil
 	m.shell.ClearContent()
 	m.shell.ClearLive()
 

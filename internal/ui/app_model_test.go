@@ -2,13 +2,16 @@ package ui
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dreamSailing/eos/internal/bridge"
+	"github.com/dreamSailing/eos/internal/pkg/filedialog"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/session"
 	"github.com/dreamSailing/eos/internal/tools"
@@ -259,5 +262,158 @@ func TestHandleSettingsSavePersistsGlobalPredictionFlag(t *testing.T) {
 	}
 	if got := doc["next_message_prediction_enabled"]; got != false {
 		t.Fatalf("next_message_prediction_enabled=%v, want false", got)
+	}
+}
+
+func TestRenderHistoryEntryShowsDownloadActionOnlyForPlanMessages(t *testing.T) {
+	setTestHome(t)
+	app := newTestAppModel(t)
+
+	planRendered := stripANSIAppTest(app.renderHistoryEntry(historyEntry{
+		kind:          "ai",
+		content:       "## 执行计划",
+		rawMarkdown:   "## 执行计划",
+		executionMode: "plan",
+		timestamp:     time.Now(),
+	}))
+	if !strings.Contains(planRendered, "复制") {
+		t.Fatalf("expected copy action in plan render, got %q", planRendered)
+	}
+	if !strings.Contains(planRendered, "下载") {
+		t.Fatalf("expected download action in plan render, got %q", planRendered)
+	}
+
+	autoRendered := stripANSIAppTest(app.renderHistoryEntry(historyEntry{
+		kind:          "ai",
+		content:       "普通回复",
+		rawMarkdown:   "普通回复",
+		executionMode: "auto",
+		timestamp:     time.Now(),
+	}))
+	if !strings.Contains(autoRendered, "复制") {
+		t.Fatalf("expected copy action in auto render, got %q", autoRendered)
+	}
+	if strings.Contains(autoRendered, "下载") {
+		t.Fatalf("did not expect download action in auto render, got %q", autoRendered)
+	}
+}
+
+func TestHandlePlanDownloadActionFallsBackToManualPath(t *testing.T) {
+	setTestHome(t)
+	app := newTestAppModel(t)
+	app.history = []historyEntry{{
+		kind:          "ai",
+		content:       "## 执行计划",
+		rawMarkdown:   "## 执行计划",
+		executionMode: "plan",
+		timestamp:     time.Now(),
+	}}
+
+	origChooser := choosePlanDownloadDirectory
+	choosePlanDownloadDirectory = func(string) (string, error) {
+		return "", filedialog.ErrUnavailable
+	}
+	t.Cleanup(func() {
+		choosePlanDownloadDirectory = origChooser
+	})
+
+	cmd := app.handlePlanDownloadAction(0)
+	if cmd == nil {
+		t.Fatalf("expected non-nil command to mark the mouse action as handled")
+	}
+	if app.confirmView == nil {
+		t.Fatalf("expected fallback confirm view to open")
+	}
+	if app.pendingPlanDownload == nil || app.pendingPlanDownload.HistoryIndex != 0 {
+		t.Fatalf("expected pending plan download state to be recorded, got %+v", app.pendingPlanDownload)
+	}
+	if app.activeView != "confirm" {
+		t.Fatalf("activeView=%q, want confirm", app.activeView)
+	}
+}
+
+func TestSavePlanHistoryEntryToDirWritesMarkdownAndDeduplicatesName(t *testing.T) {
+	setTestHome(t)
+	app := newTestAppModel(t)
+	dir := t.TempDir()
+	ts := time.Date(2026, 5, 9, 12, 30, 0, 0, time.UTC)
+	app.history = []historyEntry{{
+		kind:          "ai",
+		content:       "## 执行计划",
+		rawMarkdown:   "# Plan\n\n- step 1\n",
+		executionMode: "plan",
+		timestamp:     ts,
+	}}
+
+	first, err := app.savePlanHistoryEntryToDir(0, dir)
+	if err != nil {
+		t.Fatalf("first save error: %v", err)
+	}
+	second, err := app.savePlanHistoryEntryToDir(0, dir)
+	if err != nil {
+		t.Fatalf("second save error: %v", err)
+	}
+	if first == second {
+		t.Fatalf("expected unique file path on second save, got %q", first)
+	}
+	raw1, err := os.ReadFile(first)
+	if err != nil {
+		t.Fatalf("read first file: %v", err)
+	}
+	raw2, err := os.ReadFile(second)
+	if err != nil {
+		t.Fatalf("read second file: %v", err)
+	}
+	if string(raw1) != "# Plan\n\n- step 1\n" || string(raw2) != "# Plan\n\n- step 1\n" {
+		t.Fatalf("saved markdown mismatch: %q / %q", string(raw1), string(raw2))
+	}
+}
+
+func TestSavePlanHistoryEntryToDirRejectsNonPlanMessage(t *testing.T) {
+	setTestHome(t)
+	app := newTestAppModel(t)
+	app.history = []historyEntry{{
+		kind:          "ai",
+		content:       "普通回复",
+		rawMarkdown:   "普通回复",
+		executionMode: "auto",
+		timestamp:     time.Now(),
+	}}
+
+	_, err := app.savePlanHistoryEntryToDir(0, t.TempDir())
+	if err == nil {
+		t.Fatalf("expected non-plan message to be rejected")
+	}
+	if !strings.Contains(err.Error(), "计划") && !strings.Contains(strings.ToLower(err.Error()), "downloadable") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestHandlePlanDownloadActionReportsChooserFailure(t *testing.T) {
+	setTestHome(t)
+	app := newTestAppModel(t)
+	app.history = []historyEntry{{
+		kind:          "ai",
+		content:       "## 执行计划",
+		rawMarkdown:   "## 执行计划",
+		executionMode: "plan",
+		timestamp:     time.Now(),
+	}}
+
+	origChooser := choosePlanDownloadDirectory
+	choosePlanDownloadDirectory = func(string) (string, error) {
+		return "", errors.New("boom")
+	}
+	t.Cleanup(func() {
+		choosePlanDownloadDirectory = origChooser
+	})
+
+	_ = app.handlePlanDownloadAction(0)
+	if len(app.history) == 0 {
+		t.Fatalf("expected an error message in history")
+	}
+	last := app.history[len(app.history)-1]
+	if last.kind != "system" || last.level != "error" {
+		t.Fatalf("expected system error entry, got %+v", last)
 	}
 }
