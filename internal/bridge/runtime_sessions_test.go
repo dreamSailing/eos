@@ -43,7 +43,7 @@ func TestRuntimeCore_SaveAndResumeSession(t *testing.T) {
 	cm.AddAssistant("world")
 
 	rc := &RuntimeCore{cm: cm}
-	rc.tokenHistory = []TokenRecord{{Total: 123}}
+	rc.tokenHistory = []TokenRecord{{Total: intPtr(123)}}
 
 	id, err := rc.SaveSession(context.Background(), "test_session")
 	if err != nil {
@@ -81,7 +81,7 @@ func TestRuntimeCore_SaveAndResumeSession_UsesActiveRoot(t *testing.T) {
 	cm.AddAssistant("world")
 
 	rc := &RuntimeCore{cm: cm, workspaceMgr: mgr}
-	rc.tokenHistory = []TokenRecord{{Total: 123}}
+	rc.tokenHistory = []TokenRecord{{Total: intPtr(123)}}
 
 	id, err := rc.SaveSession(context.Background(), "test_session")
 	if err != nil {

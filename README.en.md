@@ -2,42 +2,79 @@
 
 [中文](./README.md) | [English](./README.en.md)
 
-EOS is a Go-based terminal AI coding assistant built on CloudWeGo Eino. It provides an interactive TUI, tool calling, safety controls, and workspace-aware context management.
+EOS is an open-source terminal AI coding assistant built in Go and orchestrated with CloudWeGo Eino. It is designed for day-to-day coding, code review, document workflows, local automation, and IDE / platform integration, with an interactive TUI, tool calling, safety controls, workspace-aware context, and extensible MCP support.
 
 - Repository: https://github.com/dreamSailing/eos
 - Issues: https://github.com/dreamSailing/eos/issues
 - Releases: https://github.com/dreamSailing/eos/releases
 
-## Why EOS Instead of Claude Code?
+## What EOS Is
 
-| Pain Point | EOS |
-|---|---|
-| Requires a VPN in many regions | Works out of the box |
-| Claude-only model support | Supports mainstream models |
-| Depends on Node.js for installation | Built in Go with zero Node dependency |
-| Complex setup | Start after filling in your key |
-| Claude Code lacks MCP + vision support | Already addressed |
-| Claude Code has no web search | Built in |
+EOS is more than a chat-style CLI. It is a local AI workbench with three main usage modes:
+
+- For end users: an interactive terminal assistant for coding, debugging, review, search, and document handling
+- For power users: headless `--print` execution, document subcommands, workspace management, permission control, and context compaction
+- For platforms / IDEs / agent hosts: local `serve` JSON-RPC, `bridge manifest`, and a standard MCP server
+
+## Why EOS
+
+Compared with heavier or more closed terminal assistants, EOS currently focuses on:
+
+- Go-native distribution with no Node.js runtime requirement
+- OpenAI-compatible model access instead of a single vendor lock-in
+- Full workflows beyond coding chat: documents, MCP, search, Git, remote repositories, subagents, and task orchestration
+- Practical integration surfaces for local hosts, IDE bridges, and agent platforms
+- Both read-only web fetching and real browser automation through external MCP servers
 
 ## Core Capabilities
 
-- Interactive TUI: AI/Bash dual mode, panel system, streaming output, and Markdown rendering
-- Two execution modes: `plan` / `auto` (switchable in the interface)
-- Multi-agent collaboration: planner, developer, tester, reviewer, and other specialized agents
-- Tooling system: file read/write/edit, search, Git, Shell, background tasks, MCP calls, and more
-- Office document support: built-in `DOCX/XLSX/PDF` reading, generation, and conversion with high-fidelity conversion preferred
-- Safety controls: tiered confirmation for high-risk actions with session-level authorization support
-- Context indexing: code indexing, file watching, context compression, and session persistence
-- Optional LSP support: `without_lsp`, default LSP, and embedded `with_gopls` builds
+### 1) Terminal UX
+
+- Interactive TUI with streaming output, Markdown rendering, a help panel, and status hints
+- AI / Bash dual-mode workflow in one interface
+- Panels for `context`, `memory`, `rules`, `workspace`, `models`, `settings`, `mcp`, `lsp`, `cost`, `versions`, and `tasks`
+- Conversation resume, session restore, history navigation, context compaction, and version snapshots
+
+### 2) Execution and Safety
+
+- Two execution modes: `plan` and `auto`
+- Approval flow and approval digest checks for higher-risk tools
+- Tool allowlist / denylist controls and workspace boundary enforcement
+- Sessions, tasks, approvals, and inquiries can be handled by an external host
+
+### 3) Tooling
+
+- Files and code: read, edit, search, project structure, notebooks, and file history
+- Shell and tasks: Bash, PowerShell, background jobs, and task control
+- Git and remote repos: local Git operations plus remote repository connect / clone / branch / push / PR / MR flows
+- Web and external info: `web_search` and `web_fetch`
+- Multi-agent and extensibility: subagents, team tools, MCP, Skills, Plugins, and structured output
+
+### 4) Document Workflows
+
+- Built-in `DOCX` / `XLSX` / `PDF` reading
+- Built-in `DOCX` / `XLSX` / `PDF` generation
+- Format conversion across `DOCX` / `XLSX` / `PDF`
+- `DOCX <-> PDF` and `XLSX <-> PDF` prefer `soffice` for high-fidelity conversion, with automatic fallback to content-level conversion when unavailable
+
+### 5) Context and Language Support
+
+- Code indexing, file watching, context assembly, and context compaction
+- Persistent sessions with restore support
+- Optional LSP support with auto-detection for Go, Python, TypeScript, and JavaScript
+- Default external LSP discovery plus `with_gopls` embedded builds
 
 ## Requirements
 
-- Go 1.25+
-- An accessible OpenAI-compatible endpoint (`EOS_API_BASE`, `EOS_API_KEY`, `EOS_MODEL`)
+- Go `1.25+`
+- An accessible OpenAI-compatible endpoint
+- Model configuration via one of:
+  - Environment variables: `EOS_API_BASE`, `EOS_API_KEY`, `EOS_MODEL`
+  - User config file: `~/.eos.json`
 
 ## Quick Start
 
-### 1) Build
+### 1) Clone and Build
 
 ```bash
 git clone https://github.com/dreamSailing/eos.git
@@ -84,46 +121,37 @@ Option B: `~/.eos.json`
 }
 ```
 
-## Build Variants (LSP)
+### 3) Start Using EOS
 
-- Minimal build (without LSP)  
-  `go build -tags without_lsp -o eos`
-- Default build (with LSP framework enabled)  
-  `go build -o eos`
-- Go-enhanced build (with embedded gopls)  
-  `go build -tags with_gopls -o eos`
+```bash
+eos
+```
 
-The repository includes gopls embedding scripts: `scripts/embed_gopls.sh` and `scripts/embed_gopls.bat`.
+After launch, use `?` to open the help panel, then inspect your environment with `/status`, `/workspace`, `/model`, or `/mcp`.
 
-## Common Interactions
+## Common Commands
 
-### Keyboard Shortcuts
+### Interactive Entry Points
 
-- `F2`: switch between AI and Bash mode
-- `Alt+M`: switch execution mode (`plan ↔ auto`)
-- `Alt+V`: paste an image from the clipboard
-- `Alt+H`: expand or collapse thinking content
-- `?`: open the help panel
-- `Ctrl+O`: switch the real-time info panel style
+```bash
+eos
+eos --continue
+eos --resume <session-id>
+eos --model <model-name>
+eos --allowed-tools "read,search,bash"
+eos --disallowed-tools "bash"
+```
 
-### Common Slash Commands
+### Headless Execution
 
-- `/help` `/clear` `/exit`
-- `/history` (or `/versions`)
-- `/models` `/mcp` `/ctx` `/cost` `/tasks`
-- `/workspace list|add|remove|use <path>`
-- `/settings` `/lsp` `/rules` `/lang` `/compact`
-- `/init`: initialize `EOS.md` in the current workspace
+Useful for scripts, CI, and external automation:
 
-## Document Support
+```bash
+eos --print "Summarize the current repository structure"
+eos --print "review the current changes" --output-format json
+```
 
-- Read: the built-in `read` tool can now open `DOCX`, `XLSX`, and `PDF`
-- Generate: available through the `document_generate` tool and `eos doc generate`
-- Convert: available through the `document_convert` tool and `eos doc convert`
-- High fidelity: `DOCX <-> PDF` and `XLSX <-> PDF` prefer `soffice` for layout-preserving conversion; if unavailable, EOS falls back to content-level conversion with warnings
-- Boundary: first-release `DOCX <-> XLSX` conversion focuses on structured content and tables rather than full layout preservation
-
-CLI examples:
+### Document Commands
 
 ```bash
 eos doc read ./report.docx
@@ -131,29 +159,92 @@ eos doc generate --format pdf --output ./out/report.pdf --title "Weekly Report" 
 eos doc convert ./report.docx --to pdf --output ./out/report.pdf --fidelity high
 ```
 
-## Service Mode API
+### Self Update
 
-- Public CLI API (`eos serve`): [internal/docs/serve/API.md](./internal/docs/serve/API.md)
-- Minimal IDE bridge integration: first generate a bridge manifest with `eos bridge manifest --workspace "/abs/workspace"`, then see [internal/docs/serve/IDE_BRIDGE.md](./internal/docs/serve/IDE_BRIDGE.md)
-- Standard MCP Server: `eos mcp serve --transport stdio --workspace "/abs/workspace"`; see [internal/docs/mcp/SERVER.md](./internal/docs/mcp/SERVER.md)
+```bash
+eos update
+```
 
-### MCP Server Examples
+## Interaction Model
 
-stdio:
+### Common Shortcuts
+
+- `?`: open the help panel
+- `F2`: switch between AI and Bash mode
+- `Tab`: toggle thinking display or accept a suggestion
+- `Alt+V`: paste an image from the clipboard
+- `→`: accept next-message prediction
+- `Ctrl+O`: toggle live verbose display
+- `Alt+H`: expand or collapse current thinking content
+- `Ctrl+J`: insert a new line
+- `Esc`: stop the current flow
+- `Ctrl+C`: interrupt or exit
+
+### Common Slash Commands
+
+These are common entry points, not the full list:
+
+- General: `/help`, `/status`, `/clear`, `/exit`, `/lang`
+- Workspace and context: `/workspace`, `/context`, `/compact`
+- Tasks and planning: `/tasks`, `/plan`, `/permissions`
+- Config panels: `/model`, `/config`, `/mcp`, `/lsp`, `/rules`, `/cost`
+
+## Build Variants (LSP)
+
+- Minimal build, no LSP:
+  `go build -tags without_lsp -o eos`
+- Default build, LSP framework enabled with external server discovery:
+  `go build -o eos`
+- Go-enhanced build with embedded `gopls`:
+  `go build -tags with_gopls -o eos`
+
+Related scripts:
+
+- `scripts/embed_gopls.sh`
+- `scripts/embed_gopls.bat`
+
+## Developer Integration
+
+Most users only need `eos`, `eos --print`, `eos doc`, and `eos update`. If you are integrating EOS into an IDE, automation platform, or another agent host, there are three primary paths:
+
+### 1) `eos serve`
+
+Runs EOS as a local tool service over line-delimited JSON-RPC 2.0 on `stdio`.
+
+```bash
+eos serve --transport stdio --workspace "/abs/workspace"
+```
+
+Docs: [internal/docs/serve/API.md](./internal/docs/serve/API.md)
+
+### 2) `eos bridge manifest`
+
+Generates a bridge manifest containing launch command, protocol version, session defaults, supported methods, and capability metadata for host-side auto-discovery.
+
+```bash
+eos bridge manifest --workspace "/abs/workspace"
+```
+
+Docs: [internal/docs/serve/IDE_BRIDGE.md](./internal/docs/serve/IDE_BRIDGE.md)
+
+### 3) `eos mcp serve`
+
+Runs EOS as a standard MCP server with `stdio` or `sse` transport.
 
 ```bash
 eos mcp serve --transport stdio --workspace "/abs/workspace"
-```
-
-SSE:
-
-```bash
 eos mcp serve --transport sse --listen 127.0.0.1:8765 --workspace "/abs/workspace"
 ```
 
-### Browser Automation
+Docs: [internal/docs/mcp/SERVER.md](./internal/docs/mcp/SERVER.md)
 
-EOS does not ship an internal browser driver. The recommended production path is to connect a mature Playwright MCP server. Once enabled, the agent can click, type, select, wait for page changes, and capture screenshots in a real browser session.
+## MCP and Browser Automation
+
+EOS can both expose itself as an MCP server and connect to external MCP services as a client.
+
+### Recommended Browser Setup
+
+EOS does not ship with a built-in browser driver. The recommended path is to connect Playwright MCP for real browser automation. Once enabled, the agent can click, type, select, wait for page changes, and capture screenshots in a real session.
 
 Minimum working configuration:
 
@@ -175,47 +266,27 @@ How to enable:
 - Press `B` in the `/mcp` panel to insert the Playwright preset
 - Or edit the `mcp` section in `~/.eos.json` manually
 
-Usage boundaries:
+Boundaries:
 
 - `web_fetch` is for read-only page fetching
-- Browser MCP is for real page interaction and behavior verification
-- Use `browser_status`, `/status`, or `/doctor` for diagnostics
+- Browser MCP is for real interaction, verification, and screenshots
+- Use `/status`, the MCP panel, or runtime status to inspect connectivity
 
-## Project Structure (Short Version)
+## Open-Source Usage Notes
 
-```text
-internal/
-  cli/       Cobra entrypoints
-  ui/        TUI interaction and panels
-  bridge/    UI and runtime bridge
-  runtime/   Eino orchestration and tool scheduling
-  tools/     Tool definitions and execution
-  context/   Code indexing and watching
-  session/   Session context management
-  lsp/       LSP management and embedding support
-```
-
-## Development And Testing
-
-```bash
-go test ./...
-go build ./...
-```
-
-## Open-Source Release Notes
-
-- The runtime creates `.eos/` data in the working directory, including sessions, checkpoints, and version snapshots
-- Ensure `.eos/`, `.eos.json`, `.env`, logs, and local configuration files are excluded from version control
-- Run a sensitive data check before publishing changes, including API keys, private keys, certificates, and absolute paths
+- EOS creates `.eos/` runtime data in the working directory, including sessions, checkpoints, and version snapshots
+- Exclude `.eos/`, `.eos.json`, `.env`, logs, and local config from version control
+- Check for sensitive data before publishing, including API keys, private keys, certificates, and absolute paths
+- If you publish an integration package for others, document the boundaries of `serve`, `bridge manifest`, and `mcp serve`
 
 ## License
 
-This project is released under the EOS Non-Commercial License v1.1. See [LICENSE](./LICENSE):
+This project is released under the EOS Non-Commercial License v1.1. See [LICENSE](./LICENSE).
 
-- Free for personal and non-commercial use, including installer usage
+- Free for personal and non-commercial use
 - Non-commercial compilation, modification, and redistribution are allowed
 - Derivative works must remain open source under the same license
-- Any commercial use is prohibited, including internal enterprise production use, paid services, SaaS, and commercial redistribution
+- Commercial use is prohibited, including internal enterprise production, paid services, SaaS, and commercial redistribution
 - Commercial use requires separate written authorization from the copyright holder
 
 ## Contact

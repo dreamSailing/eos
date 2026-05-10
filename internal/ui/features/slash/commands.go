@@ -24,6 +24,7 @@ type Command struct {
 	DescriptionZH string
 	DescriptionEN string
 	Usage         string
+	Hidden        bool
 }
 
 type GroupedCommands struct {
@@ -60,8 +61,8 @@ var Commands = []Command{
 	{Name: "/plan", Group: GroupRuntime, Usage: "/plan [auto|plan]", DescriptionZH: "查看当前计划/待办，或切换计划执行模式", DescriptionEN: "Inspect plan/todos or switch planning mode"},
 	{Name: "/plan-style", Group: GroupRuntime, Usage: "/plan-style [concise|detailed|custom:<text>]", DescriptionZH: "查看或设置计划提示风格", DescriptionEN: "Inspect or change the planner prompt style"},
 	{Name: "/permissions", Group: GroupRuntime, Usage: "/permissions [auto|plan]", DescriptionZH: "查看或切换权限/审批模式", DescriptionEN: "Inspect or change permission/approval mode"},
-	{Name: "/doctor", Group: GroupRuntime, DescriptionZH: "输出运行时、工具和诊断摘要", DescriptionEN: "Print a runtime, tools, and diagnostics summary"},
-	{Name: "/stats", Group: GroupRuntime, DescriptionZH: "显示 Token 用量和工具调用统计", DescriptionEN: "Show token usage and tool call statistics"},
+	{Name: "/doctor", Group: GroupRuntime, DescriptionZH: "输出运行、工具和诊断摘要", DescriptionEN: "Print an execution, tools, and diagnostics summary", Hidden: true},
+	{Name: "/stats", Group: GroupRuntime, DescriptionZH: "显示 Token 用量和工具调用统计", DescriptionEN: "Show token usage and tool call statistics", Hidden: true},
 
 	{Name: "/model", Aliases: []string{"/models"}, Group: GroupConfig, Usage: "/model [use <name>]", DescriptionZH: "查看模型面板或切换当前模型", DescriptionEN: "Open model management or switch the active model"},
 	{Name: "/config", Aliases: []string{"/settings"}, Group: GroupConfig, DescriptionZH: "打开配置面板", DescriptionEN: "Open the settings panel"},
@@ -70,7 +71,7 @@ var Commands = []Command{
 	{Name: "/rules", Group: GroupConfig, DescriptionZH: "打开规则面板", DescriptionEN: "Open the rules panel"},
 	{Name: "/skills", Group: GroupConfig, Usage: "/skills [reload]", DescriptionZH: "列出或重载可用 skills", DescriptionEN: "List or reload available skills"},
 	{Name: "/plugin", Group: GroupConfig, DescriptionZH: "列出已注册插件", DescriptionEN: "List registered plugins"},
-	{Name: "/reload-plugins", Group: GroupConfig, DescriptionZH: "重载插件扩展与目录发现", DescriptionEN: "Reload plugin extensions and discovery"},
+	{Name: "/reload-plugins", Group: GroupConfig, DescriptionZH: "重载插件扩展与目录发现", DescriptionEN: "Reload plugin extensions and discovery", Hidden: true},
 	{Name: "/cost", Group: GroupConfig, DescriptionZH: "打开成本统计面板", DescriptionEN: "Open the cost panel"},
 	{Name: "/theme", Group: GroupConfig, Usage: "/theme [dark|light|nord|...]", DescriptionZH: "切换 TUI 配色主题", DescriptionEN: "Switch TUI color theme"},
 }
@@ -117,14 +118,14 @@ func (g Group) Label(lang string) string {
 		return "工程流程"
 	case GroupRuntime:
 		if strings.EqualFold(lang, "en") {
-			return "Runtime"
+			return "Work Status"
 		}
-		return "运行时"
+		return "工作状态"
 	case GroupConfig:
 		if strings.EqualFold(lang, "en") {
-			return "Configuration"
+			return "Settings and Connections"
 		}
-		return "配置"
+		return "设置与连接"
 	default:
 		if strings.EqualFold(lang, "en") {
 			return "General"
@@ -134,8 +135,13 @@ func (g Group) Label(lang string) string {
 }
 
 func VisibleCommands() []Command {
-	out := make([]Command, len(Commands))
-	copy(out, Commands)
+	out := make([]Command, 0, len(Commands))
+	for _, cmd := range Commands {
+		if cmd.Hidden {
+			continue
+		}
+		out = append(out, cmd)
+	}
 	return out
 }
 
@@ -171,8 +177,9 @@ func GetSuggestions(prefix string) []Command {
 		return VisibleCommands()
 	}
 
-	out := make([]Command, 0, len(Commands))
-	for _, cmd := range Commands {
+	visible := VisibleCommands()
+	out := make([]Command, 0, len(visible))
+	for _, cmd := range visible {
 		if commandMatches(cmd, prefix) {
 			out = append(out, cmd)
 		}
@@ -183,7 +190,7 @@ func GetSuggestions(prefix string) []Command {
 func GroupedVisibleCommands(lang string) []GroupedCommands {
 	order := []Group{GroupGeneral, GroupProject, GroupRuntime, GroupConfig}
 	byGroup := map[Group][]Command{}
-	for _, cmd := range Commands {
+	for _, cmd := range VisibleCommands() {
 		byGroup[cmd.Group] = append(byGroup[cmd.Group], cmd)
 	}
 

@@ -5,7 +5,6 @@ package ai
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"strings"
 )
@@ -291,10 +290,57 @@ func SupportsToolsFromCatalog(modelName string) bool {
 // GetModelContextWindow 获取模型的上下文窗口大小
 func GetModelContextWindow(modelName string) int {
 	id := strings.ToLower(strings.TrimSpace(modelName))
-	if entry := GetModelEntry(id); entry != nil {
-		return entry.ContextWindow
+	if entry := findCatalogEntryByKey(id); entry != nil {
+		return GetCatalogContextWindow(entry)
 	}
 	return 0
+}
+
+// GetCatalogContextWindow returns the best known context window for a catalog
+// entry, preferring runtime overrides and then any sibling preset that maps to
+// the same underlying provider model.
+func GetCatalogContextWindow(entry *ModelCatalogEntry) int {
+	if entry == nil {
+		return 0
+	}
+	if v, ok := getContextWindowOverride(entry.ModelName); ok && v > 0 {
+		return v
+	}
+	if v, ok := getContextWindowOverride(entry.ID); ok && v > 0 {
+		return v
+	}
+	if entry.ContextWindow > 0 {
+		return entry.ContextWindow
+	}
+
+	modelName := strings.ToLower(strings.TrimSpace(entry.ModelName))
+	entryID := strings.ToLower(strings.TrimSpace(entry.ID))
+	for i := range builtinModelsCatalog {
+		candidate := &builtinModelsCatalog[i]
+		switch {
+		case modelName != "" && strings.EqualFold(candidate.ModelName, modelName) && candidate.ContextWindow > 0:
+			return candidate.ContextWindow
+		case entryID != "" && strings.EqualFold(candidate.ID, entryID) && candidate.ContextWindow > 0:
+			return candidate.ContextWindow
+		}
+	}
+	return 0
+}
+
+func findCatalogEntryByKey(key string) *ModelCatalogEntry {
+	if key == "" {
+		return nil
+	}
+	if entry := GetModelEntry(key); entry != nil {
+		return entry
+	}
+	for i := range builtinModelsCatalog {
+		entry := &builtinModelsCatalog[i]
+		if strings.EqualFold(strings.TrimSpace(entry.ModelName), key) {
+			return entry
+		}
+	}
+	return nil
 }
 
 // GetModelAPIType 获取模型的 API 类型
@@ -327,14 +373,20 @@ func InferDefaultModelFromBase(baseURL string) string {
 	if strings.Contains(b, "dashscope.aliyuncs.com") && strings.Contains(b, "compatible-mode") {
 		return "qwen3.6-plus"
 	}
+	if strings.Contains(b, "api.deepseek.com") {
+		return "deepseek-v4-pro"
+	}
 	if strings.Contains(b, "api.moonshot.cn") {
-		return "kimi-k2.5"
+		return "kimi-k2.6"
 	}
 	if strings.Contains(b, "api.minimaxi.com") || strings.Contains(b, "api.minimax.io") {
 		return "MiniMax-M2.7"
 	}
 	if strings.Contains(b, "xiaomimimo.com") {
-		return "mimo-v2-pro"
+		return "mimo-v2.5-pro"
+	}
+	if strings.Contains(b, "generativelanguage.googleapis.com") {
+		return "gemini-3.1-pro-preview"
 	}
 	return ""
 }

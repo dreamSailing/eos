@@ -140,30 +140,20 @@ func (p *SettingsPanel) updateTable() {
 		rows = append(rows, table.Row{i18n.T("settings.empty", p.language), ""})
 	} else {
 		s := p.settings
-		rows = append(rows, table.Row{"AutoContext", fmt.Sprintf("%v", s.AutoContext)})
+		rows = append(rows, table.Row{"自动上下文", fmt.Sprintf("%v", s.AutoContext)})
 		desktopNotifications := true
 		if s.DesktopNotifications != nil {
 			desktopNotifications = *s.DesktopNotifications
 		}
-		rows = append(rows, table.Row{"DesktopNotifications", fmt.Sprintf("%v", desktopNotifications)})
-		rows = append(rows, table.Row{"MaxInjectKB", fmt.Sprintf("%d", s.MaxInjectKB)})
-		rows = append(rows, table.Row{"WatchDebounceMs", fmt.Sprintf("%d", s.WatchDebounceMs)})
-		rows = append(rows, table.Row{"PollIntervalSec", fmt.Sprintf("%d", s.PollIntervalSec)})
-		rows = append(rows, table.Row{"Language", s.Language})
-		rows = append(rows, table.Row{"Theme", s.Theme})
-		rows = append(rows, table.Row{"LogDir", config.ConfiguredLogDir()})
-		rows = append(rows, table.Row{"NextMessagePrediction(Global)", fmt.Sprintf("%v", p.globalPredictionEnabled)})
+		rows = append(rows, table.Row{"桌面通知", fmt.Sprintf("%v", desktopNotifications)})
+		rows = append(rows, table.Row{"上下文上限(KB)", fmt.Sprintf("%d", s.MaxInjectKB)})
+		rows = append(rows, table.Row{"语言", s.Language})
+		rows = append(rows, table.Row{"主题", s.Theme})
 		planPromptStyle := strings.TrimSpace(s.PlanPromptStyle)
 		if planPromptStyle == "" {
 			planPromptStyle = "concise"
 		}
-		rows = append(rows, table.Row{"PlanPromptStyle", planPromptStyle})
-		if s.PlanBubbleColor != "" {
-			rows = append(rows, table.Row{"PlanBubbleColor", s.PlanBubbleColor})
-		}
-		if len(s.Workspaces) > 0 {
-			rows = append(rows, table.Row{"Workspaces", fmt.Sprintf("%d items", len(s.Workspaces))})
-		}
+		rows = append(rows, table.Row{"计划详略", planPromptStyle})
 	}
 	p.table.SetRows(rows)
 }
@@ -325,12 +315,12 @@ func (p *SettingsPanel) saveEditValue() {
 
 	value := p.editInput.Value()
 	switch p.editKey {
-	case "AutoContext":
+	case "AutoContext", "自动上下文":
 		p.settings.AutoContext = value == "true" || value == "True" || value == "1"
-	case "DesktopNotifications":
+	case "DesktopNotifications", "桌面通知":
 		v := value == "true" || value == "True" || value == "1"
 		p.settings.DesktopNotifications = &v
-	case "MaxInjectKB":
+	case "MaxInjectKB", "上下文上限(KB)":
 		if v, err := strconv.Atoi(value); err == nil {
 			p.settings.MaxInjectKB = v
 		}
@@ -342,13 +332,13 @@ func (p *SettingsPanel) saveEditValue() {
 		if v, err := strconv.Atoi(value); err == nil {
 			p.settings.PollIntervalSec = v
 		}
-	case "Language":
+	case "Language", "语言":
 		p.settings.Language = value
-	case "Theme":
+	case "Theme", "主题":
 		p.settings.Theme = value
 	case "NextMessagePrediction(Global)":
 		p.globalPredictionEnabled = value == "true" || value == "True" || value == "1"
-	case "PlanPromptStyle":
+	case "PlanPromptStyle", "计划详略":
 		p.settings.PlanPromptStyle = value
 	case "PlanBubbleColor":
 		p.settings.PlanBubbleColor = value

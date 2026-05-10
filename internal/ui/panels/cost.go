@@ -34,17 +34,17 @@ type CostPanel struct {
 type CostStats struct {
 	Model  string
 	Rounds int
-	Input  int
-	Reply  int
-	Total  int
+	Input  string
+	Reply  string
+	Total  string
 }
 
 // TotalStats 总统计
 type TotalStats struct {
 	TotalRounds   int
-	TotalInput    int
-	TotalReply    int
-	TotalTokens   int
+	TotalInput    string
+	TotalReply    string
+	TotalTokens   string
 	TotalDuration int // ms
 }
 
@@ -116,9 +116,9 @@ func (p *CostPanel) updateTable() {
 			rows = append(rows, table.Row{
 				s.Model,
 				fmt.Sprintf("%d", s.Rounds),
-				fmt.Sprintf("%d", s.Input),
-				fmt.Sprintf("%d", s.Reply),
-				fmt.Sprintf("%d", s.Total),
+				s.Input,
+				s.Reply,
+				s.Total,
 			})
 		}
 	}
@@ -218,11 +218,11 @@ func (p *CostPanel) View() string {
 	content.WriteString("\n")
 	content.WriteString(fmt.Sprintf("  %s: %d\n",
 		i18n.T("cost.summary.rounds", p.language), p.totalStats.TotalRounds))
-	content.WriteString(fmt.Sprintf("  %s: %d\n",
+	content.WriteString(fmt.Sprintf("  %s: %s\n",
 		i18n.T("cost.summary.input", p.language), p.totalStats.TotalInput))
-	content.WriteString(fmt.Sprintf("  %s: %d\n",
+	content.WriteString(fmt.Sprintf("  %s: %s\n",
 		i18n.T("cost.summary.reply", p.language), p.totalStats.TotalReply))
-	content.WriteString(fmt.Sprintf("  %s: %d",
+	content.WriteString(fmt.Sprintf("  %s: %s",
 		i18n.T("cost.summary.total", p.language), p.totalStats.TotalTokens))
 	if p.totalStats.TotalDuration > 0 && p.totalStats.TotalRounds > 0 {
 		content.WriteString(fmt.Sprintf("\n  %s: %dms",

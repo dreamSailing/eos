@@ -29,8 +29,9 @@ func newServeCmd() *cobra.Command {
 	var requireApprovalDigest bool
 
 	cmd := &cobra.Command{
-		Use:   "serve",
-		Short: "Start eos as a local tool service (for agents/platform).",
+		Use:    "serve",
+		Short:  "Start eos as a local tool service (for agents/platform).",
+		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			transport = strings.TrimSpace(transport)
 			if transport == "" {

@@ -5,7 +5,6 @@ package core
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"strings"
 	"testing"
@@ -31,8 +30,14 @@ func TestRuntimeModelCatalogMatchesCLIProviders(t *testing.T) {
 	foundMiniMax := false
 	foundMiMo := false
 	foundDashscopeCodePlan := false
+	foundMoonshotDefault := false
+	foundOpenAIDefault := false
+	foundAnthropicDefault := false
+	foundDeepSeekDefault := false
+	foundGeminiProvider := false
 
 	foundDashscopePreset := false
+	foundDashscopeCodePlanPreset := false
 	for _, provider := range catalog.Providers {
 		if provider.ID == "minimax" {
 			foundMiniMax = true
@@ -49,6 +54,24 @@ func TestRuntimeModelCatalogMatchesCLIProviders(t *testing.T) {
 				t.Fatalf("mimo claudeApiBase=%q, want official anthropic path", provider.ClaudeAPIBase)
 			}
 		}
+		if provider.ID == "gemini" {
+			foundGeminiProvider = true
+			if provider.DefaultAPIBase != "https://generativelanguage.googleapis.com/v1beta/openai" {
+				t.Fatalf("gemini defaultApiBase=%q, want official OpenAI-compatible base", provider.DefaultAPIBase)
+			}
+		}
+		if provider.ID == "deepseek" && len(provider.DefaultModels) > 0 && provider.DefaultModels[0] == "deepseek-v4-pro" {
+			foundDeepSeekDefault = true
+		}
+		if provider.ID == "moonshot" && len(provider.DefaultModels) > 0 && provider.DefaultModels[0] == "kimi-k2.6" {
+			foundMoonshotDefault = true
+		}
+		if provider.ID == "openai" && len(provider.DefaultModels) > 0 && provider.DefaultModels[0] == "gpt-5.5" {
+			foundOpenAIDefault = true
+		}
+		if provider.ID == "anthropic" && len(provider.DefaultModels) > 0 && provider.DefaultModels[0] == "claude-opus-4-7" {
+			foundAnthropicDefault = true
+		}
 	}
 	if !foundMiniMax {
 		t.Fatal("expected minimax provider in catalog")
@@ -59,6 +82,21 @@ func TestRuntimeModelCatalogMatchesCLIProviders(t *testing.T) {
 	if !foundDashscopeCodePlan {
 		t.Fatal("expected dashscope coding plan base in catalog")
 	}
+	if !foundGeminiProvider {
+		t.Fatal("expected gemini provider in catalog")
+	}
+	if !foundDeepSeekDefault {
+		t.Fatal("expected deepseek default model to prefer deepseek-v4-pro")
+	}
+	if !foundMoonshotDefault {
+		t.Fatal("expected moonshot default model to prefer kimi-k2.6")
+	}
+	if !foundOpenAIDefault {
+		t.Fatal("expected openai default model to prefer gpt-5.5")
+	}
+	if !foundAnthropicDefault {
+		t.Fatal("expected anthropic default model to prefer claude-opus-4-7")
+	}
 
 	for _, preset := range catalog.Presets {
 		if preset.ProviderID == "dashscope" && preset.ID == "qwen3.6-plus" {
@@ -66,16 +104,28 @@ func TestRuntimeModelCatalogMatchesCLIProviders(t *testing.T) {
 			if preset.ModelName != "qwen3.6-plus" {
 				t.Fatalf("preset modelName=%q, want qwen3.6-plus", preset.ModelName)
 			}
+			if preset.ContextWindow != 1000000 {
+				t.Fatalf("preset contextWindow=%d, want 1000000", preset.ContextWindow)
+			}
+		}
+		if preset.ProviderID == "dashscope" && preset.ID == "dashscope-coding-plan-qwen3.6-plus" {
+			foundDashscopeCodePlanPreset = true
+			if preset.ContextWindow != 1000000 {
+				t.Fatalf("coding plan preset contextWindow=%d, want 1000000", preset.ContextWindow)
+			}
 		}
 		if preset.ID == "minimax-token-plan-openai" && preset.ModelName != "MiniMax-M2.7" {
 			t.Fatalf("minimax preset modelName=%q, want MiniMax-M2.7", preset.ModelName)
 		}
-		if preset.ID == "mimo-token-plan-openai-pro" && preset.ModelName != "mimo-v2-pro" {
-			t.Fatalf("mimo preset modelName=%q, want mimo-v2-pro", preset.ModelName)
+		if preset.ID == "mimo-token-plan-openai-pro" && preset.ModelName != "mimo-v2.5-pro" {
+			t.Fatalf("mimo preset modelName=%q, want mimo-v2.5-pro", preset.ModelName)
 		}
 	}
 	if !foundDashscopePreset {
 		t.Fatal("expected qwen3.6-plus preset in catalog")
+	}
+	if !foundDashscopeCodePlanPreset {
+		t.Fatal("expected dashscope coding plan qwen3.6-plus preset in catalog")
 	}
 }
 

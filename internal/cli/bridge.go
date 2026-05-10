@@ -30,8 +30,9 @@ func newBridgeCmd() *cobra.Command {
 	var includeCapabilities bool
 
 	cmd := &cobra.Command{
-		Use:   "bridge",
-		Short: "Generate bridge metadata for IDE and remote hosts.",
+		Use:    "bridge",
+		Short:  "Generate bridge metadata for IDE and remote hosts.",
+		Hidden: true,
 	}
 
 	manifestCmd := &cobra.Command{

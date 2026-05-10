@@ -883,6 +883,20 @@ func blankFallback(value, fallback string) string {
 	return value
 }
 
+func optionalIntText(value *int, fallback string) string {
+	if value == nil {
+		return fallback
+	}
+	return fmt.Sprintf("%d", *value)
+}
+
+func optionalFloatText(value *float64, fallback string) string {
+	if value == nil {
+		return fallback
+	}
+	return fmt.Sprintf("$%.6f", *value)
+}
+
 func (m *AppModel) handleStatusSlash() tea.Cmd {
 	core := m.adapter.GetCore()
 	modelName, modelBase := m.adapter.GetModelInfo()
@@ -1112,10 +1126,10 @@ func (m *AppModel) handleStatsSlash() tea.Cmd {
 	lines := []string{
 		m.localize("统计信息", "Statistics"),
 		fmt.Sprintf("%s: %d", m.localize("对话轮数", "Rounds"), stats.Rounds),
-		fmt.Sprintf("%s: %d", m.localize("输入 Tokens", "Input tokens"), stats.Input),
-		fmt.Sprintf("%s: %d", m.localize("输出 Tokens", "Reply tokens"), stats.Reply),
-		fmt.Sprintf("%s: %d", m.localize("总 Tokens", "Total tokens"), stats.Total),
-		fmt.Sprintf("%s: $%.6f", m.localize("总成本", "Total cost"), stats.TotalCostUSD),
+		fmt.Sprintf("%s: %s", m.localize("输入 Tokens", "Input tokens"), optionalIntText(stats.Input, m.localize("未知", "unknown"))),
+		fmt.Sprintf("%s: %s", m.localize("输出 Tokens", "Reply tokens"), optionalIntText(stats.Reply, m.localize("未知", "unknown"))),
+		fmt.Sprintf("%s: %s", m.localize("总 Tokens", "Total tokens"), optionalIntText(stats.Total, m.localize("未知", "unknown"))),
+		fmt.Sprintf("%s: %s", m.localize("总成本", "Total cost"), optionalFloatText(stats.TotalCostUSD, m.localize("未知", "unknown"))),
 	}
 
 	if len(toolStats) > 0 {

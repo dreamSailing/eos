@@ -117,7 +117,7 @@ func (rc *RuntimeCore) SaveSession(ctx context.Context, id string) (string, erro
 		ps.TokenHistory = append([]TokenRecord{}, rc.tokenHistory...)
 		ps.Rounds = len(ps.TokenHistory)
 		for _, r := range ps.TokenHistory {
-			ps.Tokens += r.Total
+			ps.Tokens += derefInt(r.Total)
 		}
 	}
 	rc.tokenMu.RUnlock()

@@ -199,10 +199,10 @@ type PluginInfo struct {
 type CostItem struct {
 	Time      time.Time
 	Model     string
-	Input     int
-	Reply     int
-	Token     int
-	CostCents int
+	Input     *int
+	Reply     *int
+	Token     *int
+	CostCents *int
 }
 
 func NewRuntime() *Runtime {
@@ -2009,7 +2009,20 @@ func (r *Runtime) ExportContext(path string) error {
 
 func (r *Runtime) CostSummary() string {
 	s := r.core.GetTokenStats()
-	return fmt.Sprintf("rounds=%d input=%d reply=%d total=%d", s.Rounds, s.Input, s.Reply, s.Total)
+	parts := []string{fmt.Sprintf("rounds=%d", s.Rounds)}
+	if s.Input != nil {
+		parts = append(parts, fmt.Sprintf("input=%d", *s.Input))
+	}
+	if s.Reply != nil {
+		parts = append(parts, fmt.Sprintf("reply=%d", *s.Reply))
+	}
+	if s.Total != nil {
+		parts = append(parts, fmt.Sprintf("total=%d", *s.Total))
+	}
+	if len(parts) == 1 {
+		parts = append(parts, "usage=unknown")
+	}
+	return strings.Join(parts, " ")
 }
 
 func (r *Runtime) CostItems() []CostItem {
@@ -2022,7 +2035,7 @@ func (r *Runtime) CostItems() []CostItem {
 			Input:     it.Input,
 			Reply:     it.Reply,
 			Token:     it.Total,
-			CostCents: 0,
+			CostCents: nil,
 		})
 	}
 	slices.SortFunc(items, func(a, b CostItem) int {

@@ -7,6 +7,8 @@ package bridge
 
 import (
 	"testing"
+
+	"github.com/cloudwego/eino/schema"
 )
 
 func mustNotPanic(t *testing.T, fn func()) {
@@ -189,5 +191,41 @@ func TestRuntimeCoreResetTurnBudgetClearsTurnOnly(t *testing.T) {
 	}
 	if sessionTotal != 50 {
 		t.Fatalf("expected session total to remain 50, got %d", sessionTotal)
+	}
+}
+
+func TestRuntimeCoreAddTokenRecordWithModelLeavesUsageUnknownWhenMissing(t *testing.T) {
+	rc := &RuntimeCore{}
+	rc.AddTokenRecordWithModel(nil, "deepseek-v4-flash")
+
+	history := rc.GetTokenHistory()
+	if len(history) != 1 {
+		t.Fatalf("len(history)=%d, want 1", len(history))
+	}
+	if history[0].Input != nil || history[0].Reply != nil || history[0].Total != nil || history[0].CostUSD != nil {
+		t.Fatalf("expected unknown usage/cost, got %#v", history[0])
+	}
+}
+
+func TestRuntimeCoreAddTokenRecordWithModelUsesProviderUsage(t *testing.T) {
+	rc := &RuntimeCore{}
+	rc.AddTokenRecordWithModel(&schema.TokenUsage{
+		PromptTokens:     1000,
+		CompletionTokens: 200,
+		TotalTokens:      1200,
+	}, "qwen3.6-plus")
+
+	stats := rc.GetTokenStats()
+	if stats.Input == nil || *stats.Input != 1000 {
+		t.Fatalf("stats.Input=%v, want 1000", stats.Input)
+	}
+	if stats.Reply == nil || *stats.Reply != 200 {
+		t.Fatalf("stats.Reply=%v, want 200", stats.Reply)
+	}
+	if stats.Total == nil || *stats.Total != 1200 {
+		t.Fatalf("stats.Total=%v, want 1200", stats.Total)
+	}
+	if stats.TotalCostUSD == nil || *stats.TotalCostUSD <= 0 {
+		t.Fatalf("stats.TotalCostUSD=%v, want > 0", stats.TotalCostUSD)
 	}
 }

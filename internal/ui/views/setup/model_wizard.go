@@ -167,9 +167,13 @@ func (v *ModelSetupView) loadModels(provider *ai.ProviderConfig) {
 	v.models = ai.GetModelsByProvider(provider.Type)
 	rows := make([]table.Row, 0, len(v.models))
 	for _, m := range v.models {
-		ctx := fmt.Sprintf("%d", m.ContextWindow)
-		if m.ContextWindow >= 1000 {
-			ctx = fmt.Sprintf("%.1fK", float64(m.ContextWindow)/1000)
+		window := ai.GetCatalogContextWindow(m)
+		ctx := "-"
+		if window > 0 {
+			ctx = fmt.Sprintf("%d", window)
+		}
+		if window >= 1000 {
+			ctx = fmt.Sprintf("%.1fK", float64(window)/1000)
 		}
 		tags := strings.Join(m.Tags, ", ")
 		rows = append(rows, table.Row{m.Name, ctx, tags})

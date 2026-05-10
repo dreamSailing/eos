@@ -31,8 +31,9 @@ func newMCPCmd() *cobra.Command {
 	var baseURL string
 
 	cmd := &cobra.Command{
-		Use:   "mcp",
-		Short: "Run EOS as a standard MCP server.",
+		Use:    "mcp",
+		Short:  "Run EOS as a standard MCP server.",
+		Hidden: true,
 	}
 
 	serveCmd := &cobra.Command{

@@ -42,7 +42,7 @@ func newDaemonCmd() *cobra.Command {
 		}
 	}
 
-	cmd := &cobra.Command{Use: "daemon", Short: "Run EOS as a background daemon with HTTP gateway."}
+	cmd := &cobra.Command{Use: "daemon", Short: "Run EOS as a background daemon with HTTP gateway.", Hidden: true}
 
 	startCmd := &cobra.Command{
 		Use:   "start",

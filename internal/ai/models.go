@@ -5,7 +5,6 @@ package ai
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import "strings"
 
 // ThinkingCapability 定义模型支持思考的能力等级
@@ -83,6 +82,20 @@ var builtinModels = []ModelInfo{
 
 	// OpenAI GPT 系列 - 不支持原生思考
 	{
+		Name:                    "gpt-5.5",
+		Aliases:                 []string{"gpt-5.5-2026-04-23"},
+		Thinking:                ThinkingHigh,
+		SupportsReasoningEffort: true,
+		Provider:                "openai",
+	},
+	{
+		Name:                    "gpt-5-codex",
+		Aliases:                 []string{"gpt-5", "gpt-5.1-codex"},
+		Thinking:                ThinkingHigh,
+		SupportsReasoningEffort: true,
+		Provider:                "openai",
+	},
+	{
 		Name:     "gpt-4o",
 		Aliases:  []string{"gpt-4o-2024-08-06", "gpt-4o-2024-05-13"},
 		Thinking: ThinkingNone,
@@ -107,27 +120,33 @@ var builtinModels = []ModelInfo{
 		Provider: "openai",
 	},
 
-	// Claude 系列 - 不支持原生思考（截至 2024）
+	// Claude 系列
 	{
-		Name:     "claude-3-5-sonnet",
-		Aliases:  []string{"claude-3-5-sonnet-20241022", "claude-3.5-sonnet"},
-		Thinking: ThinkingNone,
+		Name:     "claude-sonnet-4-6",
+		Aliases:  []string{"claude-sonnet-4-5", "claude-3-5-sonnet", "claude-3-5-sonnet-20241022", "claude-3.5-sonnet"},
+		Thinking: ThinkingMedium,
 		Provider: "anthropic",
 	},
 	{
-		Name:     "claude-3-opus",
-		Aliases:  []string{"claude-3-opus-20240229"},
-		Thinking: ThinkingNone,
+		Name:     "claude-opus-4-7",
+		Aliases:  []string{"claude-opus-4-6", "claude-3-opus", "claude-3-opus-20240229"},
+		Thinking: ThinkingHigh,
 		Provider: "anthropic",
 	},
 	{
-		Name:     "claude-3-sonnet",
-		Aliases:  []string{"claude-3-sonnet-20240229"},
-		Thinking: ThinkingNone,
+		Name:     "claude-haiku-4-5",
+		Aliases:  []string{"claude-3-sonnet", "claude-3-sonnet-20240229", "claude-3-5-haiku"},
+		Thinking: ThinkingLow,
 		Provider: "anthropic",
 	},
 
 	// Moonshot Kimi 系列
+	{
+		Name:     "kimi-k2.6",
+		Aliases:  []string{"kimi-k2-6"},
+		Thinking: ThinkingHigh,
+		Provider: "moonshot",
+	},
 	{
 		Name:     "kimi-k2.5",
 		Aliases:  []string{"kimi-k2-5"},
@@ -157,6 +176,20 @@ var builtinModels = []ModelInfo{
 
 	// DeepSeek Reasoning 系列
 	{
+		Name:                    "deepseek-v4-pro",
+		Aliases:                 []string{"deepseek-v4"},
+		Thinking:                ThinkingHigh,
+		SupportsReasoningEffort: false,
+		Provider:                "deepseek",
+	},
+	{
+		Name:                    "deepseek-v4-flash",
+		Aliases:                 []string{"deepseek-v4-flash-preview"},
+		Thinking:                ThinkingMedium,
+		SupportsReasoningEffort: false,
+		Provider:                "deepseek",
+	},
+	{
 		Name:                    "deepseek-reasoner",
 		Aliases:                 []string{"deepseek-r1"},
 		Thinking:                ThinkingHigh,
@@ -172,6 +205,13 @@ var builtinModels = []ModelInfo{
 		SupportsReasoningEffort: false,
 		Provider:                "dashscope",
 	},
+	{
+		Name:                    "qwen3.6-max-preview",
+		Aliases:                 []string{"qwen3.6-max"},
+		Thinking:                ThinkingHigh,
+		SupportsReasoningEffort: false,
+		Provider:                "dashscope",
+	},
 
 	// MiniMax M 系列
 	{
@@ -183,16 +223,34 @@ var builtinModels = []ModelInfo{
 
 	// Xiaomi MiMo 系列
 	{
-		Name:     "mimo-v2-pro",
-		Aliases:  []string{"MiMo-V2-Pro"},
+		Name:     "mimo-v2.5-pro",
+		Aliases:  []string{"mimo-v2-pro", "MiMo-V2.5-Pro", "MiMo-V2-Pro"},
 		Thinking: ThinkingHigh,
 		Provider: "mimo",
 	},
 	{
-		Name:     "mimo-v2-omni",
-		Aliases:  []string{"MiMo-V2-Omni"},
+		Name:     "mimo-v2.5",
+		Aliases:  []string{"mimo-v2-omni", "MiMo-V2.5", "MiMo-V2-Omni"},
 		Thinking: ThinkingHigh,
 		Provider: "mimo",
+	},
+	{
+		Name:     "gemini-3.1-pro-preview",
+		Aliases:  []string{"gemini-3-pro-preview", "gemini-3.1-pro-preview-customtools"},
+		Thinking: ThinkingHigh,
+		Provider: "gemini",
+	},
+	{
+		Name:     "gemini-3-flash-preview",
+		Aliases:  []string{"gemini-3-flash"},
+		Thinking: ThinkingHigh,
+		Provider: "gemini",
+	},
+	{
+		Name:     "gemini-3.1-flash-lite-preview",
+		Aliases:  []string{"gemini-3.1-flash-lite"},
+		Thinking: ThinkingMedium,
+		Provider: "gemini",
 	},
 }
 

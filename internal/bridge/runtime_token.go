@@ -9,17 +9,24 @@ package bridge
 import (
 	"time"
 
+	"github.com/cloudwego/eino/schema"
 	"github.com/dreamSailing/eos/internal/ai"
 )
 
 // AddTokenRecord 添加 Token 记录
 func (rc *RuntimeCore) AddTokenRecord(input, reply, total int) {
-	rc.AddTokenRecordWithModel(input, reply, total, "")
+	rc.AddTokenRecordWithModel(&schema.TokenUsage{
+		PromptTokens:     input,
+		CompletionTokens: reply,
+		TotalTokens:      total,
+	}, "")
 }
 
 // AddTokenRecordWithModel 添加带模型名称的 Token 记录
-func (rc *RuntimeCore) AddTokenRecordWithModel(input, reply, total int, model string) {
-	rc.cm.AddTokenRecord(input, reply, total)
+func (rc *RuntimeCore) AddTokenRecordWithModel(usage *schema.TokenUsage, model string) {
+	if rc.cm != nil && usage != nil {
+		rc.cm.AddTokenRecord(usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens)
+	}
 	rc.tokenMu.Lock()
 	defer rc.tokenMu.Unlock()
 
@@ -27,16 +34,29 @@ func (rc *RuntimeCore) AddTokenRecordWithModel(input, reply, total int, model st
 		model = rc.modelName
 	}
 
-	// Estimate cost
-	costEst := ai.EstimateCost(model, input, reply)
+	var input, reply, total *int
+	var cachedInput *int
+	var costUSD *float64
+	if usage != nil {
+		input = intPtr(usage.PromptTokens)
+		reply = intPtr(usage.CompletionTokens)
+		total = intPtr(usage.TotalTokens)
+		if usage.PromptTokenDetails.CachedTokens > 0 {
+			cachedInput = intPtr(usage.PromptTokenDetails.CachedTokens)
+		}
+		if costEst, ok := ai.EstimateUsageCost(model, usage); ok {
+			costUSD = floatPtr(costEst.TotalCost)
+		}
+	}
 
 	rc.tokenHistory = append(rc.tokenHistory, TokenRecord{
-		Timestamp: time.Now(),
-		Model:     model,
-		Input:     input,
-		Reply:     reply,
-		Total:     total,
-		CostUSD:   costEst.TotalCost,
+		Timestamp:   time.Now(),
+		Model:       model,
+		Input:       input,
+		Reply:       reply,
+		Total:       total,
+		CachedInput: cachedInput,
+		CostUSD:     costUSD,
 	})
 }
 
@@ -47,10 +67,10 @@ func (rc *RuntimeCore) GetTokenStats() TokenStats {
 	var stats TokenStats
 	stats.Rounds = len(rc.tokenHistory)
 	for _, r := range rc.tokenHistory {
-		stats.Input += r.Input
-		stats.Reply += r.Reply
-		stats.Total += r.Total
-		stats.TotalCostUSD += r.CostUSD
+		stats.Input = addOptionalInt(stats.Input, r.Input)
+		stats.Reply = addOptionalInt(stats.Reply, r.Reply)
+		stats.Total = addOptionalInt(stats.Total, r.Total)
+		stats.TotalCostUSD = addOptionalFloat(stats.TotalCostUSD, r.CostUSD)
 	}
 	return stats
 }
@@ -82,10 +102,10 @@ func (rc *RuntimeCore) GetModelTokenStats() []ModelTokenStats {
 		}
 		stats := modelMap[model]
 		stats.Rounds++
-		stats.Input += r.Input
-		stats.Reply += r.Reply
-		stats.Total += r.Total
-		stats.TotalCostUSD += r.CostUSD
+		stats.Input = addOptionalInt(stats.Input, r.Input)
+		stats.Reply = addOptionalInt(stats.Reply, r.Reply)
+		stats.Total = addOptionalInt(stats.Total, r.Total)
+		stats.TotalCostUSD = addOptionalFloat(stats.TotalCostUSD, r.CostUSD)
 	}
 
 	result := make([]ModelTokenStats, 0, len(modelMap))
@@ -103,7 +123,39 @@ func (rc *RuntimeCore) ClearTokenHistory() {
 	rc.tokenHistory = nil
 }
 
-// EstimateTokens 估算 Token 数
-func (rc *RuntimeCore) EstimateTokens(text string) (int, int, int) {
-	return rc.cm.EstimateTokens(text)
+func intPtr(v int) *int {
+	return &v
+}
+
+func floatPtr(v float64) *float64 {
+	return &v
+}
+
+func addOptionalInt(total, value *int) *int {
+	if value == nil {
+		return total
+	}
+	if total == nil {
+		return intPtr(*value)
+	}
+	next := *total + *value
+	return intPtr(next)
+}
+
+func addOptionalFloat(total, value *float64) *float64 {
+	if value == nil {
+		return total
+	}
+	if total == nil {
+		return floatPtr(*value)
+	}
+	next := *total + *value
+	return floatPtr(next)
+}
+
+func derefInt(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
 }

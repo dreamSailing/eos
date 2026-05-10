@@ -443,16 +443,17 @@ func Save(cfg Config, p string) error {
 func InferDefaultModel(base string) string {
 	// 内置服务商的默认模型映射
 	providerDefaults := map[string]string{
-		"api.deepseek.com":             "deepseek-chat",
-		"dashscope.aliyuncs.com":       "qwen3.6-plus",
-		"ark.cn-beijing.volces.com":    "doubao-seed-code-preview-251028",
-		"open.bigmodel.cn":             "glm-5",
-		"api.moonshot.cn":              "kimi-k2.5",
-		"api.minimaxi.com":             "MiniMax-M2.7",
-		"api.minimax.io":               "MiniMax-M2.7",
-		"token-plan-cn.xiaomimimo.com": "mimo-v2-pro",
-		"api.openai.com":               "gpt-4o",
-		"api.anthropic.com":            "claude-4.5-sonnet",
+		"api.deepseek.com":                  "deepseek-v4-pro",
+		"dashscope.aliyuncs.com":            "qwen3.6-plus",
+		"ark.cn-beijing.volces.com":         "doubao-seed-code-preview-251028",
+		"open.bigmodel.cn":                  "glm-5",
+		"api.moonshot.cn":                   "kimi-k2.6",
+		"api.minimaxi.com":                  "MiniMax-M2.7",
+		"api.minimax.io":                    "MiniMax-M2.7",
+		"token-plan-cn.xiaomimimo.com":      "mimo-v2.5-pro",
+		"generativelanguage.googleapis.com": "gemini-3.1-pro-preview",
+		"api.openai.com":                    "gpt-5.5",
+		"api.anthropic.com":                 "claude-opus-4-7",
 	}
 
 	b := strings.ToLower(strings.TrimSpace(base))
@@ -474,17 +475,23 @@ func InferDefaultModel(base string) string {
 	}
 
 	// 回退到旧的检测逻辑
+	if strings.Contains(b, "api.deepseek.com") {
+		return "deepseek-v4-pro"
+	}
 	if strings.Contains(b, "dashscope.aliyuncs.com") && strings.Contains(b, "compatible-mode") {
 		return "qwen3.6-plus"
 	}
 	if strings.Contains(b, "api.moonshot.cn") {
-		return "kimi-k2.5"
+		return "kimi-k2.6"
 	}
 	if strings.Contains(b, "api.minimaxi.com") || strings.Contains(b, "api.minimax.io") {
 		return "MiniMax-M2.7"
 	}
 	if strings.Contains(b, "xiaomimimo.com") {
-		return "mimo-v2-pro"
+		return "mimo-v2.5-pro"
+	}
+	if strings.Contains(b, "generativelanguage.googleapis.com") {
+		return "gemini-3.1-pro-preview"
 	}
 
 	return ""

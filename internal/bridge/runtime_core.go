@@ -383,31 +383,32 @@ func (p *StreamParser) Flush() {
 
 // TokenRecord 每轮 Token 使用记录
 type TokenRecord struct {
-	Timestamp time.Time
-	Model     string
-	Input     int
-	Reply     int
-	Total     int
-	CostUSD   float64
+	Timestamp   time.Time
+	Model       string
+	Input       *int
+	Reply       *int
+	Total       *int
+	CachedInput *int
+	CostUSD     *float64
 }
 
 // TokenStats Token 累计统计
 type TokenStats struct {
 	Rounds       int
-	Input        int
-	Reply        int
-	Total        int
-	TotalCostUSD float64
+	Input        *int
+	Reply        *int
+	Total        *int
+	TotalCostUSD *float64
 }
 
 // ModelTokenStats 单个模型的 Token 统计
 type ModelTokenStats struct {
 	Model        string
 	Rounds       int
-	Input        int
-	Reply        int
-	Total        int
-	TotalCostUSD float64
+	Input        *int
+	Reply        *int
+	Total        *int
+	TotalCostUSD *float64
 }
 
 type graphInvokeReq struct {

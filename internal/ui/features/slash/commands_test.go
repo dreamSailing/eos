@@ -46,9 +46,23 @@ func TestGroupedVisibleCommandsPreservesExpectedGroups(t *testing.T) {
 	}
 }
 
-func TestVisibleCommandsIncludesReloadPlugins(t *testing.T) {
+func TestHiddenCommandsResolveButStayOutOfVisibleSurfaces(t *testing.T) {
 	if NormalizeCommand("/reload-plugins") != "/reload-plugins" {
-		t.Fatalf("expected /reload-plugins to be a visible slash command")
+		t.Fatalf("expected /reload-plugins to remain callable")
+	}
+	if NormalizeCommand("/doctor") != "/doctor" {
+		t.Fatalf("expected /doctor to remain callable")
+	}
+	for _, cmd := range VisibleCommands() {
+		switch cmd.Name {
+		case "/reload-plugins", "/doctor", "/stats":
+			t.Fatalf("expected %s to be hidden from visible commands", cmd.Name)
+		}
+	}
+	for _, cmd := range GetSuggestions("/reload") {
+		if cmd.Name == "/reload-plugins" {
+			t.Fatalf("expected /reload-plugins to be hidden from suggestions")
+		}
 	}
 }
 

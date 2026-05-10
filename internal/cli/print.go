@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dreamSailing/eos/internal/bridge"
@@ -27,13 +28,13 @@ type PrintOptions struct {
 
 // PrintResult holds the result of a print mode execution
 type PrintResult struct {
-	Content     string  `json:"content"`
-	Model       string  `json:"model"`
-	InputTokens int     `json:"input_tokens"`
-	ReplyTokens int     `json:"reply_tokens"`
-	TotalTokens int     `json:"total_tokens"`
-	DurationMs  int     `json:"duration_ms"`
-	CostUSD     float64 `json:"cost_usd,omitempty"`
+	Content     string   `json:"content"`
+	Model       string   `json:"model"`
+	InputTokens *int     `json:"input_tokens,omitempty"`
+	ReplyTokens *int     `json:"reply_tokens,omitempty"`
+	TotalTokens *int     `json:"total_tokens,omitempty"`
+	DurationMs  int      `json:"duration_ms"`
+	CostUSD     *float64 `json:"cost_usd,omitempty"`
 }
 
 // RunPrintMode executes a single query in headless mode and outputs the result
@@ -81,6 +82,7 @@ func RunPrintMode(opts PrintOptions) error {
 		ReplyTokens: stats.Reply,
 		TotalTokens: stats.Total,
 		DurationMs:  int(elapsed.Milliseconds()),
+		CostUSD:     stats.TotalCostUSD,
 	}
 
 	switch opts.OutputFormat {
@@ -97,7 +99,7 @@ func RunPrintMode(opts PrintOptions) error {
 		events := []map[string]interface{}{
 			{"type": "start", "model": modelName, "timestamp": start.Unix()},
 			{"type": "content", "text": content},
-			{"type": "done", "duration_ms": elapsed.Milliseconds(), "tokens": stats.Total},
+			buildDoneEvent(elapsed, stats),
 		}
 		for _, evt := range events {
 			bs, _ := json.Marshal(evt)
@@ -107,12 +109,35 @@ func RunPrintMode(opts PrintOptions) error {
 	default: // text
 		fmt.Fprintln(os.Stdout, content)
 		// Print metadata to stderr
-		fmt.Fprintf(os.Stderr, "\n---\nModel: %s | Tokens: %d | Duration: %v\n",
-			modelName, stats.Total, elapsed.Round(time.Millisecond))
+		parts := []string{
+			fmt.Sprintf("Model: %s", modelName),
+			fmt.Sprintf("Duration: %v", elapsed.Round(time.Millisecond)),
+		}
+		if stats.Total != nil {
+			parts = append(parts, fmt.Sprintf("Tokens: %d", *stats.Total))
+		}
+		if stats.TotalCostUSD != nil {
+			parts = append(parts, fmt.Sprintf("Cost: $%.6f", *stats.TotalCostUSD))
+		}
+		fmt.Fprintf(os.Stderr, "\n---\n%s\n", strings.Join(parts, " | "))
 	}
 
 	rc.Shutdown()
 	return nil
+}
+
+func buildDoneEvent(elapsed time.Duration, stats bridge.TokenStats) map[string]interface{} {
+	event := map[string]interface{}{
+		"type":        "done",
+		"duration_ms": elapsed.Milliseconds(),
+	}
+	if stats.Total != nil {
+		event["tokens"] = *stats.Total
+	}
+	if stats.TotalCostUSD != nil {
+		event["cost_usd"] = *stats.TotalCostUSD
+	}
+	return event
 }
 
 // RunPrintModeStream writes streaming output to the given writer

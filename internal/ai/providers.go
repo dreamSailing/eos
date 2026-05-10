@@ -5,7 +5,6 @@ package ai
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"strings"
 )
@@ -21,6 +20,7 @@ const (
 	ProviderMoonshot  ProviderType = "moonshot"  // Moonshot Kimi
 	ProviderMiniMax   ProviderType = "minimax"   // MiniMax
 	ProviderMiMo      ProviderType = "mimo"      // Xiaomi MiMo
+	ProviderGemini    ProviderType = "gemini"    // Google Gemini
 	ProviderOpenAI    ProviderType = "openai"    // OpenAI
 	ProviderAnthropic ProviderType = "anthropic" // Anthropic Claude
 	ProviderCustom    ProviderType = "custom"    // 自定义
@@ -65,7 +65,7 @@ var builtinProviders = []*ProviderConfig{
 		HasCodePlan:     false,
 		HasClaudeCode:   false,
 		EinoComponent:   "deepseek",
-		DefaultModels:   []string{"deepseek-chat", "deepseek-reasoner"},
+		DefaultModels:   []string{"deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"},
 	},
 	// 阿里云通义千问 - OpenAI 兼容格式
 	{
@@ -79,7 +79,7 @@ var builtinProviders = []*ProviderConfig{
 		HasCodePlan:     true,
 		HasClaudeCode:   false,
 		EinoComponent:   "dashscope",
-		DefaultModels:   []string{"qwen3.6-plus", "dashscope-coding-plan-qwen3.6-plus", "dashscope-coding-plan-glm-5", "dashscope-coding-plan-kimi-k2.5"},
+		DefaultModels:   []string{"qwen3.6-plus", "qwen3.6-max-preview", "dashscope-coding-plan-qwen3.6-plus", "dashscope-coding-plan-glm-5", "dashscope-coding-plan-kimi-k2.5"},
 	},
 	// 字节豆包 - 独立 Code/Plan URL
 	{
@@ -123,7 +123,7 @@ var builtinProviders = []*ProviderConfig{
 		HasCodePlan:     false,
 		HasClaudeCode:   false,
 		EinoComponent:   "",
-		DefaultModels:   []string{"kimi-k2.5"},
+		DefaultModels:   []string{"kimi-k2.6", "kimi-k2.5"},
 	},
 	// MiniMax - Token Plan / OpenAI / Anthropic 兼容格式
 	{
@@ -155,6 +155,20 @@ var builtinProviders = []*ProviderConfig{
 		EinoComponent:   "",
 		DefaultModels:   []string{"mimo-token-plan-openai-pro", "mimo-token-plan-openai-omni", "mimo-token-plan-claude-pro", "mimo-token-plan-claude-omni"},
 	},
+	// Google Gemini - OpenAI 兼容格式
+	{
+		ID:              "gemini",
+		Name:            "Google Gemini",
+		Type:            ProviderGemini,
+		DefaultAPIBase:  "https://generativelanguage.googleapis.com/v1beta/openai",
+		CodePlanAPIBase: "",
+		APIKeyEnv:       "GEMINI_API_KEY",
+		Website:         "https://ai.google.dev",
+		HasCodePlan:     false,
+		HasClaudeCode:   false,
+		EinoComponent:   "",
+		DefaultModels:   []string{"gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"},
+	},
 	// OpenAI - 标准 OpenAI 格式
 	{
 		ID:              "openai",
@@ -167,7 +181,7 @@ var builtinProviders = []*ProviderConfig{
 		HasCodePlan:     false,
 		HasClaudeCode:   false,
 		EinoComponent:   "openai",
-		DefaultModels:   []string{"gpt-5.3-codex", "gpt-4o", "o3-mini", "o3"},
+		DefaultModels:   []string{"gpt-5.5", "gpt-5-codex", "gpt-4o", "o3-mini", "o3"},
 	},
 	// Anthropic Claude - 独立 API 格式
 	{
@@ -181,7 +195,7 @@ var builtinProviders = []*ProviderConfig{
 		HasCodePlan:     false,
 		HasClaudeCode:   false,
 		EinoComponent:   "anthropic",
-		DefaultModels:   []string{"claude-opus-4.6", "claude-4.5-sonnet", "claude-4.5-opus"},
+		DefaultModels:   []string{"claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-6"},
 	},
 	// 自定义 - 用户配置
 	{
@@ -391,6 +405,8 @@ func ParseProviderType(s string) ProviderType {
 		return ProviderMiniMax
 	case "mimo", "xiaomi", "xiaomimimo":
 		return ProviderMiMo
+	case "gemini", "google":
+		return ProviderGemini
 	case "openai":
 		return ProviderOpenAI
 	case "anthropic", "claude":

@@ -5,7 +5,6 @@ package runtime
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"sort"
@@ -19,13 +18,13 @@ import (
 
 // TokenMetrics Token 使用指标
 type TokenMetrics struct {
-	InputTokens   int64     // 输入 token 数
-	OutputTokens  int64     // 输出 token 数
-	TotalTokens   int64     // 总 token 数
-	EstimatedCost float64   // 预估成本（美元）
-	Timestamp     time.Time // 记录时间
-	Component     string    // 组件名称（user, tool, assistant, system）
-	Stage         string    // 阶段（prompt, tool_call, response）
+	InputTokens   int64      // 输入 token 数
+	OutputTokens  int64      // 输出 token 数
+	TotalTokens   int64      // 总 token 数
+	EstimatedCost *float64   // 真实成本（未知则为空）
+	Timestamp     time.Time  // 记录时间
+	Component     string     // 组件名称（user, tool, assistant, system）
+	Stage         string     // 阶段（prompt, tool_call, response）
 }
 
 // TokenAnalysis Token 使用分析结果
@@ -37,7 +36,7 @@ type TokenAnalysis struct {
 	TotalInput         int64                     // 总输入 token
 	TotalOutput        int64                     // 总输出 token
 	TotalTokens        int64                     // 总 token
-	EstimatedCost      float64                   // 预估成本
+	EstimatedCost      *float64                  // 真实成本
 	MetricsByStage     map[string][]TokenMetrics // 按阶段分类的指标
 	MetricsByComponent map[string][]TokenMetrics // 按组件分类的指标
 	ToolUsage          map[string]int64          // 工具调用 token 消耗
@@ -134,7 +133,7 @@ func (a *TokenAnalyzer) Analyze() *TokenAnalysis {
 		analysis.TotalInput += m.InputTokens
 		analysis.TotalOutput += m.OutputTokens
 		analysis.TotalTokens += m.TotalTokens
-		analysis.EstimatedCost += m.EstimatedCost
+		analysis.EstimatedCost = addOptionalFloat64(analysis.EstimatedCost, m.EstimatedCost)
 
 		analysis.MetricsByStage[m.Stage] = append(analysis.MetricsByStage[m.Stage], m)
 		analysis.MetricsByComponent[m.Component] = append(analysis.MetricsByComponent[m.Component], m)
@@ -165,7 +164,7 @@ func (a *TokenAnalyzer) AnalyzeRound(round int) *RoundTokenAnalysis {
 		analysis.InputTokens += m.InputTokens
 		analysis.OutputTokens += m.OutputTokens
 		analysis.TotalTokens += m.TotalTokens
-		analysis.EstimatedCost += m.EstimatedCost
+		analysis.EstimatedCost = addOptionalFloat64(analysis.EstimatedCost, m.EstimatedCost)
 		analysis.ByStage[m.Stage] += m.TotalTokens
 	}
 
@@ -178,7 +177,7 @@ type RoundTokenAnalysis struct {
 	InputTokens   int64            // 输入 token
 	OutputTokens  int64            // 输出 token
 	TotalTokens   int64            // 总 token
-	EstimatedCost float64          // 预估成本
+	EstimatedCost *float64         // 真实成本
 	ByStage       map[string]int64 // 按阶段统计
 }
 
@@ -212,23 +211,6 @@ func EstimateMessageTokens(msg *schema.Message) (input, output int64) {
 	}
 
 	return input, output
-}
-
-func EstimateCost(modelName string, inputTokens, outputTokens int64) float64 {
-	inputPricePerMillion := 3.0
-	outputPricePerMillion := 15.0
-
-	switch {
-	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "qwen3.6-plus"),
-		strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "qwen3.5-plus"):
-		inputPricePerMillion = 800.0
-		outputPricePerMillion = 4800.0
-	}
-
-	inputCost := float64(inputTokens) / 1_000_000 * inputPricePerMillion
-	outputCost := float64(outputTokens) / 1_000_000 * outputPricePerMillion
-
-	return inputCost + outputCost
 }
 
 // GetTopTokenConsumers 获取 token 消耗最多的阶段/工具
@@ -281,7 +263,7 @@ func (a *TokenAnalyzer) GetSummary() map[string]any {
 	analysis := a.Analyze()
 	topConsumers := a.GetTopTokenConsumers(5)
 
-	return map[string]any{
+	summary := map[string]any{
 		"session_id":       a.sessionID,
 		"duration_seconds": time.Since(a.startTime).Seconds(),
 		"current_round":    a.currentRound,
@@ -289,7 +271,6 @@ func (a *TokenAnalyzer) GetSummary() map[string]any {
 		"total_input":      analysis.TotalInput,
 		"total_output":     analysis.TotalOutput,
 		"total_tokens":     analysis.TotalTokens,
-		"estimated_cost":   analysis.EstimatedCost,
 		"avg_per_round": func() int64 {
 			if a.currentRound > 0 {
 				return analysis.TotalTokens / int64(a.currentRound)
@@ -298,6 +279,21 @@ func (a *TokenAnalyzer) GetSummary() map[string]any {
 		}(),
 		"top_consumers": topConsumers,
 	}
+	if analysis.EstimatedCost != nil {
+		summary["estimated_cost"] = *analysis.EstimatedCost
+	}
+	return summary
+}
+
+func addOptionalFloat64(total, value *float64) *float64 {
+	if value == nil {
+		return total
+	}
+	next := *value
+	if total != nil {
+		next += *total
+	}
+	return &next
 }
 
 // Clear 清除所有记录

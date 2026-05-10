@@ -2,42 +2,79 @@
 
 [中文](./README.md) | [English](./README.en.md)
 
-Go 语言实现的终端 AI 编码助手，基于 CloudWeGo Eino 做多代理编排，提供可交互 TUI、工具调用、安全门禁与工作区上下文能力。
+EOS 是一个开源的终端 AI 编码助手，使用 Go 构建，基于 CloudWeGo Eino 做多代理编排。它面向日常编码、代码审查、文档处理、本地自动化，以及 IDE / 平台集成场景，提供交互式 TUI、工具调用、安全门禁、工作区上下文和可扩展的 MCP 能力。
 
 - 项目仓库：https://github.com/dreamSailing/eos
 - 问题反馈：https://github.com/dreamSailing/eos/issues
 - 版本发布：https://github.com/dreamSailing/eos/releases
 
-## 为什么不用 Claude Code？
+## 项目定位
 
-| 痛点 | EOS |
-|---|---|
-| 国内需要梯子 | 开箱即用 |
-| 只支持 Claude | 主流模型全支持 |
-| 安装依赖 Node | Go 开发，零依赖 |
-| 配置复杂 | 填 Key 就能用 |
-| Claude Code MCP + 视觉不支持 | 已修复此痛点 |
-| Claude Code 无网络搜索 | 已集成 |
+EOS 不是单一的“问答 CLI”，而是一个完整的本地 AI 工作台：
+
+- 对普通用户：提供开箱即用的终端交互体验，适合编码、排障、审查、检索和文档处理
+- 对高级用户：支持 `--print` 无头调用、文档子命令、工作区管理、权限控制和上下文压缩
+- 对平台 / IDE / Agent 宿主：提供本地 `serve` JSON-RPC、`bridge manifest` 桥接清单，以及标准 MCP Server
+
+## 为什么选择 EOS
+
+相对于依赖更重、接入范围更窄的同类终端助手，EOS 当前更强调以下几点：
+
+- Go 实现，安装和分发更直接，不依赖 Node.js 运行时
+- 模型接入更开放，支持 OpenAI 兼容接口，不限制单一模型提供商
+- 不只做代码补全，还覆盖文档读写转换、MCP、搜索、Git、远程仓库、子代理等完整工作流
+- 对平台集成更友好，既能作为本地工具服务，也能直接暴露为标准 MCP Server
+- 支持网页只读抓取和外接浏览器自动化，适合真实任务链路
 
 ## 核心能力
 
-- 交互式 TUI：AI/Bash 双模式、面板系统、流式输出与 Markdown 渲染
-- 两种执行模式：`plan` / `auto`（可在界面中切换）
-- 多代理协同：planner、developer、tester、reviewer 等子代理分工
-- 工具体系：文件读写/编辑、搜索、Git、Shell、后台任务、MCP 调用等
-- Office 文档能力：内置 `DOCX/XLSX/PDF` 读取、生成与转换，复杂格式默认优先高保真转换
-- 安全控制：高风险工具调用分级与确认，支持会话级授权
-- 上下文索引：代码索引、文件监听、上下文压缩与会话持久化
-- 可选 LSP 能力：支持 `without_lsp`、默认 LSP、`with_gopls` 嵌入版本
+### 1) 终端交互体验
+
+- 交互式 TUI，支持流式输出、Markdown 渲染、帮助面板和状态栏提示
+- AI / Bash 双模式切换，适合在同一界面里完成问答、执行命令和结果回看
+- 面板系统覆盖 `context`、`memory`、`rules`、`workspace`、`models`、`settings`、`mcp`、`lsp`、`cost`、`versions`、`tasks`
+- 支持续聊、恢复指定会话、历史导航、上下文压缩和版本快照
+
+### 2) 执行与安全
+
+- 支持 `plan` / `auto` 两种执行模式
+- 高风险工具调用支持审批与摘要校验，适合本地交互和平台托管
+- 工具权限支持白名单 / 黑名单和工作区边界限制
+- 会话、任务、审批、提问等状态可被外部宿主接管
+
+### 3) 工具体系
+
+- 文件与代码：读取、编辑、搜索、目录分析、Notebook 编辑、文件历史
+- Shell 与任务：Bash、PowerShell、后台任务、长任务控制
+- Git 与远程仓库：本地 Git 操作、远程仓库连接、克隆、分支、提交、推送、PR / MR 流程
+- Web 与外部信息：`web_search`、`web_fetch`
+- 多代理与扩展：子代理、团队协作、MCP、Skills、Plugins、结构化输出
+
+### 4) 文档能力
+
+- 内置 `DOCX` / `XLSX` / `PDF` 读取
+- 支持生成 `DOCX` / `XLSX` / `PDF`
+- 支持 `DOCX` / `XLSX` / `PDF` 之间的格式转换
+- `DOCX <-> PDF`、`XLSX <-> PDF` 默认优先使用 `soffice` 做高保真转换；不可用时自动回退到内容级转换并返回告警
+
+### 5) 上下文与语言能力
+
+- 代码索引、文件监听、上下文构建与压缩
+- 会话持久化与恢复
+- 可选 LSP 能力，支持 Go、Python、TypeScript、JavaScript 自动检测
+- 支持默认外部 LSP 探测，以及 `with_gopls` 嵌入构建
 
 ## 环境要求
 
-- Go 1.25+
-- 可访问的 OpenAI 兼容接口（`EOS_API_BASE`、`EOS_API_KEY`、`EOS_MODEL`）
+- Go `1.25+`
+- 可访问的 OpenAI 兼容接口
+- 至少配置以下模型参数之一组：
+  - 环境变量：`EOS_API_BASE`、`EOS_API_KEY`、`EOS_MODEL`
+  - 用户配置文件：`~/.eos.json`
 
 ## 快速开始
 
-### 1) 编译
+### 1) 获取并编译
 
 ```bash
 git clone https://github.com/dreamSailing/eos.git
@@ -84,46 +121,37 @@ export EOS_MODEL="gpt-4o-mini"
 }
 ```
 
-## 构建变体（LSP）
+### 3) 直接开始使用
 
-- 最小版（无 LSP）  
-  `go build -tags without_lsp -o eos`
-- 默认版（启用 LSP 框架）  
-  `go build -o eos`
-- Go 增强版（嵌入 gopls）  
-  `go build -tags with_gopls -o eos`
+```bash
+eos
+```
 
-项目内提供了 gopls 嵌入脚本：`scripts/embed_gopls.sh`、`scripts/embed_gopls.bat`。
+首次进入后，可以先用 `?` 打开帮助面板，再通过 `/status`、`/workspace`、`/model`、`/mcp` 等命令查看当前状态。
 
-## 常用交互
+## 常用命令
 
-### 快捷键
+### 交互入口
 
-- `F2`：切换 AI / Bash 模式
-- `Alt+M`：切换执行模式（plan ↔ auto）
-- `Alt+V`：粘贴剪贴板图片
-- `Alt+H`：展开/折叠思考内容
-- `?`：打开帮助面板
-- `Ctrl+O`：切换实时信息面板样式
+```bash
+eos
+eos --continue
+eos --resume <session-id>
+eos --model <model-name>
+eos --allowed-tools "read,search,bash"
+eos --disallowed-tools "bash"
+```
 
-### 常用斜杠命令
+### 无头调用
 
-- `/help` `/clear` `/exit`
-- `/history`（或 `/versions`）
-- `/models` `/mcp` `/ctx` `/cost` `/tasks`
-- `/workspace list|add|remove|use <path>`
-- `/settings` `/lsp` `/rules` `/lang` `/compact`
-- `/init`：在当前工作区初始化 `EOS.md`
+适合脚本、CI 或外部调度：
 
-## 文档能力
+```bash
+eos --print "请总结当前仓库结构"
+eos --print "review 当前改动" --output-format json
+```
 
-- 读取：`read` 工具现在可直接读取 `DOCX`、`XLSX`、`PDF`
-- 生成：内置 `document_generate` 工具，以及 CLI `eos doc generate`
-- 转换：内置 `document_convert` 工具，以及 CLI `eos doc convert`
-- 高保真：`DOCX <-> PDF`、`XLSX <-> PDF` 默认优先使用 `soffice` 高保真转换；环境不可用时回退到内容级转换并返回告警
-- 边界：`DOCX <-> XLSX` 首版偏向表格/结构化内容转换，不承诺复杂版式完全无损
-
-CLI 示例：
+### 文档命令
 
 ```bash
 eos doc read ./report.docx
@@ -131,29 +159,92 @@ eos doc generate --format pdf --output ./out/report.pdf --title "周报" --conte
 eos doc convert ./report.docx --to pdf --output ./out/report.pdf --fidelity high
 ```
 
-## 服务模式 API
+### 更新
 
-- CLI 对外 API（`eos serve`）：[internal/docs/serve/API.md](./internal/docs/serve/API.md)
-- IDE bridge 最小接入：先生成桥接清单 `eos bridge manifest --workspace "/abs/workspace"`，详见 [internal/docs/serve/IDE_BRIDGE.md](./internal/docs/serve/IDE_BRIDGE.md)
-- 标准 MCP Server：`eos mcp serve --transport stdio --workspace "/abs/workspace"`，详见 [internal/docs/mcp/SERVER.md](./internal/docs/mcp/SERVER.md)
+```bash
+eos update
+```
 
-### MCP Server 示例
+## 交互方式
 
-stdio:
+### 常用快捷键
+
+- `?`：打开帮助面板
+- `F2`：切换 AI / Bash 模式
+- `Tab`：切换思考显示或接受建议
+- `Alt+V`：从剪贴板粘贴图片
+- `→`：接受下一条预测内容
+- `Ctrl+O`：切换实时详细显示
+- `Alt+H`：展开或折叠当前思考内容
+- `Ctrl+J`：输入换行
+- `Esc`：停止当前流程
+- `Ctrl+C`：中断或退出
+
+### 常用斜杠命令
+
+以下只是常见入口，不是完整列表：
+
+- 通用：`/help`、`/status`、`/clear`、`/exit`、`/lang`
+- 工作区与上下文：`/workspace`、`/context`、`/compact`
+- 任务与计划：`/tasks`、`/plan`、`/permissions`
+- 配置面板：`/model`、`/config`、`/mcp`、`/lsp`、`/rules`、`/cost`
+
+## 构建变体（LSP）
+
+- 最小版，无 LSP：
+  `go build -tags without_lsp -o eos`
+- 默认版，启用 LSP 框架并自动检测外部语言服务器：
+  `go build -o eos`
+- Go 增强版，嵌入 `gopls`：
+  `go build -tags with_gopls -o eos`
+
+相关脚本：
+
+- `scripts/embed_gopls.sh`
+- `scripts/embed_gopls.bat`
+
+## 开发者集成
+
+普通用户通常只需要 `eos`、`eos --print`、`eos doc` 和 `eos update`。如果你要把 EOS 接入 IDE、自动化平台或其他 agent 宿主，当前有三条主线：
+
+### 1) `eos serve`
+
+把 EOS 作为本地工具服务运行，当前基于 `stdio` 按行输出 JSON-RPC 2.0，适合本地宿主、IDE bridge 和平台侧 agent。
+
+```bash
+eos serve --transport stdio --workspace "/abs/workspace"
+```
+
+文档见：[internal/docs/serve/API.md](./internal/docs/serve/API.md)
+
+### 2) `eos bridge manifest`
+
+生成桥接清单，输出启动命令、协议版本、默认会话参数、方法列表和能力声明，适合宿主侧自动发现 EOS 接入信息。
+
+```bash
+eos bridge manifest --workspace "/abs/workspace"
+```
+
+文档见：[internal/docs/serve/IDE_BRIDGE.md](./internal/docs/serve/IDE_BRIDGE.md)
+
+### 3) `eos mcp serve`
+
+把 EOS 作为标准 MCP Server 暴露给外部 agent 或宿主，当前支持 `stdio` 和 `sse` 两种 transport。
 
 ```bash
 eos mcp serve --transport stdio --workspace "/abs/workspace"
-```
-
-SSE:
-
-```bash
 eos mcp serve --transport sse --listen 127.0.0.1:8765 --workspace "/abs/workspace"
 ```
 
-### 浏览器自动化
+文档见：[internal/docs/mcp/SERVER.md](./internal/docs/mcp/SERVER.md)
 
-EOS 当前不内置浏览器驱动，推荐通过成熟的 Playwright MCP 接入浏览器能力。接入后，agent 可以执行网页点击、输入、选择、等待页面变化和截图等真实浏览器操作。
+## MCP 与浏览器自动化
+
+EOS 既可以作为 MCP Server 对外提供工具，也可以作为 MCP 客户端连接外部 MCP 服务。
+
+### 推荐浏览器接入方式
+
+EOS 当前不内置浏览器驱动，推荐通过 Playwright MCP 接入真实浏览器自动化能力。接入后，agent 可以执行点击、输入、选择、等待页面变化和截图等操作。
 
 最小可用配置：
 
@@ -172,53 +263,33 @@ EOS 当前不内置浏览器驱动，推荐通过成熟的 Playwright MCP 接入
 
 启用方式：
 
-- 在 `/mcp` 面板中按 `B` 一键插入 Playwright 预设
+- 在 `/mcp` 面板中按 `B` 插入 Playwright 预设
 - 或手动编辑 `~/.eos.json` 中的 `mcp` 配置
 
-使用边界：
+能力边界：
 
 - `web_fetch` 适合只读抓取网页内容
-- 浏览器 MCP 适合真实页面交互与行为验证
-- 可用性排查可使用 `browser_status` 或 `/status`、`/doctor`
+- 浏览器 MCP 适合真实页面交互、行为验证和截图
+- 可通过 `/status`、MCP 面板或运行态信息检查连接状态
 
-## 项目结构（简版）
+## 开源使用与发布建议
 
-```text
-internal/
-  cli/       Cobra 入口
-  ui/        TUI 交互与面板
-  bridge/    UI 与 runtime 桥接
-  runtime/   Eino 编排与工具调度
-  tools/     工具定义与执行
-  context/   代码索引与监听
-  session/   会话上下文管理
-  lsp/       LSP 管理与嵌入支持
-```
-
-## 开发与测试
-
-```bash
-go test ./...
-go build ./...
-```
-
-## 开源发布注意事项
-
-- 运行时会在工作目录生成 `.eos/` 数据（会话、检查点、版本快照等）
-- 请确保 `.eos/`、`.eos.json`、`.env`、日志和本地配置不进入版本控制
-- 提交前建议做一次敏感信息检查（API Key、私钥、证书、绝对路径等）
+- 运行时会在工作目录生成 `.eos/` 数据，例如会话、检查点和版本快照
+- 建议将 `.eos/`、`.eos.json`、`.env`、日志和本地配置加入忽略列表
+- 对外发布前请检查 API Key、私钥、证书、绝对路径等敏感信息
+- 如果你要给外部平台分发集成方案，建议同时提供 `serve` / `bridge manifest` / `mcp serve` 的使用边界说明
 
 ## 许可证
 
-本项目采用 EOS 非商用许可证 v1.1，详见 [LICENSE](./LICENSE)：
+本项目采用 EOS 非商用许可证 v1.1，详见 [LICENSE](./LICENSE)。
 
-- 个人/非商业用途可免费使用（包含安装包使用）
-- 允许自行编译、修改和分发非商业版本
-- 衍生作品必须以相同许可证开源发布
-- 禁止任何商业使用（含企业内部生产用途、收费服务、SaaS、二次商业分发）
-- 商业使用必须获得版权人单独书面授权
+- 个人和非商业用途可免费使用
+- 允许编译、修改和分发非商业版本
+- 衍生作品需在相同许可证下开源
+- 禁止企业内部生产、收费服务、SaaS、商业再分发等商业使用
+- 商业使用需获得版权人单独书面授权
 
 ## 联系方式
 
 - 问题反馈：https://github.com/dreamSailing/eos/issues
-- 商业合作/授权咨询：smart-os@qq.com
+- 商业合作 / 授权咨询：smart-os@qq.com

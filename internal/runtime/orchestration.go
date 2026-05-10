@@ -792,15 +792,10 @@ func (rt *EinoRuntime) RecordTokenMetrics(stage, component string, inputTokens, 
 	if rt.tokenAnalyzer == nil {
 		return
 	}
-	modelName := ""
-	if named, ok := rt.model.(interface{ Name() string }); ok {
-		modelName = named.Name()
-	}
 	rt.tokenAnalyzer.Record(TokenMetrics{
 		InputTokens:   inputTokens,
 		OutputTokens:  outputTokens,
 		TotalTokens:   inputTokens + outputTokens,
-		EstimatedCost: EstimateCost(modelName, inputTokens, outputTokens),
 		Component:     component,
 		Stage:         stage,
 		Timestamp:     time.Now(),

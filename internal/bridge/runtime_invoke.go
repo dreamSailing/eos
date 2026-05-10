@@ -115,11 +115,15 @@ func (rc *RuntimeCore) GraphInvokePlanWithImages(ctx context.Context, query, exe
 
 	// Phase 1 集成: 记录 token 使用量到预算管理器
 	if res.msg != nil {
-		inputTokens, replyTokens, totalTokens := rc.EstimateTokens(res.msg.Content)
-		if totalTokens > 0 {
-			rc.RecordTokenUsage(inputTokens, replyTokens)
+		if res.msg.ResponseMeta != nil && res.msg.ResponseMeta.Usage != nil {
+			usage := res.msg.ResponseMeta.Usage
+			if usage.TotalTokens > 0 {
+				rc.RecordTokenUsage(usage.PromptTokens, usage.CompletionTokens)
+			}
+			rc.AddTokenRecordWithModel(usage, rc.ModelName())
+		} else {
+			rc.AddTokenRecordWithModel(nil, rc.ModelName())
 		}
-		rc.AddTokenRecordWithModel(inputTokens, replyTokens, totalTokens, rc.ModelName())
 	}
 
 	if res.err != nil {

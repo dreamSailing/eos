@@ -3232,9 +3232,9 @@ func (m *AppModel) refreshCostPanel() {
 			stats = append(stats, panels.CostStats{
 				Model:  s.Model,
 				Rounds: s.Rounds,
-				Input:  s.Input,
-				Reply:  s.Reply,
-				Total:  s.Total,
+				Input:  m.optionalIntLabel(s.Input),
+				Reply:  m.optionalIntLabel(s.Reply),
+				Total:  m.optionalIntLabel(s.Total),
 			})
 		}
 
@@ -3242,11 +3242,18 @@ func (m *AppModel) refreshCostPanel() {
 		total := m.adapter.GetCore().GetTokenStats()
 		costPanel.SetStats(stats, panels.TotalStats{
 			TotalRounds: total.Rounds,
-			TotalInput:  total.Input,
-			TotalReply:  total.Reply,
-			TotalTokens: total.Total,
+			TotalInput:  m.optionalIntLabel(total.Input),
+			TotalReply:  m.optionalIntLabel(total.Reply),
+			TotalTokens: m.optionalIntLabel(total.Total),
 		})
 	}
+}
+
+func (m *AppModel) optionalIntLabel(value *int) string {
+	if value == nil {
+		return m.localize("未知", "unknown")
+	}
+	return fmt.Sprintf("%d", *value)
 }
 
 // handleSettingsSave 处理保存设置
