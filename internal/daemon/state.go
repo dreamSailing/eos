@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/dreamSailing/eos/internal/config"
 )
 
 type State struct {
@@ -39,7 +41,7 @@ func DefaultScheduleFile() string {
 }
 
 func DefaultLogFile() string {
-	return filepath.Join(DefaultDir(), "daemon.log")
+	return filepath.Join(config.ConfiguredLogDir(), "daemon.log")
 }
 
 func LoadState(path string) (State, error) {

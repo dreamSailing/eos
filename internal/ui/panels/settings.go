@@ -151,6 +151,7 @@ func (p *SettingsPanel) updateTable() {
 		rows = append(rows, table.Row{"PollIntervalSec", fmt.Sprintf("%d", s.PollIntervalSec)})
 		rows = append(rows, table.Row{"Language", s.Language})
 		rows = append(rows, table.Row{"Theme", s.Theme})
+		rows = append(rows, table.Row{"LogDir", config.ConfiguredLogDir()})
 		rows = append(rows, table.Row{"NextMessagePrediction(Global)", fmt.Sprintf("%v", p.globalPredictionEnabled)})
 		planPromptStyle := strings.TrimSpace(s.PlanPromptStyle)
 		if planPromptStyle == "" {

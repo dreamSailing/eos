@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -28,6 +29,9 @@ func (m *Manager) StartBackground() (State, error) {
 		return state, fmt.Errorf("daemon already running")
 	}
 	if err := os.MkdirAll(DefaultDir(), 0o755); err != nil {
+		return State{}, err
+	}
+	if err := os.MkdirAll(filepath.Dir(opts.LogFile), 0o755); err != nil {
 		return State{}, err
 	}
 	logFile, err := os.OpenFile(opts.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)

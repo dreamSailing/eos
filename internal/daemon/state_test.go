@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -31,5 +32,26 @@ func TestStateRoundTrip(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("expected state file removed, err=%v", err)
+	}
+}
+
+func TestDefaultLogFileUsesConfiguredGlobalLogDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	logDir := filepath.Join(home, "custom-logs")
+	configPath := filepath.Join(home, ".eos.json")
+	body, err := json.Marshal(map[string]string{"log_dir": logDir})
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	if err := os.WriteFile(configPath, body, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	want := filepath.Join(logDir, "daemon.log")
+	if got := DefaultLogFile(); got != want {
+		t.Fatalf("DefaultLogFile()=%q, want %q", got, want)
 	}
 }

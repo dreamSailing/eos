@@ -10,9 +10,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
+	"github.com/dreamSailing/eos/internal/config"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -53,27 +53,7 @@ func init() {
 }
 
 func defaultLogDir() string {
-	switch runtime.GOOS {
-	case "windows":
-		base := os.Getenv("LOCALAPPDATA")
-		if strings.TrimSpace(base) == "" {
-			base = os.Getenv("APPDATA")
-		}
-		if strings.TrimSpace(base) == "" {
-			base, _ = os.UserHomeDir()
-		}
-		return filepath.Join(base, "EOS", "logs")
-	case "darwin":
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, "Library", "Logs", "EOS")
-	default:
-		base := os.Getenv("XDG_STATE_HOME")
-		if strings.TrimSpace(base) == "" {
-			home, _ := os.UserHomeDir()
-			base = filepath.Join(home, ".local", "state")
-		}
-		return filepath.Join(base, "eos", "logs")
-	}
+	return config.ConfiguredLogDir()
 }
 
 func NewLogger(dir string) {

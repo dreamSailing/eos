@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -180,11 +181,64 @@ type Config struct {
 	LastWorkspace                string                          `json:"last_workspace,omitempty"`     // 上次前台工作区（绝对路径）
 	TrustedWorkspaces            []string                        `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
 	Language                     string                          `json:"language,omitempty"`           // 语言设置 (zh, en)
+	LogDir                       string                          `json:"log_dir,omitempty"`            // 全局日志目录
 	FastModel                    string                          `json:"fast_model,omitempty"`         // Fast mode model name
 	Permissions                  *PermissionsConfig              `json:"permissions,omitempty"`        // Tool permissions
 	RemoteProviders              map[string]RemoteProviderConfig `json:"remote_providers,omitempty"`   // GitHub/Gitee OAuth/Token 配置
 	RemoteAuth                   map[string]RemoteAuthToken      `json:"remote_auth,omitempty"`        // 已授权账号（按平台）
 	RemoteRepos                  []RemoteRepoEntry               `json:"remote_repos,omitempty"`       // 最近访问的远程仓库
+}
+
+func DefaultLogDir() string {
+	switch runtime.GOOS {
+	case "windows":
+		base := os.Getenv("LOCALAPPDATA")
+		if strings.TrimSpace(base) == "" {
+			base = os.Getenv("APPDATA")
+		}
+		if strings.TrimSpace(base) == "" {
+			base, _ = os.UserHomeDir()
+		}
+		return filepath.Join(base, "EOS", "logs")
+	case "darwin":
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, "Library", "Logs", "EOS")
+	default:
+		base := os.Getenv("XDG_STATE_HOME")
+		if strings.TrimSpace(base) == "" {
+			home, _ := os.UserHomeDir()
+			base = filepath.Join(home, ".local", "state")
+		}
+		return filepath.Join(base, "eos", "logs")
+	}
+}
+
+func ConfiguredLogDir() string {
+	cfg, _ := Load()
+	return ResolveLogDir(cfg.LogDir)
+}
+
+func ResolveLogDir(value string) string {
+	trimmed := strings.TrimSpace(os.ExpandEnv(value))
+	if trimmed == "" {
+		return DefaultLogDir()
+	}
+	if strings.HasPrefix(trimmed, "~") {
+		home, err := os.UserHomeDir()
+		if err == nil && strings.TrimSpace(home) != "" {
+			if trimmed == "~" {
+				trimmed = home
+			} else if strings.HasPrefix(trimmed, "~/") || strings.HasPrefix(trimmed, "~\\") {
+				trimmed = filepath.Join(home, trimmed[2:])
+			}
+		}
+	}
+	if !filepath.IsAbs(trimmed) {
+		if abs, err := filepath.Abs(trimmed); err == nil {
+			trimmed = abs
+		}
+	}
+	return filepath.Clean(trimmed)
 }
 
 func NextMessagePredictionEnabled(cfg *Config) bool {
