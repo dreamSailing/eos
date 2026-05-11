@@ -71,6 +71,7 @@ func TestSubAgentManager_ClearRequestCancelsRunningAgents(t *testing.T) {
 func TestSubAgentAllowedTools_ReadOnlyAgentsIncludeSafeMetaTools(t *testing.T) {
 	for _, agentType := range []SubAgentType{
 		SubAgentTypeExplore,
+		SubAgentTypeVerification,
 		SubAgentTypeReviewer,
 		SubAgentTypeSecurity,
 		SubAgentTypeArchitect,

@@ -997,10 +997,10 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolWebFetch,
-			Description: "Fetch content from a URL. Returns the raw content from the web page.",
+			Description: "Fetch public content from a URL using the built-in HTTP client. Supports lightweight text/markdown extraction but does not execute page JavaScript, and cross-host redirects must be fetched explicitly.",
 			Params: map[string]*schema.ParameterInfo{
 				"url":    {Type: schema.String, Required: true, Desc: "URL to fetch"},
-				"format": {Type: schema.String, Required: false, Desc: "Output format: text (default) or markdown"},
+				"format": {Type: schema.String, Required: false, Desc: "Output format: text (default) or markdown with lightweight HTML extraction"},
 			},
 			RiskLevel: RiskLevelMedium,
 		},

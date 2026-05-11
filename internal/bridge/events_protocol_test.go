@@ -41,3 +41,17 @@ func TestBridgeToolResultEvent(t *testing.T) {
 		t.Fatalf("display=%q, want done", got)
 	}
 }
+
+func TestBridgeLoopBlockedEvent(t *testing.T) {
+	ev := bridgeLoopBlockedEvent("search", "force_break", "same_call_detected", "检测到重复步骤", map[string]any{"same_signature_count": 3})
+
+	if ev.Type != "loop.block" {
+		t.Fatalf("Type=%q, want loop.block", ev.Type)
+	}
+	if got, _ := ev.Data["tool_name"].(string); got != "search" {
+		t.Fatalf("tool_name=%q, want search", got)
+	}
+	if got, _ := ev.Data["level"].(string); got != "force_break" {
+		t.Fatalf("level=%q, want force_break", got)
+	}
+}

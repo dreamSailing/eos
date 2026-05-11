@@ -179,6 +179,27 @@ func (rc *RuntimeCore) loop() {
 							}
 							rc.eventsCh <- bridgeToolResultEvent(id, toolName, status, out, errMsg, data)
 							return
+						case einoruntime.EventLoopBlock:
+							name, _ := m["tool"].(string)
+							level, _ := m["level"].(string)
+							reason, _ := m["reason"].(string)
+							message, _ := m["message"].(string)
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							rc.eventsCh <- bridgeLoopBlockedEvent(name, level, reason, message, mergeBridgeEventData(data, m))
+							return
+						case einoruntime.EventTurnWrapUp:
+							name, _ := m["tool"].(string)
+							reason, _ := m["reason"].(string)
+							message, _ := m["message"].(string)
+							var data map[string]any
+							if d, ok := m["data"].(map[string]any); ok {
+								data = d
+							}
+							rc.eventsCh <- bridgeTurnWrapUpEvent(name, reason, message, mergeBridgeEventData(data, m))
+							return
 						case einoruntime.EventAssistantDelta:
 							content, _ := m["content"].(string)
 							rc.eventsCh <- bridgeTextDeltaEvent(content)
@@ -309,6 +330,14 @@ func (rc *RuntimeCore) loop() {
 					rc.eventsCh <- bridgeToolResultEvent(strings.TrimSpace(parts[0]), "", "success", strings.TrimSpace(parts[1]), "", nil)
 				} else {
 					rc.eventsCh <- bridgeToolResultEvent("", "", "success", strings.TrimSpace(parts[0]), "", nil)
+				}
+				return
+			}
+
+			if strings.HasPrefix(line, einoruntime.EventLoopBlock+":") {
+				raw := strings.TrimSpace(strings.TrimPrefix(line, einoruntime.EventLoopBlock+":"))
+				if raw != "" {
+					rc.eventsCh <- bridgeLoopBlockedEvent("", "", "", raw, map[string]any{"message": raw})
 				}
 				return
 			}

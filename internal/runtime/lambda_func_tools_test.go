@@ -13,7 +13,7 @@ import (
 )
 
 func TestAllowedTools_IncludeGitShow(t *testing.T) {
-	roles := []string{"architect", "planner", "reviewer", "tester", "senior-dev"}
+	roles := []string{"architect", "planner", "reviewer", "tester", "verification", "senior-dev"}
 	for _, role := range roles {
 		allowed := AllowedTools(role)
 		if !allowed[tools.ToolGitShow] {

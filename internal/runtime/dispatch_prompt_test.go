@@ -13,6 +13,7 @@ func TestGetDispatchToolsDescription_OnlyListsDispatchTools(t *testing.T) {
 		"`invoke_planner`",
 		"`invoke_senior_dev`",
 		"`invoke_tester`",
+		"`invoke_verification`",
 		"`invoke_reviewer`",
 		"`spawn_agent`",
 		"`wait_agent`",
@@ -59,6 +60,18 @@ func TestBuildDispatchSystemPrompt_UsesDispatchToolsOnly(t *testing.T) {
 	} {
 		if strings.Contains(prompt, unwanted) {
 			t.Fatalf("dispatch system prompt unexpectedly contains %s\n%s", unwanted, prompt)
+		}
+	}
+}
+
+func TestRoleArchitectPromptMentionsVerificationFlow(t *testing.T) {
+	for _, want := range []string{
+		"invoke_senior_dev → invoke_verification",
+		"invoke_verification",
+		"不要用 invoke_reviewer 代替验收",
+	} {
+		if !strings.Contains(RoleArchitectPrompt, want) {
+			t.Fatalf("RoleArchitectPrompt missing %s\n%s", want, RoleArchitectPrompt)
 		}
 	}
 }

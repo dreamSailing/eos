@@ -206,7 +206,7 @@ var enText = map[string]string{
 	"input.exit_hint":                 "Press Ctrl+C again to exit",
 	"toast.loop_blocked":              "Repeated steps detected; further calls were blocked. Change keywords or finish with current context.",
 	"toast.bash_failed":               "Command failed. Prefer built-in read/search/edit or PowerShell equivalents.",
-	"toast.max_steps":                 "Max steps reached; likely repeating actions. Change keywords and avoid redundant tool calls.",
+	"toast.max_steps":                 "Max steps reached; the default limit is 160 and the run may still be repeating actions. Change keywords and avoid redundant tool calls.",
 	"toast.stopped":                   "Stopped (Esc)",
 	"cmd.help.config":                 "Show help",
 	"cmd.help.clear":                  "Clear conversation",

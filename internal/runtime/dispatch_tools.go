@@ -52,6 +52,7 @@ type DispatchTools struct {
 	plannerAgent         *react.Agent
 	seniorDevAgent       *react.Agent
 	testerAgent          *react.Agent
+	verificationAgent    *react.Agent
 	reviewerAgent        *react.Agent
 	toolsManager         *tools.Manager
 	currentCtx           context.Context
@@ -74,7 +75,7 @@ type DispatchTools struct {
 // NewDispatchTools 创建调度工具包装器
 func NewDispatchTools(
 	ctx context.Context,
-	planner, seniorDev, tester, reviewer *react.Agent,
+	planner, seniorDev, tester, verification, reviewer *react.Agent,
 	tm *tools.Manager,
 	onMeta func(string),
 	detector LoopDetector,
@@ -101,18 +102,19 @@ func NewDispatchTools(
 		}
 	}
 	dt := &DispatchTools{
-		plannerAgent:   planner,
-		seniorDevAgent: seniorDev,
-		testerAgent:    tester,
-		reviewerAgent:  reviewer,
-		toolsManager:   tm,
-		currentCtx:     ctx,
-		onMeta:         onMetaWrapped,
-		loopDetector:   detector,
-		mcpToolsInfo:   mcpToolsInfo,
-		mcpTools:       mcpTools,
-		subAgentMgr:    NewSubAgentManager(),
-		hookMgr:        hm,
+		plannerAgent:      planner,
+		seniorDevAgent:    seniorDev,
+		testerAgent:       tester,
+		verificationAgent: verification,
+		reviewerAgent:     reviewer,
+		toolsManager:      tm,
+		currentCtx:        ctx,
+		onMeta:            onMetaWrapped,
+		loopDetector:      detector,
+		mcpToolsInfo:      mcpToolsInfo,
+		mcpTools:          mcpTools,
+		subAgentMgr:       NewSubAgentManager(),
+		hookMgr:           hm,
 	}
 	dt.registryID = DefaultAgentRegistry().RegisterController(
 		dt.subAgentMgr,
@@ -200,6 +202,8 @@ func (dt *DispatchTools) resolveAgentRuntime(agentType SubAgentType) (string, *r
 		return "planner", dt.plannerAgent
 	case SubAgentTypeTester:
 		return "tester", dt.testerAgent
+	case SubAgentTypeVerification:
+		return "verification", dt.verificationAgent
 	case SubAgentTypeReviewer:
 		return "reviewer", dt.reviewerAgent
 	default:
@@ -504,54 +508,52 @@ func (dt *DispatchTools) invokeStandardAgent(task DispatchTask, role string, sub
 
 // InvokeSeniorDev 调用高级开发工程师
 func (dt *DispatchTools) InvokeSeniorDev(task DispatchTask) DispatchResult {
-	dt.mu.RLock()
-	ctx := dt.currentCtx
-	msgs := dt.currentMsgs
-	dt.mu.RUnlock()
-
 	slog.Debug("runtime.dispatch_tools.invoke_senior_dev.start", "task", task.Task, "task_empty", task.Task == "")
 
+	taskText := strings.TrimSpace(task.Task)
 	if dt.seniorDevAgent == nil {
 		return DispatchResult{
-			Task:   task.Task,
+			Task:   taskText,
 			Result: "senior-dev agent not initialized",
 		}
 	}
 
-	slog.Debug("runtime.dispatch_tools.invoke_senior_dev.calling", "task", task.Task, "context_messages", len(msgs))
+	dt.mu.RLock()
+	msgs := dt.currentMsgs
+	dt.mu.RUnlock()
+	slog.Debug("runtime.dispatch_tools.invoke_senior_dev.calling", "task", taskText, "context_messages", len(msgs))
 
-	// 创建子代理隔离上下文
-	reqID := tools.TraceIDFromContext(ctx)
-	subCtx := dt.subAgentMgr.GetOrCreateRequestContext(reqID, SubAgentTypeSeniorDev, ctx, msgs)
-	_ = dt.subAgentMgr.MarkRunning(subCtx.id, task.Task, nil)
-	dt.emitAgentEvent(EventAgentStarted, subCtx, task.Task, task.Task, nil)
-
-	// 使用 SeniorDev 角色调用，确保具有 bash 等工具的权限
-	roleCtx := tools.WithRole(ctx, "senior-dev")
-	_, err := invokeRoleAgentWithSubContext(roleCtx, msgs, "senior-dev", dt.seniorDevAgent, dt.onMeta, dt.onReasoning, dt.mcpToolsInfo+dt.getProjectStructurePrompt(roleCtx), subCtx, dt.subAgentMgr, dt.hookMgr)
+	outMsgs, err := dt.InvokeSeniorDevDirect(taskText)
 	if err != nil {
 		slog.Error("runtime.dispatch_tools.invoke_senior_dev.error", "error", err)
-		dt.subAgentMgr.Complete(subCtx.id, task.Task, false, err.Error())
-		dt.emitAgentEvent(EventAgentFailed, subCtx, task.Task, err.Error(), map[string]any{"error": err.Error()})
-		if dt.hookMgr != nil {
-			_, _ = dt.hookMgr.TeammateIdle(ctx, subCtx.agentType.String(), false, err.Error(), time.Since(subCtx.createdAt).Milliseconds())
-		}
 		return DispatchResult{
-			Task:   task.Task,
+			Task:   taskText,
 			Result: err.Error(),
 		}
 	}
 
-	// 标记完成并记录结果摘要
-	subRes := dt.subAgentMgr.Complete(subCtx.id, task.Task, true, "")
-	dt.emitAgentEvent(EventAgentCompleted, subCtx, task.Task, dt.agentOutput(subCtx, subRes.Result), map[string]any{"duration_ms": subRes.Duration.Milliseconds()})
-	if dt.hookMgr != nil {
-		_, _ = dt.hookMgr.TeammateIdle(ctx, subRes.Type.String(), true, "", subRes.Duration.Milliseconds())
+	implementationResult := strings.TrimSpace(extractLastAssistantText(outMsgs))
+	if !shouldAutoVerifySeniorDevTask(taskText) {
+		return DispatchResult{
+			Task:   taskText,
+			Result: implementationResult,
+		}
 	}
 
+	verifyTask := buildAutomaticVerificationTask(taskText, implementationResult)
+	verifyMsgs, verifyErr := dt.InvokeVerificationDirect(verifyTask, outMsgs)
+	if verifyErr != nil {
+		slog.Error("runtime.dispatch_tools.invoke_senior_dev.auto_verification.error", "error", verifyErr)
+		return DispatchResult{
+			Task:   taskText,
+			Result: combineImplementationAndVerificationResult(implementationResult, "自动验收未完成: "+verifyErr.Error()),
+		}
+	}
+
+	verificationResult := strings.TrimSpace(extractLastAssistantText(verifyMsgs))
 	return DispatchResult{
-		Task:   task.Task,
-		Result: subRes.Result, // 使用摘要而非完整输出
+		Task:   taskText,
+		Result: combineImplementationAndVerificationResult(implementationResult, verificationResult),
 	}
 }
 
@@ -590,6 +592,96 @@ func (dt *DispatchTools) InvokeSeniorDevDirect(task string) ([]*schema.Message, 
 		_, _ = dt.hookMgr.TeammateIdle(ctx, subRes.Type.String(), true, "", subRes.Duration.Milliseconds())
 	}
 	return outMsgs, nil
+}
+
+func (dt *DispatchTools) InvokeVerificationDirect(task string, baseMsgs []*schema.Message) ([]*schema.Message, error) {
+	dt.mu.RLock()
+	ctx := dt.currentCtx
+	dt.mu.RUnlock()
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if dt.verificationAgent == nil {
+		return nil, fmt.Errorf("verification agent not initialized")
+	}
+
+	reqID := tools.TraceIDFromContext(ctx)
+	subCtx := dt.subAgentMgr.GetOrCreateRequestContext(reqID, SubAgentTypeVerification, ctx, baseMsgs)
+	_ = dt.subAgentMgr.MarkRunning(subCtx.id, task, nil)
+	dt.emitAgentEvent(EventAgentStarted, subCtx, task, task, nil)
+	if strings.TrimSpace(task) != "" {
+		_ = dt.subAgentMgr.AddMessage(subCtx.id, schema.UserMessage("验证目标: "+strings.TrimSpace(task)))
+	}
+
+	roleCtx := tools.WithRole(ctx, "verification")
+	outMsgs, err := invokeRoleAgentWithSubContext(roleCtx, baseMsgs, "verification", dt.verificationAgent, dt.onMeta, dt.onReasoning, dt.mcpToolsInfo, subCtx, dt.subAgentMgr, dt.hookMgr)
+	if err != nil {
+		dt.subAgentMgr.Complete(subCtx.id, task, false, err.Error())
+		dt.emitAgentEvent(EventAgentFailed, subCtx, task, err.Error(), map[string]any{"error": err.Error()})
+		if dt.hookMgr != nil {
+			_, _ = dt.hookMgr.TeammateIdle(ctx, subCtx.agentType.String(), false, err.Error(), time.Since(subCtx.createdAt).Milliseconds())
+		}
+		return nil, err
+	}
+
+	subRes := dt.subAgentMgr.Complete(subCtx.id, task, true, "")
+	dt.emitAgentEvent(EventAgentCompleted, subCtx, task, dt.agentOutput(subCtx, subRes.Result), map[string]any{"duration_ms": subRes.Duration.Milliseconds()})
+	if dt.hookMgr != nil {
+		_, _ = dt.hookMgr.TeammateIdle(ctx, subRes.Type.String(), true, "", subRes.Duration.Milliseconds())
+	}
+	return outMsgs, nil
+}
+
+func shouldAutoVerifySeniorDevTask(task string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(task))
+	if normalized == "" {
+		return false
+	}
+
+	positiveKeywords := []string{
+		"修复", "修正", "fix", "bug",
+		"实现", "implement",
+		"添加", "增加", "新增", "add",
+		"删除", "移除", "remove",
+		"修改", "调整", "优化", "update", "改为",
+		"重构", "迁移", "refactor", "migrate",
+		"支持", "处理",
+		"warning", "lint", "报错", "错误", "异常", "编译失败",
+		"验证", "验收", "测试",
+	}
+	negativeKeywords := []string{
+		"分析", "建议", "解释", "说明", "梳理", "评估",
+		"review", "审查", "对比", "总结", "介绍", "概述",
+	}
+
+	hasPositive := false
+	for _, keyword := range positiveKeywords {
+		if strings.Contains(normalized, keyword) {
+			hasPositive = true
+			break
+		}
+	}
+	if hasPositive {
+		return true
+	}
+	for _, keyword := range negativeKeywords {
+		if strings.Contains(normalized, keyword) {
+			return false
+		}
+	}
+	return false
+}
+
+func combineImplementationAndVerificationResult(implementationResult string, verificationResult string) string {
+	var sections []string
+	if text := strings.TrimSpace(implementationResult); text != "" {
+		sections = append(sections, "IMPLEMENTATION_RESULT:\n"+text)
+	}
+	if text := strings.TrimSpace(verificationResult); text != "" {
+		sections = append(sections, "VERIFICATION_RESULT:\n"+text)
+	}
+	return strings.TrimSpace(strings.Join(sections, "\n\n"))
 }
 
 func (dt *DispatchTools) ClearRequest(requestID string) {
@@ -650,6 +742,11 @@ func (dt *DispatchTools) InvokeTester(task DispatchTask) DispatchResult {
 	return dt.invokeStandardAgent(task, "tester", SubAgentTypeTester, dt.testerAgent, dt.mcpToolsInfo, "tester agent not initialized")
 }
 
+// InvokeVerification 调用独立验证代理
+func (dt *DispatchTools) InvokeVerification(task DispatchTask) DispatchResult {
+	return dt.invokeStandardAgent(task, "verification", SubAgentTypeVerification, dt.verificationAgent, dt.mcpToolsInfo, "verification agent not initialized")
+}
+
 // InvokeReviewer 调用审核者
 func (dt *DispatchTools) InvokeReviewer(task DispatchTask) DispatchResult {
 	return dt.invokeStandardAgent(task, "reviewer", SubAgentTypeReviewer, dt.reviewerAgent, dt.mcpToolsInfo, "reviewer agent not initialized")
@@ -695,6 +792,20 @@ func GetDispatchToolsInfo() []map[string]any {
 					"task": map[string]any{
 						"type":        "string",
 						"description": "任务目标与验收标准（避免指定具体命令行或逐条操作步骤）",
+					},
+				},
+				"required": []string{"task"},
+			},
+		},
+		{
+			"name":        "invoke_verification",
+			"description": "调用独立验证代理来做对抗式验收与风险核查",
+			"parameters": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"task": map[string]any{
+						"type":        "string",
+						"description": "验证目标、关键路径、证据要求与验收标准",
 					},
 				},
 				"required": []string{"task"},
@@ -819,7 +930,7 @@ func GetDispatchToolsInfo() []map[string]any {
 func GetToolRiskLevel(toolName string) ToolRiskLevel {
 	// 调度工具包装的子agent调用，免检
 	if toolName == "invoke_planner" || toolName == "invoke_senior_dev" ||
-		toolName == "invoke_tester" || toolName == "invoke_reviewer" ||
+		toolName == "invoke_tester" || toolName == "invoke_verification" || toolName == "invoke_reviewer" ||
 		toolName == "spawn_agent" || toolName == "send_input" ||
 		toolName == "wait_agent" || toolName == "resume_agent" ||
 		toolName == "close_agent" {
@@ -976,6 +1087,8 @@ func buildRoleSystemPrompt(ctx context.Context, role, mcpToolsInfo string) strin
 		}
 	case "tester":
 		prompt = RoleTesterPrompt
+	case "verification":
+		prompt = RoleVerificationPrompt
 	case "reviewer":
 		prompt = RoleReviewerPrompt
 	default:

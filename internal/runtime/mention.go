@@ -64,6 +64,8 @@ func NewMentionParser() *MentionParser {
 			"explore":   SubAgentTypeExplore,
 			"review":    SubAgentTypeReviewer,
 			"test":      SubAgentTypeTester,
+			"verify":    SubAgentTypeVerification,
+			"verification": SubAgentTypeVerification,
 			"security":  SubAgentTypeSecurity,
 			"architect": SubAgentTypeArchitect,
 			"planner":   SubAgentTypePlanner,
@@ -179,6 +181,8 @@ func SubAgentTypeFromAlias(alias string) (SubAgentType, bool) {
 		return SubAgentTypeReviewer, true
 	case "test":
 		return SubAgentTypeTester, true
+	case "verify", "verification":
+		return SubAgentTypeVerification, true
 	case "security":
 		return SubAgentTypeSecurity, true
 	case "architect":

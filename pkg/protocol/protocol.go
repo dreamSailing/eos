@@ -57,6 +57,8 @@ const (
 	EventTypeTaskUpdated    EventType = "task.updated"
 	EventTypeTaskDone       EventType = "task.completed"
 	EventTypeTaskFailed     EventType = "task.failed"
+	EventTypeLoopBlocked    EventType = "loop.block"
+	EventTypeTurnWrapUp     EventType = "turn.wrap_up"
 	EventTypeModeChanged    EventType = "mode.changed"
 	EventTypeBudgetUpdated  EventType = "budget.updated"
 	EventTypeMemorySuggestion EventType = "memory.suggestion"

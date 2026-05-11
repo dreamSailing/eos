@@ -11,7 +11,7 @@ import (
 )
 
 // SystemPromptVersion 系统提示词版本，用于检测是否需要刷新缓存
-const SystemPromptVersion = "v2.1.0"
+const SystemPromptVersion = "v2.1.1"
 
 // SystemPromptDynamicBoundary 动态提示词边界标记
 // 边界之前的部分可以全局缓存，边界之后的部分包含用户/会话特定内容
@@ -122,6 +122,7 @@ func getDoingTasksSection(cfg *PromptConfig) string {
 
 **验证完成**：
 - 在报告任务完成之前，验证它确实有效：运行测试、执行脚本、检查输出。如果无法验证，明确说明而不是声称成功。
+- 不要被 80% 的成功欺骗。只要关键路径、主要场景或验证链路还有未覆盖项，就不要把任务表述为已经完成。
 
 **报告真实结果**：
 - 如实报告结果：如果测试失败，说明并给出相关输出；如果没有运行验证步骤，说明而不是假装成功。

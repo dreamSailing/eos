@@ -99,7 +99,7 @@ func newRoleAgentWithModel(ctx context.Context, role string, dt *DispatchTools, 
 	switch role {
 	case "planner", "reviewer":
 		toolsList = BuildRuntimeReadOnlyToolsWithMCP(ctx, dt.toolsManager, dt, dt.mcpTools)
-	case "tester":
+	case "tester", "verification":
 		toolsList = buildTesterToolsForModel(ctx, dt)
 	default:
 		toolsList = BuildRuntimeToolsWithMCP(ctx, dt.toolsManager, dt, dt.mcpTools)
@@ -152,6 +152,8 @@ func resolveForkAgent(dt *DispatchTools, agentName string) (agentType SubAgentTy
 		return SubAgentTypePlanner, "planner", dt.plannerAgent
 	case "test", "tester":
 		return SubAgentTypeTester, "tester", dt.testerAgent
+	case "verification", "verify":
+		return SubAgentTypeVerification, "verification", dt.verificationAgent
 	case "review", "reviewer":
 		return SubAgentTypeReviewer, "reviewer", dt.reviewerAgent
 	case "explore", "explorer":

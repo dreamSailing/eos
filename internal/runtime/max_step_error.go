@@ -17,7 +17,7 @@ func wrapMaxStepError(err error) error {
 	}
 	msg := strings.ToLower(err.Error())
 	if strings.Contains(msg, "exceeds max steps") || strings.Contains(msg, "exceed max steps") || (strings.Contains(msg, "max steps") && strings.Contains(msg, "exceed")) {
-		return fmt.Errorf("执行超过最大步骤限制（可在 ~/.eos.json 配置 agent.max_step，建议 40~80）：%w", err)
+		return fmt.Errorf("执行超过最大步骤限制（可在 ~/.eos.json 配置 agent.max_step；当前默认 160，复杂任务可适当提高）：%w", err)
 	}
 	return err
 }

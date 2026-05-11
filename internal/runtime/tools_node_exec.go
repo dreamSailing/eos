@@ -106,21 +106,50 @@ func (rt *EinoRuntime) ToolsNode(ctx context.Context, text string) (results []st
 	}
 	var filtered []tools.ToolCall
 	for _, c := range calls {
+		if rt.turnWrapUp.Active {
+			rt.handleBlockedToolDuringWrapUp(c.Tool)
+			results = append(results, EventLoopBlock+":"+c.Tool+" (wrap_up)")
+			if rt.ctxm != nil {
+				rt.ctxm.AddToolObservation(rt.buildWrapUpToolResult(c.Tool))
+			}
+			continue
+		}
 		if rt.loopDetector != nil {
-			if err := rt.loopDetector.CheckLoop(c.Tool, c.Parameters); err != nil {
+			if detailed, ok := any(rt.loopDetector).(*SlidingWindowLoopDetector); ok {
+				if decision := detailed.CheckLoopResult(c.Tool, c.Parameters); decision != nil {
+					if errors.Is(decision.Error(), ErrLoopForceBreak) {
+						results = append(results, EventLoopBlock+":"+c.Tool+" (force break)")
+						rt.activateTurnWrapUp(decision)
+						return results, false, false
+					}
+					results = append(results, EventLoopBlock+":"+c.Tool+" (warning)")
+					if rt.ctxm != nil {
+						rt.ctxm.AddEphemeral(decision.Error().Error())
+					}
+					rt.emitLoopBlockEvent(decision)
+					continue
+				}
+			} else if err := rt.loopDetector.CheckLoop(c.Tool, c.Parameters); err != nil {
 				if errors.Is(err, ErrLoopForceBreak) {
 					// 强制中断：停止处理后续工具调用
 					results = append(results, EventLoopBlock+":"+c.Tool+" (force break)")
-					rt.ctxm.AddEphemeral(err.Error())
+					if rt.ctxm != nil {
+						rt.ctxm.AddEphemeral(err.Error())
+					}
 					return results, false, false
 				}
 				// 警告：注入提示但继续执行
 				results = append(results, EventLoopBlock+":"+c.Tool+" (warning)")
-				rt.ctxm.AddEphemeral(err.Error())
+				if rt.ctxm != nil {
+					rt.ctxm.AddEphemeral(err.Error())
+				}
 				continue
 			}
 		}
 		filtered = append(filtered, c)
+	}
+	if len(filtered) == 0 {
+		return results, len(calls) > 0, false
 	}
 	var prepared []tools.ToolCall
 	for _, c := range filtered {
@@ -343,7 +372,7 @@ func (rt *EinoRuntime) ToolsNode(ctx context.Context, text string) (results []st
 				}
 			}
 		}
-		if r.Status == "success" {
+		if r.Status == "success" && !rt.turnWrapUp.Active {
 			if c, ok := r.Data["continue"].(bool); ok && c {
 				wantContinue = true
 			} else {

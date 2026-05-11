@@ -1346,6 +1346,8 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 	case "/init":
 		m.shell.ClearInput()
 		return m.initEOSMD()
+	case "/init-verifiers":
+		return m.handleInitVerifiersSlash(args)
 	case "/history":
 		m.clearPrediction()
 		m.activeView = "panel"
@@ -1432,6 +1434,8 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 		return m.handleDiffSlash(args)
 	case "/review":
 		return m.handleReviewSlash(args)
+	case "/verify":
+		return m.handleVerifySlash(args)
 	case "/plan":
 		return m.handlePlanSlash(args)
 	case "/plan-style":

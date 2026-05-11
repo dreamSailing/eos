@@ -16,6 +16,7 @@ import (
 	"github.com/dreamSailing/eos/internal/session"
 	"github.com/dreamSailing/eos/internal/state"
 	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/internal/ui/features/slash"
 	"github.com/dreamSailing/eos/internal/ui/views/setup"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -110,19 +111,19 @@ func TestSlashHintsNavigationKeepsPanelAndInsertsCanonicalCommand(t *testing.T) 
 
 	testCases := []struct {
 		name      string
-		downs     int
+		command   string
 		acceptKey tea.KeyMsg
 		wantInput string
 	}{
 		{
 			name:      "enter accepts canonical command",
-			downs:     4,
+			command:   "/lang",
 			acceptKey: tea.KeyMsg{Type: tea.KeyEnter},
 			wantInput: "/lang ",
 		},
 		{
 			name:      "tab accepts canonical command",
-			downs:     7,
+			command:   "/workspace",
 			acceptKey: tea.KeyMsg{Type: tea.KeyTab},
 			wantInput: "/workspace ",
 		},
@@ -143,7 +144,8 @@ func TestSlashHintsNavigationKeepsPanelAndInsertsCanonicalCommand(t *testing.T) 
 				t.Fatalf("expected slash hints to be visible after typing slash")
 			}
 
-			for i := 0; i < tc.downs; i++ {
+			downs := findVisibleSlashCommandIndex(t, tc.command)
+			for i := 0; i < downs; i++ {
 				app = sendAppKey(t, app, tea.KeyMsg{Type: tea.KeyDown})
 				if !app.shell.IsHintsVisible() {
 					t.Fatalf("expected slash hints to remain visible after down navigation %d", i+1)
@@ -159,6 +161,18 @@ func TestSlashHintsNavigationKeepsPanelAndInsertsCanonicalCommand(t *testing.T) 
 			}
 		})
 	}
+}
+
+func findVisibleSlashCommandIndex(t *testing.T, name string) int {
+	t.Helper()
+	items := slash.VisibleCommands()
+	for idx, item := range items {
+		if item.Name == name {
+			return idx
+		}
+	}
+	t.Fatalf("visible slash command %q not found", name)
+	return -1
 }
 
 func TestHandlePlanStyleSlashShowsCurrentAndSavesWorkspaceSetting(t *testing.T) {

@@ -292,6 +292,10 @@ func BuildDispatchTools(ctx context.Context, dt *DispatchTools) []tool.BaseTool 
 			task, _ := args["task"].(string)
 			return dt.InvokeTester(DispatchTask{Task: task}), nil
 		}),
+		wrap("invoke_verification", func(args map[string]any) (DispatchResult, error) {
+			task, _ := args["task"].(string)
+			return dt.InvokeVerification(DispatchTask{Task: task}), nil
+		}),
 		wrap("invoke_reviewer", func(args map[string]any) (DispatchResult, error) {
 			task, _ := args["task"].(string)
 			return dt.InvokeReviewer(DispatchTask{Task: task}), nil

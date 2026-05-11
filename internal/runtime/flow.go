@@ -35,13 +35,13 @@ func newRuntimeAgentsWithDispatchTools(
 	dt *DispatchTools,
 	mcpTools []tool.BaseTool,
 	onMeta func(string),
-) (*react.Agent, *react.Agent, *react.Agent, *react.Agent, *react.Agent, error) {
+) (*react.Agent, *react.Agent, *react.Agent, *react.Agent, *react.Agent, *react.Agent, error) {
 	if tm == nil || mdl == nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("tools manager or model is nil")
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("tools manager or model is nil")
 	}
 	provider, ok := mdl.(ToolCallingProvider)
 	if !ok {
-		return nil, nil, nil, nil, nil, fmt.Errorf("model does not implement ToolCallingProvider")
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("model does not implement ToolCallingProvider")
 	}
 	base := provider.ToolCalling()
 	if dt != nil && dt.hookMgr != nil {
@@ -62,6 +62,7 @@ func newRuntimeAgentsWithDispatchTools(
 	var pag *react.Agent
 	var rag *react.Agent
 	var tag *react.Agent
+	var vag *react.Agent
 
 	cfg := &react.AgentConfig{
 		ToolCallingModel: base,
@@ -69,7 +70,7 @@ func newRuntimeAgentsWithDispatchTools(
 		MaxStep:          maxStep,
 	}
 	if a, e := react.NewAgent(ctx, cfg); e != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("failed to create exec agent: %w", e)
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to create exec agent: %w", e)
 	} else {
 		ag = a
 	}
@@ -80,7 +81,7 @@ func newRuntimeAgentsWithDispatchTools(
 		MaxStep:          maxStep,
 	}
 	if da, e3 := react.NewAgent(ctx, dcfg); e3 != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("failed to create dispatch agent: %w", e3)
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to create dispatch agent: %w", e3)
 	} else {
 		dag = da
 	}
@@ -91,7 +92,7 @@ func newRuntimeAgentsWithDispatchTools(
 		MaxStep:          maxStep,
 	}
 	if pa, e1 := react.NewAgent(ctx, pcfg); e1 != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("failed to create plan agent: %w", e1)
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to create plan agent: %w", e1)
 	} else {
 		pag = pa
 	}
@@ -137,9 +138,20 @@ func newRuntimeAgentsWithDispatchTools(
 		MaxStep:          maxStep,
 	}
 	if ta, e2 := react.NewAgent(ctx, tcfg); e2 != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("failed to create test agent: %w", e2)
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to create test agent: %w", e2)
 	} else {
 		tag = ta
+	}
+
+	vcfg := &react.AgentConfig{
+		ToolCallingModel: base,
+		ToolsConfig:      buildToolsNodeConfig(testTools, onMeta),
+		MaxStep:          maxStep,
+	}
+	if va, e5 := react.NewAgent(ctx, vcfg); e5 != nil {
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to create verification agent: %w", e5)
+	} else {
+		vag = va
 	}
 
 	rcfg := &react.AgentConfig{
@@ -148,10 +160,10 @@ func newRuntimeAgentsWithDispatchTools(
 		MaxStep:          maxStep,
 	}
 	if ra, e4 := react.NewAgent(ctx, rcfg); e4 != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("failed to create review agent: %w", e4)
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to create review agent: %w", e4)
 	} else {
 		rag = ra
 	}
 
-	return ag, dag, pag, rag, tag, nil
+	return ag, dag, pag, rag, tag, vag, nil
 }

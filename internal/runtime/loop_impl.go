@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -24,6 +25,40 @@ var (
 	// ErrLoopForceBreak 连续循环超过阈值，强制中断
 	ErrLoopForceBreak = errors.New("loop_force_break")
 )
+
+const (
+	LoopLevelWarning    = "warning"
+	LoopLevelForceBreak = "force_break"
+)
+
+type LoopCheckResult struct {
+	Level             string
+	ToolName          string
+	Reason            string
+	Alternatives      string
+	SameSignatureCount int
+	PatternLength     int
+	WarnCount         int
+	MaxWarns          int
+	WrapUpRequired    bool
+}
+
+func (r *LoopCheckResult) Error() error {
+	if r == nil {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(r.Level)) {
+	case LoopLevelForceBreak:
+		if r.SameSignatureCount > 0 {
+			return fmt.Errorf("%w: 检测到对 %s 的重复调用（%d 次相同参数）。替代方案：%s", ErrLoopForceBreak, r.ToolName, r.SameSignatureCount, r.Alternatives)
+		}
+		return fmt.Errorf("%w: 连续循环操作已达 %d 次，强制中断。请停止当前方法，直接基于已有信息完成任务或回答用户", ErrLoopForceBreak, r.WarnCount)
+	case LoopLevelWarning:
+		return fmt.Errorf("%w: 检测到重复操作模式（工具 %s）。建议：%s", ErrLoopWarning, r.ToolName, r.Alternatives)
+	default:
+		return nil
+	}
+}
 
 // defaultWindowSize 滑动窗口大小
 const defaultWindowSize = 10
@@ -51,6 +86,15 @@ func NewSlidingWindowLoopDetector() *SlidingWindowLoopDetector {
 
 // CheckLoop 检测工具调用是否形成循环
 func (d *SlidingWindowLoopDetector) CheckLoop(toolName string, args map[string]interface{}) error {
+	result := d.CheckLoopResult(toolName, args)
+	if result == nil {
+		return nil
+	}
+	return result.Error()
+}
+
+// CheckLoopResult 检测工具调用是否形成循环并返回结构化结果
+func (d *SlidingWindowLoopDetector) CheckLoopResult(toolName string, args map[string]interface{}) *LoopCheckResult {
 	sig := makeSignature(toolName, args)
 
 	d.mu.Lock()
@@ -81,7 +125,16 @@ func (d *SlidingWindowLoopDetector) CheckLoop(toolName string, args map[string]i
 			"warn_count", d.warnCount,
 			"max_warns", d.maxWarns)
 		alternatives := suggestAlternatives(toolName)
-		return fmt.Errorf("%w: 检测到对 %s 的重复调用（%d 次相同参数）。替代方案：%s", ErrLoopForceBreak, toolName, sameSigCount, alternatives)
+		return &LoopCheckResult{
+			Level:              LoopLevelForceBreak,
+			ToolName:           toolName,
+			Reason:             "same_call_detected",
+			Alternatives:       alternatives,
+			SameSignatureCount: sameSigCount,
+			WarnCount:          d.warnCount,
+			MaxWarns:           d.maxWarns,
+			WrapUpRequired:     true,
+		}
 	}
 
 	// 检测重复模式
@@ -93,11 +146,29 @@ func (d *SlidingWindowLoopDetector) CheckLoop(toolName string, args map[string]i
 			"warn_count", d.warnCount,
 			"max_warns", d.maxWarns)
 
-		if d.warnCount >= d.maxWarns {
-			return fmt.Errorf("%w: 连续循环操作已达 %d 次，强制中断。请停止当前方法，直接基于已有信息完成任务或回答用户", ErrLoopForceBreak, d.warnCount)
-		}
 		alternatives := suggestAlternatives(toolName)
-		return fmt.Errorf("%w: 检测到重复操作模式（工具 %s）。建议：%s", ErrLoopWarning, toolName, alternatives)
+		if d.warnCount >= d.maxWarns {
+			return &LoopCheckResult{
+				Level:          LoopLevelForceBreak,
+				ToolName:       toolName,
+				Reason:         "pattern_warn_limit",
+				Alternatives:   alternatives,
+				PatternLength:  patternLen,
+				WarnCount:      d.warnCount,
+				MaxWarns:       d.maxWarns,
+				WrapUpRequired: true,
+			}
+		}
+		return &LoopCheckResult{
+			Level:          LoopLevelWarning,
+			ToolName:       toolName,
+			Reason:         "pattern_detected",
+			Alternatives:   alternatives,
+			PatternLength:  patternLen,
+			WarnCount:      d.warnCount,
+			MaxWarns:       d.maxWarns,
+			WrapUpRequired: false,
+		}
 	}
 
 	// 没有检测到模式，重置警告计数

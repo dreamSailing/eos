@@ -109,3 +109,34 @@ func TestBindPlanUpdatesForwardsPlanAndEmitsReady(t *testing.T) {
 		t.Fatalf("got meta = %q, want %q", gotMeta, EventPlanReady)
 	}
 }
+
+func TestBuildAutomaticVerificationTaskIncludesGuardrailAndContext(t *testing.T) {
+	task := buildAutomaticVerificationTask("修复附件文件名截断", "已调整附件样式并补充悬停文件名显示")
+
+	if !strings.Contains(task, "不要被 80% 的成功欺骗") {
+		t.Fatalf("task missing verification guardrail: %q", task)
+	}
+	if !strings.Contains(task, "原始需求: 修复附件文件名截断") {
+		t.Fatalf("task missing original query: %q", task)
+	}
+	if !strings.Contains(task, "实现结果摘要: 已调整附件样式并补充悬停文件名显示") {
+		t.Fatalf("task missing implementation summary: %q", task)
+	}
+	if !strings.Contains(task, "VERDICT: PASS|FAIL|PARTIAL") {
+		t.Fatalf("task missing verdict requirement: %q", task)
+	}
+}
+
+func TestExtractLastAssistantTextReturnsLatestAssistantContent(t *testing.T) {
+	msgs := []*schema.Message{
+		schema.UserMessage("先实现"),
+		schema.AssistantMessage("第一版结果", nil),
+		schema.SystemMessage("HOOK"),
+		schema.AssistantMessage("最终实现摘要", nil),
+	}
+
+	got := extractLastAssistantText(msgs)
+	if got != "最终实现摘要" {
+		t.Fatalf("got %q, want %q", got, "最终实现摘要")
+	}
+}

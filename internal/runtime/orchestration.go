@@ -58,6 +58,7 @@ type EinoRuntime struct {
 	dispatchTools         *DispatchTools
 	tokenAnalyzer         *TokenAnalyzer             // Token 使用分析器
 	loopDetector          *SlidingWindowLoopDetector // 滑动窗口循环检测器
+	turnWrapUp            TurnWrapUpState
 	sessionStarted        bool
 }
 
@@ -191,6 +192,7 @@ func (rt *EinoRuntime) GraphInvokeWithImages(ctx context.Context, query string, 
 	if rt.runnable == nil {
 		return nil, fmt.Errorf("graph not initialized")
 	}
+	rt.resetTurnWrapUpState()
 	if !rt.sessionStarted && rt.dispatchTools != nil && rt.dispatchTools.hookMgr != nil {
 		modelName := ""
 		if rt.model != nil {
@@ -342,7 +344,7 @@ func newRuntimeGraph(ctx context.Context, tm *tools.Manager, mdl AIModel, onMeta
 
 	// 创建调度工具包装器 (先创建，此时 Agent 还是 nil)
 	LogDebug("runtime.new_agents.create_dispatch_tools", nil)
-	dispatchTools := NewDispatchTools(ctx, nil, nil, nil, nil, tm, onMeta, rt.loopDetector, mcpToolsInfo, mcpTools)
+	dispatchTools := NewDispatchTools(ctx, nil, nil, nil, nil, nil, tm, onMeta, rt.loopDetector, mcpToolsInfo, mcpTools)
 	rt.dispatchTools = dispatchTools
 	if rt.ctxm != nil && dispatchTools != nil && dispatchTools.hookMgr != nil {
 		rt.ctxm.SetOnPreCompact(func(trigger string, customInstructions string) {
@@ -355,7 +357,7 @@ func newRuntimeGraph(ctx context.Context, tm *tools.Manager, mdl AIModel, onMeta
 
 	// 创建所有 Agent，并将调度工具和 MCP 工具传入
 	LogDebug("runtime.new_agents.create_agents_start", nil)
-	execAgent, dispatchAgent, planAgent, reviewAgent, testAgent, err := newRuntimeAgentsWithDispatchTools(ctx, tm, mdl, dispatchTools, mcpTools, onMeta)
+	execAgent, dispatchAgent, planAgent, reviewAgent, testAgent, verificationAgent, err := newRuntimeAgentsWithDispatchTools(ctx, tm, mdl, dispatchTools, mcpTools, onMeta)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create runtime agents: %w", err)
 	}
@@ -365,6 +367,7 @@ func newRuntimeGraph(ctx context.Context, tm *tools.Manager, mdl AIModel, onMeta
 	dispatchTools.plannerAgent = planAgent
 	dispatchTools.seniorDevAgent = execAgent
 	dispatchTools.testerAgent = testAgent
+	dispatchTools.verificationAgent = verificationAgent
 	dispatchTools.reviewerAgent = reviewAgent
 
 	g := compose.NewGraph[map[string]any, *schema.Message]()
@@ -419,12 +422,12 @@ func newRuntimeGraph(ctx context.Context, tm *tools.Manager, mdl AIModel, onMeta
 			if strings.TrimSpace(planRes.Result) != "" {
 				devTask += "\n\n计划摘要: " + strings.TrimSpace(planRes.Result)
 			}
-			return dispatchTools.InvokeSeniorDevDirect(devTask)
+			return invokeSeniorDevWithAutoVerification(dispatchTools, devTask, q)
 		}
 
 		if shouldBypassArchitect(in) {
 			task := buildSeniorDevTaskHint(in)
-			return dispatchTools.InvokeSeniorDevDirect(task)
+			return invokeSeniorDevWithAutoVerification(dispatchTools, task, extractLastUserText(in))
 		}
 
 		return invokeDispatchAgentWithTools(ctx, in, dispatchAgent, onMeta, rt.onReasoning, rt, mcpTools)
@@ -519,6 +522,46 @@ func normalizeDispatchHistory(systemPrompt string, history []*schema.Message) (s
 		sb.WriteString("\n\n")
 	}
 	return strings.TrimSpace(sb.String()), normalized
+}
+
+func invokeSeniorDevWithAutoVerification(dispatchTools *DispatchTools, task string, originalQuery string) ([]*schema.Message, error) {
+	outMsgs, err := dispatchTools.InvokeSeniorDevDirect(task)
+	if err != nil {
+		return nil, err
+	}
+	verifyTask := buildAutomaticVerificationTask(originalQuery, extractLastAssistantText(outMsgs))
+	return dispatchTools.InvokeVerificationDirect(verifyTask, outMsgs)
+}
+
+func buildAutomaticVerificationTask(originalQuery string, implementationSummary string) string {
+	originalQuery = strings.TrimSpace(originalQuery)
+	if originalQuery == "" {
+		originalQuery = "（未提取到原始需求）"
+	}
+
+	lines := []string{
+		"请作为独立验证代理，验收刚完成的实现。",
+		"不要被 80% 的成功欺骗。优先尝试证明关键路径、主要场景或验收链路还有哪里会失败。",
+		"原始需求: " + originalQuery,
+	}
+	if summary := strings.TrimSpace(implementationSummary); summary != "" {
+		lines = append(lines, "实现结果摘要: "+limitText(summary, 24, 2000))
+	}
+	lines = append(lines, "输出要求：给出 VERDICT: PASS|FAIL|PARTIAL，并列出覆盖到的验证项、未覆盖风险和关键证据。")
+	return strings.Join(lines, "\n")
+}
+
+func extractLastAssistantText(msgs []*schema.Message) string {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		msg := msgs[i]
+		if msg == nil || msg.Role != schema.Assistant {
+			continue
+		}
+		if content := strings.TrimSpace(msg.Content); content != "" {
+			return content
+		}
+	}
+	return ""
 }
 
 // buildDispatchSystemPrompt 构建调度 Agent 的系统提示词

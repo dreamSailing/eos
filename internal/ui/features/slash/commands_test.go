@@ -71,3 +71,15 @@ func TestVisibleCommandsIncludesPlanStyle(t *testing.T) {
 		t.Fatalf("expected /plan-style to be a visible slash command")
 	}
 }
+
+func TestVisibleCommandsIncludesInitVerifiers(t *testing.T) {
+	if NormalizeCommand("/init-verifiers") != "/init-verifiers" {
+		t.Fatalf("expected /init-verifiers to be a visible slash command")
+	}
+}
+
+func TestVisibleCommandsIncludesVerify(t *testing.T) {
+	if NormalizeCommand("/verify") != "/verify" {
+		t.Fatalf("expected /verify to be a visible slash command")
+	}
+}

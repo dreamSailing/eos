@@ -25,6 +25,7 @@ const (
 	SubAgentTypePlanner SubAgentType = iota
 	SubAgentTypeSeniorDev
 	SubAgentTypeTester
+	SubAgentTypeVerification
 	SubAgentTypeReviewer
 	SubAgentTypeExplore   // 只读探索代理
 	SubAgentTypeSecurity  // 安全审计代理
@@ -39,6 +40,8 @@ func (t SubAgentType) String() string {
 		return "senior-dev"
 	case SubAgentTypeTester:
 		return "tester"
+	case SubAgentTypeVerification:
+		return "verification"
 	case SubAgentTypeReviewer:
 		return "reviewer"
 	case SubAgentTypeExplore:
@@ -61,6 +64,8 @@ func (t SubAgentType) Description() string {
 		return "编写和实现代码功能"
 	case SubAgentTypeTester:
 		return "生成和验证测试用例"
+	case SubAgentTypeVerification:
+		return "独立验证实现结果并寻找遗漏风险"
 	case SubAgentTypeReviewer:
 		return "审查代码质量和最佳实践"
 	case SubAgentTypeExplore:
@@ -81,6 +86,8 @@ func (t SubAgentType) ContextStrategy() ContextStrategy {
 		return ContextStrategyIndependent // 只读探索，独立上下文
 	case SubAgentTypeTester:
 		return ContextStrategyIndependent // 测试生成，独立上下文
+	case SubAgentTypeVerification:
+		return ContextStrategyIndependent // 独立验收，避免被主上下文暗示
 	case SubAgentTypeReviewer:
 		return ContextStrategyHybrid // 代码审查，混合上下文
 	case SubAgentTypeSecurity:
@@ -101,6 +108,8 @@ func (t SubAgentType) AllowedTools() []string {
 		return []string{tools.ToolRead, "diff", "glob", "grep", tools.ToolSearch, tools.ToolTodoRead, tools.ToolProjectStructure}
 	case SubAgentTypeTester:
 		return []string{"read", "write", "glob", "grep"}
+	case SubAgentTypeVerification:
+		return []string{"read", "glob", "grep", tools.ToolSearch, tools.ToolTodoRead, tools.ToolProjectStructure}
 	case SubAgentTypeSecurity:
 		return []string{"glob", "grep", tools.ToolRead, tools.ToolSearch, tools.ToolTodoRead, tools.ToolProjectStructure}
 	case SubAgentTypeArchitect:

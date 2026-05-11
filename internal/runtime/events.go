@@ -41,6 +41,7 @@ const (
 
 	// 错误相关事件
 	EventLoopBlock   = "loop.block"
+	EventTurnWrapUp  = "turn.wrap_up"
 	EventToolBlocked = "tool.blocked"
 	EventToolTimeout = "tool.timeout"
 )

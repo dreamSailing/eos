@@ -208,7 +208,7 @@ var zhText = map[string]string{
 	"input.exit_hint":                 "再按 Ctrl+C 退出",
 	"toast.loop_blocked":              "检测到重复步骤，已阻止继续调用，请更换关键词或直接完成修改",
 	"toast.bash_failed":               "命令执行失败，优先使用内建 read/search/edit 或 PowerShell 等价命令",
-	"toast.max_steps":                 "触发最大步骤限制，可能陷入重复步骤；请换关键词/减少无效工具调用",
+	"toast.max_steps":                 "触发最大步骤限制；默认上限为 160，可能仍存在重复步骤，请换关键词或减少无效工具调用",
 	"toast.stopped":                   "已停止（Esc）",
 	"cmd.help.config":                 "显示帮助",
 	"cmd.help.clear":                  "清空对话",

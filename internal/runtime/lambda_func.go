@@ -178,6 +178,8 @@ func RoleInstruction(role string) string {
 		return RoleReviewerPrompt
 	case "tester":
 		return RoleTesterPrompt
+	case "verification":
+		return RoleVerificationPrompt
 	default:
 		return RoleDefaultPrompt
 	}

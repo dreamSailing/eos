@@ -71,6 +71,53 @@ func bridgeToolResultEvent(id, toolName, status, display, errMsg string, data ma
 	}
 }
 
+func bridgeLoopBlockedEvent(toolName, level, reason, message string, data map[string]any) Event {
+	payload := cloneBridgePayload(data)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	if toolName = strings.TrimSpace(toolName); toolName != "" {
+		payload["tool_name"] = toolName
+	}
+	if level = strings.TrimSpace(level); level != "" {
+		payload["level"] = level
+	}
+	if reason = strings.TrimSpace(reason); reason != "" {
+		payload["reason"] = reason
+	}
+	if message = strings.TrimSpace(message); message != "" {
+		payload["message"] = message
+	}
+	return Event{
+		Type:    string(protocol.EventTypeLoopBlocked),
+		RID:     firstBridgeNonEmpty(toolName, reason),
+		Content: message,
+		Data:    payload,
+	}
+}
+
+func bridgeTurnWrapUpEvent(toolName, reason, message string, data map[string]any) Event {
+	payload := cloneBridgePayload(data)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	if toolName = strings.TrimSpace(toolName); toolName != "" {
+		payload["tool_name"] = toolName
+	}
+	if reason = strings.TrimSpace(reason); reason != "" {
+		payload["reason"] = reason
+	}
+	if message = strings.TrimSpace(message); message != "" {
+		payload["message"] = message
+	}
+	return Event{
+		Type:    string(protocol.EventTypeTurnWrapUp),
+		RID:     firstBridgeNonEmpty(toolName, reason),
+		Content: message,
+		Data:    payload,
+	}
+}
+
 func bridgeAgentStartedEvent(agentID, agentName, task string, data map[string]any) Event {
 	task = strings.TrimSpace(task)
 	payload := cloneBridgePayload(data)
@@ -248,6 +295,23 @@ func cloneBridgePayload(in map[string]any) map[string]any {
 	out := make(map[string]any, len(in))
 	for k, v := range in {
 		out[k] = v
+	}
+	return out
+}
+
+func mergeBridgeEventData(base map[string]any, extras map[string]any) map[string]any {
+	out := cloneBridgePayload(base)
+	if out == nil {
+		out = map[string]any{}
+	}
+	for key, value := range extras {
+		if key == "type" {
+			continue
+		}
+		out[key] = value
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }

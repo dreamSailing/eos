@@ -36,6 +36,7 @@ type GroupedCommands struct {
 var Commands = []Command{
 	{Name: "/help", Group: GroupGeneral, DescriptionZH: "查看命令帮助与快捷键", DescriptionEN: "Show command help and shortcuts"},
 	{Name: "/init", Group: GroupGeneral, DescriptionZH: "生成仓库级 EOS.md 指南文件", DescriptionEN: "Generate a repository EOS.md guide"},
+	{Name: "/init-verifiers", Group: GroupProject, DescriptionZH: "自动检测项目类型并建议验证工具", DescriptionEN: "Detect project type and suggest verifier tools"},
 	{Name: "/clear", Group: GroupGeneral, DescriptionZH: "清空当前会话内容区域", DescriptionEN: "Clear the current conversation view"},
 	{Name: "/exit", Group: GroupGeneral, DescriptionZH: "退出应用", DescriptionEN: "Exit the application"},
 	{Name: "/lang", Group: GroupGeneral, Usage: "/lang zh|en", DescriptionZH: "切换界面语言", DescriptionEN: "Switch the UI language"},
@@ -48,6 +49,7 @@ var Commands = []Command{
 	{Name: "/history", Aliases: []string{"/versions"}, Group: GroupProject, DescriptionZH: "打开版本历史面板", DescriptionEN: "Open the version history panel"},
 	{Name: "/diff", Group: GroupProject, Usage: "/diff [path]", DescriptionZH: "查看待提交 diff 或指定文件差异", DescriptionEN: "Show the pending diff or a file diff"},
 	{Name: "/review", Group: GroupProject, Usage: "/review [path]", DescriptionZH: "汇总改动、诊断和审查入口", DescriptionEN: "Summarize changes, diagnostics, and review entry points"},
+	{Name: "/verify", Group: GroupProject, Usage: "/verify [目标说明]", DescriptionZH: "发起一次标准化验证请求", DescriptionEN: "Start a standardized verification request"},
 	{Name: "/git", Group: GroupProject, Usage: "/git status|branches|log|show|diff [args...]", DescriptionZH: "查看 Git 状态、分支、日志和差异", DescriptionEN: "Inspect Git status, branches, history, and diff"},
 	{Name: "/remote", Group: GroupProject, Usage: "/remote [status]", DescriptionZH: "查看当前远程仓库上下文与本地隔离目录", DescriptionEN: "Show the current remote repository context and local sandbox path"},
 	{Name: "/compact", Group: GroupProject, DescriptionZH: "压缩当前上下文", DescriptionEN: "Compact the current context"},

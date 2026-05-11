@@ -26,3 +26,24 @@ func TestSlidingWindowLoopDetector_SameReadArgsForceBreak(t *testing.T) {
 	}
 }
 
+func TestSlidingWindowLoopDetector_CheckLoopResultIncludesWrapUp(t *testing.T) {
+	d := NewSlidingWindowLoopDetector()
+	args := map[string]interface{}{"path": "internal/ui/panels_context.go"}
+	var result *LoopCheckResult
+	for i := 0; i < 4; i++ {
+		result = d.CheckLoopResult("read", args)
+	}
+	if result == nil {
+		t.Fatal("expected structured result, got nil")
+	}
+	if result.Level != LoopLevelForceBreak {
+		t.Fatalf("Level=%q, want %q", result.Level, LoopLevelForceBreak)
+	}
+	if !result.WrapUpRequired {
+		t.Fatal("expected WrapUpRequired to be true")
+	}
+	if result.ToolName != "read" {
+		t.Fatalf("ToolName=%q, want read", result.ToolName)
+	}
+}
+

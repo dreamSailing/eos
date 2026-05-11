@@ -5,15 +5,17 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 )
 
 // webSearchStructured handles the web_search tool
@@ -21,10 +23,10 @@ func (m *Manager) webSearchStructured(ctx context.Context, params map[string]int
 	query, _ := params["query"].(string)
 	if strings.TrimSpace(query) == "" {
 		return ToolResult{
-			Type:   "tool_result",
-			Tool:   ToolWebSearch,
-			Status: "error",
-			Error:  "query is required",
+			Type:    "tool_result",
+			Tool:    ToolWebSearch,
+			Status:  "error",
+			Error:   "query is required",
 			Display: "错误：query 参数为必填项",
 		}
 	}
@@ -38,19 +40,19 @@ func (m *Manager) webSearchStructured(ctx context.Context, params map[string]int
 	results, err := duckduckgoSearch(ctx, query, maxResults)
 	if err != nil {
 		return ToolResult{
-			Type:   "tool_result",
-			Tool:   ToolWebSearch,
-			Status: "error",
-			Error:  err.Error(),
+			Type:    "tool_result",
+			Tool:    ToolWebSearch,
+			Status:  "error",
+			Error:   err.Error(),
 			Display: fmt.Sprintf("网络搜索失败：%s", err.Error()),
 		}
 	}
 
 	return ToolResult{
-		Type:   "tool_result",
-		Tool:   ToolWebSearch,
-		Status: "success",
-		Data:   map[string]interface{}{"results": results, "query": query, "count": len(results)},
+		Type:    "tool_result",
+		Tool:    ToolWebSearch,
+		Status:  "success",
+		Data:    map[string]interface{}{"results": results, "query": query, "count": len(results)},
 		Display: fmt.Sprintf("找到 %d 条结果：%s", len(results), query),
 	}
 }
@@ -60,10 +62,10 @@ func (m *Manager) webFetchStructured(ctx context.Context, params map[string]inte
 	url, _ := params["url"].(string)
 	if strings.TrimSpace(url) == "" {
 		return ToolResult{
-			Type:   "tool_result",
-			Tool:   ToolWebFetch,
-			Status: "error",
-			Error:  "url is required",
+			Type:    "tool_result",
+			Tool:    ToolWebFetch,
+			Status:  "error",
+			Error:   "url is required",
 			Display: "错误：url 参数为必填项",
 		}
 	}
@@ -72,36 +74,98 @@ func (m *Manager) webFetchStructured(ctx context.Context, params map[string]inte
 	if format == "" {
 		format = "text"
 	}
-
-	// Check HTTPS for non-local URLs
-	if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://localhost") && !strings.HasPrefix(url, "http://127.0.0.1") {
-		// Warn but allow
+	format = strings.ToLower(strings.TrimSpace(format))
+	if format != "text" && format != "markdown" {
 		return ToolResult{
-			Type:   "tool_result",
-			Tool:   ToolWebFetch,
-			Status: "success",
-			Data:   map[string]interface{}{"warning": "non-HTTPS URL", "url": url},
-			Display: fmt.Sprintf("警告：非 HTTPS URL %s", url),
+			Type:    "tool_result",
+			Tool:    ToolWebFetch,
+			Status:  "error",
+			Error:   fmt.Sprintf("unsupported format: %s", format),
+			Display: fmt.Sprintf("网页获取失败：不支持的格式 %s", format),
 		}
 	}
 
 	content, err := fetchURL(ctx, url, format)
 	if err != nil {
+		data := map[string]interface{}{
+			"url":    url,
+			"format": format,
+		}
+		if content != nil {
+			data["status_code"] = content.StatusCode
+			data["content_type"] = content.ContentType
+			data["truncated"] = content.Truncated
+			if content.FinalURL != "" {
+				data["final_url"] = content.FinalURL
+			}
+		}
+		var clientErr *utils.ClientError
+		if errors.As(err, &clientErr) {
+			switch clientErr.Kind {
+			case utils.ErrCrossHostRedirect:
+				data["redirect_url"] = clientErr.RedirectURL
+				if clientErr.StatusCode > 0 {
+					data["status_code"] = clientErr.StatusCode
+				}
+				return ToolResult{
+					Type:    "tool_result",
+					Tool:    ToolWebFetch,
+					Status:  "error",
+					Error:   clientErr.Error(),
+					Data:    data,
+					Display: fmt.Sprintf("网页获取被重定向到其他域名，请改用新地址：%s", clientErr.RedirectURL),
+				}
+			case utils.ErrHTTPStatus:
+				if clientErr.BodySnippet != "" {
+					data["response_snippet"] = clientErr.BodySnippet
+				}
+				return ToolResult{
+					Type:    "tool_result",
+					Tool:    ToolWebFetch,
+					Status:  "error",
+					Error:   clientErr.Error(),
+					Data:    data,
+					Display: fmt.Sprintf("网页获取失败：HTTP %d", clientErr.StatusCode),
+				}
+			default:
+				return ToolResult{
+					Type:    "tool_result",
+					Tool:    ToolWebFetch,
+					Status:  "error",
+					Error:   clientErr.Error(),
+					Data:    data,
+					Display: fmt.Sprintf("网页获取失败：%s", clientErr.Error()),
+				}
+			}
+		}
 		return ToolResult{
-			Type:   "tool_result",
-			Tool:   ToolWebFetch,
-			Status: "error",
-			Error:  err.Error(),
+			Type:    "tool_result",
+			Tool:    ToolWebFetch,
+			Status:  "error",
+			Error:   err.Error(),
+			Data:    data,
 			Display: fmt.Sprintf("网页获取失败：%s", err.Error()),
 		}
 	}
 
+	data := map[string]interface{}{
+		"content":      content.Content,
+		"url":          url,
+		"format":       format,
+		"status_code":  content.StatusCode,
+		"content_type": content.ContentType,
+		"truncated":    content.Truncated,
+	}
+	if content.FinalURL != "" && content.FinalURL != url {
+		data["final_url"] = content.FinalURL
+	}
+
 	return ToolResult{
-		Type:   "tool_result",
-		Tool:   ToolWebFetch,
-		Status: "success",
-		Data:   map[string]interface{}{"content": content, "url": url, "format": format},
-		Display: fmt.Sprintf("已获取 %d 字节：%s", len(content), url),
+		Type:    "tool_result",
+		Tool:    ToolWebFetch,
+		Status:  "success",
+		Data:    data,
+		Display: fmt.Sprintf("已获取 %d 字节：%s", len(content.Content), url),
 	}
 }
 
@@ -155,8 +219,8 @@ func parseDuckDuckGoHTML(html string, maxResults int) []map[string]string {
 	if len(results) == 0 {
 		// Return a single result indicating no matches found via HTML parsing
 		results = append(results, map[string]string{
-			"title": "Search completed",
-			"url":   "",
+			"title":   "Search completed",
+			"url":     "",
 			"snippet": fmt.Sprintf("Searched for query. HTML parsing found %d potential results.", strings.Count(html, "result")),
 		})
 	}
@@ -195,26 +259,48 @@ func extractResultPart(part string) map[string]string {
 	}
 }
 
-func fetchURL(ctx context.Context, url, format string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; eos/1.0)")
+type fetchedURLContent struct {
+	Content     string
+	StatusCode  int
+	ContentType string
+	Truncated   bool
+	FinalURL    string
+}
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("fetch failed: %w", err)
-	}
-	defer resp.Body.Close()
+func fetchURL(ctx context.Context, rawURL, format string) (*fetchedURLContent, error) {
+	client := utils.NewHTTPClient()
+	resp, err := client.Do(ctx, utils.RequestSpec{
+		Method:         http.MethodGet,
+		URL:            rawURL,
+		Accept:         "text/html, text/plain, application/json, application/xml;q=0.9, */*;q=0.8",
+		UserAgent:      "Mozilla/5.0 (compatible; eos/1.0)",
+		MaxBytes:       1 << 20,
+		AllowLocalHTTP: true,
+		RetryPolicy: utils.RetryPolicy{
+			MaxAttempts: 2,
+			BaseDelay:   250 * time.Millisecond,
+			MaxDelay:    time.Second,
+			Multiplier:  2,
+		},
+		RedirectPolicy: utils.RedirectPolicy{
+			MaxHops: 10,
+		},
+	})
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 50000)) // 50KB limit
+	payload := &fetchedURLContent{}
+	if resp != nil {
+		payload.StatusCode = resp.StatusCode
+		payload.ContentType = resp.ContentType
+		payload.Truncated = resp.Truncated
+		payload.FinalURL = resp.FinalURL
+	}
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return payload, err
 	}
 
-	return string(body), nil
+	content, convErr := transformFetchedContent(resp.Body, resp.ContentType, format)
+	payload.Content = content
+	return payload, convErr
 }
 
 // Utility functions
