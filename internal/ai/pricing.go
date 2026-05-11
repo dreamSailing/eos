@@ -13,10 +13,10 @@ import (
 
 // ModelPricing holds pricing information for a model
 type ModelPricing struct {
-	InputPricePer1M        float64  // USD per 1M uncached input tokens
-	CachedInputPricePer1M  *float64 // USD per 1M cached input tokens, when provider bills it separately
-	OutputPricePer1M       float64  // USD per 1M output tokens
-	RequiresCacheBreakdown bool     // true when cost should stay unknown without explicit cached token detail
+	InputPricePer1M       float64  // USD per 1M uncached input tokens
+	CachedInputPricePer1M *float64 // USD per 1M cached input tokens, when provider bills it separately
+	OutputPricePer1M      float64  // USD per 1M output tokens
+	RequiresCacheBreakdown bool    // true when cost should stay unknown without explicit cached token detail
 }
 
 // CostEstimate holds the result of a cost estimation
@@ -37,16 +37,16 @@ func pricePtr(v float64) *float64 {
 var knownPricing = map[string]ModelPricing{
 	// DeepSeek
 	"deepseek-v4-flash": {
-		InputPricePer1M:        0.14,
-		CachedInputPricePer1M:  pricePtr(0.028),
-		OutputPricePer1M:       0.28,
-		RequiresCacheBreakdown: true,
+		InputPricePer1M:         0.14,
+		CachedInputPricePer1M:   pricePtr(0.028),
+		OutputPricePer1M:        0.28,
+		RequiresCacheBreakdown:  true,
 	},
 	"deepseek-v4-pro": {
-		InputPricePer1M:        1.68,
-		CachedInputPricePer1M:  pricePtr(0.14),
-		OutputPricePer1M:       3.36,
-		RequiresCacheBreakdown: true,
+		InputPricePer1M:         1.68,
+		CachedInputPricePer1M:   pricePtr(0.14),
+		OutputPricePer1M:        3.36,
+		RequiresCacheBreakdown:  true,
 	},
 	// Qwen
 	"qwen3.6-max-preview": {InputPricePer1M: 9.00, OutputPricePer1M: 54.00},
