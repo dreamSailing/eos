@@ -48,6 +48,15 @@ func ResolveAPISettings() (string, string, string) {
 	return apiKey, base, model
 }
 
+func ResolveAPISettingsForCapability(capability Capability) (string, string, string, string, error) {
+	cfg, _ := config.Load()
+	route, err := ResolveCapabilityRoute(cfg, capability)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	return route.Entry.APIKey, route.Entry.APIBase, route.Entry.Model, route.Source, nil
+}
+
 // InferDefaultModel moved to ai/providers.go
 
 func SupportsVision(modelName string) bool {

@@ -19,6 +19,9 @@ type ModelCatalogEntry struct {
 	ContextWindow           int                // 上下文窗口大小
 	ThinkingCap             ThinkingCapability // 思考能力等级
 	SupportsVision          bool               // 是否支持视觉
+	SupportsImageGeneration bool               // 是否支持图片生成
+	SupportsVideoGeneration bool               // 是否支持视频生成
+	SupportsSpeechSynthesis bool               // 是否支持语音合成
 	SupportsTools           bool               // 是否支持工具调用
 	SupportsReasoningEffort bool               // 是否支持 ReasoningEffort 参数
 	Tags                    []string           // 标签（推荐、免费、推理等）

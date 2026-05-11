@@ -84,6 +84,9 @@ const (
 	ToolNotebookEdit            = "notebook_edit"
 	ToolDocumentGenerate        = "document_generate"
 	ToolDocumentConvert         = "document_convert"
+	ToolImageGenerate           = "image_generate"
+	ToolVideoGenerate           = "video_generate"
+	ToolSpeechSynthesize        = "speech_synthesize"
 	ToolMCPListResources        = "mcp_list_resources"
 	ToolMCPReadResource         = "mcp_read_resource"
 	ToolMCPListPrompts          = "mcp_list_prompts"
@@ -309,6 +312,52 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Examples: []ToolExample{
 				{Description: "高保真转换为 PDF", Input: map[string]any{"source_path": "report.docx", "target_format": "pdf", "fidelity": "high"}},
 				{Description: "内容级转换为 XLSX", Input: map[string]any{"source_path": "notes.pdf", "target_format": "xlsx", "fidelity": "content"}},
+			},
+		},
+		{
+			Name:        ToolImageGenerate,
+			Description: "调用当前主模型或专项图片模型生成图片，并将结果保存到工作区。",
+			Params: map[string]*schema.ParameterInfo{
+				"prompt":      {Type: schema.String, Required: true, Desc: "图片生成提示词"},
+				"output_path": {Type: schema.String, Required: false, Desc: "可选：输出路径；为空时自动生成"},
+				"size":        {Type: schema.String, Required: false, Desc: "可选：图片尺寸，如 1024x1024"},
+				"count":       {Type: schema.Integer, Required: false, Desc: "可选：生成数量，首版默认 1"},
+				"model":       {Type: schema.String, Required: false, Desc: "可选：覆盖自动能力路由，指定使用的模型名"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "生成一张图片", Input: map[string]any{"prompt": "一只坐在键盘前写代码的橘猫", "output_path": "outputs/cat.png", "size": "1024x1024"}},
+			},
+		},
+		{
+			Name:        ToolVideoGenerate,
+			Description: "调用当前主模型或专项视频模型生成视频，并将结果保存到工作区。",
+			Params: map[string]*schema.ParameterInfo{
+				"prompt":           {Type: schema.String, Required: true, Desc: "视频生成提示词"},
+				"output_path":      {Type: schema.String, Required: false, Desc: "可选：输出路径；为空时自动生成"},
+				"duration_seconds": {Type: schema.Integer, Required: false, Desc: "可选：视频时长（秒）"},
+				"aspect_ratio":     {Type: schema.String, Required: false, Desc: "可选：画面比例，如 16:9"},
+				"image_input":      {Type: schema.String, Required: false, Desc: "可选：图生视频的输入图片路径"},
+				"model":            {Type: schema.String, Required: false, Desc: "可选：覆盖自动能力路由，指定使用的模型名"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "生成短视频", Input: map[string]any{"prompt": "夜晚城市街道的延时摄影", "output_path": "outputs/city.mp4", "duration_seconds": 5, "aspect_ratio": "16:9"}},
+			},
+		},
+		{
+			Name:        ToolSpeechSynthesize,
+			Description: "调用当前主模型或专项语音模型合成语音，并将结果保存到工作区。",
+			Params: map[string]*schema.ParameterInfo{
+				"text":        {Type: schema.String, Required: true, Desc: "要合成的文本"},
+				"output_path": {Type: schema.String, Required: false, Desc: "可选：输出路径；为空时自动生成"},
+				"voice":       {Type: schema.String, Required: false, Desc: "可选：音色/发音人"},
+				"format":      {Type: schema.String, Required: false, Desc: "可选：输出格式，如 mp3 或 wav"},
+				"model":       {Type: schema.String, Required: false, Desc: "可选：覆盖自动能力路由，指定使用的模型名"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "合成中文语音", Input: map[string]any{"text": "欢迎使用 EOS。", "output_path": "outputs/welcome.mp3", "voice": "alloy", "format": "mp3"}},
 			},
 		},
 		{

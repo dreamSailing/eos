@@ -15,6 +15,22 @@ import (
 	"strings"
 )
 
+const (
+	ModelRolePrimary          = "primary"
+	ModelRoleImageGeneration  = "image_generation"
+	ModelRoleVideoGeneration  = "video_generation"
+	ModelRoleSpeechSynthesis  = "speech_synthesis"
+	CapabilityImageGeneration = "image_generation"
+	CapabilityVideoGeneration = "video_generation"
+	CapabilitySpeechSynthesis = "speech_synthesis"
+)
+
+type CapabilityModelRefs struct {
+	ImageGeneration string `json:"image_generation,omitempty"`
+	VideoGeneration string `json:"video_generation,omitempty"`
+	SpeechSynthesis string `json:"speech_synthesis,omitempty"`
+}
+
 type ModelEntry struct {
 	Name                    string `json:"name"`
 	APIBase                 string `json:"api_base"`
@@ -23,9 +39,14 @@ type ModelEntry struct {
 	Source                  string `json:"source,omitempty"`
 	Provider                string `json:"provider,omitempty"`                  // 服务商类型 (deepseek, dashscope, etc.)
 	APIType                 string `json:"api_type,omitempty"`                  // API 类型 (standard, code-plan)
+	Role                    string `json:"role,omitempty"`                      // 模型角色: primary/image_generation/video_generation/speech_synthesis
+	Enabled                 *bool  `json:"enabled,omitempty"`                   // 是否启用（旧配置留空时默认 true）
 	ThinkingEnabled         bool   `json:"thinking_enabled,omitempty"`          // 是否为该模型启用思考
 	ThinkingCapability      string `json:"thinking_capability,omitempty"`       // "none", "low", "medium", "high"
 	SupportsReasoningEffort bool   `json:"supports_reasoning_effort,omitempty"` // 是否支持 ReasoningEffort 参数
+	SupportsImageGeneration bool   `json:"supports_image_generation,omitempty"`
+	SupportsVideoGeneration bool   `json:"supports_video_generation,omitempty"`
+	SupportsSpeechSynthesis bool   `json:"supports_speech_synthesis,omitempty"`
 }
 
 // ThinkingConfig 思考模式全局配置
@@ -169,6 +190,7 @@ type RemoteRepoEntry struct {
 type Config struct {
 	Models                       []ModelEntry                    `json:"models,omitempty"`
 	Active                       string                          `json:"active_model,omitempty"`
+	CapabilityModels             CapabilityModelRefs             `json:"capability_models,omitempty"`
 	Thinking                     ThinkingConfig                  `json:"thinking,omitempty"` // 思考模式配置
 	NextMessagePredictionEnabled *bool                           `json:"next_message_prediction_enabled,omitempty"`
 	Agent                        AgentConfig                     `json:"agent,omitempty"`
@@ -187,6 +209,140 @@ type Config struct {
 	RemoteProviders              map[string]RemoteProviderConfig `json:"remote_providers,omitempty"`   // GitHub/Gitee OAuth/Token 配置
 	RemoteAuth                   map[string]RemoteAuthToken      `json:"remote_auth,omitempty"`        // 已授权账号（按平台）
 	RemoteRepos                  []RemoteRepoEntry               `json:"remote_repos,omitempty"`       // 最近访问的远程仓库
+}
+
+func boolPtr(v bool) *bool {
+	return &v
+}
+
+func NormalizeModelRole(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "", ModelRolePrimary:
+		return ModelRolePrimary
+	case ModelRoleImageGeneration:
+		return ModelRoleImageGeneration
+	case ModelRoleVideoGeneration:
+		return ModelRoleVideoGeneration
+	case ModelRoleSpeechSynthesis:
+		return ModelRoleSpeechSynthesis
+	default:
+		return strings.ToLower(strings.TrimSpace(role))
+	}
+}
+
+func ModelRoleValue(entry ModelEntry) string {
+	return NormalizeModelRole(entry.Role)
+}
+
+func ModelEnabled(entry ModelEntry) bool {
+	if entry.Enabled == nil {
+		return true
+	}
+	return *entry.Enabled
+}
+
+func SupportsCapability(entry ModelEntry, capability string) bool {
+	switch strings.ToLower(strings.TrimSpace(capability)) {
+	case CapabilityImageGeneration:
+		return entry.SupportsImageGeneration || ModelRoleValue(entry) == ModelRoleImageGeneration
+	case CapabilityVideoGeneration:
+		return entry.SupportsVideoGeneration || ModelRoleValue(entry) == ModelRoleVideoGeneration
+	case CapabilitySpeechSynthesis:
+		return entry.SupportsSpeechSynthesis || ModelRoleValue(entry) == ModelRoleSpeechSynthesis
+	default:
+		return false
+	}
+}
+
+func (r CapabilityModelRefs) Get(capability string) string {
+	switch strings.ToLower(strings.TrimSpace(capability)) {
+	case CapabilityImageGeneration:
+		return strings.TrimSpace(r.ImageGeneration)
+	case CapabilityVideoGeneration:
+		return strings.TrimSpace(r.VideoGeneration)
+	case CapabilitySpeechSynthesis:
+		return strings.TrimSpace(r.SpeechSynthesis)
+	default:
+		return ""
+	}
+}
+
+func (r *CapabilityModelRefs) Set(capability, modelName string) bool {
+	if r == nil {
+		return false
+	}
+	name := strings.TrimSpace(modelName)
+	switch strings.ToLower(strings.TrimSpace(capability)) {
+	case CapabilityImageGeneration:
+		if r.ImageGeneration == name {
+			return false
+		}
+		r.ImageGeneration = name
+		return true
+	case CapabilityVideoGeneration:
+		if r.VideoGeneration == name {
+			return false
+		}
+		r.VideoGeneration = name
+		return true
+	case CapabilitySpeechSynthesis:
+		if r.SpeechSynthesis == name {
+			return false
+		}
+		r.SpeechSynthesis = name
+		return true
+	default:
+		return false
+	}
+}
+
+func FindModelByName(cfg Config, name string) (ModelEntry, bool) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ModelEntry{}, false
+	}
+	for _, m := range cfg.Models {
+		if strings.EqualFold(strings.TrimSpace(m.Name), name) {
+			return m, true
+		}
+	}
+	return ModelEntry{}, false
+}
+
+func ResolveCapabilityModel(cfg Config, capability string) (ModelEntry, bool) {
+	ref := cfg.CapabilityModels.Get(capability)
+	if ref == "" {
+		return ModelEntry{}, false
+	}
+	entry, ok := FindModelByName(cfg, ref)
+	if !ok || !ModelEnabled(entry) {
+		return ModelEntry{}, false
+	}
+	return entry, true
+}
+
+func ClearCapabilityModelRefsForModel(cfg *Config, name string) bool {
+	if cfg == nil {
+		return false
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	changed := false
+	if strings.EqualFold(strings.TrimSpace(cfg.CapabilityModels.ImageGeneration), name) {
+		cfg.CapabilityModels.ImageGeneration = ""
+		changed = true
+	}
+	if strings.EqualFold(strings.TrimSpace(cfg.CapabilityModels.VideoGeneration), name) {
+		cfg.CapabilityModels.VideoGeneration = ""
+		changed = true
+	}
+	if strings.EqualFold(strings.TrimSpace(cfg.CapabilityModels.SpeechSynthesis), name) {
+		cfg.CapabilityModels.SpeechSynthesis = ""
+		changed = true
+	}
+	return changed
 }
 
 func DefaultLogDir() string {
@@ -522,6 +678,10 @@ func SetActive(cfg *Config, name string) bool {
 }
 
 func AddModel(cfg *Config, entry ModelEntry) bool {
+	entry.Role = ModelRoleValue(entry)
+	if entry.Enabled == nil {
+		entry.Enabled = boolPtr(true)
+	}
 	for _, m := range cfg.Models {
 		if m.Name == entry.Name {
 			return false
@@ -532,6 +692,10 @@ func AddModel(cfg *Config, entry ModelEntry) bool {
 }
 
 func UpdateModel(cfg *Config, entry ModelEntry) bool {
+	entry.Role = ModelRoleValue(entry)
+	if entry.Enabled == nil {
+		entry.Enabled = boolPtr(true)
+	}
 	for i, m := range cfg.Models {
 		if m.Name == entry.Name {
 			if strings.ToLower(m.Source) == "env" {
@@ -560,6 +724,7 @@ func DeleteModel(cfg *Config, name string) bool {
 	if cfg.Active == name {
 		return false
 	}
+	ClearCapabilityModelRefsForModel(cfg, name)
 	cfg.Models = append(cfg.Models[:idx], cfg.Models[idx+1:]...)
 	return true
 }
