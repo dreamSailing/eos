@@ -44,6 +44,12 @@ func (m *Manager) StartBackground() (State, error) {
 		return State{}, err
 	}
 	args := []string{"daemon", "run", "--workspace", opts.Workspace, "--listen", opts.ListenAddr, "--state-file", opts.StateFile, "--schedule-file", opts.ScheduleFile, "--session-store", opts.SessionStorePath, "--sandbox-mode", opts.SandboxMode, "--mcp-base-path", opts.MCPBasePath, "--log-file", opts.LogFile}
+	if strings.TrimSpace(opts.AccessMode) != "" {
+		args = append(args, "--access-mode", opts.AccessMode)
+	}
+	if strings.TrimSpace(opts.ApprovalMode) != "" {
+		args = append(args, "--approval-mode", opts.ApprovalMode)
+	}
 	if strings.TrimSpace(opts.PolicyPath) != "" {
 		args = append(args, "--policy", opts.PolicyPath)
 	}

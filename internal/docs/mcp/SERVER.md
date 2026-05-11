@@ -7,19 +7,22 @@
 ### stdio
 
 ```bash
-eos mcp serve --transport stdio --workspace "/abs/workspace"
+eos mcp serve --transport stdio --workspace "/abs/workspace" --access-mode workspace-write --approval-mode on-request
 ```
 
 ### SSE
 
 ```bash
-eos mcp serve --transport sse --listen 127.0.0.1:8765 --workspace "/abs/workspace"
+eos mcp serve --transport sse --listen 127.0.0.1:8765 --workspace "/abs/workspace" --access-mode workspace-write --approval-mode on-request
 ```
 
 可选参数：
 
 - `--allowed-tools "read,time_now,bash"`
-- `--sandbox-mode workspace|full_access`
+- `--access-mode read-only|workspace-write|danger-full-access`
+- `--approval-mode untrusted|on-failure|on-request|never`
+- `--sandbox-mode workspace|full_access`：旧沙箱别名，仍可用
+- `--dangerously-skip-permissions`：兼容旧开关，等价于 `--access-mode danger-full-access --approval-mode never`
 - `--policy /abs/policy.json`
 - `--require-approval-digest=true`
 - `--base-url http://127.0.0.1:8765`

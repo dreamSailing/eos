@@ -32,6 +32,8 @@ func (e *executor) Execute(ctx context.Context, sess toolapi.ExecSession, calls 
 	ctx = tools.WithAllowedTools(ctx, sess.AllowedTools)
 	ctx = tools.WithTraceID(ctx, sess.TraceID)
 	ctx = tools.WithWorkspaceRoot(ctx, sess.WorkspaceRoot)
+	ctx = tools.WithAccessMode(ctx, toolapi.ResolveAccessMode(sess))
+	ctx = tools.WithApprovalMode(ctx, toolapi.ResolveApprovalMode(sess))
 	in := make([]tools.ToolCall, 0, len(calls))
 	for _, c := range calls {
 		in = append(in, tools.ToolCall{

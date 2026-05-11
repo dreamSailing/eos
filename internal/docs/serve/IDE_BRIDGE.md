@@ -12,12 +12,16 @@
 ## 1. 生成桥接清单
 
 ```bash
-eos bridge manifest --workspace "/abs/workspace" --allowed-tools "read,bash"
+eos bridge manifest --workspace "/abs/workspace" --allowed-tools "read,bash" --access-mode workspace-write --approval-mode on-request
 ```
 
 常用可选参数：
 
 - `--policy <path>`：附带策略文件
+- `--access-mode <mode>`：默认访问模式
+- `--approval-mode <mode>`：默认审批模式
+- `--sandbox-mode <mode>`：旧沙箱别名，仍可透传
+- `--dangerously-skip-permissions`：兼容旧开关，等价于完全访问且永不审批
 - `--require-approval-digest=false`：关闭中高风险摘要校验
 - `--command <path>`：覆盖宿主实际要启动的可执行路径
 - `--out <path>`：写入文件而不是输出到 stdout

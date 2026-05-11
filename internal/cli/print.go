@@ -22,8 +22,12 @@ import (
 
 // PrintOptions holds options for headless print mode
 type PrintOptions struct {
-	Query        string
-	OutputFormat string // "text", "json", "stream-json"
+	Query           string
+	OutputFormat    string // "text", "json", "stream-json"
+	AccessMode      string
+	ApprovalMode    string
+	SandboxMode     string
+	SkipPermissions bool
 }
 
 // PrintResult holds the result of a print mode execution
@@ -46,6 +50,18 @@ func RunPrintMode(opts PrintOptions) error {
 	cm := session.NewContextManager()
 	tm := tools.NewManager()
 	rc := bridge.NewRuntimeCore(cm, tm, nil)
+	if opts.SkipPermissions {
+		rc.SetSkipPermissions(true)
+	} else {
+		if strings.TrimSpace(opts.AccessMode) != "" {
+			rc.SetAccessMode(opts.AccessMode)
+		} else if strings.TrimSpace(opts.SandboxMode) != "" {
+			rc.SetSandboxMode(opts.SandboxMode)
+		}
+		if strings.TrimSpace(opts.ApprovalMode) != "" {
+			rc.SetApprovalMode(opts.ApprovalMode)
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()

@@ -28,6 +28,9 @@ var (
 	cliMaxTurns        int
 	cliAllowedTools    string
 	cliDisallowedTools string
+	cliAccessMode      string
+	cliApprovalMode    string
+	cliSandboxMode     string
 	cliSkipPermissions bool
 )
 
@@ -64,9 +67,14 @@ var rootCmd = &cobra.Command{
 
 		// Handle --print mode
 		if printQuery != "" {
+			modes := resolveModeConfig(cliAccessMode, cliApprovalMode, cliSandboxMode, cliSkipPermissions, true)
 			if err := RunPrintMode(PrintOptions{
-				Query:        printQuery,
-				OutputFormat: outputFormat,
+				Query:           printQuery,
+				OutputFormat:    outputFormat,
+				AccessMode:      modes.AccessMode,
+				ApprovalMode:    modes.ApprovalMode,
+				SandboxMode:     modes.SandboxMode,
+				SkipPermissions: modes.SkipAllChecks,
 			}); err != nil {
 				os.Exit(1)
 			}
@@ -77,6 +85,9 @@ var rootCmd = &cobra.Command{
 		opts := ui.TUIOptions{
 			ModelOverride:   cliModel,
 			MaxTurns:        cliMaxTurns,
+			AccessMode:      cliAccessMode,
+			ApprovalMode:    cliApprovalMode,
+			SandboxMode:     cliSandboxMode,
 			SkipPermissions: cliSkipPermissions,
 		}
 		if continueChat {
@@ -125,7 +136,10 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&cliMaxTurns, "max-turns", 0, "Maximum number of turns (0=unlimited)")
 	rootCmd.PersistentFlags().StringVar(&cliAllowedTools, "allowed-tools", "", "Comma-separated list of allowed tools")
 	rootCmd.PersistentFlags().StringVar(&cliDisallowedTools, "disallowed-tools", "", "Comma-separated list of disallowed tools")
-	rootCmd.PersistentFlags().BoolVar(&cliSkipPermissions, "dangerously-skip-permissions", false, "Skip all permission checks (use with caution)")
+	rootCmd.PersistentFlags().StringVar(&cliAccessMode, "access-mode", "", "Access mode: read-only, workspace-write, or danger-full-access")
+	rootCmd.PersistentFlags().StringVar(&cliApprovalMode, "approval-mode", "", "Approval mode: untrusted, on-failure, on-request, or never")
+	rootCmd.PersistentFlags().StringVar(&cliSandboxMode, "sandbox-mode", "workspace", "Legacy sandbox mode alias: workspace or full_access")
+	rootCmd.PersistentFlags().BoolVar(&cliSkipPermissions, "dangerously-skip-permissions", false, "Compatibility alias for --access-mode danger-full-access --approval-mode never")
 
 	rootCmd.AddCommand(newBridgeCmd())
 	rootCmd.AddCommand(newDaemonCmd())

@@ -136,12 +136,16 @@ func (s *Server) toolCatalogSnapshot(sess *runtimeSession, executableOnly bool) 
 	workspace := s.opts.DefaultWorkspacePath
 	allowed := allowedToolsMap(s.opts.DefaultAllowedTools)
 	executionMode := "auto"
+	accessMode := ""
+	approvalMode := ""
 	sandboxMode := s.opts.DefaultSandboxMode
 	requireDigest := s.opts.RequireApprovalDigest
 	if sess != nil {
 		workspace = sess.WorkspaceAbs
 		allowed = sess.AllowedTools
 		executionMode = sess.ExecutionMode
+		accessMode = sess.AccessMode
+		approvalMode = sess.ApprovalMode
 		sandboxMode = sess.SandboxMode
 		requireDigest = sess.RequireApprovalDigest
 	}
@@ -150,6 +154,8 @@ func (s *Server) toolCatalogSnapshot(sess *runtimeSession, executableOnly bool) 
 		WorkspaceRoot:         workspace,
 		AllowedTools:          allowed,
 		ExecutionMode:         executionMode,
+		AccessMode:            normalizeOptionalAccessMode(accessMode),
+		ApprovalMode:          normalizeOptionalApprovalMode(approvalMode),
 		SandboxMode:           sandboxMode,
 		RequireApprovalDigest: requireDigest,
 	}
@@ -174,11 +180,13 @@ func (s *Server) toolCatalogSnapshot(sess *runtimeSession, executableOnly bool) 
 			"tags":                 append([]string(nil), def.Tags...),
 			"metadata":             def.Metadata,
 			"access": map[string]any{
-				"mode":           access.Mode,
-				"visible":        access.Visible,
-				"executable":     access.Executable,
-				"needs_approval": access.NeedsApproval,
-				"reason":         access.Reason,
+				"mode":            access.Mode,
+				"visible":         access.Visible,
+				"executable":      access.Executable,
+				"needs_approval":  access.NeedsApproval,
+				"approval_mode":   access.ApprovalMode,
+				"approval_source": access.ApprovalSource,
+				"reason":          access.Reason,
 			},
 		})
 	}

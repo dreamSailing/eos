@@ -23,12 +23,15 @@ func newMCPCmd() *cobra.Command {
 	var transport string
 	var workspace string
 	var allowedTools string
+	var accessMode string
+	var approvalMode string
 	var sandboxMode string
 	var policyPath string
 	var sessionStorePath string
 	var requireApprovalDigest bool
 	var listenAddr string
 	var baseURL string
+	var skipPermissions bool
 
 	cmd := &cobra.Command{
 		Use:    "mcp",
@@ -50,6 +53,7 @@ func newMCPCmd() *cobra.Command {
 			if strings.TrimSpace(workspace) == "" {
 				return errors.New("workspace required")
 			}
+			modes := resolveModeConfig(accessMode, approvalMode, sandboxMode, skipPermissions, requireApprovalDigest)
 
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
@@ -58,7 +62,9 @@ func newMCPCmd() *cobra.Command {
 				Transport:             transport,
 				DefaultWorkspacePath:  workspace,
 				DefaultAllowedTools:   splitCommaList(allowedTools),
-				DefaultSandboxMode:    sandboxMode,
+				DefaultAccessMode:     modes.AccessMode,
+				DefaultApprovalMode:   modes.ApprovalMode,
+				DefaultSandboxMode:    modes.SandboxMode,
 				PolicyPath:            policyPath,
 				SessionStorePath:      sessionStorePath,
 				RequireApprovalDigest: requireApprovalDigest,
@@ -75,12 +81,15 @@ func newMCPCmd() *cobra.Command {
 	serveCmd.Flags().StringVar(&transport, "transport", "stdio", "MCP transport: stdio or sse")
 	serveCmd.Flags().StringVar(&workspace, "workspace", "", "workspace path (required)")
 	serveCmd.Flags().StringVar(&allowedTools, "allowed-tools", "", "comma-separated allowed tools (optional)")
-	serveCmd.Flags().StringVar(&sandboxMode, "sandbox-mode", "workspace", "sandbox mode: workspace or full_access")
+	serveCmd.Flags().StringVar(&accessMode, "access-mode", "", "default access mode: read-only, workspace-write, or danger-full-access")
+	serveCmd.Flags().StringVar(&approvalMode, "approval-mode", "", "default approval mode: untrusted, on-failure, on-request, or never")
+	serveCmd.Flags().StringVar(&sandboxMode, "sandbox-mode", "workspace", "legacy sandbox mode alias: workspace or full_access")
 	serveCmd.Flags().StringVar(&policyPath, "policy", "", "policy json file path (optional)")
 	serveCmd.Flags().StringVar(&sessionStorePath, "session-store", "", "session store file path (reserved)")
 	serveCmd.Flags().BoolVar(&requireApprovalDigest, "require-approval-digest", true, "require approvals for medium/high risk tools")
 	serveCmd.Flags().StringVar(&listenAddr, "listen", "127.0.0.1:8765", "listen address for SSE transport")
 	serveCmd.Flags().StringVar(&baseURL, "base-url", "", "public base URL for SSE transport (optional)")
+	serveCmd.Flags().BoolVar(&skipPermissions, "dangerously-skip-permissions", false, "compatibility alias for --access-mode danger-full-access --approval-mode never")
 	_ = serveCmd.MarkFlagRequired("workspace")
 
 	cmd.AddCommand(serveCmd)

@@ -21,6 +21,8 @@ type Options struct {
 	ListenAddr       string
 	BaseURL          string
 	AllowedTools     []string
+	AccessMode       string
+	ApprovalMode     string
 	SandboxMode      string
 	PolicyPath       string
 	SessionStorePath string
@@ -90,6 +92,8 @@ func NewService(opts Options) (*Service, error) {
 		Transport:             "sse",
 		DefaultWorkspacePath:  normalized.Workspace,
 		DefaultAllowedTools:   normalized.AllowedTools,
+		DefaultAccessMode:     normalized.AccessMode,
+		DefaultApprovalMode:   normalized.ApprovalMode,
 		DefaultSandboxMode:    normalized.SandboxMode,
 		PolicyPath:            normalized.PolicyPath,
 		SessionStorePath:      normalized.SessionStorePath,

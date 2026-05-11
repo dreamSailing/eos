@@ -34,6 +34,8 @@ type BridgeManifest struct {
 	Launch             BridgeLaunchSpec         `json:"launch"`
 	SessionDefaults    BridgeSessionDefaults    `json:"sessionDefaults"`
 	ExecutionModes     []executionModeDTO       `json:"executionModes,omitempty"`
+	AccessModes        []accessModeDTO          `json:"accessModes,omitempty"`
+	ApprovalModes      []approvalModeDTO        `json:"approvalModes,omitempty"`
 	ServerCapabilities BridgeServerCapabilities `json:"serverCapabilities"`
 	Methods            []string                 `json:"methods"`
 	Tools              []toolDefinitionDTO      `json:"tools,omitempty"`
@@ -51,6 +53,8 @@ type BridgeSessionDefaults struct {
 	WorkspacePath          string   `json:"workspacePath"`
 	AllowedTools           []string `json:"allowedTools,omitempty"`
 	ExecutionMode          string   `json:"executionMode"`
+	AccessMode             string   `json:"accessMode"`
+	ApprovalMode           string   `json:"approvalMode"`
 	SandboxMode            string   `json:"sandboxMode"`
 	RequireApprovalDigest  bool     `json:"requireApprovalDigest"`
 	MaxConcurrentToolCalls int      `json:"maxConcurrentToolCalls"`
@@ -116,6 +120,20 @@ func BuildBridgeManifest(opts Options, manifestOpts BridgeManifestOptions) (Brid
 		}
 		args = append(args, "--policy", policyAbs)
 	}
+	accessMode := toolapi.NormalizeAccessMode(opts.DefaultAccessMode)
+	if strings.TrimSpace(opts.DefaultAccessMode) == "" {
+		accessMode = toolapi.ResolveAccessMode(toolapi.ExecSession{SandboxMode: opts.DefaultSandboxMode})
+	}
+	approvalMode := toolapi.NormalizeApprovalMode(opts.DefaultApprovalMode)
+	if strings.TrimSpace(opts.DefaultApprovalMode) == "" {
+		approvalMode = toolapi.ResolveApprovalMode(toolapi.ExecSession{RequireApprovalDigest: opts.RequireApprovalDigest})
+	}
+	if strings.TrimSpace(opts.DefaultAccessMode) != "" {
+		args = append(args, "--access-mode", accessMode)
+	}
+	if strings.TrimSpace(opts.DefaultApprovalMode) != "" {
+		args = append(args, "--approval-mode", approvalMode)
+	}
 	args = append(args, "--sandbox-mode", toolapi.NormalizeSandboxMode(opts.DefaultSandboxMode))
 
 	manifest := BridgeManifest{
@@ -135,11 +153,15 @@ func BuildBridgeManifest(opts Options, manifestOpts BridgeManifestOptions) (Brid
 			WorkspacePath:          workspaceAbs,
 			AllowedTools:           append([]string(nil), allowedTools...),
 			ExecutionMode:          "auto",
+			AccessMode:             accessMode,
+			ApprovalMode:           approvalMode,
 			SandboxMode:            toolapi.NormalizeSandboxMode(opts.DefaultSandboxMode),
 			RequireApprovalDigest:  opts.RequireApprovalDigest,
 			MaxConcurrentToolCalls: 1,
 		},
 		ExecutionModes:     modeDTOs(toolapi.SupportedExecutionModes()),
+		AccessModes:        accessModeDTOs(toolapi.SupportedAccessModes()),
+		ApprovalModes:      approvalModeDTOs(toolapi.SupportedApprovalModes()),
 		ServerCapabilities: serverCapabilitiesSummary(),
 		Methods:            supportedRPCMethods(),
 	}
@@ -158,6 +180,8 @@ func BuildBridgeManifest(opts Options, manifestOpts BridgeManifestOptions) (Brid
 		WorkspaceRoot:         workspaceAbs,
 		AllowedTools:          allowedToolsMap(allowedTools),
 		ExecutionMode:         manifest.SessionDefaults.ExecutionMode,
+		AccessMode:            manifest.SessionDefaults.AccessMode,
+		ApprovalMode:          manifest.SessionDefaults.ApprovalMode,
 		SandboxMode:           manifest.SessionDefaults.SandboxMode,
 		RequireApprovalDigest: manifest.SessionDefaults.RequireApprovalDigest,
 	}

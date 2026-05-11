@@ -66,9 +66,35 @@ func isSupportedExecutionModeInput(raw string) bool {
 
 func (m *AppModel) executionModeUsage() string {
 	return m.localize(
-		"用法: /permissions [auto|plan]",
-		"Usage: /permissions [auto|plan]",
+		"用法: /permissions [auto|plan|access <mode>|approval <mode>]",
+		"Usage: /permissions [auto|plan|access <mode>|approval <mode>]",
 	)
+}
+
+func isSupportedAccessModeInput(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return false
+	}
+	normalized := toolapi.NormalizeAccessMode(raw)
+	for _, item := range toolapi.SupportedAccessModes() {
+		if item.Name == normalized {
+			return true
+		}
+	}
+	return false
+}
+
+func isSupportedApprovalModeInput(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return false
+	}
+	normalized := toolapi.NormalizeApprovalMode(raw)
+	for _, item := range toolapi.SupportedApprovalModes() {
+		if item.Name == normalized {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *AppModel) gitOps() *gitops.Ops {
@@ -310,14 +336,22 @@ func (m *AppModel) handleResumeSlash(args []string) tea.Cmd {
 func (m *AppModel) handlePermissionsSlash(args []string) tea.Cmd {
 	core := m.adapter.GetCore()
 	if len(args) > 0 {
-		raw := strings.TrimSpace(args[0])
-		if isSupportedExecutionModeInput(raw) {
-			mode := toolapi.NormalizeExecutionMode(raw)
+		switch {
+		case len(args) == 1 && isSupportedExecutionModeInput(args[0]):
+			mode := toolapi.NormalizeExecutionMode(args[0])
 			core.SetExecutionMode(mode)
 			m.state.ExecutionMode = mode
 			m.shell.SetExecutionMode(mode)
 			m.appendSystem(fmt.Sprintf("%s %s", m.localize("执行模式已切换为", "Execution mode switched to"), m.executionModeLabel(mode)), "success")
-		} else {
+		case len(args) >= 2 && strings.EqualFold(strings.TrimSpace(args[0]), "access") && isSupportedAccessModeInput(args[1]):
+			mode := toolapi.NormalizeAccessMode(args[1])
+			core.SetAccessMode(mode)
+			m.appendSystem(fmt.Sprintf("%s %s", m.localize("访问模式已切换为", "Access mode switched to"), mode), "success")
+		case len(args) >= 2 && strings.EqualFold(strings.TrimSpace(args[0]), "approval") && isSupportedApprovalModeInput(args[1]):
+			mode := toolapi.NormalizeApprovalMode(args[1])
+			core.SetApprovalMode(mode)
+			m.appendSystem(fmt.Sprintf("%s %s", m.localize("审批模式已切换为", "Approval mode switched to"), mode), "success")
+		default:
 			m.appendSystem(m.executionModeUsage(), "warning")
 			return nil
 		}
@@ -327,6 +361,9 @@ func (m *AppModel) handlePermissionsSlash(args []string) tea.Cmd {
 	lines := []string{
 		m.localize("权限与审批状态", "Permissions and approvals"),
 		fmt.Sprintf("%s: %s", m.localize("执行模式", "Execution mode"), m.executionModeLabel(snap.ExecutionMode)),
+		fmt.Sprintf("%s: %s", m.localize("访问模式", "Access mode"), snap.AccessMode),
+		fmt.Sprintf("%s: %s", m.localize("审批模式", "Approval mode"), snap.ApprovalMode),
+		fmt.Sprintf("%s: %s", m.localize("沙箱模式", "Sandbox mode"), snap.SandboxMode),
 		fmt.Sprintf("%s: %t", m.localize("全局放行", "Allow all"), snap.AllowAll),
 	}
 	if len(snap.AllowedCategories) > 0 {
@@ -342,6 +379,20 @@ func (m *AppModel) handlePermissionsSlash(args []string) tea.Cmd {
 		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("待审批 diff", "Pending diff"), target))
 	} else {
 		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("待审批 diff", "Pending diff"), m.localize("无", "none")))
+	}
+	if strings.TrimSpace(snap.LastAuthorization) != "" {
+		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("最近授权结果", "Last authorization"), snap.LastAuthorization))
+		if strings.TrimSpace(snap.LastAuthorizationKind) != "" {
+			lines = append(lines, fmt.Sprintf("%s: %s", m.localize("最近授权类别", "Last authorization kind"), snap.LastAuthorizationKind))
+		}
+		if strings.TrimSpace(snap.LastAuthorizationTarget) != "" {
+			lines = append(lines, fmt.Sprintf("%s: %s", m.localize("最近升级目标", "Last escalation target"), snap.LastAuthorizationTarget))
+		}
+		if strings.TrimSpace(snap.LastAuthorizationNote) != "" {
+			lines = append(lines, fmt.Sprintf("%s: %s", m.localize("最近授权说明", "Last authorization note"), snap.LastAuthorizationNote))
+		}
+	} else {
+		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("最近授权结果", "Last authorization"), m.localize("无", "none")))
 	}
 	m.appendSystem(strings.Join(lines, "\n"), "info")
 	return nil
@@ -918,8 +969,20 @@ func (m *AppModel) handleStatusSlash() tea.Cmd {
 		fmt.Sprintf("%s: %s", m.localize("工作区", "Workspace"), m.currentWorkspaceRoot()),
 		fmt.Sprintf("%s: %s (%s)", m.localize("模型", "Model"), strings.TrimSpace(modelName), strings.TrimSpace(modelBase)),
 		fmt.Sprintf("%s: %s", m.localize("执行模式", "Mode"), m.executionModeLabel(snap.ExecutionMode)),
+		fmt.Sprintf("%s: %s", m.localize("访问模式", "Access mode"), snap.AccessMode),
+		fmt.Sprintf("%s: %s", m.localize("审批模式", "Approval mode"), snap.ApprovalMode),
+		fmt.Sprintf("%s: %s", m.localize("沙箱模式", "Sandbox mode"), snap.SandboxMode),
 		fmt.Sprintf("%s: %s", m.localize("当前会话", "Session"), blankFallback(currentSessionID, m.localize("无", "none"))),
 		fmt.Sprintf("%s: %s", m.localize("浏览器 MCP", "Browser MCP"), m.browserStatusLabel(browser)),
+	}
+	if strings.TrimSpace(snap.LastAuthorization) != "" {
+		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("最近授权", "Last authorization"), snap.LastAuthorization))
+	}
+	if strings.TrimSpace(snap.LastAuthorizationTarget) != "" {
+		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("最近升级目标", "Last escalation target"), snap.LastAuthorizationTarget))
+	}
+	if strings.TrimSpace(snap.LastAuthorizationNote) != "" {
+		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("最近授权说明", "Last authorization note"), snap.LastAuthorizationNote))
 	}
 	if remote, ok := core.CurrentRemoteRepo(); ok {
 		lines = append(lines,

@@ -18,6 +18,8 @@ func newDaemonCmd() *cobra.Command {
 	var listenAddr string
 	var baseURL string
 	var allowedTools string
+	var accessMode string
+	var approvalMode string
 	var sandboxMode string
 	var policyPath string
 	var sessionStorePath string
@@ -25,14 +27,18 @@ func newDaemonCmd() *cobra.Command {
 	var scheduleFile string
 	var logFile string
 	var mcpBasePath string
+	var skipPermissions bool
 
 	buildOptions := func() daemon.Options {
+		modes := resolveModeConfig(accessMode, approvalMode, sandboxMode, skipPermissions, true)
 		return daemon.Options{
 			Workspace:        workspace,
 			ListenAddr:       listenAddr,
 			BaseURL:          baseURL,
 			AllowedTools:     splitCommaList(allowedTools),
-			SandboxMode:      sandboxMode,
+			AccessMode:       modes.AccessMode,
+			ApprovalMode:     modes.ApprovalMode,
+			SandboxMode:      modes.SandboxMode,
 			PolicyPath:       policyPath,
 			SessionStorePath: sessionStorePath,
 			StateFile:        stateFile,
@@ -113,7 +119,10 @@ func newDaemonCmd() *cobra.Command {
 		sub.Flags().StringVar(&listenAddr, "listen", "127.0.0.1:8765", "HTTP gateway listen address")
 		sub.Flags().StringVar(&baseURL, "base-url", "", "public base URL (optional)")
 		sub.Flags().StringVar(&allowedTools, "allowed-tools", "", "comma-separated allowed tools")
-		sub.Flags().StringVar(&sandboxMode, "sandbox-mode", "workspace", "sandbox mode")
+		sub.Flags().StringVar(&accessMode, "access-mode", "", "default access mode: read-only, workspace-write, or danger-full-access")
+		sub.Flags().StringVar(&approvalMode, "approval-mode", "", "default approval mode: untrusted, on-failure, on-request, or never")
+		sub.Flags().StringVar(&sandboxMode, "sandbox-mode", "workspace", "legacy sandbox mode alias: workspace or full_access")
+		sub.Flags().BoolVar(&skipPermissions, "dangerously-skip-permissions", false, "compatibility alias for --access-mode danger-full-access --approval-mode never")
 		sub.Flags().StringVar(&policyPath, "policy", "", "policy file path")
 		sub.Flags().StringVar(&sessionStorePath, "session-store", "", "session store file path")
 		sub.Flags().StringVar(&stateFile, "state-file", daemon.DefaultStateFile(), "daemon state file")

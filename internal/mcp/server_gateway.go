@@ -169,6 +169,14 @@ func (s *Server) ResolveInquiry(requestID, option, text string) (map[string]any,
 func (s *Server) StatusSnapshot() map[string]any {
 	sessions := s.SessionSnapshots()
 	prompts := s.PromptSnapshots()
+	accessMode := toolapi.ResolveAccessMode(toolapi.ExecSession{
+		AccessMode:  normalizeOptionalAccessMode(s.opts.DefaultAccessMode),
+		SandboxMode: s.opts.DefaultSandboxMode,
+	})
+	approvalMode := toolapi.ResolveApprovalMode(toolapi.ExecSession{
+		ApprovalMode:          normalizeOptionalApprovalMode(s.opts.DefaultApprovalMode),
+		RequireApprovalDigest: s.opts.RequireApprovalDigest,
+	})
 	return map[string]any{
 		"transport":         s.opts.Transport,
 		"workspace":         s.opts.DefaultWorkspacePath,
@@ -177,6 +185,8 @@ func (s *Server) StatusSnapshot() map[string]any {
 		"approval_count":    len(prompts["approvals"]),
 		"inquiry_count":     len(prompts["inquiries"]),
 		"require_approval":  s.opts.RequireApprovalDigest,
+		"default_access":    accessMode,
+		"default_approval":  approvalMode,
 		"default_sandbox":   s.opts.DefaultSandboxMode,
 		"default_allow_list": append([]string(nil), s.opts.DefaultAllowedTools...),
 	}

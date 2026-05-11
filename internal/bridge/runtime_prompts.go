@@ -5,7 +5,6 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"errors"
@@ -209,10 +208,19 @@ func (rc *RuntimeCore) promptPermission(ctx context.Context, category, summary s
 	}
 	switch strings.ToLower(strings.TrimSpace(r.Decision)) {
 	case "allow", "allow_once":
+		if rc != nil && rc.securityMgr != nil {
+			rc.securityMgr.RecordAuthorization("allow_once", category, summary, "", "")
+		}
 		return "allow"
 	case "session", "allow_session":
+		if rc != nil && rc.securityMgr != nil {
+			rc.securityMgr.RecordAuthorization("allow_session", category, summary, "", rc.securityMgr.AccessMode())
+		}
 		return "session"
 	default:
+		if rc != nil && rc.securityMgr != nil {
+			rc.securityMgr.RecordAuthorization("deny", category, summary, "", "")
+		}
 		return "deny"
 	}
 }

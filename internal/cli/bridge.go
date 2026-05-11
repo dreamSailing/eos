@@ -21,6 +21,8 @@ func newBridgeCmd() *cobra.Command {
 	var transport string
 	var workspace string
 	var allowedTools string
+	var accessMode string
+	var approvalMode string
 	var sandboxMode string
 	var policyPath string
 	var outputPath string
@@ -28,6 +30,7 @@ func newBridgeCmd() *cobra.Command {
 	var requireApprovalDigest bool
 	var includeTools bool
 	var includeCapabilities bool
+	var skipPermissions bool
 
 	cmd := &cobra.Command{
 		Use:    "bridge",
@@ -49,12 +52,15 @@ func newBridgeCmd() *cobra.Command {
 			if strings.TrimSpace(workspace) == "" {
 				return fmt.Errorf("workspace required")
 			}
+			modes := resolveModeConfig(accessMode, approvalMode, sandboxMode, skipPermissions, requireApprovalDigest)
 
 			manifest, err := serve.BuildBridgeManifest(serve.Options{
 				Transport:             transport,
 				DefaultWorkspacePath:  workspace,
 				DefaultAllowedTools:   splitCommaList(allowedTools),
-				DefaultSandboxMode:    sandboxMode,
+				DefaultAccessMode:     modes.AccessMode,
+				DefaultApprovalMode:   modes.ApprovalMode,
+				DefaultSandboxMode:    modes.SandboxMode,
 				PolicyPath:            policyPath,
 				RequireApprovalDigest: requireApprovalDigest,
 			}, serve.BridgeManifestOptions{
@@ -93,9 +99,12 @@ func newBridgeCmd() *cobra.Command {
 	manifestCmd.Flags().StringVar(&transport, "transport", "stdio", "bridge transport: stdio")
 	manifestCmd.Flags().StringVar(&workspace, "workspace", "", "workspace path (required)")
 	manifestCmd.Flags().StringVar(&allowedTools, "allowed-tools", "", "comma-separated allowed tools (optional)")
-	manifestCmd.Flags().StringVar(&sandboxMode, "sandbox-mode", "workspace", "sandbox mode: workspace or full_access")
+	manifestCmd.Flags().StringVar(&accessMode, "access-mode", "", "default access mode: read-only, workspace-write, or danger-full-access")
+	manifestCmd.Flags().StringVar(&approvalMode, "approval-mode", "", "default approval mode: untrusted, on-failure, on-request, or never")
+	manifestCmd.Flags().StringVar(&sandboxMode, "sandbox-mode", "workspace", "legacy sandbox mode alias: workspace or full_access")
 	manifestCmd.Flags().StringVar(&policyPath, "policy", "", "policy json file path (optional)")
 	manifestCmd.Flags().BoolVar(&requireApprovalDigest, "require-approval-digest", true, "require approvalDigest for medium/high risk tools")
+	manifestCmd.Flags().BoolVar(&skipPermissions, "dangerously-skip-permissions", false, "compatibility alias for --access-mode danger-full-access --approval-mode never")
 	manifestCmd.Flags().StringVar(&launchCommand, "command", "", "launch command for hosts (defaults to current executable)")
 	manifestCmd.Flags().StringVar(&outputPath, "out", "", "optional output file path")
 	manifestCmd.Flags().BoolVar(&includeTools, "include-tools", true, "embed executable tool catalog")

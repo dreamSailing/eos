@@ -199,6 +199,47 @@ func TestHandlePlanStyleSlashShowsCurrentAndSavesWorkspaceSetting(t *testing.T) 
 	}
 }
 
+func TestHandlePermissionsSlashSupportsAccessAndApprovalModes(t *testing.T) {
+	setTestHome(t)
+	app := newTestAppModel(t)
+
+	app.handlePermissionsSlash([]string{"access", "read-only"})
+	snap := app.adapter.GetCore().PermissionSnapshot()
+	if got := snap.AccessMode; got != "read-only" {
+		t.Fatalf("accessMode=%q, want read-only", got)
+	}
+	if got := snap.SandboxMode; got != "workspace" {
+		t.Fatalf("sandboxMode=%q, want workspace", got)
+	}
+
+	app.handlePermissionsSlash([]string{"approval", "never"})
+	snap = app.adapter.GetCore().PermissionSnapshot()
+	if got := snap.ApprovalMode; got != "never" {
+		t.Fatalf("approvalMode=%q, want never", got)
+	}
+
+	last := app.history[len(app.history)-1].content
+	if !strings.Contains(last, "审批模式") || !strings.Contains(last, "never") {
+		t.Fatalf("expected permissions output to include approval mode, got %q", last)
+	}
+}
+
+func TestHandleStatusSlashShowsAccessAndApprovalModes(t *testing.T) {
+	setTestHome(t)
+	app := newTestAppModel(t)
+	core := app.adapter.GetCore()
+	core.SetAccessMode("danger-full-access")
+	core.SetApprovalMode("never")
+
+	app.handleStatusSlash()
+	last := app.history[len(app.history)-1].content
+	for _, part := range []string{"访问模式", "danger-full-access", "审批模式", "never", "沙箱模式", "full_access"} {
+		if !strings.Contains(last, part) {
+			t.Fatalf("expected status output to contain %q, got %q", part, last)
+		}
+	}
+}
+
 func TestPredictionUpdateMsgShowsPredictionForMatchingDraft(t *testing.T) {
 	setTestHome(t)
 	t.Setenv("EOS_API_BASE", "https://example.com/v1")
