@@ -14,6 +14,10 @@ import (
 	"github.com/dreamSailing/eos/internal/config"
 )
 
+func boolRef(v bool) *bool {
+	return &v
+}
+
 // SaveModelConfig 保存模型配置
 func (rc *RuntimeCore) SaveModelConfig(cfg config.Config, path string) error {
 	return config.Save(cfg, path)
@@ -70,6 +74,15 @@ func (rc *RuntimeCore) GetActiveModel() (config.ModelEntry, bool) {
 	return config.ActiveModel(cfg)
 }
 
+func (rc *RuntimeCore) ResolveCapabilityModelConfig(capability string) (config.ModelEntry, string, bool) {
+	cfg, _ := config.Load()
+	route, err := ai.ResolveCapabilityRoute(cfg, ai.ParseCapability(capability))
+	if err == nil {
+		return route.Entry, route.Source, true
+	}
+	return config.ModelEntry{}, "", false
+}
+
 // SyncEnvModel 同步环境变量模型
 func (rc *RuntimeCore) SyncEnvModel() bool {
 	base := os.Getenv("EOS_API_BASE")
@@ -87,13 +100,13 @@ func (rc *RuntimeCore) SyncEnvModel() bool {
 	found := false
 	for i := range cfg.Models {
 		if cfg.Models[i].Source == "env" {
-			cfg.Models[i] = config.ModelEntry{Name: "env", APIBase: base, APIKey: key, Model: model, Source: "env"}
+			cfg.Models[i] = config.ModelEntry{Name: "env", APIBase: base, APIKey: key, Model: model, Source: "env", Role: config.ModelRolePrimary, Enabled: boolRef(true)}
 			found = true
 			break
 		}
 	}
 	if !found {
-		cfg.Models = append(cfg.Models, config.ModelEntry{Name: "env", APIBase: base, APIKey: key, Model: model, Source: "env"})
+		cfg.Models = append(cfg.Models, config.ModelEntry{Name: "env", APIBase: base, APIKey: key, Model: model, Source: "env", Role: config.ModelRolePrimary, Enabled: boolRef(true)})
 	}
 	cfg.Active = "env"
 	_ = config.Save(cfg, p)

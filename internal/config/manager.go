@@ -48,6 +48,17 @@ func (m *Manager) ResolveAPIConfig() (string, string, string, string) {
 	return base, key, model, m.path
 }
 
+func (m *Manager) ResolveCapabilityModelConfig(capability string) (ModelEntry, string, bool) {
+	cfg, _ := Load()
+	if active, ok := ActiveModel(cfg); ok && SupportsCapability(active, capability) {
+		return active, "primary", true
+	}
+	if entry, ok := ResolveCapabilityModel(cfg, capability); ok {
+		return entry, "capability_model", true
+	}
+	return ModelEntry{}, "", false
+}
+
 func (m *Manager) Load() (Config, string) {
 	return Load()
 }
@@ -118,13 +129,13 @@ func (m *Manager) SyncEnvModel() (string, bool) {
 	found := false
 	for i := range cfg.Models {
 		if cfg.Models[i].Source == "env" {
-			cfg.Models[i] = ModelEntry{Name: "env", APIBase: base, APIKey: key, Model: model, Source: "env"}
+			cfg.Models[i] = ModelEntry{Name: "env", APIBase: base, APIKey: key, Model: model, Source: "env", Role: ModelRolePrimary, Enabled: boolPtr(true)}
 			found = true
 			break
 		}
 	}
 	if !found {
-		cfg.Models = append(cfg.Models, ModelEntry{Name: "env", APIBase: base, APIKey: key, Model: model, Source: "env"})
+		cfg.Models = append(cfg.Models, ModelEntry{Name: "env", APIBase: base, APIKey: key, Model: model, Source: "env", Role: ModelRolePrimary, Enabled: boolPtr(true)})
 	}
 	cfg.Active = "env"
 	_ = Save(cfg, p)

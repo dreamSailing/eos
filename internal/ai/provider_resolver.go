@@ -279,6 +279,37 @@ func SupportsVisionFromCatalog(modelName string) bool {
 	return SupportsVision(modelName)
 }
 
+func SupportsCapabilityFromCatalog(modelName string, capability Capability) bool {
+	id := strings.ToLower(strings.TrimSpace(modelName))
+	entry := findCatalogEntryByKey(id)
+	if entry == nil {
+		return false
+	}
+	switch ParseCapability(capability.String()) {
+	case CapabilityVision:
+		return entry.SupportsVision
+	case CapabilityImageGeneration:
+		return entry.SupportsImageGeneration
+	case CapabilityVideoGeneration:
+		return entry.SupportsVideoGeneration
+	case CapabilitySpeechSynthesis:
+		return entry.SupportsSpeechSynthesis
+	default:
+		return false
+	}
+}
+
+func SupportsCapability(modelName string, capability Capability) bool {
+	switch ParseCapability(capability.String()) {
+	case CapabilityVision:
+		return SupportsVisionFromCatalog(modelName)
+	case CapabilityImageGeneration, CapabilityVideoGeneration, CapabilitySpeechSynthesis:
+		return SupportsCapabilityFromCatalog(modelName, capability)
+	default:
+		return false
+	}
+}
+
 func SupportsToolsFromCatalog(modelName string) bool {
 	id := strings.ToLower(strings.TrimSpace(modelName))
 	if entry := GetModelEntry(id); entry != nil {
