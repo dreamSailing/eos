@@ -4,8 +4,12 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
+
+	codectx "github.com/dreamSailing/eos/internal/context"
+	"github.com/dreamSailing/eos/internal/session"
 )
 
 func TestRecentVersionedFilesListIgnoresMetadataAndUsesModTime(t *testing.T) {
@@ -53,5 +57,60 @@ func TestRecentVersionedFilesListIgnoresMetadataAndUsesModTime(t *testing.T) {
 	want := []string{"dir/newer.txt", "dir/older.txt"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("recentVersionedFilesList() = %#v, want %#v", got, want)
+	}
+}
+
+func TestComputeInjectBudgetBytesUsesRemainingPromptBudget(t *testing.T) {
+	cm := session.NewContextManager()
+	cm.SetMaxChars(400)
+	for i := 0; i < 6; i++ {
+		cm.AddUser(strings.Repeat("budget ", 40))
+		cm.AddAssistant(strings.Repeat("reply ", 40))
+	}
+
+	rc := &RuntimeCore{cm: cm}
+	if got := computeInjectBudgetBytes(rc, 64); got != 0 {
+		t.Fatalf("computeInjectBudgetBytes() = %d, want 0 when prompt budget is exhausted", got)
+	}
+}
+
+func TestBuildInjectedContextPackageSummarizesTrimmedAndOmittedFiles(t *testing.T) {
+	root := t.TempDir()
+	old, _ := os.Getwd()
+	_ = os.Chdir(root)
+	t.Cleanup(func() { _ = os.Chdir(old) })
+
+	fileA := filepath.Join(root, "internal", "bridge", "runtime_invoke.go")
+	fileB := filepath.Join(root, "internal", "session", "context_build.go")
+	if err := os.MkdirAll(filepath.Dir(fileA), 0o755); err != nil {
+		t.Fatalf("MkdirAll(fileA) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(fileB), 0o755); err != nil {
+		t.Fatalf("MkdirAll(fileB) error = %v", err)
+	}
+	if err := os.WriteFile(fileA, []byte(strings.Repeat("func invoke() { helperCall() }\n", 160)), 0o644); err != nil {
+		t.Fatalf("WriteFile(fileA) error = %v", err)
+	}
+	if err := os.WriteFile(fileB, []byte(strings.Repeat("func build() { contextBudget() }\n", 160)), 0o644); err != nil {
+		t.Fatalf("WriteFile(fileB) error = %v", err)
+	}
+
+	rc := &RuntimeCore{cm: session.NewContextManager()}
+	pkg := rc.buildInjectedContextPackage("trim runtime invoke budget", []codectx.Suggestion{
+		{Path: "internal/bridge/runtime_invoke.go", Symbols: []string{"invoke"}},
+		{Path: "internal/session/context_build.go", Symbols: []string{"build"}},
+	}, 1400)
+
+	if pkg.usedBytes > 1400 {
+		t.Fatalf("package usedBytes = %d, want <= 1400", pkg.usedBytes)
+	}
+	if len(pkg.entries) == 0 {
+		t.Fatalf("expected at least one injected entry")
+	}
+	if pkg.trimmedFiles == 0 && pkg.omittedFiles == 0 {
+		t.Fatalf("expected trimmed or omitted files, got %#v", pkg)
+	}
+	if !strings.Contains(pkg.summary, "AutoContext package:") {
+		t.Fatalf("expected summary, got %q", pkg.summary)
 	}
 }

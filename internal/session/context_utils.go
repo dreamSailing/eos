@@ -5,10 +5,9 @@ package session
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
-	"strings"
 	"github.com/dreamSailing/eos/internal/ai"
+	"strings"
 )
 
 // Clear 清除上下文
@@ -134,6 +133,19 @@ func (c *ContextManager) GetConversationUsage() (chars, tokens int, usageRatio f
 	tokens = c.estimateMessagesTokensLocked(msgs)
 	if c.maxPromptTokens > 0 {
 		usageRatio = float64(tokens) / float64(c.maxPromptTokens)
+	}
+	return
+}
+
+// PromptBudgetStatus returns the current prompt limit, used tokens and remaining tokens.
+func (c *ContextManager) PromptBudgetStatus() (limit, used, remaining int) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	limit = c.maxPromptTokens
+	used = c.estimateTotalTokensLocked()
+	remaining = limit - used
+	if remaining < 0 {
+		remaining = 0
 	}
 	return
 }

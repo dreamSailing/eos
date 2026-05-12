@@ -5,13 +5,13 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,20 +19,56 @@ import (
 	codectx "github.com/dreamSailing/eos/internal/context"
 )
 
+type injectedContextPackage struct {
+	entries       []string
+	summary       string
+	usedBytes     int
+	includedFiles int
+	trimmedFiles  int
+	omittedFiles  int
+	omittedPaths  []string
+}
+
 func computeInjectBudgetBytes(rc *RuntimeCore, maxInjectKB int) int {
+	explicitBudget := maxInjectKB > 0
 	if maxInjectKB > 0 {
-		return maxInjectKB * 1024
+		maxInjectKB *= 1024
 	}
+	budget := maxInjectKB
 	model := ""
 	if rc != nil && rc.cm != nil {
 		model = rc.cm.ExportState().ModelName
 	}
-	window := ai.ContextWindowTokens(model)
-	if window <= 0 {
-		window = 128000
+	if budget <= 0 {
+		window := ai.ContextWindowTokens(model)
+		if window <= 0 {
+			window = 128000
+		}
+		budget = clampInt(int(float64(window)*4*0.06), 16*1024, 128*1024)
 	}
-	budget := int(float64(window) * 4 * 0.06)
-	return clampInt(budget, 16*1024, 128*1024)
+	if rc != nil && rc.cm != nil {
+		_, _, remaining := rc.cm.PromptBudgetStatus()
+		if remaining <= 0 {
+			return 0
+		}
+		remainingBudget := int(float64(remaining*4) * 0.55)
+		if remainingBudget <= 0 {
+			return 0
+		}
+		if budget > remainingBudget {
+			budget = remainingBudget
+		}
+	}
+	if budget < 1024 {
+		if explicitBudget {
+			return budget
+		}
+		return 0
+	}
+	if explicitBudget {
+		return budget
+	}
+	return clampInt(budget, 1024, 128*1024)
 }
 
 func buildInjectCandidates(rc *RuntimeCore, query string, sugg []codectx.Suggestion, limit int) []codectx.Suggestion {
@@ -198,6 +234,159 @@ func tokenizeKeywords(text string) []string {
 		out = append(out, w)
 	}
 	return out
+}
+
+func (rc *RuntimeCore) buildInjectedContextPackage(query string, sugg []codectx.Suggestion, maxBytes int) injectedContextPackage {
+	pkg := injectedContextPackage{
+		omittedPaths: make([]string, 0, 4),
+	}
+	if maxBytes <= 0 || len(sugg) == 0 {
+		return pkg
+	}
+
+	perFileMax := clampInt(maxBytes/clampInt(len(sugg), 1, 12), 1536, 12288)
+	for idx, candidate := range sugg {
+		left := maxBytes - pkg.usedBytes
+		if left < 512 {
+			pkg.omittedFiles += len(sugg) - idx
+			pkg.omittedPaths = appendInjectedOmitted(pkg.omittedPaths, candidate.Path)
+			for rest := idx + 1; rest < len(sugg); rest++ {
+				pkg.omittedPaths = appendInjectedOmitted(pkg.omittedPaths, sugg[rest].Path)
+			}
+			break
+		}
+
+		remainingCandidates := len(sugg) - idx
+		budget := left
+		if remainingCandidates > 0 {
+			fairShare := left / remainingCandidates
+			if fairShare > 0 && fairShare < budget {
+				budget = fairShare
+			}
+		}
+		if budget > perFileMax {
+			budget = perFileMax
+		}
+		if budget < 512 {
+			pkg.omittedFiles++
+			pkg.omittedPaths = appendInjectedOmitted(pkg.omittedPaths, candidate.Path)
+			continue
+		}
+
+		entry, trimmed, err := rc.buildInjectedContextEntry(query, candidate, budget)
+		if err != nil || strings.TrimSpace(entry) == "" {
+			pkg.omittedFiles++
+			pkg.omittedPaths = appendInjectedOmitted(pkg.omittedPaths, candidate.Path)
+			continue
+		}
+		entryBytes := len(entry)
+		if entryBytes > left {
+			pkg.omittedFiles++
+			pkg.omittedPaths = appendInjectedOmitted(pkg.omittedPaths, candidate.Path)
+			continue
+		}
+
+		pkg.entries = append(pkg.entries, entry)
+		pkg.usedBytes += entryBytes
+		pkg.includedFiles++
+		if trimmed {
+			pkg.trimmedFiles++
+		}
+	}
+	pkg.summary = formatInjectedContextSummary(pkg, maxBytes)
+	return pkg
+}
+
+func (rc *RuntimeCore) buildInjectedContextEntry(query string, sugg codectx.Suggestion, maxBytes int) (string, bool, error) {
+	if maxBytes <= 0 {
+		return "", false, nil
+	}
+	contentBudget := maxBytes - 256
+	if contentBudget < 256 {
+		contentBudget = maxBytes
+	}
+	ap := rc.resolveWithinRoot(sugg.Path)
+	bs, err := os.ReadFile(ap)
+	if err != nil {
+		return "", false, err
+	}
+
+	raw := strings.ReplaceAll(string(bs), "\r\n", "\n")
+	snippet := extractRelevantSnippet(raw, query, sugg.Symbols, contentBudget)
+	snippet = strings.TrimSpace(snippet)
+	if snippet == "" {
+		return "", false, nil
+	}
+
+	trimmed := len(snippet) < len(raw)
+	meta := buildInjectedMetaLine(sugg, trimmed)
+	entry := "@" + strings.TrimSpace(sugg.Path) + "\n" + meta + "\n" + snippet
+	if len(entry) > maxBytes {
+		snippet = extractRelevantSnippet(raw, query, sugg.Symbols, maxBytes/2)
+		snippet = strings.TrimSpace(snippet)
+		entry = "@" + strings.TrimSpace(sugg.Path) + "\n" + meta + "\n" + snippet
+		trimmed = true
+	}
+	if len(entry) > maxBytes {
+		entry = entry[:maxBytes]
+		trimmed = true
+	}
+	return strings.TrimSpace(entry), trimmed, nil
+}
+
+func buildInjectedMetaLine(sugg codectx.Suggestion, trimmed bool) string {
+	parts := []string{"[auto-context"}
+	if len(sugg.Symbols) > 0 {
+		symbols := sugg.Symbols
+		if len(symbols) > 4 {
+			symbols = symbols[:4]
+		}
+		parts = append(parts, "symbols="+strings.Join(symbols, ","))
+	}
+	if trimmed {
+		parts = append(parts, "trimmed")
+	}
+	return strings.Join(parts, "; ") + "]"
+}
+
+func appendInjectedOmitted(paths []string, path string) []string {
+	path = strings.TrimSpace(path)
+	if path == "" || len(paths) >= 4 {
+		return paths
+	}
+	return append(paths, path)
+}
+
+func formatInjectedContextSummary(pkg injectedContextPackage, maxBytes int) string {
+	if pkg.includedFiles == 0 && pkg.omittedFiles == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("AutoContext package: used ")
+	sb.WriteString(strconv.Itoa(pkg.usedBytes))
+	sb.WriteString("/")
+	sb.WriteString(strconv.Itoa(maxBytes))
+	sb.WriteString(" bytes, included ")
+	sb.WriteString(strconv.Itoa(pkg.includedFiles))
+	sb.WriteString(" file(s)")
+	if pkg.trimmedFiles > 0 {
+		sb.WriteString(", trimmed ")
+		sb.WriteString(strconv.Itoa(pkg.trimmedFiles))
+	}
+	if pkg.omittedFiles > 0 {
+		sb.WriteString(", omitted ")
+		sb.WriteString(strconv.Itoa(pkg.omittedFiles))
+	}
+	if len(pkg.omittedPaths) > 0 {
+		sb.WriteString(" [")
+		sb.WriteString(strings.Join(pkg.omittedPaths, ", "))
+		if pkg.omittedFiles > len(pkg.omittedPaths) {
+			sb.WriteString(", +")
+			sb.WriteString(strconv.Itoa(pkg.omittedFiles - len(pkg.omittedPaths)))
+		}
+		sb.WriteString("]")
+	}
+	return sb.String()
 }
 
 func recentVersionedFilesList(root string, limit int) []string {

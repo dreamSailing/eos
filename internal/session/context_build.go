@@ -5,10 +5,9 @@ package session
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
-	"strings"
 	"github.com/dreamSailing/eos/internal/ai"
+	"strings"
 )
 
 // Build 构建上下文消息列表
@@ -46,23 +45,7 @@ func (c *ContextManager) buildLocked() []ai.Message {
 		}
 		msgs = append(msgs, m)
 	}
-	if len(c.currentFull) > 0 {
-		for _, m := range c.currentFull {
-			if strings.TrimSpace(m.Content) != "" && !c.shouldSnip(m) {
-				msgs = append(msgs, m)
-			}
-		}
-	}
-	for _, t := range c.toolObs {
-		if strings.TrimSpace(t) != "" {
-			msgs = append(msgs, ai.Message{Role: "system", Content: t})
-		}
-	}
-	for _, t := range c.tools {
-		if strings.TrimSpace(t) != "" {
-			msgs = append(msgs, ai.Message{Role: "system", Content: t})
-		}
-	}
+	msgs = c.appendBudgetedAuxContextLocked(msgs)
 	if c.estimateMessagesTokensLocked(msgs) > c.maxPromptTokens {
 		c.aggressiveCompactLocked(c.maxPromptTokens)
 		msgs = c.buildPreviewLocked()

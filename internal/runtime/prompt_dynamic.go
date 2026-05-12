@@ -15,8 +15,8 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/internal/memory"
 	mcppkg "github.com/dreamSailing/eos/internal/mcp"
+	"github.com/dreamSailing/eos/internal/memory"
 	plugpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
 )
 
@@ -108,28 +108,8 @@ func buildProjectPromptAdditions(cwd string, dispatchOnly bool) string {
 	return strings.TrimSpace(sb.String())
 }
 
-func buildIntentPromptAdditions(history []*schema.Message) string {
-	lastUser := lastUserText(history)
-	if strings.TrimSpace(lastUser) == "" {
-		return ""
-	}
-	intent := detectIntent(lastUser)
-
-	var sb strings.Builder
-	sb.WriteString("**本轮意图**：")
-	sb.WriteString(intent)
-	sb.WriteString("\n")
-	switch intent {
-	case "调试/修复":
-		sb.WriteString("- 优先读取报错与相关文件，定位根因后再改代码\n")
-	case "编码/实现":
-		sb.WriteString("- 先了解现状与约束，再进行最小可验证改动\n")
-	case "重构/优化":
-		sb.WriteString("- 先扫描结构与依赖，再按小步提交式修改并验证\n")
-	default:
-		sb.WriteString("- 直接给出简洁答案；必要时再调用工具补充证据\n")
-	}
-	return strings.TrimSpace(sb.String())
+func buildIntentPromptAdditions(cwd string, history []*schema.Message) string {
+	return formatIntentContextPlan(buildIntentContextPlan(cwd, history))
 }
 
 // detectIntent 基于多维度评分检测用户意图
