@@ -32,6 +32,9 @@ type TUIOptions struct {
 	MaxTurns         int      // --max-turns
 	AllowedTools     []string // --allowed-tools
 	DisallowedTools  []string // --disallowed-tools
+	AccessMode       string   // --access-mode
+	ApprovalMode     string   // --approval-mode
+	SandboxMode      string   // --sandbox-mode legacy alias
 	SkipPermissions  bool     // --dangerously-skip-permissions
 }
 
@@ -155,6 +158,15 @@ func applyTUIOptions(core *bridge.RuntimeCore, cm *session.ContextManager, opts 
 	}
 	if opts.SkipPermissions {
 		core.SetSkipPermissions(true)
+	} else {
+		if strings.TrimSpace(opts.AccessMode) != "" {
+			core.SetAccessMode(opts.AccessMode)
+		} else if strings.TrimSpace(opts.SandboxMode) != "" {
+			core.SetSandboxMode(opts.SandboxMode)
+		}
+		if strings.TrimSpace(opts.ApprovalMode) != "" {
+			core.SetApprovalMode(opts.ApprovalMode)
+		}
 	}
 	if opts.SessionID != "" {
 		slog.Info("ui.startup.session", "session_id", opts.SessionID)

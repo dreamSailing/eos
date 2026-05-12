@@ -48,6 +48,8 @@ func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
 		Transport:             "stdio",
 		DefaultWorkspacePath:  workspace,
 		DefaultAllowedTools:   []string{"read", "skills_list", "mcp_status", "echo_plugin"},
+		DefaultAccessMode:     "danger-full-access",
+		DefaultApprovalMode:   "never",
 		DefaultSandboxMode:    "full_access",
 		RequireApprovalDigest: true,
 	}, BridgeManifestOptions{
@@ -85,11 +87,23 @@ func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
 	if manifest.SessionDefaults.ExecutionMode != "auto" {
 		t.Fatalf("ExecutionMode=%q, want auto", manifest.SessionDefaults.ExecutionMode)
 	}
+	if manifest.SessionDefaults.AccessMode != "danger-full-access" {
+		t.Fatalf("AccessMode=%q, want danger-full-access", manifest.SessionDefaults.AccessMode)
+	}
+	if manifest.SessionDefaults.ApprovalMode != "never" {
+		t.Fatalf("ApprovalMode=%q, want never", manifest.SessionDefaults.ApprovalMode)
+	}
 	if manifest.SessionDefaults.SandboxMode != "full_access" {
 		t.Fatalf("SandboxMode=%q, want full_access", manifest.SessionDefaults.SandboxMode)
 	}
 	if len(manifest.ExecutionModes) == 0 {
 		t.Fatalf("ExecutionModes should not be empty")
+	}
+	if len(manifest.AccessModes) == 0 {
+		t.Fatalf("AccessModes should not be empty")
+	}
+	if len(manifest.ApprovalModes) == 0 {
+		t.Fatalf("ApprovalModes should not be empty")
 	}
 	if !manifest.ServerCapabilities.CapabilityCatalog || !manifest.ServerCapabilities.Tasks || !manifest.ServerCapabilities.Sessions {
 		t.Fatalf("ServerCapabilities=%+v, want tasks/sessions/capabilityCatalog enabled", manifest.ServerCapabilities)
@@ -102,6 +116,11 @@ func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
 
 	argsJoined := strings.Join(manifest.Launch.Args, " ")
 	for _, part := range []string{"serve", "--transport", "--workspace", workspaceAbs, "--allowed-tools"} {
+		if !strings.Contains(argsJoined, part) {
+			t.Fatalf("Launch.Args=%v, missing %q", manifest.Launch.Args, part)
+		}
+	}
+	for _, part := range []string{"--sandbox-mode", "full_access"} {
 		if !strings.Contains(argsJoined, part) {
 			t.Fatalf("Launch.Args=%v, missing %q", manifest.Launch.Args, part)
 		}

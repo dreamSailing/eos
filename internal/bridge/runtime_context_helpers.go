@@ -18,7 +18,11 @@ func (rc *RuntimeCore) withWorkspaceRoot(ctx context.Context) context.Context {
 		ctx = context.Background()
 	}
 	if root := strings.TrimSpace(rc.workingRoot()); root != "" {
-		return tools.WithWorkspaceRoot(ctx, root)
+		ctx = tools.WithWorkspaceRoot(ctx, root)
+	}
+	if rc != nil && rc.securityMgr != nil {
+		ctx = tools.WithAccessMode(ctx, rc.securityMgr.AccessMode())
+		ctx = tools.WithApprovalMode(ctx, rc.securityMgr.ApprovalMode())
 	}
 	return ctx
 }

@@ -32,6 +32,8 @@ type persistedSession struct {
 	Preview                string               `json:"preview,omitempty"`
 	AllowedTools           []string             `json:"allowed_tools,omitempty"`
 	ExecutionMode          string               `json:"execution_mode,omitempty"`
+	AccessMode             string               `json:"access_mode,omitempty"`
+	ApprovalMode           string               `json:"approval_mode,omitempty"`
 	SandboxMode            string               `json:"sandbox_mode,omitempty"`
 	TrustedWorkspace       bool                 `json:"trusted_workspace,omitempty"`
 	MaxConcurrentToolCalls int                  `json:"max_concurrent_tool_calls,omitempty"`
@@ -118,6 +120,8 @@ func (s *Server) loadPersistedSessions() error {
 			preview:                normalizeSessionPreview(item.Preview),
 			allowedTools:           sessionAllowedTools(item.AllowedTools),
 			executionMode:          toolapi.NormalizeExecutionMode(item.ExecutionMode),
+			accessMode:             normalizeOptionalAccessMode(item.AccessMode),
+			approvalMode:           normalizeOptionalApprovalMode(item.ApprovalMode),
 			sandboxMode:            toolapi.NormalizeSandboxMode(item.SandboxMode),
 			trustedWorkspace:       item.TrustedWorkspace,
 			maxConcurrentToolCalls: item.MaxConcurrentToolCalls,
@@ -242,6 +246,8 @@ func snapshotSession(sess *session, now time.Time) *persistedSession {
 		Preview:                normalizeSessionPreview(sess.preview),
 		AllowedTools:           sessionAllowedToolList(sess.allowedTools),
 		ExecutionMode:          strings.TrimSpace(sess.executionMode),
+		AccessMode:             normalizeOptionalAccessMode(sess.accessMode),
+		ApprovalMode:           normalizeOptionalApprovalMode(sess.approvalMode),
 		SandboxMode:            toolapi.NormalizeSandboxMode(sess.sandboxMode),
 		TrustedWorkspace:       sess.trustedWorkspace,
 		MaxConcurrentToolCalls: sess.maxConcurrentToolCalls,

@@ -11,6 +11,8 @@ type Options struct {
 	Transport             string
 	DefaultWorkspacePath  string
 	DefaultAllowedTools   []string
+	DefaultAccessMode     string
+	DefaultApprovalMode   string
 	DefaultSandboxMode    string
 	PolicyPath            string
 	SessionStorePath      string
@@ -160,12 +162,15 @@ type parameterInfoDTO struct {
 }
 
 type toolAccessDTO struct {
-	Mode          string `json:"mode"`
-	SandboxMode   string `json:"sandboxMode,omitempty"`
-	Visible       bool   `json:"visible"`
-	Executable    bool   `json:"executable"`
-	NeedsApproval bool   `json:"needsApproval"`
-	Reason        string `json:"reason,omitempty"`
+	Mode           string `json:"mode"`
+	AccessMode     string `json:"accessMode,omitempty"`
+	ApprovalMode   string `json:"approvalMode,omitempty"`
+	ApprovalSource string `json:"approvalSource,omitempty"`
+	SandboxMode    string `json:"sandboxMode,omitempty"`
+	Visible        bool   `json:"visible"`
+	Executable     bool   `json:"executable"`
+	NeedsApproval  bool   `json:"needsApproval"`
+	Reason         string `json:"reason,omitempty"`
 }
 
 type executionModeDTO struct {
@@ -173,4 +178,16 @@ type executionModeDTO struct {
 	Aliases          []string `json:"aliases,omitempty"`
 	Description      string   `json:"description,omitempty"`
 	ApprovalBehavior string   `json:"approvalBehavior,omitempty"`
+}
+
+type accessModeDTO struct {
+	Name        string   `json:"name"`
+	Aliases     []string `json:"aliases,omitempty"`
+	Description string   `json:"description,omitempty"`
+}
+
+type approvalModeDTO struct {
+	Name        string   `json:"name"`
+	Aliases     []string `json:"aliases,omitempty"`
+	Description string   `json:"description,omitempty"`
 }

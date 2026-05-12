@@ -5,10 +5,54 @@ package toolapi
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import "testing"
 
 var testAllModes = []string{"auto", "plan"}
+
+func TestNormalizeAccessModeAcceptsCodexAndLegacyInputs(t *testing.T) {
+	tests := map[string]string{
+		"":                   "workspace-write",
+		"read-only":          "read-only",
+		"readonly":           "read-only",
+		"workspace-write":    "workspace-write",
+		"workspace":          "workspace-write",
+		"full_access":        "danger-full-access",
+		"danger-full-access": "danger-full-access",
+		"unknown":            "workspace-write",
+	}
+	for input, want := range tests {
+		if got := NormalizeAccessMode(input); got != want {
+			t.Fatalf("NormalizeAccessMode(%q)=%q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestNormalizeApprovalModeAcceptsCodexInputs(t *testing.T) {
+	tests := map[string]string{
+		"":           "on-request",
+		"untrusted":  "untrusted",
+		"on-failure": "on-failure",
+		"on_failure": "on-failure",
+		"on-request": "on-request",
+		"never":      "never",
+		"unknown":    "on-request",
+	}
+	for input, want := range tests {
+		if got := NormalizeApprovalMode(input); got != want {
+			t.Fatalf("NormalizeApprovalMode(%q)=%q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestResolveAccessAndApprovalModesFallbackFromLegacyFields(t *testing.T) {
+	sess := ExecSession{SandboxMode: "full_access", RequireApprovalDigest: false}
+	if got := ResolveAccessMode(sess); got != "danger-full-access" {
+		t.Fatalf("ResolveAccessMode()=%q, want danger-full-access", got)
+	}
+	if got := ResolveApprovalMode(sess); got != "on-failure" {
+		t.Fatalf("ResolveApprovalMode()=%q, want on-failure", got)
+	}
+}
 
 func TestFilterVisibleTools_PlanModeOnlyKeepsLowRisk(t *testing.T) {
 	defs := []ToolDefinition{
@@ -118,14 +162,81 @@ func TestEvaluateToolAccess_PlanAllowsReadOnlyTools(t *testing.T) {
 	}
 }
 
+func TestEvaluateToolAccess_ReadOnlyAccessModeBlocksMutatingTools(t *testing.T) {
+	def := ToolDefinition{Name: "edit", RiskLevel: RiskMedium, VisibleIn: testAllModes, Invocable: true}
+	access := EvaluateToolAccess(def, ExecSession{
+		AllowedTools:  map[string]bool{"edit": true},
+		ExecutionMode: "auto",
+		AccessMode:    "read-only",
+	})
+	if access.Visible || access.Executable {
+		t.Fatalf("read-only should block edit, got %+v", access)
+	}
+	if access.Reason != "access_mode" {
+		t.Fatalf("reason=%q, want access_mode", access.Reason)
+	}
+}
+
+func TestEvaluateToolAccess_ApprovalModeAffectsApprovalDecision(t *testing.T) {
+	def := ToolDefinition{Name: "bash", RiskLevel: RiskHigh, VisibleIn: testAllModes, Invocable: true}
+	untrusted := EvaluateToolAccess(def, ExecSession{
+		AllowedTools:  map[string]bool{"bash": true},
+		ExecutionMode: "auto",
+		ApprovalMode:  "untrusted",
+	})
+	if !untrusted.NeedsApproval {
+		t.Fatalf("untrusted should require approval, got %+v", untrusted)
+	}
+	onFailure := EvaluateToolAccess(def, ExecSession{
+		AllowedTools:  map[string]bool{"bash": true},
+		ExecutionMode: "auto",
+		ApprovalMode:  "on-failure",
+	})
+	if onFailure.NeedsApproval {
+		t.Fatalf("on-failure should not pre-approve here, got %+v", onFailure)
+	}
+}
+
+func TestEvaluateToolAccess_UsesApprovalOverrideMetadata(t *testing.T) {
+	def := ToolDefinition{
+		Name:      "mcp:demo",
+		RiskLevel: RiskHigh,
+		VisibleIn: testAllModes,
+		Invocable: true,
+		Metadata: map[string]any{
+			"approval_mode": "never",
+		},
+	}
+	serviceDefault := EvaluateToolAccess(def, ExecSession{
+		AllowedTools:  map[string]bool{"mcp:demo": true},
+		ExecutionMode: "auto",
+		ApprovalMode:  "untrusted",
+	})
+	if serviceDefault.ApprovalMode != "never" || serviceDefault.ApprovalSource != "service_default" {
+		t.Fatalf("service override not applied: %+v", serviceDefault)
+	}
+
+	def.Metadata["tool_approval_override"] = map[string]any{
+		"mcp:demo": "on-request",
+	}
+	toolOverride := EvaluateToolAccess(def, ExecSession{
+		AllowedTools:  map[string]bool{"mcp:demo": true},
+		ExecutionMode: "auto",
+		ApprovalMode:  "untrusted",
+	})
+	if toolOverride.ApprovalMode != "on-request" || toolOverride.ApprovalSource != "tool_override" {
+		t.Fatalf("tool override not applied: %+v", toolOverride)
+	}
+}
+
 func TestNormalizeExecutionModeAcceptsCurrentModesOnly(t *testing.T) {
 	tests := map[string]string{
-		"auto":     "auto",
-		"自动":       "auto",
-		"plan":     "plan",
-		"计划优先":     "plan",
-		"先出计划":     "plan",
-		"unknown":  "auto",
+		"auto":    "auto",
+		"自动":      "auto",
+		"plan":    "plan",
+		"计划优先":    "plan",
+		"先出计划":    "plan",
+		"unknown": "auto",
 	}
 
 	for input, want := range tests {

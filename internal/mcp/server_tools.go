@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/dreamSailing/eos/internal/toolapi"
+	"github.com/google/uuid"
 	mcpmodel "github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
-	"github.com/google/uuid"
 )
 
 type controlToolDef struct {
@@ -42,6 +42,8 @@ func (s *Server) runtimeTools() []mcpserver.ServerTool {
 		WorkspaceRoot:         s.opts.DefaultWorkspacePath,
 		AllowedTools:          allowedToolsMap(s.opts.DefaultAllowedTools),
 		ExecutionMode:         "auto",
+		AccessMode:            normalizeOptionalAccessMode(s.opts.DefaultAccessMode),
+		ApprovalMode:          normalizeOptionalApprovalMode(s.opts.DefaultApprovalMode),
 		SandboxMode:           s.opts.DefaultSandboxMode,
 		RequireApprovalDigest: s.opts.RequireApprovalDigest,
 	}
@@ -189,6 +191,8 @@ func (s *Server) handleRuntimeTool(def toolapi.ToolDefinition) func(context.Cont
 			WorkspaceRoot:         sess.WorkspaceAbs,
 			AllowedTools:          sess.AllowedTools,
 			ExecutionMode:         sess.ExecutionMode,
+			AccessMode:            sess.AccessMode,
+			ApprovalMode:          sess.ApprovalMode,
 			SandboxMode:           sess.SandboxMode,
 			RequireApprovalDigest: sess.RequireApprovalDigest,
 		})
@@ -202,14 +206,17 @@ func (s *Server) handleRuntimeTool(def toolapi.ToolDefinition) func(context.Cont
 		if access.NeedsApproval && !s.isApproved(sess, callID, digest) {
 			pending := s.ensurePendingApproval(sess, callID, def.Name, cleanArgs, preview, digest)
 			return toolErrorResult("approval required", map[string]any{
-				"tool":        def.Name,
-				"session_id":  sess.ID,
-				"request_id":  pending.RequestID,
-				"digest":      pending.Digest,
-				"preview":     cloneMap(pending.Preview),
-				"expires_at":  pending.ExpiresAt.Format(time.RFC3339),
-				"status":      "pending_approval",
-				"related_uri": "eos://sessions/" + sess.ID + "/approvals",
+				"tool":                  def.Name,
+				"session_id":            sess.ID,
+				"request_id":            pending.RequestID,
+				"digest":                pending.Digest,
+				"preview":               cloneMap(pending.Preview),
+				"expires_at":            pending.ExpiresAt.Format(time.RFC3339),
+				"status":                "pending_approval",
+				"approval_mode":         access.ApprovalMode,
+				"approval_source":       access.ApprovalSource,
+				"suggested_access_mode": suggestedUpgradeAccessMode(access),
+				"related_uri":           "eos://sessions/" + sess.ID + "/approvals",
 			}), nil
 		}
 
@@ -219,6 +226,8 @@ func (s *Server) handleRuntimeTool(def toolapi.ToolDefinition) func(context.Cont
 			AllowedTools:          sess.AllowedTools,
 			TraceID:               callID,
 			ExecutionMode:         sess.ExecutionMode,
+			AccessMode:            sess.AccessMode,
+			ApprovalMode:          sess.ApprovalMode,
 			SandboxMode:           sess.SandboxMode,
 			RequireApprovalDigest: sess.RequireApprovalDigest,
 		}, []toolapi.ToolCall{{
@@ -244,6 +253,16 @@ func firstNonEmpty(values ...string) string {
 		if value != "" {
 			return value
 		}
+	}
+	return ""
+}
+
+func suggestedUpgradeAccessMode(access toolapi.ToolAccess) string {
+	if access.AccessMode == "danger-full-access" {
+		return ""
+	}
+	if access.Reason == "sandbox_mode" || access.Reason == "access_mode" || access.AccessMode == "workspace-write" {
+		return "danger-full-access"
 	}
 	return ""
 }
@@ -304,6 +323,8 @@ func (s *Server) controlTools() []controlToolDef {
 				"properties": map[string]any{
 					"workspace_root":          map[string]any{"type": "string"},
 					"execution_mode":          map[string]any{"type": "string"},
+					"access_mode":             map[string]any{"type": "string"},
+					"approval_mode":           map[string]any{"type": "string"},
 					"sandbox_mode":            map[string]any{"type": "string"},
 					"require_approval_digest": map[string]any{"type": "boolean"},
 					"allowed_tools":           map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
@@ -599,6 +620,13 @@ func (s *Server) resolveApproval(sess *runtimeSession, requestID, decision, poli
 	item.Reason = strings.TrimSpace(reason)
 	item.ResolvedAt = time.Now()
 	sess.UpdatedAt = time.Now()
+	sess.LastAuthorization = map[string]any{
+		"decision":           item.Decision,
+		"tool":               item.Tool,
+		"reason":             item.Reason,
+		"target_access_mode": item.TargetAccessMode,
+		"at":                 item.ResolvedAt.Format(time.RFC3339),
+	}
 	return item, nil
 }
 

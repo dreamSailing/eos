@@ -5,11 +5,10 @@ package session
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
+	"github.com/dreamSailing/eos/internal/ai"
 	"strings"
 	"testing"
-	"github.com/dreamSailing/eos/internal/ai"
 )
 
 func TestContextManager_BuildTrimsToBudget(t *testing.T) {
@@ -43,6 +42,39 @@ func TestContextManager_AutoCompactUsesTokens(t *testing.T) {
 	stats := cm.GetCompressionStats()
 	if stats.TotalCompressions == 0 {
 		t.Fatalf("expected compressions > 0, got %#v", stats)
+	}
+}
+
+func TestContextManager_BuildPackagesAuxContextWithinBudget(t *testing.T) {
+	cm := NewContextManager()
+	cm.SetMaxChars(1200)
+	cm.AddPinned(aiMessage("system", "pinned"))
+	cm.AddUser("focus on runtime injection")
+	cm.AddAssistant("ready")
+	cm.AddToolFull("@internal/bridge/runtime_invoke.go\n" + strings.Repeat("alpha beta gamma delta epsilon zeta eta theta\n", 120))
+	cm.AddToolFull("@internal/session/context_build.go\n" + strings.Repeat("one two three four five six seven eight\n", 120))
+
+	msgs := cm.Build()
+	got := cm.EstimateMessageTokens(msgs)
+	if got > cm.maxPromptTokens {
+		t.Fatalf("expected tokens <= %d, got %d", cm.maxPromptTokens, got)
+	}
+
+	foundTrimmed := false
+	foundSummary := false
+	for _, msg := range msgs {
+		if strings.Contains(msg.Content, "[trimmed to fit prompt budget]") {
+			foundTrimmed = true
+		}
+		if strings.HasPrefix(msg.Content, "Context package: ") {
+			foundSummary = true
+		}
+	}
+	if !foundTrimmed {
+		t.Fatalf("expected trimmed aux context entry in build result")
+	}
+	if !foundSummary {
+		t.Fatalf("expected context package summary in build result")
 	}
 }
 

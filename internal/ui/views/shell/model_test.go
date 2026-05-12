@@ -31,7 +31,6 @@ func TestRenderStatusBarShowsExecutionMode(t *testing.T) {
 		t.Fatalf("expected status bar to include execution mode, got %q", out)
 	}
 }
-
 func TestRightKeyAcceptsPredictionOnlyWhenInputEmpty(t *testing.T) {
 	s := styles.NewStyles(styles.GetTheme("dark"))
 	model := New(100, 30, s, "zh")

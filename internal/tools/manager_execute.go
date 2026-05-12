@@ -122,6 +122,9 @@ func (m *Manager) executeSingleWithCache(ctx context.Context, call ToolCall, now
 	if allowed := AllowedToolsFromContext(ctx); allowed != nil && !allowed[strings.ToLower(call.Tool)] {
 		return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: "permission denied: tool not allowed", Display: "错误：权限被拒绝：工具未授权", Ts: now}
 	}
+	if ok, reason := AccessModeAllowsToolCall(ctx, call); !ok {
+		return ToolResult{ID: call.ID, Type: "tool_result", Tool: call.Tool, Status: "error", Error: reason, Display: "错误：" + reason, Ts: now}
+	}
 
 	// Fix 4: Ask-tool-approval for tools that require explicit user confirmation
 	if m.AskToolApproval != nil && GetToolRiskLevel(call.Tool) >= RiskLevelHigh {
@@ -262,6 +265,9 @@ func (m *Manager) execStructured(ctx context.Context, call ToolCall) ToolResult 
 	if allowed := AllowedToolsFromContext(ctx); allowed != nil && !allowed[strings.ToLower(call.Tool)] {
 		r := ToolResult{Type: "tool_result", Tool: call.Tool, Status: "error", Error: "permission denied: tool not allowed", Display: "错误：权限被拒绝：工具未授权"}
 		return r
+	}
+	if ok, reason := AccessModeAllowsToolCall(ctx, call); !ok {
+		return ToolResult{Type: "tool_result", Tool: call.Tool, Status: "error", Error: reason, Display: "错误：" + reason}
 	}
 
 	return handler(ctx, call.Parameters)

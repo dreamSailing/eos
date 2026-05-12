@@ -441,28 +441,15 @@ func (rc *RuntimeCore) buildContextHint(sugg []codectx.Suggestion) string {
 
 // injectContextFiles 注入上下文文件内容到当前会话
 func (rc *RuntimeCore) injectContextFiles(query string, sugg []codectx.Suggestion, maxBytes int) {
-	used := 0
 	if maxBytes <= 0 {
 		return
 	}
-	perFileMax := clampInt(maxBytes/clampInt(len(sugg), 1, 12), 2048, 16384)
-
-	for _, s := range sugg {
-		if used >= maxBytes {
-			break
-		}
-		budget := perFileMax
-		if left := maxBytes - used; left < budget {
-			budget = left
-		}
-
-		content, err := rc.readContextFile(query, s, budget)
-		if err != nil || strings.TrimSpace(content) == "" {
-			continue
-		}
-
-		rc.cm.AddToolFull("@" + s.Path + "\n" + content)
-		used += len(content)
+	pkg := rc.buildInjectedContextPackage(query, sugg, maxBytes)
+	if strings.TrimSpace(pkg.summary) != "" {
+		rc.cm.AddToolSummary(pkg.summary)
+	}
+	for _, entry := range pkg.entries {
+		rc.cm.AddToolFull(entry)
 	}
 }
 

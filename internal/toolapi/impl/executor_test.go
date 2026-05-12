@@ -73,3 +73,27 @@ func TestExecutorInitializesSkillsAndMCPManagers(t *testing.T) {
 		t.Fatalf("mcp_status servers=%v", results[1].Data["servers"])
 	}
 }
+
+func TestExecutorHonorsReadOnlyAccessMode(t *testing.T) {
+	workspace := t.TempDir()
+	exec := newExecutor(workspace)
+	results, err := exec.Execute(context.Background(), toolapi.ExecSession{
+		WorkspaceRoot: workspace,
+		AllowedTools: map[string]bool{
+			"edit": true,
+		},
+		ExecutionMode: "auto",
+		AccessMode:    "read-only",
+	}, []toolapi.ToolCall{
+		{ID: "c1", Name: "edit", Params: map[string]any{"file": "a.txt", "old": "", "new": "x"}},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("results=%d want=1", len(results))
+	}
+	if results[0].Status != "error" {
+		t.Fatalf("expected edit blocked, got %+v", results[0])
+	}
+}

@@ -5,7 +5,6 @@ package runtime
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"errors"
@@ -588,7 +587,7 @@ func buildDispatchSystemPrompt(ctx context.Context, rt *EinoRuntime, mcpTools []
 
 	prompt += "\n\n" + utils.FormatEnvInfo(envInfo)
 	prompt += "\n" + BuildDispatchPromptAdditions(envInfo.CWD)
-	prompt += "\n" + buildIntentPromptAdditions(history)
+	prompt += "\n" + buildIntentPromptAdditions(envInfo.CWD, history)
 
 	// Inject system reminders from prompt_system.go
 	prompt += "\n\n" + getSystemRemindersSection()
@@ -836,12 +835,12 @@ func (rt *EinoRuntime) RecordTokenMetrics(stage, component string, inputTokens, 
 		return
 	}
 	rt.tokenAnalyzer.Record(TokenMetrics{
-		InputTokens:   inputTokens,
-		OutputTokens:  outputTokens,
-		TotalTokens:   inputTokens + outputTokens,
-		Component:     component,
-		Stage:         stage,
-		Timestamp:     time.Now(),
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+		TotalTokens:  inputTokens + outputTokens,
+		Component:    component,
+		Stage:        stage,
+		Timestamp:    time.Now(),
 	})
 }
 

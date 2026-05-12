@@ -6,11 +6,11 @@ package core
 // 商业使用请联系版权人获得商业授权。
 
 import (
-	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"os"
 	"path/filepath"
 	"slices"
@@ -159,12 +159,19 @@ type LSPServer struct {
 }
 
 type PermissionSnapshot struct {
-	ExecutionMode     string
-	SandboxMode       string
-	AllowAll          bool
-	AllowedCategories []string
-	HasPendingDiff    bool
-	PendingDiffPath   string
+	ExecutionMode           string
+	AccessMode              string
+	ApprovalMode            string
+	SandboxMode             string
+	AllowAll                bool
+	AllowedCategories       []string
+	HasPendingDiff          bool
+	PendingDiffPath         string
+	LastAuthorization       string
+	LastAuthorizationAt     string
+	LastAuthorizationKind   string
+	LastAuthorizationNote   string
+	LastAuthorizationTarget string
 }
 
 type PendingReview struct {
@@ -313,17 +320,17 @@ func (r *Runtime) InvokeProtocolWithImages(ctx context.Context, input string, im
 					out <- mapped
 				}
 			case err := <-done:
-				drain:
-					for {
-						select {
-						case ev := <-r.core.Events():
-							if mapped, ok := bridgeEventToProtocol(ev, sessionID, threadID, requestID, time.Now()); ok {
-								out <- mapped
-							}
-						default:
-							break drain
+			drain:
+				for {
+					select {
+					case ev := <-r.core.Events():
+						if mapped, ok := bridgeEventToProtocol(ev, sessionID, threadID, requestID, time.Now()); ok {
+							out <- mapped
 						}
+					default:
+						break drain
 					}
+				}
 				if err != nil {
 					out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
 						"error":       err.Error(),
@@ -1723,12 +1730,19 @@ func (r *Runtime) LSPDiagnostics() []string {
 func (r *Runtime) PermissionSnapshot() PermissionSnapshot {
 	snap := r.core.PermissionSnapshot()
 	return PermissionSnapshot{
-		ExecutionMode:     strings.TrimSpace(snap.ExecutionMode),
-		SandboxMode:       toolapi.NormalizeSandboxMode(snap.SandboxMode),
-		AllowAll:          snap.AllowAll,
-		AllowedCategories: append([]string(nil), snap.AllowedCategories...),
-		HasPendingDiff:    snap.HasPendingDiff,
-		PendingDiffPath:   strings.TrimSpace(snap.PendingDiffPath),
+		ExecutionMode:           strings.TrimSpace(snap.ExecutionMode),
+		AccessMode:              strings.TrimSpace(snap.AccessMode),
+		ApprovalMode:            strings.TrimSpace(snap.ApprovalMode),
+		SandboxMode:             toolapi.NormalizeSandboxMode(snap.SandboxMode),
+		AllowAll:                snap.AllowAll,
+		AllowedCategories:       append([]string(nil), snap.AllowedCategories...),
+		HasPendingDiff:          snap.HasPendingDiff,
+		PendingDiffPath:         strings.TrimSpace(snap.PendingDiffPath),
+		LastAuthorization:       strings.TrimSpace(snap.LastAuthorization),
+		LastAuthorizationAt:     strings.TrimSpace(snap.LastAuthorizationAt),
+		LastAuthorizationKind:   strings.TrimSpace(snap.LastAuthorizationKind),
+		LastAuthorizationNote:   strings.TrimSpace(snap.LastAuthorizationNote),
+		LastAuthorizationTarget: strings.TrimSpace(snap.LastAuthorizationTarget),
 	}
 }
 

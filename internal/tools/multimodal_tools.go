@@ -381,7 +381,7 @@ func planOutputPaths(ctx context.Context, requestedPath string, items []ai.Gener
 func resolveOutputPath(ctx context.Context, relPath string) (plannedOutputPath, error) {
 	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), filepath.ToSlash(relPath))
 	if !res.IsValid {
-		return plannedOutputPath{}, fmt.Errorf(res.ErrMsg)
+		return plannedOutputPath{}, fmt.Errorf("%s", res.ErrMsg)
 	}
 	return plannedOutputPath{AbsPath: res.AbsPath, RelPath: filepath.ToSlash(res.RelPath)}, nil
 }

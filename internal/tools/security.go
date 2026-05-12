@@ -6,6 +6,8 @@ package tools
 // 商业使用请联系版权人获得商业授权。
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -241,6 +243,304 @@ func ClassifyToolDanger(call ToolCall) (category string, level string, summary s
 	}
 
 	return "unknown", "low", call.Tool, false
+}
+
+func AccessModeAllowsToolCall(ctx context.Context, call ToolCall) (bool, string) {
+	switch normalizeAccessMode(AccessModeFromContext(ctx)) {
+	case "", "danger-full-access":
+		return true, ""
+	case "workspace-write":
+		if reason := workspaceWriteBoundaryViolation(ctx, call); reason != "" {
+			return false, reason
+		}
+		return true, ""
+	case "read-only":
+		if isReadOnlyToolCall(call) {
+			return true, ""
+		}
+		return false, "access mode read-only blocks mutating tools"
+	default:
+		return true, ""
+	}
+}
+
+func workspaceWriteBoundaryViolation(ctx context.Context, call ToolCall) string {
+	workspaceRoot := strings.TrimSpace(WorkspaceRootFromContext(ctx))
+	if workspaceRoot == "" {
+		return ""
+	}
+	switch strings.ToLower(strings.TrimSpace(call.Tool)) {
+	case strings.ToLower(ToolFS), strings.ToLower(ToolEdit), strings.ToLower(ToolNotebookEdit):
+		for _, key := range []string{"path", "file", "source", "destination"} {
+			if reason := boundaryViolationForParam(workspaceRoot, key, call.Parameters); reason != "" {
+				return reason
+			}
+		}
+	case strings.ToLower(ToolBGTask):
+		action, _ := call.Parameters["action"].(string)
+		if strings.EqualFold(strings.TrimSpace(action), "start") {
+			if reason := boundaryViolationForParam(workspaceRoot, "working_dir", call.Parameters); reason != "" {
+				return reason
+			}
+			if command, _ := call.Parameters["command"].(string); strings.TrimSpace(command) != "" {
+				if reason := shellCommandBoundaryViolation(workspaceRoot, command); reason != "" {
+					return reason
+				}
+			}
+		}
+	case strings.ToLower(ToolBash):
+		command, _ := call.Parameters["command"].(string)
+		return shellCommandBoundaryViolation(workspaceRoot, command)
+	case strings.ToLower(ToolBashSession):
+		mode, _ := call.Parameters["mode"].(string)
+		if strings.EqualFold(strings.TrimSpace(mode), "start") {
+			command, _ := call.Parameters["command"].(string)
+			return shellCommandBoundaryViolation(workspaceRoot, command)
+		}
+	case strings.ToLower(ToolPowerShell):
+		command, _ := call.Parameters["command"].(string)
+		return shellCommandBoundaryViolation(workspaceRoot, command)
+	}
+	return ""
+}
+
+func boundaryViolationForParam(workspaceRoot, key string, params map[string]any) string {
+	if params == nil {
+		return ""
+	}
+	raw, _ := params[key].(string)
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	abs := resolveBoundaryPath(workspaceRoot, raw)
+	if abs == "" {
+		return ""
+	}
+	if isPathAllowedInWorkspaceWrite(workspaceRoot, abs) {
+		return ""
+	}
+	return fmt.Sprintf("access mode workspace-write blocks writes outside workspace or temporary directories: %s", filepath.ToSlash(abs))
+}
+
+func shellCommandBoundaryViolation(workspaceRoot, command string) string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return ""
+	}
+	lower := strings.ToLower(command)
+	if strings.Contains(lower, "npm install -g") ||
+		strings.Contains(lower, "pnpm add -g") ||
+		strings.Contains(lower, "yarn global add") ||
+		strings.Contains(lower, "pip install --user") ||
+		strings.Contains(lower, "sudo ") ||
+		strings.Contains(lower, "apt install") ||
+		strings.Contains(lower, "apt-get install") ||
+		strings.Contains(lower, "brew install") ||
+		strings.Contains(lower, "yum install") ||
+		strings.Contains(lower, "dnf install") ||
+		strings.Contains(lower, "pacman -s") {
+		return "access mode workspace-write blocks global system changes"
+	}
+	for _, token := range strings.Fields(command) {
+		cleaned := strings.Trim(token, "\"'`,;()[]{}")
+		if cleaned == "" {
+			continue
+		}
+		if strings.HasPrefix(cleaned, "~/") {
+			return fmt.Sprintf("access mode workspace-write blocks writes outside workspace or temporary directories: %s", cleaned)
+		}
+		if !filepath.IsAbs(cleaned) {
+			continue
+		}
+		abs := filepath.Clean(cleaned)
+		if isPathAllowedInWorkspaceWrite(workspaceRoot, abs) {
+			continue
+		}
+		return fmt.Sprintf("access mode workspace-write blocks writes outside workspace or temporary directories: %s", filepath.ToSlash(abs))
+	}
+	return ""
+}
+
+func resolveBoundaryPath(workspaceRoot, raw string) string {
+	raw = normalizePathPlaceholder(strings.TrimSpace(raw))
+	if raw == "" {
+		return ""
+	}
+	if filepath.IsAbs(raw) {
+		return filepath.Clean(raw)
+	}
+	joined := filepath.Join(workspaceRoot, filepath.FromSlash(raw))
+	abs, err := filepath.Abs(joined)
+	if err != nil {
+		return filepath.Clean(joined)
+	}
+	return filepath.Clean(abs)
+}
+
+func isPathAllowedInWorkspaceWrite(workspaceRoot, target string) bool {
+	target = filepath.Clean(strings.TrimSpace(target))
+	if target == "" {
+		return false
+	}
+	if isSubpath(workspaceRoot, target) {
+		return true
+	}
+	for _, dir := range allowedTemporaryDirs() {
+		if isSubpath(dir, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func allowedTemporaryDirs() []string {
+	candidates := []string{
+		os.TempDir(),
+		os.Getenv("TMPDIR"),
+		os.Getenv("TMP"),
+		os.Getenv("TEMP"),
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(candidates))
+	for _, dir := range candidates {
+		dir = strings.TrimSpace(dir)
+		if dir == "" {
+			continue
+		}
+		abs, err := filepath.Abs(dir)
+		if err == nil {
+			dir = abs
+		}
+		dir = filepath.Clean(dir)
+		if _, ok := seen[dir]; ok {
+			continue
+		}
+		seen[dir] = struct{}{}
+		out = append(out, dir)
+	}
+	return out
+}
+
+func isSubpath(base, target string) bool {
+	base = filepath.Clean(strings.TrimSpace(base))
+	target = filepath.Clean(strings.TrimSpace(target))
+	if base == "" || target == "" {
+		return false
+	}
+	rel, err := filepath.Rel(base, target)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func IsSandboxPolicyError(message string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	if normalized == "" {
+		return false
+	}
+	return strings.Contains(normalized, "workspace-write blocks") ||
+		strings.Contains(normalized, "outside workspace") ||
+		strings.Contains(normalized, "outside working directory") ||
+		strings.Contains(normalized, "路径超出工作目录") ||
+		strings.Contains(normalized, "outside_root")
+}
+
+func isReadOnlyToolCall(call ToolCall) bool {
+	toolName := strings.ToLower(strings.TrimSpace(call.Tool))
+	switch toolName {
+	case strings.ToLower(ToolRead),
+		strings.ToLower(ToolSearch),
+		strings.ToLower(ToolToolSearch),
+		strings.ToLower(ToolSkillsList),
+		strings.ToLower(ToolTimeNow),
+		strings.ToLower(ToolTodoRead),
+		strings.ToLower(ToolMCPStatus),
+		strings.ToLower(ToolBrowserStatus),
+		strings.ToLower(ToolGitStatus),
+		strings.ToLower(ToolGitBranchList),
+		strings.ToLower(ToolGitDiff),
+		strings.ToLower(ToolGitLog),
+		strings.ToLower(ToolGitShow),
+		strings.ToLower(ToolSuggestMemory),
+		strings.ToLower(ToolWebSearch),
+		strings.ToLower(ToolMCPListResources),
+		strings.ToLower(ToolMCPReadResource),
+		strings.ToLower(ToolStructuredOutput),
+		strings.ToLower(ToolSnip),
+		strings.ToLower(ToolRemoteRepoStatus):
+		return true
+	case strings.ToLower(ToolHistory):
+		mode, _ := call.Parameters["mode"].(string)
+		switch strings.ToLower(strings.TrimSpace(mode)) {
+		case "list_files", "list_versions", "read_version", "list_checkpoints":
+			return true
+		default:
+			return false
+		}
+	case strings.ToLower(ToolFS):
+		mode, _ := call.Parameters["mode"].(string)
+		switch strings.ToLower(strings.TrimSpace(mode)) {
+		case "diff", "read", "exists", "directory", "resolve":
+			return true
+		default:
+			return false
+		}
+	case strings.ToLower(ToolGitAdd),
+		strings.ToLower(ToolEdit),
+		strings.ToLower(ToolBash),
+		strings.ToLower(ToolBashSession),
+		strings.ToLower(ToolBGTask),
+		strings.ToLower(ToolPowerShell),
+		strings.ToLower(ToolGitCommit),
+		strings.ToLower(ToolGitCheckout),
+		strings.ToLower(ToolGitInit),
+		strings.ToLower(ToolGitPull),
+		strings.ToLower(ToolGitPush),
+		strings.ToLower(ToolGitStash),
+		strings.ToLower(ToolGitReset),
+		strings.ToLower(ToolGitRevert),
+		strings.ToLower(ToolGitMerge),
+		strings.ToLower(ToolGitRebase),
+		strings.ToLower(ToolEnterWorktree),
+		strings.ToLower(ToolExitWorktree),
+		strings.ToLower(ToolNotebookEdit),
+		strings.ToLower(ToolDocumentGenerate),
+		strings.ToLower(ToolDocumentConvert),
+		strings.ToLower(ToolImageGenerate),
+		strings.ToLower(ToolVideoGenerate),
+		strings.ToLower(ToolSpeechSynthesize),
+		strings.ToLower(ToolTeamCreate),
+		strings.ToLower(ToolTeamDelete),
+		strings.ToLower(ToolRemoteRepoConnect),
+		strings.ToLower(ToolRemoteRepoCloneOrOpen),
+		strings.ToLower(ToolRemoteRepoCheckout),
+		strings.ToLower(ToolRemoteRepoCommitAndPush),
+		strings.ToLower(ToolRemoteRepoCreatePR),
+		strings.ToLower(ToolRemoteRepoCreateMR),
+		strings.ToLower(ToolRemoteRepoDisconnect):
+		return false
+	}
+	_, _, _, dangerous := ClassifyToolDanger(call)
+	return !dangerous
+}
+
+func normalizeAccessMode(mode string) string {
+	key := strings.ToLower(strings.TrimSpace(mode))
+	switch key {
+	case "readonly", "read_only", "read-only":
+		return "read-only"
+	case "workspacewrite", "workspace_write", "workspace-write", "workspace", "sandbox":
+		return "workspace-write"
+	case "dangerfullaccess", "danger_full_access", "danger-full-access", "fullaccess", "full_access", "full-access":
+		return "danger-full-access"
+	default:
+		return key
+	}
 }
 
 // extractParamSummary extracts a short summary from tool parameters for display

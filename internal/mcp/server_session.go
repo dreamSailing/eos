@@ -21,9 +21,9 @@ import (
 	"time"
 
 	"github.com/dreamSailing/eos/internal/toolapi"
+	"github.com/google/uuid"
 	mcpmodel "github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
-	"github.com/google/uuid"
 )
 
 type serverHeaderKey struct{}
@@ -34,35 +34,41 @@ type runtimeSession struct {
 	WorkspaceAbs          string
 	AllowedTools          map[string]bool
 	ExecutionMode         string
+	AccessMode            string
+	ApprovalMode          string
 	SandboxMode           string
 	RequireApprovalDigest bool
 	UpdatedAt             time.Time
 	Preview               string
 	Approvals             map[string]*pendingPrompt
 	Inquiries             map[string]*pendingPrompt
+	LastAuthorization     map[string]any
 	mu                    sync.RWMutex
 }
 
 type pendingPrompt struct {
-	RequestID   string         `json:"request_id"`
-	Kind        string         `json:"kind"`
-	Tool        string         `json:"tool"`
-	CallID      string         `json:"call_id"`
-	Digest      string         `json:"digest"`
-	Preview     map[string]any `json:"preview,omitempty"`
-	Parameters  map[string]any `json:"parameters,omitempty"`
-	ExpiresAt   time.Time      `json:"expires_at"`
-	Decision    string         `json:"decision,omitempty"`
-	PolicyID    string         `json:"policy_id,omitempty"`
-	Reason      string         `json:"reason,omitempty"`
-	Option      string         `json:"option,omitempty"`
-	Text        string         `json:"text,omitempty"`
-	Used        bool           `json:"used,omitempty"`
-	Question    string         `json:"question,omitempty"`
-	Options     []string       `json:"options,omitempty"`
-	ResolvedAt  time.Time      `json:"resolved_at,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	RelatedCall string         `json:"related_call,omitempty"`
+	RequestID        string         `json:"request_id"`
+	Kind             string         `json:"kind"`
+	Tool             string         `json:"tool"`
+	CallID           string         `json:"call_id"`
+	Digest           string         `json:"digest"`
+	Preview          map[string]any `json:"preview,omitempty"`
+	Parameters       map[string]any `json:"parameters,omitempty"`
+	ExpiresAt        time.Time      `json:"expires_at"`
+	Decision         string         `json:"decision,omitempty"`
+	PolicyID         string         `json:"policy_id,omitempty"`
+	Reason           string         `json:"reason,omitempty"`
+	TriggerReason    string         `json:"trigger_reason,omitempty"`
+	TargetAccessMode string         `json:"target_access_mode,omitempty"`
+	ApprovalSource   string         `json:"approval_source,omitempty"`
+	Option           string         `json:"option,omitempty"`
+	Text             string         `json:"text,omitempty"`
+	Used             bool           `json:"used,omitempty"`
+	Question         string         `json:"question,omitempty"`
+	Options          []string       `json:"options,omitempty"`
+	ResolvedAt       time.Time      `json:"resolved_at,omitempty"`
+	CreatedAt        time.Time      `json:"created_at"`
+	RelatedCall      string         `json:"related_call,omitempty"`
 }
 
 type serverPolicy struct {
@@ -205,6 +211,8 @@ func (s *Server) ensureDefaultSession(ctx context.Context) (*runtimeSession, err
 		s.opts.DefaultWorkspacePath,
 		allowedToolsMap(s.opts.DefaultAllowedTools),
 		"auto",
+		s.opts.DefaultAccessMode,
+		s.opts.DefaultApprovalMode,
 		s.opts.DefaultSandboxMode,
 		s.opts.RequireApprovalDigest,
 	)
@@ -227,16 +235,30 @@ func (s *Server) createSession(ctx context.Context, args map[string]any) (*runti
 		return nil, err
 	}
 	executionMode := toolapi.NormalizeExecutionMode(stringArg(args, "execution_mode"))
+	accessMode := strings.TrimSpace(stringArg(args, "access_mode"))
+	approvalMode := strings.TrimSpace(stringArg(args, "approval_mode"))
 	sandboxMode := toolapi.NormalizeSandboxMode(stringArg(args, "sandbox_mode"))
+	if accessMode != "" {
+		accessMode = toolapi.NormalizeAccessMode(accessMode)
+		sandboxMode = toolapi.SandboxModeFromAccessMode(accessMode)
+	}
 	if sandboxMode == "" {
 		sandboxMode = s.opts.DefaultSandboxMode
 	}
 	requireDigest := boolArg(args, "require_approval_digest", s.opts.RequireApprovalDigest)
+	if accessMode == "" && strings.TrimSpace(s.opts.DefaultAccessMode) != "" {
+		accessMode = toolapi.NormalizeAccessMode(s.opts.DefaultAccessMode)
+	}
+	if approvalMode != "" {
+		approvalMode = toolapi.NormalizeApprovalMode(approvalMode)
+	} else if strings.TrimSpace(s.opts.DefaultApprovalMode) != "" {
+		approvalMode = toolapi.NormalizeApprovalMode(s.opts.DefaultApprovalMode)
+	}
 	allowed := parseStringSliceArg(args["allowed_tools"])
 	if len(allowed) == 0 {
 		allowed = s.opts.DefaultAllowedTools
 	}
-	sess := newRuntimeSession(connID, workspaceAbs, allowedToolsMap(allowed), executionMode, sandboxMode, requireDigest)
+	sess := newRuntimeSession(connID, workspaceAbs, allowedToolsMap(allowed), executionMode, accessMode, approvalMode, sandboxMode, requireDigest)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -247,7 +269,7 @@ func (s *Server) createSession(ctx context.Context, args map[string]any) (*runti
 	return sess, nil
 }
 
-func newRuntimeSession(connID, workspace string, allowed map[string]bool, executionMode, sandboxMode string, requireDigest bool) *runtimeSession {
+func newRuntimeSession(connID, workspace string, allowed map[string]bool, executionMode, accessMode, approvalMode, sandboxMode string, requireDigest bool) *runtimeSession {
 	if executionMode == "" {
 		executionMode = "auto"
 	}
@@ -267,6 +289,8 @@ func newRuntimeSession(connID, workspace string, allowed map[string]bool, execut
 		WorkspaceAbs:          workspace,
 		AllowedTools:          allowedCopy,
 		ExecutionMode:         toolapi.NormalizeExecutionMode(executionMode),
+		AccessMode:            normalizeOptionalAccessMode(accessMode),
+		ApprovalMode:          normalizeOptionalApprovalMode(approvalMode),
 		SandboxMode:           toolapi.NormalizeSandboxMode(sandboxMode),
 		RequireApprovalDigest: requireDigest,
 		UpdatedAt:             time.Now(),
@@ -326,18 +350,28 @@ func (s *runtimeSession) touch(preview string) {
 func (s *runtimeSession) snapshot() map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	execSess := toolapi.ExecSession{
+		ExecutionMode:         s.ExecutionMode,
+		AccessMode:            s.AccessMode,
+		ApprovalMode:          s.ApprovalMode,
+		SandboxMode:           s.SandboxMode,
+		RequireApprovalDigest: s.RequireApprovalDigest,
+	}
 	return map[string]any{
 		"id":                      s.ID,
 		"connection_id":           s.ConnectionID,
 		"workspace_root":          s.WorkspaceAbs,
 		"execution_mode":          s.ExecutionMode,
-		"sandbox_mode":            s.SandboxMode,
+		"access_mode":             toolapi.ResolveAccessMode(execSess),
+		"approval_mode":           toolapi.ResolveApprovalMode(execSess),
+		"sandbox_mode":            toolapi.NormalizeSandboxMode(s.SandboxMode),
 		"require_approval_digest": s.RequireApprovalDigest,
 		"updated_at":              s.UpdatedAt.Format(time.RFC3339),
 		"preview":                 s.Preview,
 		"pending_approvals":       s.pendingIDsLocked(s.Approvals),
 		"pending_inquiries":       s.pendingIDsLocked(s.Inquiries),
 		"allowed_tools":           allowedToolsSlice(s.AllowedTools),
+		"last_authorization":      cloneMap(s.LastAuthorization),
 	}
 }
 
@@ -376,26 +410,43 @@ func pendingPromptList(items map[string]*pendingPrompt) []map[string]any {
 	return out
 }
 
+func normalizeOptionalAccessMode(mode string) string {
+	if strings.TrimSpace(mode) == "" {
+		return ""
+	}
+	return toolapi.NormalizeAccessMode(mode)
+}
+
+func normalizeOptionalApprovalMode(mode string) string {
+	if strings.TrimSpace(mode) == "" {
+		return ""
+	}
+	return toolapi.NormalizeApprovalMode(mode)
+}
+
 func pendingPromptSnapshot(item *pendingPrompt) map[string]any {
 	return map[string]any{
-		"request_id":  item.RequestID,
-		"kind":        item.Kind,
-		"tool":        item.Tool,
-		"call_id":     item.CallID,
-		"digest":      item.Digest,
-		"preview":     cloneMap(item.Preview),
-		"parameters":  cloneMap(item.Parameters),
-		"expires_at":  item.ExpiresAt.Format(time.RFC3339),
-		"decision":    item.Decision,
-		"policy_id":   item.PolicyID,
-		"reason":      item.Reason,
-		"option":      item.Option,
-		"text":        item.Text,
-		"used":        item.Used,
-		"question":    item.Question,
-		"options":     append([]string(nil), item.Options...),
-		"resolved_at": timeString(item.ResolvedAt),
-		"created_at":  item.CreatedAt.Format(time.RFC3339),
+		"request_id":         item.RequestID,
+		"kind":               item.Kind,
+		"tool":               item.Tool,
+		"call_id":            item.CallID,
+		"digest":             item.Digest,
+		"preview":            cloneMap(item.Preview),
+		"parameters":         cloneMap(item.Parameters),
+		"expires_at":         item.ExpiresAt.Format(time.RFC3339),
+		"decision":           item.Decision,
+		"policy_id":          item.PolicyID,
+		"reason":             item.Reason,
+		"trigger_reason":     item.TriggerReason,
+		"target_access_mode": item.TargetAccessMode,
+		"approval_source":    item.ApprovalSource,
+		"option":             item.Option,
+		"text":               item.Text,
+		"used":               item.Used,
+		"question":           item.Question,
+		"options":            append([]string(nil), item.Options...),
+		"resolved_at":        timeString(item.ResolvedAt),
+		"created_at":         item.CreatedAt.Format(time.RFC3339),
 	}
 }
 

@@ -142,6 +142,122 @@ func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {
 	}
 }
 
+func TestSessionInfoExposesAccessAndApprovalDerivedFromLegacyFields(t *testing.T) {
+	workspace := t.TempDir()
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+
+	srv, err := NewServer(Options{
+		Transport:             "stdio",
+		DefaultWorkspacePath:  workspace,
+		DefaultAllowedTools:   []string{"read"},
+		DefaultSandboxMode:    "full_access",
+		RequireApprovalDigest: false,
+	}, inR, outW, io.Discard, toolapiimpl.NewServices())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Run(ctx) }()
+	defer func() {
+		cancel()
+		_ = inW.Close()
+		_ = outW.Close()
+		<-done
+	}()
+
+	rd := bufio.NewReader(outR)
+	write := func(obj any) {
+		b, _ := json.Marshal(obj)
+		_, _ = inW.Write(append(b, '\n'))
+	}
+	readLine := func(timeout time.Duration) map[string]any {
+		type res struct {
+			line string
+			err  error
+		}
+		ch := make(chan res, 1)
+		go func() {
+			l, e := rd.ReadString('\n')
+			ch <- res{line: l, err: e}
+		}()
+		select {
+		case r := <-ch:
+			if r.err != nil {
+				t.Fatalf("read: %v", r.err)
+			}
+			m := map[string]any{}
+			if err := json.Unmarshal([]byte(strings.TrimSpace(r.line)), &m); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			return m
+		case <-time.After(timeout):
+			t.Fatalf("timeout reading output")
+			return nil
+		}
+	}
+	readResponse := func(id float64, timeout time.Duration) map[string]any {
+		deadline := time.Now().Add(timeout)
+		for {
+			remain := time.Until(deadline)
+			if remain <= 0 {
+				t.Fatalf("timeout waiting response id=%v", id)
+			}
+			m := readLine(remain)
+			if m["id"] == nil {
+				continue
+			}
+			mid, ok := m["id"].(float64)
+			if !ok || mid != id {
+				continue
+			}
+			return m
+		}
+	}
+
+	write(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"}})
+	_ = readResponse(1, 2*time.Second)
+
+	write(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "session.create",
+		"params": map[string]any{
+			"workspacePath": workspace,
+			"options": map[string]any{
+				"allowedTools": []any{"read"},
+			},
+		},
+	})
+	resp := readResponse(2, 2*time.Second)
+	result, _ := resp["result"].(map[string]any)
+	sessionID, _ := result["sessionID"].(string)
+	write(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "session.get",
+		"params":  map[string]any{"sessionID": sessionID},
+	})
+	sessionResp := readResponse(3, 2*time.Second)
+	sessionResult, _ := sessionResp["result"].(map[string]any)
+	sessionInfo, _ := sessionResult["session"].(map[string]any)
+	metadata, _ := sessionInfo["metadata"].(map[string]any)
+	accessMode, _ := metadata["access_mode"].(string)
+	approvalMode, _ := metadata["approval_mode"].(string)
+	sandboxMode, _ := metadata["sandbox_mode"].(string)
+	if accessMode != "danger-full-access" {
+		t.Fatalf("accessMode=%q, want danger-full-access", accessMode)
+	}
+	if approvalMode != "on-failure" {
+		t.Fatalf("approvalMode=%q, want on-failure", approvalMode)
+	}
+	if sandboxMode != "full_access" {
+		t.Fatalf("sandboxMode=%q, want full_access", sandboxMode)
+	}
+}
+
 func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 	workspace := t.TempDir()
 	p := filepath.Join(workspace, "a.txt")
