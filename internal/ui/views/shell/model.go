@@ -66,6 +66,8 @@ type Model struct {
 	bgTaskCount      int
 	executionMode    string
 	thinkingExpanded bool
+	promptOverlay    string
+	promptOverlayH   int
 
 	// 样式
 	styles *styles.Styles
@@ -131,6 +133,7 @@ func (m *Model) SetSize(width, height int) {
 	m.input.SetSize(width-2, 0)
 	inputHeight := m.input.ViewHeight()
 	contentHeight := max(height-inputHeight-hintsHeight-statusHeight-4-m.liveReserveHeight(), 10)
+	contentHeight = max(contentHeight-m.promptOverlayReserveHeight(), 10)
 	m.contentH = contentHeight
 
 	hh := 3
@@ -159,6 +162,20 @@ func (m *Model) SetLive(view string) {
 	m.recomputeLayout()
 }
 
+func (m *Model) SetPromptOverlay(view string) {
+	m.promptOverlay = view
+	if strings.TrimSpace(view) == "" {
+		m.promptOverlayH = 0
+	} else {
+		m.promptOverlayH = lipgloss.Height(view)
+	}
+	m.recomputeLayout()
+}
+
+func (m *Model) ClearPromptOverlay() {
+	m.SetPromptOverlay("")
+}
+
 func (m *Model) ClearLive() {
 	m.SetLive("")
 }
@@ -180,7 +197,7 @@ func (m *Model) recomputeLayout() {
 		hintsHeight = m.hints.Height()
 	}
 	inputHeight := m.input.ViewHeight()
-	contentHeight := max(m.height-inputHeight-hintsHeight-statusHeight-4-m.liveReserveHeight(), 10)
+	contentHeight := max(m.height-inputHeight-hintsHeight-statusHeight-4-m.liveReserveHeight()-m.promptOverlayReserveHeight(), 10)
 	m.contentH = contentHeight
 	m.relayout()
 }
@@ -238,6 +255,16 @@ func (m Model) liveReserveHeight() int {
 		return h
 	}
 	return m.inlineLiveHeight()
+}
+
+func (m Model) promptOverlayReserveHeight() int {
+	if strings.TrimSpace(m.promptOverlay) == "" {
+		return 0
+	}
+	if m.promptOverlayH > 0 {
+		return m.promptOverlayH
+	}
+	return lipgloss.Height(m.promptOverlay)
 }
 
 func tailLines(s string, n int) string {
@@ -744,6 +771,10 @@ func (m Model) View() string {
 		sections = append(sections, livePanel)
 	}
 
+	if strings.TrimSpace(m.promptOverlay) != "" {
+		sections = append(sections, m.promptOverlay)
+	}
+
 	// 状态栏
 	statusBar := m.renderStatusBar()
 	sections = append(sections, m.styles.StatusBar.Render(statusBar))
@@ -816,16 +847,16 @@ func (m Model) renderStatusBar() string {
 	}
 
 	if m.mode == ModeAI {
-		thinkingLabel := i18n.T("status.thinking", m.language)
-		if !state.Thinking() {
-			leftParts = append(leftParts, m.styles.TextMuted.Render(thinkingLabel+":"+i18n.T("status.off", m.language)))
+		if m.processing || m.thinking {
+			leftParts = append(leftParts, m.styles.TextInfo.Render(i18n.T("status.thinking_active", m.language)+animatedDots(m.statusAnim)))
 		} else {
-			leftParts = append(leftParts, m.styles.TextMuted.Render(thinkingLabel+":"+i18n.T("status.on", m.language)))
+			thinkingLabel := i18n.T("status.thinking", m.language)
+			if !state.Thinking() {
+				leftParts = append(leftParts, m.styles.TextMuted.Render(thinkingLabel+":"+i18n.T("status.off", m.language)))
+			} else {
+				leftParts = append(leftParts, m.styles.TextMuted.Render(thinkingLabel+":"+i18n.T("status.on", m.language)))
+			}
 		}
-	}
-
-	if m.processing {
-		leftParts = append(leftParts, m.styles.TextMuted.Render(i18n.T("status.processing", m.language)+strings.Repeat(".", m.statusAnim)))
 	}
 
 	left := strings.Join(leftParts, " ")
@@ -847,6 +878,11 @@ func executionModeLabel(_ string, mode string) string {
 	default:
 		return "auto"
 	}
+}
+
+func animatedDots(frame int) string {
+	count := (frame % 3) + 1
+	return strings.Repeat(".", count)
 }
 
 func (m *Model) StatusTick() tea.Cmd {

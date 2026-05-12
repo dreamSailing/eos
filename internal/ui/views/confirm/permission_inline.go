@@ -1,0 +1,117 @@
+package confirm
+
+import (
+	"strings"
+
+	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/ui/styles"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+// RenderInlinePermission renders a lightweight permission prompt intended to
+// appear above the shell status bar without taking over the full screen.
+func RenderInlinePermission(s *styles.Styles, lang string, req Request, selected int, width int) string {
+	if s == nil {
+		return ""
+	}
+
+	panelW := width - 2
+	if panelW > 100 {
+		panelW = 100
+	}
+	if panelW < 32 {
+		panelW = 32
+	}
+
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		title = i18n.T("permission.inline.title", lang)
+	}
+
+	panel := lipgloss.NewStyle().
+		Width(panelW).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#f59e0b")).
+		Background(s.Theme.Surface).
+		Padding(0, 1)
+
+	questionBox := lipgloss.NewStyle().
+		Background(s.Theme.SurfaceAlt).
+		Foreground(s.Theme.Text).
+		Padding(0, 1).
+		Width(max(panelW-6, 24))
+
+	diffPathStyle := lipgloss.NewStyle().Foreground(s.Theme.Warning).Bold(true)
+	diffStyle := lipgloss.NewStyle().
+		Foreground(s.Theme.TextMuted).
+		Background(s.Theme.SurfaceAlt).
+		Padding(0, 1).
+		Width(max(panelW-6, 24))
+
+	optStyle := lipgloss.NewStyle().
+		Foreground(s.Theme.Text).
+		Padding(0, 1)
+	selectedStyle := lipgloss.NewStyle().
+		Foreground(s.Theme.Background).
+		Background(s.Theme.Primary).
+		Bold(true).
+		Padding(0, 1)
+
+	var body []string
+	body = append(body, s.PanelTitle.Render(title))
+
+	if q := strings.TrimSpace(req.Question); q != "" {
+		body = append(body, questionBox.Render(q))
+	}
+
+	if strings.TrimSpace(req.Diff) != "" {
+		if p := strings.TrimSpace(req.DiffPath); p != "" {
+			body = append(body, diffPathStyle.Render(p))
+		}
+		body = append(body, diffStyle.Render(truncateInlinePermissionDiff(req.Diff)))
+	}
+
+	for i, opt := range req.Options {
+		label := permissionOptionLabel(lang, opt, i)
+		style := optStyle
+		if i == selected {
+			style = selectedStyle
+		}
+		body = append(body, style.Render(label))
+	}
+
+	body = append(body, s.TextMuted.Render(i18n.T("permission.inline.help", lang)))
+
+	return panel.Render(strings.Join(body, "\n"))
+}
+
+func permissionOptionLabel(lang, opt string, idx int) string {
+	switch opt {
+	case "allow_once":
+		return strconvItoa(idx+1) + ". " + i18n.T("allow.once", lang)
+	case "allow_session":
+		return strconvItoa(idx+1) + ". " + i18n.T("allow.session", lang)
+	case "deny":
+		return strconvItoa(idx+1) + ". " + i18n.T("deny", lang)
+	default:
+		return strconvItoa(idx+1) + ". " + opt
+	}
+}
+
+func truncateInlinePermissionDiff(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	lines := strings.Split(raw, "\n")
+	if len(lines) > 8 {
+		lines = append(lines[:8], "...")
+	}
+	out := strings.Join(lines, "\n")
+	runes := []rune(out)
+	if len(runes) > 800 {
+		return string(runes[:800]) + "..."
+	}
+	return out
+}
