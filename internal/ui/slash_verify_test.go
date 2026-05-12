@@ -32,6 +32,10 @@ func TestBuildVerifyPromptIncludesVerifierGuidance(t *testing.T) {
 	for _, want := range []string{
 		"不要被 80% 的成功欺骗",
 		"VERDICT: PASS、FAIL 或 PARTIAL",
+		"验收摘要",
+		"覆盖到的验证项",
+		"未覆盖的风险和空白",
+		"关键证据",
 		"Playwright",
 		"验证图片上传链路",
 	} {

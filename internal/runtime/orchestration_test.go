@@ -125,6 +125,11 @@ func TestBuildAutomaticVerificationTaskIncludesGuardrailAndContext(t *testing.T)
 	if !strings.Contains(task, "VERDICT: PASS|FAIL|PARTIAL") {
 		t.Fatalf("task missing verdict requirement: %q", task)
 	}
+	for _, want := range []string{"验收摘要", "覆盖到的验证项", "未覆盖的风险和空白", "关键证据"} {
+		if !strings.Contains(task, want) {
+			t.Fatalf("task missing structured heading %q: %q", want, task)
+		}
+	}
 }
 
 func TestExtractLastAssistantTextReturnsLatestAssistantContent(t *testing.T) {

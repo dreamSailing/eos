@@ -547,7 +547,7 @@ func buildAutomaticVerificationTask(originalQuery string, implementationSummary 
 	if summary := strings.TrimSpace(implementationSummary); summary != "" {
 		lines = append(lines, "实现结果摘要: "+limitText(summary, 24, 2000))
 	}
-	lines = append(lines, "输出要求：给出 VERDICT: PASS|FAIL|PARTIAL，并列出覆盖到的验证项、未覆盖风险和关键证据。")
+	lines = append(lines, "输出要求：第一行给出 VERDICT: PASS|FAIL|PARTIAL；随后按固定标题输出验收摘要、覆盖到的验证项、未覆盖的风险和空白、关键证据。")
 	return strings.Join(lines, "\n")
 }
 

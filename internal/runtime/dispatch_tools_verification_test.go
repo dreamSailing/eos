@@ -53,3 +53,52 @@ func TestCombineImplementationAndVerificationResult(t *testing.T) {
 		t.Fatalf("unexpected combined result: %q", got)
 	}
 }
+
+func TestExtractVerificationVerdict(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		want string
+	}{
+		{name: "pass", text: "VERDICT: PASS\n- 覆盖关键路径", want: "PASS"},
+		{name: "fail", text: "VERDICT: FAIL\n- 首页打不开", want: "FAIL"},
+		{name: "partial with full width colon", text: "VERDICT： PARTIAL\n- 缺少边界验证", want: "PARTIAL"},
+		{name: "missing", text: "未给出 verdict", want: ""},
+	}
+	for _, tc := range cases {
+		if got := extractVerificationVerdict(tc.text); got != tc.want {
+			t.Fatalf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestParseVerificationDetails(t *testing.T) {
+	text := "VERDICT: PARTIAL\n覆盖到的验证项:\n- 登录成功\n- 首页可打开\n未覆盖的风险和空白:\n- 弱网重试未覆盖\n关键证据:\n- npm test\n- curl /health"
+	got := parseVerificationDetails(text)
+	if got.Summary != "VERDICT: PARTIAL" {
+		t.Fatalf("summary = %q, want VERDICT: PARTIAL", got.Summary)
+	}
+	if len(got.CoveredChecks) != 2 || got.CoveredChecks[0] != "登录成功" || got.CoveredChecks[1] != "首页可打开" {
+		t.Fatalf("covered = %#v", got.CoveredChecks)
+	}
+	if len(got.OpenRisks) != 1 || got.OpenRisks[0] != "弱网重试未覆盖" {
+		t.Fatalf("risks = %#v", got.OpenRisks)
+	}
+	if len(got.Evidence) != 2 || got.Evidence[0] != "npm test" || got.Evidence[1] != "curl /health" {
+		t.Fatalf("evidence = %#v", got.Evidence)
+	}
+}
+
+func TestParseVerificationDetailsStructuredSummaryHeading(t *testing.T) {
+	text := "VERDICT: FAIL\n验收摘要:\n- 首屏仍然白屏\n覆盖到的验证项:\n- 登录接口可达\n未覆盖的风险和空白:\n- 回退链路未验证"
+	got := parseVerificationDetails(text)
+	if got.Summary != "VERDICT: FAIL" {
+		t.Fatalf("summary = %q, want VERDICT: FAIL", got.Summary)
+	}
+	if len(got.CoveredChecks) != 1 || got.CoveredChecks[0] != "登录接口可达" {
+		t.Fatalf("covered = %#v", got.CoveredChecks)
+	}
+	if len(got.OpenRisks) != 1 || got.OpenRisks[0] != "回退链路未验证" {
+		t.Fatalf("risks = %#v", got.OpenRisks)
+	}
+}

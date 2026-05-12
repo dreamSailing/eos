@@ -106,7 +106,7 @@ func buildVerifyPrompt(m *AppModel, args []string) string {
 
 	lines = append(lines,
 		m.localize("请输出 VERDICT: PASS、FAIL 或 PARTIAL。", "Return VERDICT: PASS, FAIL, or PARTIAL."),
-		m.localize("请列出：已验证项、关键证据、未覆盖风险、建议下一步。", "List: covered checks, key evidence, uncovered risks, and recommended next steps."),
+		m.localize("请按固定标题列出：验收摘要、覆盖到的验证项、未覆盖的风险和空白、关键证据。", "Use fixed headings: verification summary, covered checks, uncovered risks, and key evidence."),
 	)
 	return strings.Join(lines, "\n")
 }

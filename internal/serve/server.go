@@ -1605,6 +1605,12 @@ func sessionPreviewFromResult(result any) string {
 			return "完成工具: " + toolName
 		}
 	case map[string]any:
+		if verdict := strings.ToUpper(strings.TrimSpace(anyString(v["verification_verdict"]))); verdict != "" {
+			if text := normalizeSessionPreview(firstNonEmpty(anyString(v["verification_result"]), anyString(v["message"]), anyString(v["result"]))); text != "" {
+				return "验收 " + verdict + ": " + text
+			}
+			return "验收 " + verdict
+		}
 		if text := normalizeSessionPreview(firstNonEmpty(anyString(v["display"]), anyString(v["error"]), anyString(v["text"]), anyString(v["message"]))); text != "" {
 			return text
 		}

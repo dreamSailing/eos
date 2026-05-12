@@ -75,3 +75,17 @@ func TestRoleArchitectPromptMentionsVerificationFlow(t *testing.T) {
 		}
 	}
 }
+
+func TestRoleVerificationPromptUsesStructuredHeadings(t *testing.T) {
+	for _, want := range []string{
+		"VERDICT: PASS|FAIL|PARTIAL",
+		"验收摘要",
+		"覆盖到的验证项",
+		"未覆盖的风险和空白",
+		"关键证据",
+	} {
+		if !strings.Contains(RoleVerificationPrompt, want) {
+			t.Fatalf("RoleVerificationPrompt missing %s\n%s", want, RoleVerificationPrompt)
+		}
+	}
+}

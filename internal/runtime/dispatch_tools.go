@@ -40,11 +40,21 @@ type DispatchTask struct {
 
 // DispatchResult 表示子 Agent 调用的返回
 type DispatchResult struct {
-	AgentID string         `json:"agent_id,omitempty"`
-	Task    string         `json:"task,omitempty"`   // 传递给子 Agent 的任务
-	Status  string         `json:"status,omitempty"` // 生命周期状态
-	Result  string         `json:"result,omitempty"` // 子 Agent 的返回内容（自然语言）
-	Data    map[string]any `json:"data,omitempty"`
+	AgentID                string         `json:"agent_id,omitempty"`
+	Task                   string         `json:"task,omitempty"`   // 传递给子 Agent 的任务
+	Status                 string         `json:"status,omitempty"` // 生命周期状态
+	Result                 string         `json:"result,omitempty"` // 子 Agent 的返回内容（自然语言）
+	Data                   map[string]any `json:"data,omitempty"`
+	AutoVerified           bool           `json:"auto_verified,omitempty"`
+	ImplementationResult   string         `json:"implementation_result,omitempty"`
+	VerificationResult     string         `json:"verification_result,omitempty"`
+	VerificationVerdict    string         `json:"verification_verdict,omitempty"`
+	VerificationSummary    string         `json:"verification_summary,omitempty"`
+	VerificationCovered    []string       `json:"verification_covered_checks,omitempty"`
+	VerificationOpenRisks  []string       `json:"verification_open_risks,omitempty"`
+	VerificationEvidence   []string       `json:"verification_evidence,omitempty"`
+	VerificationAttempted  bool           `json:"verification_attempted,omitempty"`
+	VerificationSuccessful bool           `json:"verification_successful,omitempty"`
 }
 
 // DispatchTools 包装器，将子 Agent 包装为调度工具
@@ -535,8 +545,9 @@ func (dt *DispatchTools) InvokeSeniorDev(task DispatchTask) DispatchResult {
 	implementationResult := strings.TrimSpace(extractLastAssistantText(outMsgs))
 	if !shouldAutoVerifySeniorDevTask(taskText) {
 		return DispatchResult{
-			Task:   taskText,
-			Result: implementationResult,
+			Task:                 taskText,
+			Result:               implementationResult,
+			ImplementationResult: implementationResult,
 		}
 	}
 
@@ -545,15 +556,32 @@ func (dt *DispatchTools) InvokeSeniorDev(task DispatchTask) DispatchResult {
 	if verifyErr != nil {
 		slog.Error("runtime.dispatch_tools.invoke_senior_dev.auto_verification.error", "error", verifyErr)
 		return DispatchResult{
-			Task:   taskText,
-			Result: combineImplementationAndVerificationResult(implementationResult, "自动验收未完成: "+verifyErr.Error()),
+			Task:                   taskText,
+			Result:                 combineImplementationAndVerificationResult(implementationResult, "自动验收未完成: "+verifyErr.Error()),
+			AutoVerified:           true,
+			ImplementationResult:   implementationResult,
+			VerificationResult:     "自动验收未完成: " + verifyErr.Error(),
+			VerificationAttempted:  true,
+			VerificationSuccessful: false,
 		}
 	}
 
 	verificationResult := strings.TrimSpace(extractLastAssistantText(verifyMsgs))
+	verdict := extractVerificationVerdict(verificationResult)
+	details := parseVerificationDetails(verificationResult)
 	return DispatchResult{
-		Task:   taskText,
-		Result: combineImplementationAndVerificationResult(implementationResult, verificationResult),
+		Task:                   taskText,
+		Result:                 combineImplementationAndVerificationResult(implementationResult, verificationResult),
+		AutoVerified:           true,
+		ImplementationResult:   implementationResult,
+		VerificationResult:     verificationResult,
+		VerificationVerdict:    verdict,
+		VerificationSummary:    details.Summary,
+		VerificationCovered:    details.CoveredChecks,
+		VerificationOpenRisks:  details.OpenRisks,
+		VerificationEvidence:   details.Evidence,
+		VerificationAttempted:  true,
+		VerificationSuccessful: true,
 	}
 }
 
@@ -682,6 +710,108 @@ func combineImplementationAndVerificationResult(implementationResult string, ver
 		sections = append(sections, "VERIFICATION_RESULT:\n"+text)
 	}
 	return strings.TrimSpace(strings.Join(sections, "\n\n"))
+}
+
+type verificationDetails struct {
+	Summary       string
+	CoveredChecks []string
+	OpenRisks     []string
+	Evidence      []string
+}
+
+func parseVerificationDetails(text string) verificationDetails {
+	lines := strings.Split(text, "\n")
+	details := verificationDetails{}
+	currentSection := ""
+
+	appendLine := func(target *[]string, line string) {
+		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(line, "-"), "*"))
+		if line == "" {
+			return
+		}
+		*target = append(*target, line)
+	}
+
+	for _, rawLine := range lines {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || line == "给出结论后停止" {
+			continue
+		}
+		if strings.HasPrefix(strings.ToUpper(line), "VERDICT:") || strings.HasPrefix(strings.ToUpper(line), "VERDICT：") {
+			if details.Summary == "" {
+				details.Summary = line
+			}
+			currentSection = ""
+			continue
+		}
+		switch {
+		case isVerificationSectionHeading(line, "验收摘要", "摘要", "总结"):
+			currentSection = "summary"
+			continue
+		case isVerificationSectionHeading(line, "覆盖到的验证项", "覆盖的验证项", "覆盖项"):
+			currentSection = "covered"
+			continue
+		case isVerificationSectionHeading(line, "未覆盖的风险", "未覆盖风险", "风险和空白", "剩余风险"):
+			currentSection = "risks"
+			continue
+		case isVerificationSectionHeading(line, "关键证据", "证据", "命令", "输出"):
+			currentSection = "evidence"
+			continue
+		}
+
+		switch currentSection {
+		case "summary":
+			if details.Summary == "" {
+				details.Summary = line
+			}
+		case "covered":
+			appendLine(&details.CoveredChecks, line)
+		case "risks":
+			appendLine(&details.OpenRisks, line)
+		case "evidence":
+			appendLine(&details.Evidence, line)
+		default:
+			if details.Summary == "" {
+				details.Summary = line
+			}
+		}
+	}
+
+	return details
+}
+
+func isVerificationSectionHeading(line string, headings ...string) bool {
+	normalized := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(line), ":"), "："))
+	normalized = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(normalized, "-"), "*"))
+	for _, heading := range headings {
+		if strings.Contains(normalized, heading) {
+			return true
+		}
+	}
+	return false
+}
+
+func extractVerificationVerdict(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		upperLine := strings.ToUpper(line)
+		if !strings.HasPrefix(upperLine, "VERDICT:") && !strings.HasPrefix(upperLine, "VERDICT：") {
+			continue
+		}
+		verdict := strings.TrimSpace(strings.TrimPrefix(line, "VERDICT:"))
+		verdict = strings.TrimSpace(strings.TrimPrefix(verdict, "VERDICT："))
+		verdict = strings.TrimSpace(strings.TrimPrefix(verdict, "："))
+		upper := strings.ToUpper(verdict)
+		switch {
+		case strings.HasPrefix(upper, "PASS"):
+			return "PASS"
+		case strings.HasPrefix(upper, "FAIL"):
+			return "FAIL"
+		case strings.HasPrefix(upper, "PARTIAL"):
+			return "PARTIAL"
+		}
+	}
+	return ""
 }
 
 func (dt *DispatchTools) ClearRequest(requestID string) {

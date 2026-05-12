@@ -447,6 +447,19 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 	<-done
 }
 
+func TestSessionPreviewFromResultPrefersVerificationVerdict(t *testing.T) {
+	result := map[string]any{
+		"verification_verdict": "PASS",
+		"verification_result":  "VERDICT: PASS\n- 关键路径已验证",
+		"result":               "IMPLEMENTATION_RESULT:\n实现完成",
+	}
+
+	got := sessionPreviewFromResult(result)
+	if !strings.Contains(got, "验收 PASS") {
+		t.Fatalf("preview=%q, want verification verdict", got)
+	}
+}
+
 func TestStdioFlow_RequestStartReturnsApprovalDigestAndLifecycleEvents(t *testing.T) {
 	workspace := t.TempDir()
 	targetFile := filepath.Join(workspace, "request-start.txt")
