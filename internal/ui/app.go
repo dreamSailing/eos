@@ -71,6 +71,8 @@ type AppModel struct {
 	setupView   any // 可以是 *setup.SetupView 或 *setup.ModelSetupView
 	confirmView *confirm.Model
 	prevView    string
+	inlinePermissionReq      *confirm.Request
+	inlinePermissionSelected int
 
 	// 视图状态
 	activeView       string // "shell", "panel", "help", "setup", "confirm"
@@ -224,6 +226,41 @@ func (m *AppModel) refreshShellWelcomeInfo() {
 	}
 	modelName, modelBase := resolveShellWelcomeInfo(m.adapter)
 	m.shell.SetWelcomeInfo(modelName, modelBase, "")
+}
+
+func (m *AppModel) updateInlinePermissionUI() {
+	if m == nil || m.shell == nil {
+		return
+	}
+	if m.inlinePermissionReq == nil {
+		m.shell.ClearPromptOverlay()
+		return
+	}
+	m.shell.SetPromptOverlay(confirm.RenderInlinePermission(
+		m.styles,
+		m.state.Language,
+		*m.inlinePermissionReq,
+		m.inlinePermissionSelected,
+		m.width,
+	))
+}
+
+func (m *AppModel) showInlinePermission(req confirm.Request) {
+	reqCopy := req
+	m.inlinePermissionReq = &reqCopy
+	m.inlinePermissionSelected = 0
+	m.updateInlinePermissionUI()
+	if m.shell != nil {
+		m.shell.BlurInput()
+	}
+}
+
+func (m *AppModel) clearInlinePermission() {
+	m.inlinePermissionReq = nil
+	m.inlinePermissionSelected = 0
+	if m.shell != nil {
+		m.shell.ClearPromptOverlay()
+	}
 }
 
 func (m *AppModel) refreshAILive() {
@@ -503,6 +540,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.shell.SetSize(msg.Width, msg.Height)
+		m.updateInlinePermissionUI()
 		m.helpView.SetSize(msg.Width, msg.Height)
 		if m.confirmView != nil {
 			m.confirmView.SetSize(msg.Width, msg.Height)
@@ -624,6 +662,15 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				updatedPanel, cmd := panel.Update(msg)
 				m.panels[m.activePanel] = updatedPanel
 				return m, m.handlePanelMsg(cmd)
+			}
+		}
+
+		if m.activeView == "shell" && m.inlinePermissionReq != nil {
+			if handled, cmd := m.handleInlinePermissionKey(msg); handled {
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+				return m, tea.Batch(cmds...)
 			}
 		}
 
@@ -852,9 +899,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.stopRequested = false
 
 	case PromptRequestMsg:
-		if m.confirmView == nil {
-			m.prevView = m.activeView
-		}
 		req := confirm.Request{
 			ID:        msg.ID,
 			Kind:      strings.TrimSpace(msg.Kind),
@@ -876,6 +920,13 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				req.Options = []string{"OK"}
 			}
 		}
+		if req.Kind == "permission" {
+			m.showInlinePermission(req)
+			return m, nil
+		}
+		if m.confirmView == nil {
+			m.prevView = m.activeView
+		}
 		m.confirmView = confirm.New(m.styles, m.state.Language, req)
 		m.confirmView.SetSize(m.width, m.height)
 		m.activeView = "confirm"
@@ -883,6 +934,21 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case confirm.ResultMsg:
+		if msg.Kind == "permission" {
+			m.clearInlinePermission()
+			if msg.ID != "" {
+				m.adapter.GetCore().SubmitPromptResponse(msg.ID, bridge.PromptResponse{
+					Decision:    msg.Decision,
+					Option:      msg.Option,
+					OptionIndex: msg.OptionIndex,
+					Text:        msg.Text,
+				})
+			}
+			if m.activeView == "shell" {
+				m.shell.FocusInput()
+			}
+			return m, nil
+		}
 		if strings.HasPrefix(msg.Kind, "bg_kill:") {
 			id, _ := strings.CutPrefix(msg.Kind, "bg_kill:")
 			id = strings.TrimSpace(id)
@@ -1118,6 +1184,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// 更新状态
 		m.state.Language = msg.Language
+		m.updateInlinePermissionUI()
 
 	case panels.WorkspaceSelectMsg:
 		cmds = append(cmds, m.handleWorkspaceUse(msg.Path))
@@ -1738,6 +1805,74 @@ func (m *AppModel) openWorkspaceTrustConfirm(path string) {
 		},
 	}
 	m.openConfirm(req)
+}
+
+func (m *AppModel) buildInlinePermissionResult(decision string) confirm.ResultMsg {
+	if m.inlinePermissionReq == nil {
+		return confirm.ResultMsg{Kind: "permission", Decision: decision, OptionIndex: -1}
+	}
+	req := m.inlinePermissionReq
+	option := ""
+	idx := m.inlinePermissionSelected
+	if idx >= 0 && idx < len(req.Options) {
+		option = req.Options[idx]
+	}
+	if decision == "" {
+		switch option {
+		case "allow_once":
+			decision = "allow"
+		case "allow_session":
+			decision = "session"
+		default:
+			decision = "deny"
+		}
+	}
+	return confirm.ResultMsg{
+		ID:          req.ID,
+		Kind:        req.Kind,
+		Decision:    decision,
+		Option:      option,
+		OptionIndex: idx,
+	}
+}
+
+func (m *AppModel) handleInlinePermissionKey(msg tea.KeyMsg) (bool, tea.Cmd) {
+	if m == nil || m.inlinePermissionReq == nil {
+		return false, nil
+	}
+	switch msg.String() {
+	case "up":
+		if m.inlinePermissionSelected > 0 {
+			m.inlinePermissionSelected--
+			m.updateInlinePermissionUI()
+		}
+		return true, nil
+	case "down":
+		if m.inlinePermissionSelected < len(m.inlinePermissionReq.Options)-1 {
+			m.inlinePermissionSelected++
+			m.updateInlinePermissionUI()
+		}
+		return true, nil
+	case "enter":
+		result := m.buildInlinePermissionResult("")
+		return true, func() tea.Msg { return result }
+	case "esc":
+		result := m.buildInlinePermissionResult("deny")
+		return true, func() tea.Msg { return result }
+	default:
+		if len(msg.String()) == 1 {
+			k := msg.String()[0]
+			if k >= '1' && k <= '9' {
+				idx := int(k - '1')
+				if idx >= 0 && idx < len(m.inlinePermissionReq.Options) {
+					m.inlinePermissionSelected = idx
+					m.updateInlinePermissionUI()
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
 }
 
 func (m *AppModel) openConfirm(req confirm.Request) {

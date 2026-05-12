@@ -31,6 +31,42 @@ func TestRenderStatusBarShowsExecutionMode(t *testing.T) {
 		t.Fatalf("expected status bar to include execution mode, got %q", out)
 	}
 }
+
+func TestRenderStatusBarShowsThinkingActiveWhenRunning(t *testing.T) {
+	s := styles.NewStyles(styles.GetTheme("dark"))
+	model := New(100, 30, s, "zh")
+	model.SetProcessing(true)
+	model.statusAnim = 2
+
+	out := stripANSIForTest(model.renderStatusBar())
+	if !strings.Contains(out, "思考中...") {
+		t.Fatalf("expected running status bar to include animated thinking text, got %q", out)
+	}
+	if strings.Contains(out, "思考:开") || strings.Contains(out, "思考:关") {
+		t.Fatalf("expected running status bar to hide static thinking toggle, got %q", out)
+	}
+}
+
+func TestViewRendersPromptOverlayAboveStatusBar(t *testing.T) {
+	s := styles.NewStyles(styles.GetTheme("dark"))
+	model := New(100, 30, s, "zh")
+	model.SetContent("历史消息")
+	model.SetPromptOverlay("授权块")
+
+	out := stripANSIForTest(model.View())
+	overlayIdx := strings.Index(out, "授权块")
+	statusIdx := strings.Index(out, "[ AI ]")
+	if overlayIdx < 0 {
+		t.Fatalf("expected prompt overlay to render, got %q", out)
+	}
+	if statusIdx < 0 {
+		t.Fatalf("expected status bar to render, got %q", out)
+	}
+	if overlayIdx > statusIdx {
+		t.Fatalf("expected prompt overlay above status bar, got %q", out)
+	}
+}
+
 func TestRightKeyAcceptsPredictionOnlyWhenInputEmpty(t *testing.T) {
 	s := styles.NewStyles(styles.GetTheme("dark"))
 	model := New(100, 30, s, "zh")

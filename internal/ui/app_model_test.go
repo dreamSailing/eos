@@ -238,6 +238,64 @@ func TestHandlePermissionsSlashSupportsAccessAndApprovalModes(t *testing.T) {
 	}
 }
 
+func TestPromptRequestPermissionStaysInShellWithInlineOverlay(t *testing.T) {
+	setTestHome(t)
+	t.Setenv("EOS_API_BASE", "https://example.com/v1")
+	t.Setenv("EOS_API_KEY", "secret")
+	t.Setenv("EOS_MODEL", "demo-model")
+
+	app := newTestAppModel(t)
+	next, _ := app.Update(PromptRequestMsg{
+		ID:       "perm-1",
+		Kind:     "permission",
+		Title:    "授权",
+		Question: "是否允许执行危险操作？",
+		Options:  []string{"allow_once", "allow_session", "deny"},
+	})
+	updated := next.(*AppModel)
+
+	if updated.activeView != "shell" {
+		t.Fatalf("activeView=%q, want shell", updated.activeView)
+	}
+	if updated.confirmView != nil {
+		t.Fatalf("expected permission request to avoid full confirm view")
+	}
+	if updated.inlinePermissionReq == nil {
+		t.Fatalf("expected inline permission state to be stored")
+	}
+	view := stripANSIAppTest(updated.shell.View())
+	if !strings.Contains(view, "是否允许执行危险操作？") || !strings.Contains(view, "仅本次操作，继续执行") {
+		t.Fatalf("expected shell to render inline permission overlay, got %q", view)
+	}
+}
+
+func TestPromptRequestNonPermissionStillUsesConfirmView(t *testing.T) {
+	setTestHome(t)
+	t.Setenv("EOS_API_BASE", "https://example.com/v1")
+	t.Setenv("EOS_API_KEY", "secret")
+	t.Setenv("EOS_MODEL", "demo-model")
+
+	app := newTestAppModel(t)
+	next, _ := app.Update(PromptRequestMsg{
+		ID:       "ws-1",
+		Kind:     "workspace_trust",
+		Title:    "信任工作区",
+		Question: "是否信任当前工作区？",
+		Options:  []string{"信任并继续", "退出"},
+	})
+	updated := next.(*AppModel)
+
+	if updated.activeView != "confirm" {
+		t.Fatalf("activeView=%q, want confirm", updated.activeView)
+	}
+	if updated.confirmView == nil {
+		t.Fatalf("expected non-permission prompt to use confirm view")
+	}
+	if updated.inlinePermissionReq != nil {
+		t.Fatalf("did not expect inline permission state for non-permission prompt")
+	}
+}
+
 func TestHandleStatusSlashShowsAccessAndApprovalModes(t *testing.T) {
 	setTestHome(t)
 	app := newTestAppModel(t)
