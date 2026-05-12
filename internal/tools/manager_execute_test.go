@@ -125,3 +125,22 @@ func TestManager_ExecuteBashDirect_UsesWorkspaceRootFromContext(t *testing.T) {
 		t.Fatalf("expected bash command to run in workspace root, got %q", out)
 	}
 }
+
+func TestManager_ExecuteStructured_ReadOnlyAccessModeBlocksMutatingTool(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager()
+	ctx := WithWorkspaceRoot(context.Background(), dir)
+	ctx = WithAccessMode(ctx, "read-only")
+	res := m.ExecuteStructured(ctx, []ToolCall{
+		{Tool: ToolEdit, Parameters: map[string]interface{}{"file": "a.txt", "old": "", "new": "x"}},
+	})
+	if len(res) != 1 {
+		t.Fatalf("unexpected result count: %d", len(res))
+	}
+	if res[0].Status != "error" {
+		t.Fatalf("expected error, got %+v", res[0])
+	}
+	if !strings.Contains(res[0].Error, "read-only") {
+		t.Fatalf("expected read-only error, got %q", res[0].Error)
+	}
+}

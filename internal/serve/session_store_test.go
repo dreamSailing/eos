@@ -195,6 +195,7 @@ func TestServeSessionStore_RestoresPendingApprovalAcrossRestart(t *testing.T) {
 			"options": map[string]any{
 				"title":                  "Persistent Session",
 				"allowedTools":           []any{"edit"},
+				"accessMode":             "danger-full-access",
 				"requireApprovalDigest":  true,
 				"maxConcurrentToolCalls": 1,
 				"sandboxMode":            "full_access",
@@ -297,6 +298,13 @@ func TestServeSessionStore_RestoresPendingApprovalAcrossRestart(t *testing.T) {
 	}
 	if got, _ := restored["preview"].(string); !strings.Contains(got, "edit:") {
 		t.Fatalf("preview=%q, want edit summary", got)
+	}
+	meta, _ := restored["metadata"].(map[string]any)
+	if got, _ := meta["access_mode"].(string); got != "danger-full-access" {
+		t.Fatalf("metadata.access_mode=%q, want danger-full-access", got)
+	}
+	if got, _ := meta["approval_mode"].(string); got != "on-request" {
+		t.Fatalf("metadata.approval_mode=%q, want on-request", got)
 	}
 
 	second.write(map[string]any{

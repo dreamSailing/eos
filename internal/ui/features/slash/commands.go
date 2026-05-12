@@ -62,7 +62,7 @@ var Commands = []Command{
 	{Name: "/tasks", Group: GroupRuntime, DescriptionZH: "打开任务面板", DescriptionEN: "Open the tasks panel"},
 	{Name: "/plan", Group: GroupRuntime, Usage: "/plan [auto|plan]", DescriptionZH: "查看当前计划/待办，或切换计划执行模式", DescriptionEN: "Inspect plan/todos or switch planning mode"},
 	{Name: "/plan-style", Group: GroupRuntime, Usage: "/plan-style [concise|detailed|custom:<text>]", DescriptionZH: "查看或设置计划提示风格", DescriptionEN: "Inspect or change the planner prompt style"},
-	{Name: "/permissions", Group: GroupRuntime, Usage: "/permissions [auto|plan]", DescriptionZH: "查看或切换权限/审批模式", DescriptionEN: "Inspect or change permission/approval mode"},
+	{Name: "/permissions", Group: GroupRuntime, Usage: "/permissions [auto|plan|access <mode>|approval <mode>]", DescriptionZH: "查看或切换执行/访问/审批模式", DescriptionEN: "Inspect or change execution, access, and approval modes"},
 	{Name: "/doctor", Group: GroupRuntime, DescriptionZH: "输出运行、工具和诊断摘要", DescriptionEN: "Print an execution, tools, and diagnostics summary", Hidden: true},
 	{Name: "/stats", Group: GroupRuntime, DescriptionZH: "显示 Token 用量和工具调用统计", DescriptionEN: "Show token usage and tool call statistics", Hidden: true},
 

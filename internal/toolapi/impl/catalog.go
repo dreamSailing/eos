@@ -458,14 +458,36 @@ func mcpCapabilityDefinitions(workspaceRoot string, cfg *config.Config) []toolap
 			RequiresFullAccess: true,
 			Tags:               tags,
 			Metadata: map[string]any{
-				"server":   entry.Name,
-				"enabled":  entry.Enabled,
-				"type":     string(entry.Type),
-				"command":  entry.Command,
-				"args":     append([]string(nil), entry.Args...),
-				"base_url": entry.BaseURL,
+				"server":                 entry.Name,
+				"enabled":                entry.Enabled,
+				"type":                   string(entry.Type),
+				"command":                entry.Command,
+				"args":                   append([]string(nil), entry.Args...),
+				"base_url":               entry.BaseURL,
+				"approval_mode":          strings.TrimSpace(entry.ApprovalMode),
+				"tool_approval_mode":     strings.TrimSpace(entry.ToolApprovalOverride[strings.TrimSpace(entry.Name)]),
+				"tool_approval_override": cloneStringMap(entry.ToolApprovalOverride),
 			},
 		}))
+	}
+	return out
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		k = strings.TrimSpace(k)
+		v = strings.TrimSpace(v)
+		if k == "" || v == "" {
+			continue
+		}
+		out[k] = v
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }

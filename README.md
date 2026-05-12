@@ -222,7 +222,7 @@ eos serve --transport stdio --workspace "/abs/workspace"
 生成桥接清单，输出启动命令、协议版本、默认会话参数、方法列表和能力声明，适合宿主侧自动发现 EOS 接入信息。
 
 ```bash
-eos bridge manifest --workspace "/abs/workspace"
+eos bridge manifest --workspace "/abs/workspace" --access-mode workspace-write --approval-mode on-request
 ```
 
 文档见：[internal/docs/serve/IDE_BRIDGE.md](./internal/docs/serve/IDE_BRIDGE.md)
@@ -232,8 +232,8 @@ eos bridge manifest --workspace "/abs/workspace"
 把 EOS 作为标准 MCP Server 暴露给外部 agent 或宿主，当前支持 `stdio` 和 `sse` 两种 transport。
 
 ```bash
-eos mcp serve --transport stdio --workspace "/abs/workspace"
-eos mcp serve --transport sse --listen 127.0.0.1:8765 --workspace "/abs/workspace"
+eos mcp serve --transport stdio --workspace "/abs/workspace" --access-mode workspace-write --approval-mode on-request
+eos mcp serve --transport sse --listen 127.0.0.1:8765 --workspace "/abs/workspace" --access-mode workspace-write --approval-mode on-request
 ```
 
 文档见：[internal/docs/mcp/SERVER.md](./internal/docs/mcp/SERVER.md)

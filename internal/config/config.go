@@ -86,14 +86,16 @@ const (
 
 // MCPEntry MCP服务配置条目
 type MCPEntry struct {
-	Name    string            `json:"name"`               // 服务名称（唯一标识）
-	Type    MCPClientType     `json:"type"`               // 客户端类型: "stdio" 或 "sse"
-	Command string            `json:"command,omitempty"`  // stdio: 执行命令
-	Args    []string          `json:"args,omitempty"`     // stdio: 命令参数
-	Envs    map[string]string `json:"envs,omitempty"`     // stdio: 环境变量
-	BaseURL string            `json:"base_url,omitempty"` // sse: 服务URL
-	Enabled bool              `json:"enabled"`            // 是否启用
-	Auth    *MCPAuth          `json:"auth,omitempty"`     // 认证配置
+	Name                 string            `json:"name"`                             // 服务名称（唯一标识）
+	Type                 MCPClientType     `json:"type"`                             // 客户端类型: "stdio" 或 "sse"
+	Command              string            `json:"command,omitempty"`                // stdio: 执行命令
+	Args                 []string          `json:"args,omitempty"`                   // stdio: 命令参数
+	Envs                 map[string]string `json:"envs,omitempty"`                   // stdio: 环境变量
+	BaseURL              string            `json:"base_url,omitempty"`               // sse: 服务URL
+	Enabled              bool              `json:"enabled"`                          // 是否启用
+	Auth                 *MCPAuth          `json:"auth,omitempty"`                   // 认证配置
+	ApprovalMode         string            `json:"approval_mode,omitempty"`          // 服务默认审批模式覆盖
+	ToolApprovalOverride map[string]string `json:"tool_approval_override,omitempty"` // 单工具审批模式覆盖
 }
 
 // MCPAuth defines authentication configuration for MCP servers
@@ -136,6 +138,8 @@ type LSPServerConfig struct {
 
 // PermissionsConfig defines tool permissions in config
 type PermissionsConfig struct {
+	AccessMode   string   `json:"access_mode,omitempty"`
+	ApprovalMode string   `json:"approval_mode,omitempty"`
 	AllowedTools []string `json:"allowed_tools,omitempty"`
 	DeniedTools  []string `json:"denied_tools,omitempty"`
 }
@@ -530,6 +534,24 @@ func parseLegacyMCPServersRaw(raw json.RawMessage) ([]MCPEntry, error) {
 			entry.Envs = envs
 		} else if env := parseLegacyEnvMap(obj["env"]); len(env) > 0 {
 			entry.Envs = env
+		}
+		if v, ok := obj["approval_mode"].(string); ok {
+			entry.ApprovalMode = strings.TrimSpace(v)
+		}
+		if rawOverrides, ok := obj["tool_approval_override"].(map[string]any); ok {
+			overrides := make(map[string]string, len(rawOverrides))
+			for toolName, value := range rawOverrides {
+				toolName = strings.TrimSpace(toolName)
+				text, _ := value.(string)
+				text = strings.TrimSpace(text)
+				if toolName == "" || text == "" {
+					continue
+				}
+				overrides[toolName] = text
+			}
+			if len(overrides) > 0 {
+				entry.ToolApprovalOverride = overrides
+			}
 		}
 
 		if entry.Type == "" {

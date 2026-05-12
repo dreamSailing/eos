@@ -18,6 +18,8 @@ const (
 	ctxKeyLanguage      ctxKey = "eos.language"
 	ctxKeyTraceID       ctxKey = "eos.trace_id"
 	ctxKeyWorkspaceRoot ctxKey = "eos.workspace_root"
+	ctxKeyAccessMode    ctxKey = "eos.access_mode"
+	ctxKeyApprovalMode  ctxKey = "eos.approval_mode"
 )
 
 var OnToolCall func(traceID string, toolName string)
@@ -103,6 +105,40 @@ func WithWorkspaceRoot(ctx context.Context, root string) context.Context {
 		ctx = context.Background()
 	}
 	return context.WithValue(ctx, ctxKeyWorkspaceRoot, strings.TrimSpace(root))
+}
+
+func WithAccessMode(ctx context.Context, mode string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, ctxKeyAccessMode, strings.TrimSpace(mode))
+}
+
+func AccessModeFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(ctxKeyAccessMode).(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
+func WithApprovalMode(ctx context.Context, mode string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, ctxKeyApprovalMode, strings.TrimSpace(mode))
+}
+
+func ApprovalModeFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(ctxKeyApprovalMode).(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
 }
 
 func WorkspaceRootFromContext(ctx context.Context) string {

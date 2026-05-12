@@ -23,10 +23,13 @@ func newServeCmd() *cobra.Command {
 	var transport string
 	var workspace string
 	var allowedTools string
+	var accessMode string
+	var approvalMode string
 	var sandboxMode string
 	var policyPath string
 	var sessionStorePath string
 	var requireApprovalDigest bool
+	var skipPermissions bool
 
 	cmd := &cobra.Command{
 		Use:    "serve",
@@ -43,6 +46,7 @@ func newServeCmd() *cobra.Command {
 			if strings.TrimSpace(workspace) == "" {
 				return errors.New("workspace required")
 			}
+			modes := resolveModeConfig(accessMode, approvalMode, sandboxMode, skipPermissions, requireApprovalDigest)
 
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
@@ -51,7 +55,9 @@ func newServeCmd() *cobra.Command {
 				Transport:             transport,
 				DefaultWorkspacePath:  workspace,
 				DefaultAllowedTools:   splitCommaList(allowedTools),
-				DefaultSandboxMode:    sandboxMode,
+				DefaultAccessMode:     modes.AccessMode,
+				DefaultApprovalMode:   modes.ApprovalMode,
+				DefaultSandboxMode:    modes.SandboxMode,
 				PolicyPath:            policyPath,
 				SessionStorePath:      sessionStorePath,
 				RequireApprovalDigest: requireApprovalDigest,
@@ -66,10 +72,13 @@ func newServeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&transport, "transport", "stdio", "transport: stdio")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace path (required)")
 	cmd.Flags().StringVar(&allowedTools, "allowed-tools", "", "comma-separated allowed tools (optional)")
-	cmd.Flags().StringVar(&sandboxMode, "sandbox-mode", "workspace", "sandbox mode: workspace or full_access")
+	cmd.Flags().StringVar(&accessMode, "access-mode", "", "default access mode: read-only, workspace-write, or danger-full-access")
+	cmd.Flags().StringVar(&approvalMode, "approval-mode", "", "default approval mode: untrusted, on-failure, on-request, or never")
+	cmd.Flags().StringVar(&sandboxMode, "sandbox-mode", "workspace", "legacy sandbox mode alias: workspace or full_access")
 	cmd.Flags().StringVar(&policyPath, "policy", "", "policy json file path (optional)")
 	cmd.Flags().StringVar(&sessionStorePath, "session-store", "", "session store file path (optional)")
 	cmd.Flags().BoolVar(&requireApprovalDigest, "require-approval-digest", true, "require approvalDigest for medium/high risk tools")
+	cmd.Flags().BoolVar(&skipPermissions, "dangerously-skip-permissions", false, "compatibility alias for --access-mode danger-full-access --approval-mode never")
 
 	_ = cmd.MarkFlagRequired("workspace")
 	return cmd

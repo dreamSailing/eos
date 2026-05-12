@@ -32,6 +32,8 @@ type ExecSession struct {
 	AllowedTools          map[string]bool
 	TraceID               string
 	ExecutionMode         string
+	AccessMode            string
+	ApprovalMode          string
 	SandboxMode           string
 	RequireApprovalDigest bool
 }

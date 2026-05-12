@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // SecurityManager 管理权限和安全钩子
@@ -21,6 +22,8 @@ type SecurityManager struct {
 	pendingDiff       string
 	pendingDiffPath   string
 	executionMode     string
+	accessMode        string
+	approvalMode      string
 	sandboxMode       string
 	previousMode      string // 进入 plan 前保存的模式
 	permMu            sync.RWMutex
@@ -30,15 +33,28 @@ type SecurityManager struct {
 	allowedTools      map[string]bool               // fine-grained: allowed tool names (if non-empty, whitelist)
 	skipPermissions   bool                          // --dangerously-skip-permissions bypass
 	rules             []settings.PermissionRule     // pattern-based permission rules
+	lastAuthDecision  string
+	lastAuthCategory  string
+	lastAuthSummary   string
+	lastAuthReason    string
+	lastAuthTarget    string
+	lastAuthAt        string
 }
 
 type PermissionSnapshot struct {
-	ExecutionMode     string
-	SandboxMode       string
-	AllowAll          bool
-	AllowedCategories []string
-	HasPendingDiff    bool
-	PendingDiffPath   string
+	ExecutionMode           string
+	AccessMode              string
+	ApprovalMode            string
+	SandboxMode             string
+	AllowAll                bool
+	AllowedCategories       []string
+	HasPendingDiff          bool
+	PendingDiffPath         string
+	LastAuthorization       string
+	LastAuthorizationAt     string
+	LastAuthorizationKind   string
+	LastAuthorizationNote   string
+	LastAuthorizationTarget string
 }
 
 // NewSecurityManager 创建新的安全管理器
@@ -46,6 +62,8 @@ func NewSecurityManager() *SecurityManager {
 	return &SecurityManager{
 		permsAllowSession: make(map[string]bool),
 		executionMode:     "auto",
+		accessMode:        "workspace-write",
+		approvalMode:      "on-request",
 		sandboxMode:       "workspace",
 	}
 }
@@ -120,6 +138,9 @@ func (s *SecurityManager) SetSandboxMode(mode string) {
 	mode = toolapi.NormalizeSandboxMode(mode)
 	s.permMu.Lock()
 	s.sandboxMode = mode
+	if strings.TrimSpace(s.accessMode) == "" {
+		s.accessMode = toolapi.ResolveAccessMode(toolapi.ExecSession{SandboxMode: mode})
+	}
 	s.permMu.Unlock()
 }
 
@@ -128,6 +149,35 @@ func (s *SecurityManager) SandboxMode() string {
 	v := s.sandboxMode
 	s.permMu.RUnlock()
 	return toolapi.NormalizeSandboxMode(v)
+}
+
+func (s *SecurityManager) SetAccessMode(mode string) {
+	mode = toolapi.NormalizeAccessMode(mode)
+	s.permMu.Lock()
+	s.accessMode = mode
+	s.sandboxMode = toolapi.SandboxModeFromAccessMode(mode)
+	s.permMu.Unlock()
+}
+
+func (s *SecurityManager) AccessMode() string {
+	s.permMu.RLock()
+	v := s.accessMode
+	s.permMu.RUnlock()
+	return toolapi.NormalizeAccessMode(v)
+}
+
+func (s *SecurityManager) SetApprovalMode(mode string) {
+	mode = toolapi.NormalizeApprovalMode(mode)
+	s.permMu.Lock()
+	s.approvalMode = mode
+	s.permMu.Unlock()
+}
+
+func (s *SecurityManager) ApprovalMode() string {
+	s.permMu.RLock()
+	v := s.approvalMode
+	s.permMu.RUnlock()
+	return toolapi.NormalizeApprovalMode(v)
 }
 
 // GetHooks 获取安全钩子
@@ -206,11 +256,18 @@ func (s *SecurityManager) Snapshot() PermissionSnapshot {
 	defer s.permMu.RUnlock()
 
 	snap := PermissionSnapshot{
-		ExecutionMode:   s.executionMode,
-		SandboxMode:     toolapi.NormalizeSandboxMode(s.sandboxMode),
-		AllowAll:        toolapi.NormalizeSandboxMode(s.sandboxMode) == "full_access",
-		HasPendingDiff:  strings.TrimSpace(s.pendingDiff) != "",
-		PendingDiffPath: strings.TrimSpace(s.pendingDiffPath),
+		ExecutionMode:           s.executionMode,
+		AccessMode:              toolapi.NormalizeAccessMode(s.accessMode),
+		ApprovalMode:            toolapi.NormalizeApprovalMode(s.approvalMode),
+		SandboxMode:             toolapi.NormalizeSandboxMode(s.sandboxMode),
+		AllowAll:                toolapi.NormalizeSandboxMode(s.sandboxMode) == "full_access",
+		HasPendingDiff:          strings.TrimSpace(s.pendingDiff) != "",
+		PendingDiffPath:         strings.TrimSpace(s.pendingDiffPath),
+		LastAuthorization:       strings.TrimSpace(s.lastAuthDecision),
+		LastAuthorizationAt:     strings.TrimSpace(s.lastAuthAt),
+		LastAuthorizationKind:   strings.TrimSpace(s.lastAuthCategory),
+		LastAuthorizationNote:   strings.TrimSpace(permissionNote(s.lastAuthSummary, s.lastAuthReason)),
+		LastAuthorizationTarget: strings.TrimSpace(s.lastAuthTarget),
 	}
 	for category, allowed := range s.permsAllowSession {
 		if !allowed {
@@ -220,6 +277,27 @@ func (s *SecurityManager) Snapshot() PermissionSnapshot {
 	}
 	sort.Strings(snap.AllowedCategories)
 	return snap
+}
+
+func (s *SecurityManager) RecordAuthorization(decision, category, summary, reason, target string) {
+	s.permMu.Lock()
+	defer s.permMu.Unlock()
+	s.lastAuthDecision = strings.TrimSpace(decision)
+	s.lastAuthCategory = strings.TrimSpace(category)
+	s.lastAuthSummary = strings.TrimSpace(summary)
+	s.lastAuthReason = strings.TrimSpace(reason)
+	s.lastAuthTarget = strings.TrimSpace(target)
+	s.lastAuthAt = time.Now().Format(time.RFC3339)
+}
+
+func permissionNote(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // LoadPermissions loads fine-grained tool permissions from settings
@@ -328,4 +406,17 @@ func (s *SecurityManager) SetSkipPermissions(skip bool) {
 	s.permMu.Lock()
 	defer s.permMu.Unlock()
 	s.skipPermissions = skip
+	if skip {
+		s.accessMode = "danger-full-access"
+		s.sandboxMode = "full_access"
+		s.approvalMode = "never"
+	} else {
+		if strings.TrimSpace(s.accessMode) == "" {
+			s.accessMode = "workspace-write"
+		}
+		if strings.TrimSpace(s.approvalMode) == "" {
+			s.approvalMode = "on-request"
+		}
+		s.sandboxMode = toolapi.SandboxModeFromAccessMode(s.accessMode)
+	}
 }

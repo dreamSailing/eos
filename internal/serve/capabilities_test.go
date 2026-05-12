@@ -151,7 +151,8 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 		"params": map[string]any{
 			"workspacePath": workspace,
 			"options": map[string]any{
-				"sandboxMode":  "full_access",
+				"accessMode":   "danger-full-access",
+				"approvalMode": "never",
 				"allowedTools": []any{"read", "skills_list", "mcp_status", "echo_plugin"},
 			},
 		},
@@ -169,6 +170,12 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 	capabilities, _ := capResult["capabilities"].([]any)
 	if got, _ := capResult["mode"].(string); got != "auto" {
 		t.Fatalf("mode=%v, want auto", capResult["mode"])
+	}
+	if got, _ := capResult["accessMode"].(string); got != "danger-full-access" {
+		t.Fatalf("accessMode=%v, want danger-full-access", capResult["accessMode"])
+	}
+	if got, _ := capResult["approvalMode"].(string); got != "never" {
+		t.Fatalf("approvalMode=%v, want never", capResult["approvalMode"])
 	}
 	modeProfile, _ := capResult["modeProfile"].(map[string]any)
 	if got, _ := modeProfile["approvalBehavior"].(string); got != "prompt_high_only" {
@@ -326,6 +333,9 @@ func TestCapabilityListWorkspaceSandboxBlocksFullAccessCapabilities(t *testing.T
 		"method":  "session.create",
 		"params": map[string]any{
 			"workspacePath": workspace,
+			"options": map[string]any{
+				"accessMode": "workspace-write",
+			},
 		},
 	})
 	resp := readResponse(2, 10*time.Second)
@@ -343,8 +353,8 @@ func TestCapabilityListWorkspaceSandboxBlocksFullAccessCapabilities(t *testing.T
 	if got, _ := capResult["sandboxMode"].(string); got != "workspace" {
 		t.Fatalf("sandboxMode=%v, want workspace", capResult["sandboxMode"])
 	}
-	if got, _ := summary["blockedBySandbox"].(float64); got <= 0 {
-		t.Fatalf("blockedBySandbox=%v, want > 0", summary["blockedBySandbox"])
+	if got, _ := summary["blockedByAccess"].(float64); got <= 0 {
+		t.Fatalf("blockedByAccess=%v, want > 0", summary["blockedByAccess"])
 	}
 	for _, name := range []string{"echo_plugin", "mcp:demo", "duckduckgo_search"} {
 		entry := findByName(catalog, name)
@@ -352,8 +362,8 @@ func TestCapabilityListWorkspaceSandboxBlocksFullAccessCapabilities(t *testing.T
 			t.Fatalf("missing catalog entry %q in %v", name, catalog)
 		}
 		access, _ := entry["access"].(map[string]any)
-		if got, _ := access["reason"].(string); got != "sandbox_mode" {
-			t.Fatalf("%q reason=%q, want sandbox_mode", name, got)
+		if got, _ := access["reason"].(string); got != "access_mode" {
+			t.Fatalf("%q reason=%q, want access_mode", name, got)
 		}
 	}
 }

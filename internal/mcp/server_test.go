@@ -81,6 +81,44 @@ func TestMCPServerStdio_ListToolsAndResources(t *testing.T) {
 	}
 }
 
+func TestMCPServerStdio_DefaultSessionExposesAccessAndApprovalModes(t *testing.T) {
+	client, cleanup := startTestServer(t)
+	defer cleanup()
+
+	_ = client.request(t, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params": map[string]any{
+			"protocolVersion": "2025-03-26",
+			"capabilities":    map[string]any{},
+			"clientInfo":      map[string]any{"name": "test", "version": "1.0"},
+		},
+	})
+
+	resp := client.request(t, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "eos_session_get",
+			"arguments": map[string]any{},
+		},
+	})
+	result := asMap(t, resp["result"])
+	structured := asMap(t, result["structuredContent"])
+	session := asMap(t, structured["session"])
+	if got := stringValue(session["access_mode"]); got != "workspace-write" {
+		t.Fatalf("access_mode=%q, want workspace-write", got)
+	}
+	if got := stringValue(session["approval_mode"]); got != "on-request" {
+		t.Fatalf("approval_mode=%q, want on-request", got)
+	}
+	if got := stringValue(session["sandbox_mode"]); got != "workspace" {
+		t.Fatalf("sandbox_mode=%q, want workspace", got)
+	}
+}
+
 func TestMCPServerStdio_AskUserQuestionInquiryFlow(t *testing.T) {
 	client, cleanup := startTestServer(t)
 	defer cleanup()

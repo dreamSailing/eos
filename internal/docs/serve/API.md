@@ -10,12 +10,16 @@
 - 服务启动命令：
 
 ```bash
-eos serve --transport stdio --workspace "/abs/workspace" --allowed-tools "read,bash" --policy "./policy.json" --require-approval-digest=true
+eos serve --transport stdio --workspace "/abs/workspace" --allowed-tools "read,bash" --access-mode workspace-write --approval-mode on-request --policy "./policy.json" --require-approval-digest=true
 ```
 
 - 必填参数：`--workspace`
 - 可选参数：
   - `--allowed-tools`：服务端允许的工具白名单（逗号分隔）
+  - `--access-mode`：默认访问模式（`read-only` / `workspace-write` / `danger-full-access`）
+  - `--approval-mode`：默认审批模式（`untrusted` / `on-failure` / `on-request` / `never`）
+  - `--sandbox-mode`：旧沙箱别名（`workspace` / `full_access`），仍可用
+  - `--dangerously-skip-permissions`：兼容旧开关，等价于 `--access-mode danger-full-access --approval-mode never`
   - `--policy`：策略文件路径（JSON）
   - `--require-approval-digest`：中/高风险工具是否要求审批摘要（默认 `true`）
 

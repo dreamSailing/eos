@@ -68,6 +68,34 @@ func (rc *RuntimeCore) SandboxMode() string {
 	return rc.securityMgr.SandboxMode()
 }
 
+func (rc *RuntimeCore) SetAccessMode(mode string) {
+	if rc == nil || rc.securityMgr == nil {
+		return
+	}
+	rc.securityMgr.SetAccessMode(mode)
+}
+
+func (rc *RuntimeCore) AccessMode() string {
+	if rc == nil || rc.securityMgr == nil {
+		return ""
+	}
+	return rc.securityMgr.AccessMode()
+}
+
+func (rc *RuntimeCore) SetApprovalMode(mode string) {
+	if rc == nil || rc.securityMgr == nil {
+		return
+	}
+	rc.securityMgr.SetApprovalMode(mode)
+}
+
+func (rc *RuntimeCore) ApprovalMode() string {
+	if rc == nil || rc.securityMgr == nil {
+		return ""
+	}
+	return rc.securityMgr.ApprovalMode()
+}
+
 func (rc *RuntimeCore) PermissionSnapshot() PermissionSnapshot {
 	if rc == nil || rc.securityMgr == nil {
 		return PermissionSnapshot{}

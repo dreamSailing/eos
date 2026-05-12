@@ -22,6 +22,8 @@ type ServerOptions struct {
 	Transport             string
 	DefaultWorkspacePath  string
 	DefaultAllowedTools   []string
+	DefaultAccessMode     string
+	DefaultApprovalMode   string
 	DefaultSandboxMode    string
 	PolicyPath            string
 	SessionStorePath      string
@@ -55,6 +57,8 @@ func NewServer(opts ServerOptions, services toolapi.Services) (*Server, error) {
 	}
 	opts.DefaultWorkspacePath = workspaceAbs
 	opts.Transport = normalizeServerTransport(opts.Transport)
+	opts.DefaultAccessMode = strings.TrimSpace(opts.DefaultAccessMode)
+	opts.DefaultApprovalMode = strings.TrimSpace(opts.DefaultApprovalMode)
 	opts.DefaultSandboxMode = toolapi.NormalizeSandboxMode(opts.DefaultSandboxMode)
 	if opts.DefaultSandboxMode == "" {
 		opts.DefaultSandboxMode = "workspace"
