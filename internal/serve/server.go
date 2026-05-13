@@ -59,7 +59,6 @@ type session struct {
 	confirmPolicyID        string
 	approvals              map[string]*approval
 	allowSession           map[string]time.Time
-	lastAuthorization      *authorizationStatus
 	results                map[string]any
 	runningCancels         map[string]context.CancelFunc
 	updatedAt              time.Time
@@ -67,33 +66,20 @@ type session struct {
 }
 
 type approval struct {
-	requestID        string
-	kind             string
-	callID           string
-	tool             string
-	parameters       map[string]any
-	preview          map[string]any
-	digest           string
-	expiresAt        time.Time
-	decision         string
-	used             bool
-	policyID         string
-	reason           string
-	option           string
-	text             string
-	triggerReason    string
-	targetAccessMode string
-	approvalSource   string
-}
-
-type authorizationStatus struct {
-	Decision         string
-	Category         string
-	Tool             string
-	Summary          string
-	Reason           string
-	TargetAccessMode string
-	At               time.Time
+	requestID  string
+	kind       string
+	callID     string
+	tool       string
+	parameters map[string]any
+	preview    map[string]any
+	digest     string
+	expiresAt  time.Time
+	decision   string
+	used       bool
+	policyID   string
+	reason     string
+	option     string
+	text       string
 }
 
 func NewServer(opts Options, in io.Reader, out io.Writer, errw io.Writer, toolsSvc toolapi.Services) (*Server, error) {
@@ -280,14 +266,8 @@ func (s *Server) handleSessionCreate(req rpcRequest) {
 	requireDigest := s.opts.RequireApprovalDigest
 	confirmPolicyID := ""
 	executionMode := "auto"
-	accessMode := ""
-	if strings.TrimSpace(s.opts.DefaultAccessMode) != "" {
-		accessMode = toolapi.NormalizeAccessMode(s.opts.DefaultAccessMode)
-	}
-	approvalMode := ""
-	if strings.TrimSpace(s.opts.DefaultApprovalMode) != "" {
-		approvalMode = toolapi.NormalizeApprovalMode(s.opts.DefaultApprovalMode)
-	}
+	accessMode := normalizeOptionalAccessMode(s.opts.DefaultAccessMode)
+	approvalMode := normalizeOptionalApprovalMode(s.opts.DefaultApprovalMode)
 	sandboxMode := toolapi.NormalizeSandboxMode(s.opts.DefaultSandboxMode)
 	trustedWorkspace := false
 	maxConcurrent := 1
@@ -302,11 +282,10 @@ func (s *Server) handleSessionCreate(req rpcRequest) {
 			executionMode = toolapi.NormalizeExecutionMode(v)
 		}
 		if v, ok := p.Options["accessMode"].(string); ok {
-			accessMode = toolapi.NormalizeAccessMode(v)
-			sandboxMode = toolapi.SandboxModeFromAccessMode(accessMode)
+			accessMode = normalizeOptionalAccessMode(v)
 		}
 		if v, ok := p.Options["approvalMode"].(string); ok {
-			approvalMode = toolapi.NormalizeApprovalMode(v)
+			approvalMode = normalizeOptionalApprovalMode(v)
 		}
 		if v, ok := p.Options["sandboxMode"].(string); ok {
 			sandboxMode = toolapi.NormalizeSandboxMode(v)
@@ -534,13 +513,9 @@ func (s *Server) handleToolList(req rpcRequest) {
 		"tools":          defsToDTOsForSession(defs, execSess),
 		"catalog":        catalog,
 		"mode":           execSess.ExecutionMode,
-		"accessMode":     toolapi.ResolveAccessMode(execSess),
-		"approvalMode":   toolapi.ResolveApprovalMode(execSess),
 		"sandboxMode":    execSess.SandboxMode,
 		"modeProfile":    modeDTO(execSess.ExecutionMode),
 		"executionModes": modeDTOs(toolapi.SupportedExecutionModes()),
-		"accessModes":    accessModeDTOs(toolapi.SupportedAccessModes()),
-		"approvalModes":  approvalModeDTOs(toolapi.SupportedApprovalModes()),
 		"summary":        buildCatalogSummary(catalog),
 	}, nil)
 }
@@ -566,13 +541,11 @@ func (s *Server) handleCapabilityList(req rpcRequest) {
 		"tools":          items,
 		"catalog":        catalog,
 		"mode":           execSess.ExecutionMode,
-		"accessMode":     toolapi.ResolveAccessMode(execSess),
-		"approvalMode":   toolapi.ResolveApprovalMode(execSess),
+		"accessMode":     execSess.AccessMode,
+		"approvalMode":   execSess.ApprovalMode,
 		"sandboxMode":    execSess.SandboxMode,
 		"modeProfile":    modeDTO(execSess.ExecutionMode),
 		"executionModes": modeDTOs(toolapi.SupportedExecutionModes()),
-		"accessModes":    accessModeDTOs(toolapi.SupportedAccessModes()),
-		"approvalModes":  approvalModeDTOs(toolapi.SupportedApprovalModes()),
 		"summary":        buildCatalogSummary(catalog),
 	}, nil)
 }
@@ -607,28 +580,15 @@ func (s *Server) handleToolPreflight(req rpcRequest) {
 		return
 	}
 	access := toolapi.EvaluateToolAccess(def, sessionExecSession(sess))
-	suggestedAccessMode := suggestedUpgradeAccessMode(access)
 	if !access.Visible || !access.Executable {
-		s.reply(req.ID, nil, &rpcError{
-			Code:    -32003,
-			Message: "ToolNotAllowed",
-			Data: preflightContextData(sess, access, map[string]any{
-				"triggerReason":       firstNonEmpty(access.Reason, "tool_not_allowed"),
-				"suggestedAccessMode": suggestedAccessMode,
-			}),
-		})
+		s.reply(req.ID, nil, &rpcError{Code: -32003, Message: "ToolNotAllowed"})
 		return
 	}
 
 	risk := string(def.RiskLevel)
 	preview, err := s.buildPreview(sess, call)
 	if err != nil {
-		rpcErr := errToRPC(err)
-		rpcErr.Data = preflightContextData(sess, access, mergeAnyMap(asMap(rpcErr.Data), map[string]any{
-			"triggerReason":       preflightTriggerReasonFromError(rpcErr),
-			"suggestedAccessMode": suggestedAccessModeForError(access, rpcErr),
-		}))
-		s.reply(req.ID, nil, rpcErr)
+		s.reply(req.ID, nil, errToRPC(err))
 		return
 	}
 
@@ -651,38 +611,23 @@ func (s *Server) handleToolPreflight(req rpcRequest) {
 	expiresAt := time.Now().Add(time.Duration(ttl) * time.Second)
 
 	out := map[string]any{
-		"riskLevel":           risk,
-		"accessMode":          access.AccessMode,
-		"approvalMode":        access.ApprovalMode,
-		"approvalSource":      access.ApprovalSource,
-		"sandboxMode":         access.SandboxMode,
-		"preview":             preview,
-		"approvalDigest":      digest,
-		"ttlSeconds":          ttl,
-		"triggerReason":       "",
-		"suggestedAccessMode": suggestedAccessMode,
-		"workspaceBoundary": map[string]any{
-			"root":       strings.TrimSpace(sess.workspaceAbs),
-			"tempDirs":   toolsAllowedTempDirs(),
-			"enforced":   access.AccessMode == "workspace-write",
-			"accessMode": access.AccessMode,
-		},
+		"riskLevel":      risk,
+		"preview":        preview,
+		"approvalDigest": digest,
+		"ttlSeconds":     ttl,
 	}
 
 	if access.NeedsApproval {
 		requestID := "r_" + uuid.New().String()[:12]
 		a := &approval{
-			requestID:        requestID,
-			kind:             "approval",
-			callID:           call.ID,
-			tool:             call.Tool,
-			parameters:       cloneMap(call.Parameters),
-			preview:          cloneMap(preview),
-			digest:           digest,
-			expiresAt:        expiresAt,
-			triggerReason:    "approval_required",
-			targetAccessMode: suggestedAccessMode,
-			approvalSource:   access.ApprovalSource,
+			requestID:  requestID,
+			kind:       "approval",
+			callID:     call.ID,
+			tool:       call.Tool,
+			parameters: cloneMap(call.Parameters),
+			preview:    cloneMap(preview),
+			digest:     digest,
+			expiresAt:  expiresAt,
 		}
 		s.mu.Lock()
 		sess.approvals[requestID] = a
@@ -690,7 +635,6 @@ func (s *Server) handleToolPreflight(req rpcRequest) {
 		s.mu.Unlock()
 
 		out["requestID"] = requestID
-		out["triggerReason"] = "approval_required"
 
 		s.notifyProtocol(s.newApprovalRequiredEvent(sess, requestID, call, preview, risk, digest, ttl))
 		s.notifySessionUpdated(sess)
@@ -774,20 +718,11 @@ func (s *Server) resolvePrompt(req rpcRequest, p promptResolveParams, expectedKi
 	a.reason = strings.TrimSpace(p.Reason)
 	a.option = p.Option
 	a.text = p.Text
-	if decision == "allow_session" && strings.TrimSpace(a.digest) != "" {
+	if decision == "allow_session" {
 		sess.allowSession[a.digest] = time.Now().Add(10 * time.Minute)
 	}
 	if preview := sessionPreviewFromResolution(*a); preview != "" {
 		sess.preview = preview
-	}
-	sess.lastAuthorization = &authorizationStatus{
-		Decision:         decision,
-		Category:         strings.TrimSpace(a.kind),
-		Tool:             strings.TrimSpace(a.tool),
-		Summary:          normalizeSessionPreview(sessionPreviewFromApproval(a)),
-		Reason:           strings.TrimSpace(a.reason),
-		TargetAccessMode: strings.TrimSpace(a.targetAccessMode),
-		At:               time.Now(),
 	}
 	aCopy := *a
 	sess.updatedAt = time.Now()
@@ -923,43 +858,17 @@ func (s *Server) executeTool(ctx context.Context, sess *session, call toolCallDT
 		return nil, &rpcError{Code: -32003, Message: "ToolNotAllowed"}
 	}
 	access := toolapi.EvaluateToolAccess(def, sessionExecSession(sess))
-	suggestedAccessMode := suggestedUpgradeAccessMode(access)
 	if !access.Visible || !access.Executable {
 		return nil, &rpcError{Code: -32003, Message: "ToolNotAllowed", Data: map[string]any{
-			"reason":              access.Reason,
-			"mode":                access.Mode,
-			"riskLevel":           access.RiskLevel,
-			"accessMode":          access.AccessMode,
-			"approvalMode":        access.ApprovalMode,
-			"approvalSource":      access.ApprovalSource,
-			"suggestedAccessMode": suggestedAccessMode,
+			"reason":    access.Reason,
+			"mode":      access.Mode,
+			"riskLevel": access.RiskLevel,
 		}}
 	}
 	risk := string(access.RiskLevel)
-	effectiveAccessMode := access.AccessMode
-	if escalated := s.consumeApprovedEscalationAccessMode(sess, call); escalated != "" {
-		effectiveAccessMode = escalated
-	}
-	preview, err := s.buildPreviewForAccess(sess, effectiveAccessMode, call)
+	preview, err := s.buildPreview(sess, call)
 	if err != nil {
-		rpcErr := errToRPC(err)
-		rpcErr.Data = mergeAnyMap(asMap(rpcErr.Data), preflightContextData(sess, access, map[string]any{
-			"triggerReason":       preflightTriggerReasonFromError(rpcErr),
-			"suggestedAccessMode": suggestedAccessModeForError(access, rpcErr),
-		}))
-		if shouldEscalateOnFailure(access, rpcErr.Message) {
-			requestID := s.ensurePendingApproval(sess, call, preview, "", risk, preflightTriggerReasonFromError(rpcErr), suggestedAccessModeForError(access, rpcErr), access.ApprovalSource)
-			rpcErr = &rpcError{
-				Code:    -32006,
-				Message: "ConfirmationRequired",
-				Data: mergeAnyMap(asMap(rpcErr.Data), map[string]any{
-					"requestID":           requestID,
-					"triggerReason":       preflightTriggerReasonFromError(rpcErr),
-					"suggestedAccessMode": suggestedAccessModeForError(access, rpcErr),
-				}),
-			}
-		}
-		return nil, rpcErr
+		return nil, errToRPC(err)
 	}
 
 	payload := map[string]any{
@@ -976,14 +885,8 @@ func (s *Server) executeTool(ctx context.Context, sess *session, call toolCallDT
 
 	if access.NeedsApproval {
 		if !s.isApproved(sess, call, digest) {
-			requestID := s.ensurePendingApproval(sess, call, preview, digest, risk, "approval_required", suggestedAccessMode, access.ApprovalSource)
-			return nil, &rpcError{Code: -32006, Message: "ConfirmationRequired", Data: map[string]any{
-				"requestID":           requestID,
-				"approvalDigest":      digest,
-				"triggerReason":       "approval_required",
-				"suggestedAccessMode": suggestedAccessMode,
-				"approvalSource":      access.ApprovalSource,
-			}}
+			requestID := s.ensurePendingApproval(sess, call, preview, digest, risk)
+			return nil, &rpcError{Code: -32006, Message: "ConfirmationRequired", Data: map[string]any{"requestID": requestID}}
 		}
 	}
 
@@ -1015,9 +918,6 @@ func (s *Server) executeTool(ctx context.Context, sess *session, call toolCallDT
 		AllowedTools:          sess.allowedTools,
 		TraceID:               call.ID,
 		ExecutionMode:         sess.executionMode,
-		AccessMode:            effectiveAccessMode,
-		ApprovalMode:          sess.approvalMode,
-		SandboxMode:           toolapi.SandboxModeFromAccessMode(effectiveAccessMode),
 		RequireApprovalDigest: sess.requireApprovalDigest,
 	}, []toolapi.ToolCall{{
 		ID:     call.ID,
@@ -1029,16 +929,6 @@ func (s *Server) executeTool(ctx context.Context, sess *session, call toolCallDT
 	}
 	if len(res) == 0 {
 		return nil, &rpcError{Code: -32012, Message: "Internal"}
-	}
-	if errText, failed := requestFailureFromResult(res[0]); failed && shouldEscalateOnFailure(access, errText) {
-		requestID := s.ensurePendingApproval(sess, call, preview, digest, risk, "sandbox_failure", suggestedAccessMode, access.ApprovalSource)
-		return nil, &rpcError{Code: -32006, Message: "ConfirmationRequired", Data: preflightContextData(sess, access, map[string]any{
-			"requestID":           requestID,
-			"approvalDigest":      digest,
-			"triggerReason":       "sandbox_failure",
-			"suggestedAccessMode": suggestedAccessMode,
-			"failureReason":       errText,
-		})}
 	}
 
 	s.notifyProtocol(s.newToolResultEvent(sess, call.ID, res[0]))
@@ -1074,7 +964,7 @@ func (s *Server) isApproved(sess *session, call toolCallDTO, digest string) bool
 	return false
 }
 
-func (s *Server) ensurePendingApproval(sess *session, call toolCallDTO, preview map[string]any, digest string, risk string, triggerReason string, targetAccessMode string, approvalSource string) string {
+func (s *Server) ensurePendingApproval(sess *session, call toolCallDTO, preview map[string]any, digest string, risk string) string {
 	ttl := int64(60)
 	if risk == "high" {
 		ttl = 30
@@ -1084,17 +974,14 @@ func (s *Server) ensurePendingApproval(sess *session, call toolCallDTO, preview 
 
 	s.mu.Lock()
 	sess.approvals[requestID] = &approval{
-		requestID:        requestID,
-		kind:             "approval",
-		callID:           call.ID,
-		tool:             call.Tool,
-		parameters:       cloneMap(call.Parameters),
-		preview:          cloneMap(preview),
-		digest:           digest,
-		expiresAt:        expiresAt,
-		triggerReason:    strings.TrimSpace(triggerReason),
-		targetAccessMode: strings.TrimSpace(targetAccessMode),
-		approvalSource:   strings.TrimSpace(approvalSource),
+		requestID:  requestID,
+		kind:       "approval",
+		callID:     call.ID,
+		tool:       call.Tool,
+		parameters: cloneMap(call.Parameters),
+		preview:    cloneMap(preview),
+		digest:     digest,
+		expiresAt:  expiresAt,
 	}
 	if previewText := normalizeSessionPreview(s.confirmSummary(call, preview)); previewText != "" {
 		sess.preview = previewText
@@ -1105,34 +992,6 @@ func (s *Server) ensurePendingApproval(sess *session, call toolCallDTO, preview 
 	s.notifyProtocol(s.newApprovalRequiredEvent(sess, requestID, call, preview, risk, digest, ttl))
 	s.notifySessionUpdated(sess)
 	return requestID
-}
-
-func (s *Server) consumeApprovedEscalationAccessMode(sess *session, call toolCallDTO) string {
-	now := time.Now()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, item := range sess.approvals {
-		if item == nil || item.callID != call.ID || strings.TrimSpace(item.targetAccessMode) == "" {
-			continue
-		}
-		if strings.TrimSpace(item.digest) != "" {
-			continue
-		}
-		if now.After(item.expiresAt) {
-			continue
-		}
-		switch item.decision {
-		case "allow_session":
-			return toolapi.NormalizeAccessMode(item.targetAccessMode)
-		case "allow_once":
-			if item.used {
-				continue
-			}
-			item.used = true
-			return toolapi.NormalizeAccessMode(item.targetAccessMode)
-		}
-	}
-	return ""
 }
 
 func (s *Server) getResolvedInquiry(sess *session, call toolCallDTO, digest string) (*approval, bool) {
@@ -1433,12 +1292,10 @@ func anyString(v any) string {
 
 func (s *Server) newRequestEvent(sess *session, eventType protocol.EventType, requestID string, call toolCallDTO, extra map[string]any) protocol.Envelope {
 	payload := map[string]any{
-		"request_id":    strings.TrimSpace(requestID),
-		"tool":          strings.TrimSpace(call.Tool),
-		"mode":          toolapi.NormalizeExecutionMode(sess.executionMode),
-		"access_mode":   toolapi.ResolveAccessMode(sessionExecSession(sess)),
-		"approval_mode": toolapi.ResolveApprovalMode(sessionExecSession(sess)),
-		"input_kind":    "tool",
+		"request_id": strings.TrimSpace(requestID),
+		"tool":       strings.TrimSpace(call.Tool),
+		"mode":       toolapi.NormalizeExecutionMode(sess.executionMode),
+		"input_kind": "tool",
 		"call": map[string]any{
 			"id":         strings.TrimSpace(call.ID),
 			"tool":       strings.TrimSpace(call.Tool),
@@ -1696,10 +1553,9 @@ func (s *Server) sessionInfoLocked(sess *session) protocol.SessionInfo {
 			"trusted_workspace":         sess.trustedWorkspace,
 			"require_approval_digest":   sess.requireApprovalDigest,
 			"max_concurrent_tool_calls": sess.maxConcurrentToolCalls,
-			"access_mode":               toolapi.ResolveAccessMode(sessionExecSession(sess)),
-			"approval_mode":             toolapi.ResolveApprovalMode(sessionExecSession(sess)),
+			"access_mode":               resolvedAccessMode(sess),
+			"approval_mode":             resolvedApprovalMode(sess),
 			"sandbox_mode":              strings.TrimSpace(sess.sandboxMode),
-			"last_authorization":        sessionLastAuthorization(sess),
 		},
 	}
 }
@@ -1709,22 +1565,6 @@ func sessionIDOf(sess *session) string {
 		return ""
 	}
 	return strings.TrimSpace(sess.id)
-}
-
-func sessionLastAuthorization(sess *session) map[string]any {
-	if sess == nil || sess.lastAuthorization == nil || sess.lastAuthorization.At.IsZero() {
-		return nil
-	}
-	item := sess.lastAuthorization
-	return map[string]any{
-		"decision":           strings.TrimSpace(item.Decision),
-		"category":           strings.TrimSpace(item.Category),
-		"tool":               strings.TrimSpace(item.Tool),
-		"summary":            strings.TrimSpace(item.Summary),
-		"reason":             strings.TrimSpace(item.Reason),
-		"target_access_mode": strings.TrimSpace(item.TargetAccessMode),
-		"at":                 item.At.Format(time.RFC3339),
-	}
 }
 
 func firstNonEmpty(values ...string) string {
@@ -1908,15 +1748,6 @@ func (s *Server) enrichRequestError(sess *session, rpcErr *rpcError) {
 	if _, exists := data["decisionOptions"]; !exists {
 		data["decisionOptions"] = []string{"allow_once", "allow_session", "deny"}
 	}
-	if _, exists := data["triggerReason"]; !exists && strings.TrimSpace(a.triggerReason) != "" {
-		data["triggerReason"] = strings.TrimSpace(a.triggerReason)
-	}
-	if _, exists := data["suggestedAccessMode"]; !exists && strings.TrimSpace(a.targetAccessMode) != "" {
-		data["suggestedAccessMode"] = strings.TrimSpace(a.targetAccessMode)
-	}
-	if _, exists := data["approvalSource"]; !exists && strings.TrimSpace(a.approvalSource) != "" {
-		data["approvalSource"] = strings.TrimSpace(a.approvalSource)
-	}
 }
 
 func errToRPC(err error) *rpcError {
@@ -1928,11 +1759,7 @@ func errToRPC(err error) *rpcError {
 }
 
 func (s *Server) buildPreview(sess *session, call toolCallDTO) (map[string]any, error) {
-	return s.buildPreviewForAccess(sess, toolapi.ResolveAccessMode(sessionExecSession(sess)), call)
-}
-
-func (s *Server) buildPreviewForAccess(sess *session, accessMode string, call toolCallDTO) (map[string]any, error) {
-	if err := s.checkWorkspaceConstraints(sess, accessMode, call); err != nil {
+	if err := s.checkWorkspaceConstraints(sess, call); err != nil {
 		return nil, err
 	}
 	switch strings.ToLower(call.Tool) {
@@ -1967,12 +1794,9 @@ func (s *Server) buildPreviewForAccess(sess *session, accessMode string, call to
 	}
 }
 
-func (s *Server) checkWorkspaceConstraints(sess *session, accessMode string, call toolCallDTO) error {
+func (s *Server) checkWorkspaceConstraints(sess *session, call toolCallDTO) error {
 	if sess == nil {
 		return &rpcError{Code: -32002, Message: "SessionNotFound"}
-	}
-	if toolapi.NormalizeAccessMode(accessMode) == "danger-full-access" {
-		return nil
 	}
 	if strings.TrimSpace(sess.workspaceAbs) == "" {
 		return nil
@@ -2069,113 +1893,6 @@ func cloneMap(m map[string]any) map[string]any {
 	return cp
 }
 
-func asMap(v any) map[string]any {
-	out, _ := v.(map[string]any)
-	if out == nil {
-		return map[string]any{}
-	}
-	return out
-}
-
-func mergeAnyMap(a, b map[string]any) map[string]any {
-	out := map[string]any{}
-	for k, v := range a {
-		out[k] = v
-	}
-	for k, v := range b {
-		out[k] = v
-	}
-	return out
-}
-
-func suggestedUpgradeAccessMode(access toolapi.ToolAccess) string {
-	if access.AccessMode == "danger-full-access" {
-		return ""
-	}
-	if access.Reason == "sandbox_mode" || access.Reason == "access_mode" {
-		return "danger-full-access"
-	}
-	return ""
-}
-
-func suggestedAccessModeForError(access toolapi.ToolAccess, rpcErr *rpcError) string {
-	if rpcErr == nil {
-		return suggestedUpgradeAccessMode(access)
-	}
-	if rpcErr.Code == -32009 || strings.EqualFold(strings.TrimSpace(rpcErr.Message), "WorkspaceViolation") {
-		return "danger-full-access"
-	}
-	return suggestedUpgradeAccessMode(access)
-}
-
-func shouldEscalateOnFailure(access toolapi.ToolAccess, message string) bool {
-	if toolapi.NormalizeApprovalMode(access.ApprovalMode) != "on-failure" {
-		return false
-	}
-	if access.AccessMode == "danger-full-access" {
-		return false
-	}
-	return tools.IsSandboxPolicyError(message) || strings.EqualFold(strings.TrimSpace(message), "WorkspaceViolation")
-}
-
-func preflightTriggerReasonFromError(rpcErr *rpcError) string {
-	if rpcErr == nil {
-		return ""
-	}
-	if rpcErr.Code == -32009 || strings.EqualFold(strings.TrimSpace(rpcErr.Message), "WorkspaceViolation") {
-		return "workspace_violation"
-	}
-	return "sandbox_failure"
-}
-
-func preflightContextData(sess *session, access toolapi.ToolAccess, extra map[string]any) map[string]any {
-	out := map[string]any{
-		"accessMode":          access.AccessMode,
-		"approvalMode":        access.ApprovalMode,
-		"approvalSource":      access.ApprovalSource,
-		"sandboxMode":         access.SandboxMode,
-		"suggestedAccessMode": suggestedUpgradeAccessMode(access),
-		"workspaceBoundary": map[string]any{
-			"root":     strings.TrimSpace(sess.workspaceAbs),
-			"tempDirs": toolsAllowedTempDirs(),
-		},
-	}
-	if extra != nil {
-		for k, v := range extra {
-			out[k] = v
-		}
-	}
-	return out
-}
-
-func toolsAllowedTempDirs() []string {
-	dirs := []string{
-		os.TempDir(),
-		os.Getenv("TMPDIR"),
-		os.Getenv("TMP"),
-		os.Getenv("TEMP"),
-	}
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(dirs))
-	for _, dir := range dirs {
-		dir = strings.TrimSpace(dir)
-		if dir == "" {
-			continue
-		}
-		abs, err := filepath.Abs(dir)
-		if err == nil {
-			dir = abs
-		}
-		dir = filepath.Clean(dir)
-		if _, ok := seen[dir]; ok {
-			continue
-		}
-		seen[dir] = struct{}{}
-		out = append(out, dir)
-	}
-	return out
-}
-
 func (s *Server) confirmSummary(call toolCallDTO, preview map[string]any) string {
 	switch strings.ToLower(call.Tool) {
 	case "bash":
@@ -2227,15 +1944,12 @@ func buildToolDefinitions(defs []toolapi.ToolDefinition, sess *toolapi.ExecSessi
 		if sess != nil {
 			access := toolapi.EvaluateToolAccess(d, *sess)
 			item.Access = &toolAccessDTO{
-				Mode:           access.Mode,
-				AccessMode:     access.AccessMode,
-				ApprovalMode:   access.ApprovalMode,
-				ApprovalSource: access.ApprovalSource,
-				SandboxMode:    toolapi.NormalizeSandboxMode(sess.SandboxMode),
-				Visible:        access.Visible,
-				Executable:     access.Executable,
-				NeedsApproval:  access.NeedsApproval,
-				Reason:         access.Reason,
+				Mode:          access.Mode,
+				SandboxMode:   toolapi.NormalizeSandboxMode(sess.SandboxMode),
+				Visible:       access.Visible,
+				Executable:    access.Executable,
+				NeedsApproval: access.NeedsApproval,
+				Reason:        access.Reason,
 			}
 		}
 		out = append(out, item)
@@ -2249,12 +1963,7 @@ func defsToDTOsForSession(defs []toolapi.ToolDefinition, sess toolapi.ExecSessio
 
 func sessionExecSession(sess *session) toolapi.ExecSession {
 	if sess == nil {
-		return toolapi.ExecSession{
-			ExecutionMode: toolapi.NormalizeExecutionMode(""),
-			AccessMode:    "",
-			ApprovalMode:  "",
-			SandboxMode:   toolapi.SandboxModeFromAccessMode(toolapi.NormalizeAccessMode("")),
-		}
+		return toolapi.ExecSession{ExecutionMode: toolapi.NormalizeExecutionMode("")}
 	}
 	return toolapi.ExecSession{
 		AllowedTools:          sess.allowedTools,
@@ -2267,18 +1976,28 @@ func sessionExecSession(sess *session) toolapi.ExecSession {
 	}
 }
 
-func normalizeOptionalAccessMode(mode string) string {
-	if strings.TrimSpace(mode) == "" {
-		return ""
+func resolvedAccessMode(sess *session) string {
+	if sess == nil {
+		return toolapi.ResolveAccessMode(toolapi.ExecSession{})
 	}
-	return toolapi.NormalizeAccessMode(mode)
+	if mode := normalizeOptionalAccessMode(sess.accessMode); mode != "" {
+		return mode
+	}
+	return toolapi.ResolveAccessMode(toolapi.ExecSession{
+		SandboxMode: toolapi.NormalizeSandboxMode(sess.sandboxMode),
+	})
 }
 
-func normalizeOptionalApprovalMode(mode string) string {
-	if strings.TrimSpace(mode) == "" {
-		return ""
+func resolvedApprovalMode(sess *session) string {
+	if sess == nil {
+		return toolapi.ResolveApprovalMode(toolapi.ExecSession{})
 	}
-	return toolapi.NormalizeApprovalMode(mode)
+	if mode := normalizeOptionalApprovalMode(sess.approvalMode); mode != "" {
+		return mode
+	}
+	return toolapi.ResolveApprovalMode(toolapi.ExecSession{
+		RequireApprovalDigest: sess.requireApprovalDigest,
+	})
 }
 
 func buildCatalogSummary(items []toolDefinitionDTO) map[string]any {
@@ -2355,9 +2074,9 @@ func accessModeDTOs(items []toolapi.AccessModeDescriptor) []accessModeDTO {
 	out := make([]accessModeDTO, 0, len(items))
 	for _, item := range items {
 		out = append(out, accessModeDTO{
-			Name:        item.Name,
+			Name:        strings.TrimSpace(item.Name),
 			Aliases:     append([]string(nil), item.Aliases...),
-			Description: item.Description,
+			Description: strings.TrimSpace(item.Description),
 		})
 	}
 	return out
@@ -2367,10 +2086,26 @@ func approvalModeDTOs(items []toolapi.ApprovalModeDescriptor) []approvalModeDTO 
 	out := make([]approvalModeDTO, 0, len(items))
 	for _, item := range items {
 		out = append(out, approvalModeDTO{
-			Name:        item.Name,
+			Name:        strings.TrimSpace(item.Name),
 			Aliases:     append([]string(nil), item.Aliases...),
-			Description: item.Description,
+			Description: strings.TrimSpace(item.Description),
 		})
 	}
 	return out
+}
+
+func normalizeOptionalAccessMode(mode string) string {
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		return ""
+	}
+	return toolapi.NormalizeAccessMode(mode)
+}
+
+func normalizeOptionalApprovalMode(mode string) string {
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		return ""
+	}
+	return toolapi.NormalizeApprovalMode(mode)
 }

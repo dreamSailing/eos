@@ -8,7 +8,6 @@ package ui
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -109,12 +108,4 @@ func buildVerifyPrompt(m *AppModel, args []string) string {
 		m.localize("请按固定标题列出：验收摘要、覆盖到的验证项、未覆盖的风险和空白、关键证据。", "Use fixed headings: verification summary, covered checks, uncovered risks, and key evidence."),
 	)
 	return strings.Join(lines, "\n")
-}
-
-func verifierWorkspaceName(root string) string {
-	root = strings.TrimSpace(root)
-	if root == "" {
-		return ""
-	}
-	return strings.TrimSpace(filepath.Base(root))
 }

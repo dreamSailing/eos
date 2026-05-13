@@ -190,7 +190,6 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 			"workspacePath": workspace,
 			"options": map[string]any{
 				"allowedTools":          []any{"read", "edit"},
-				"accessMode":            "danger-full-access",
 				"requireApprovalDigest": true,
 				"sandboxMode":           "full_access",
 			},
@@ -227,13 +226,6 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 	}
 	if got, _ := sessionObj["session_id"].(string); got != sessionID {
 		t.Fatalf("expected session_id %q, got: %v", sessionID, sessionObj)
-	}
-	meta, _ := sessionObj["metadata"].(map[string]any)
-	if got, _ := meta["access_mode"].(string); got != "danger-full-access" {
-		t.Fatalf("expected access_mode danger-full-access, got: %v", meta)
-	}
-	if got, _ := meta["approval_mode"].(string); got != "on-request" {
-		t.Fatalf("expected approval_mode on-request, got: %v", meta)
 	}
 	if got, _ := sessionObj["status"].(string); got != "idle" {
 		t.Fatalf("expected idle session status, got: %v", sessionObj)
@@ -325,13 +317,6 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 	digest, _ := pre["approvalDigest"].(string)
 	if requestID == "" || digest == "" {
 		t.Fatalf("expected requestID and approvalDigest, got: %v", resp)
-	}
-	if got, _ := pre["approvalSource"].(string); got == "" {
-		t.Fatalf("expected approvalSource in preflight, got: %v", pre)
-	}
-	workspaceBoundary, ok := pre["workspaceBoundary"].(map[string]any)
-	if !ok || workspaceBoundary["root"] == nil {
-		t.Fatalf("expected workspaceBoundary context, got: %v", pre)
 	}
 
 	write(map[string]any{
