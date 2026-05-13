@@ -28,13 +28,16 @@ func (m *Manager) browserTabsStructured(ctx context.Context, params map[string]i
 	id, _ := params["id"].(string)
 	url, _ := params["url"].(string)
 	index, hasIndex := intParamWithPresence(params["index"])
+	activate, hasActivate := boolParamWithPresence(params["activate"])
 	return m.runBrowserAction(ctx, ToolBrowserTabs, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
 		return sess.Tabs(ctx, browser.TabsRequest{
-			Action:   strings.TrimSpace(action),
-			ID:       strings.TrimSpace(id),
-			Index:    index,
-			HasIndex: hasIndex,
-			URL:      strings.TrimSpace(url),
+			Action:      strings.TrimSpace(action),
+			ID:          strings.TrimSpace(id),
+			Index:       index,
+			HasIndex:    hasIndex,
+			URL:         strings.TrimSpace(url),
+			Activate:    activate,
+			HasActivate: hasActivate,
 		})
 	})
 }
@@ -254,5 +257,17 @@ func intParamWithPresence(raw interface{}) (int, bool) {
 		return int(v), true
 	default:
 		return 0, false
+	}
+}
+
+func boolParamWithPresence(raw interface{}) (bool, bool) {
+	if raw == nil {
+		return false, false
+	}
+	switch v := raw.(type) {
+	case bool:
+		return v, true
+	default:
+		return false, false
 	}
 }

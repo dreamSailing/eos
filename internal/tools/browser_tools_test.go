@@ -198,6 +198,13 @@ func TestBrowserToolsTabs(t *testing.T) {
 	if active, _ := newRes.Data["active_tab"].(string); active != "tab-2" {
 		t.Fatalf("active_tab = %q, want tab-2", active)
 	}
+	bgRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "new", "url": srv.URL + "/two?bg=1", "activate": false})
+	if bgRes.Status != "success" {
+		t.Fatalf("tabs background new failed: %+v", bgRes)
+	}
+	if active, _ := bgRes.Data["active_tab"].(string); active != "tab-2" {
+		t.Fatalf("active_tab after background open = %q, want tab-2", active)
+	}
 
 	switchRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "switch", "index": 0})
 	if switchRes.Status != "success" {
@@ -213,7 +220,13 @@ func TestBrowserToolsTabs(t *testing.T) {
 		t.Fatalf("tabs close failed: %+v", closeRes)
 	}
 	tabs, ok = closeRes.Data["tabs"].([]browser.TabInfo)
-	if !ok || len(tabs) != 1 || tabs[0].ID != "tab-1" || !tabs[0].Active {
+	if !ok || len(tabs) != 2 || tabs[0].ID != "tab-1" || !tabs[0].Active {
 		t.Fatalf("unexpected tabs after close: %#v", closeRes.Data["tabs"])
+	}
+	if active, _ := closeRes.Data["active_tab"].(string); active != "tab-1" {
+		t.Fatalf("active_tab after close = %q, want tab-1", active)
+	}
+	if closed, _ := closeRes.Data["closed_tab"].(string); closed != "tab-2" {
+		t.Fatalf("closed_tab = %q, want tab-2", closed)
 	}
 }

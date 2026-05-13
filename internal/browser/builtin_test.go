@@ -242,6 +242,17 @@ func TestBuiltinSessionTabs(t *testing.T) {
 	if active, _ := newRes.Data["active_tab"].(string); active != "tab-2" {
 		t.Fatalf("active_tab = %q, want tab-2", active)
 	}
+	bgRes, err := sess.Tabs(ctx, TabsRequest{Action: "new", URL: srv.URL + "/two?bg=1", Activate: false, HasActivate: true})
+	if err != nil {
+		t.Fatalf("background tab failed: %v", err)
+	}
+	tabs, ok = bgRes.Data["tabs"].([]TabInfo)
+	if !ok || len(tabs) != 3 {
+		t.Fatalf("expected 3 tabs after background open, got %#v", bgRes.Data["tabs"])
+	}
+	if active, _ := bgRes.Data["active_tab"].(string); active != "tab-2" {
+		t.Fatalf("active_tab after background open = %q, want tab-2", active)
+	}
 
 	switchRes, err := sess.Tabs(ctx, TabsRequest{Action: "switch", Index: 0, HasIndex: true})
 	if err != nil {
@@ -257,16 +268,29 @@ func TestBuiltinSessionTabs(t *testing.T) {
 	if !strings.Contains(snap.Message, "One") {
 		t.Fatalf("snapshot missing first tab content: %q", snap.Message)
 	}
+	switchRes, err = sess.Tabs(ctx, TabsRequest{Action: "switch", ID: "tab-2"})
+	if err != nil {
+		t.Fatalf("switch back to tab-2 failed: %v", err)
+	}
+	if active, _ := switchRes.Data["active_tab"].(string); active != "tab-2" {
+		t.Fatalf("active_tab after switch back = %q, want tab-2", active)
+	}
 
 	closeRes, err := sess.Tabs(ctx, TabsRequest{Action: "close", ID: "tab-2"})
 	if err != nil {
 		t.Fatalf("close failed: %v", err)
 	}
 	tabs, ok = closeRes.Data["tabs"].([]TabInfo)
-	if !ok || len(tabs) != 1 {
-		t.Fatalf("expected 1 tab after close, got %#v", closeRes.Data["tabs"])
+	if !ok || len(tabs) != 2 {
+		t.Fatalf("expected 2 tabs after close, got %#v", closeRes.Data["tabs"])
+	}
+	if active, _ := closeRes.Data["active_tab"].(string); active != "tab-1" {
+		t.Fatalf("active_tab after close = %q, want tab-1", active)
+	}
+	if closed, _ := closeRes.Data["closed_tab"].(string); closed != "tab-2" {
+		t.Fatalf("closed_tab = %q, want tab-2", closed)
 	}
 	if tabs[0].ID != "tab-1" || !tabs[0].Active {
-		t.Fatalf("unexpected remaining tab state: %#v", tabs[0])
+		t.Fatalf("unexpected primary remaining tab state: %#v", tabs[0])
 	}
 }

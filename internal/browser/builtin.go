@@ -35,11 +35,13 @@ type NavigateRequest struct {
 type SnapshotRequest struct{}
 
 type TabsRequest struct {
-	Action   string
-	ID       string
-	Index    int
-	HasIndex bool
-	URL      string
+	Action      string
+	ID          string
+	Index       int
+	HasIndex    bool
+	URL         string
+	Activate    bool
+	HasActivate bool
 }
 
 type TabInfo struct {
@@ -156,14 +158,15 @@ type tab struct {
 	cancel context.CancelFunc
 	opMu   sync.Mutex
 
-	mu        sync.RWMutex
-	createdAt time.Time
-	updatedAt time.Time
-	lastURL   string
-	lastTitle string
-	lastHTML  string
-	console   []string
-	network   []string
+	mu          sync.RWMutex
+	createdAt   time.Time
+	updatedAt   time.Time
+	activatedAt time.Time
+	lastURL     string
+	lastTitle   string
+	lastHTML    string
+	console     []string
+	network     []string
 }
 
 func NewBuiltinRuntime() *BuiltinRuntime {
@@ -331,13 +334,18 @@ func (s *session) Tabs(ctx context.Context, req TabsRequest) (ActionResult, erro
 	case "list":
 		return s.tabsResult("listed tabs"), nil
 	case "new":
-		tab, err := s.createTab(ctx, strings.TrimSpace(req.URL))
+		tab, err := s.createTab(ctx, strings.TrimSpace(req.URL), req.activateRequested())
 		if err != nil {
 			s.runtime.setLastError(err)
 			return ActionResult{}, err
 		}
 		res := s.tabsSnapshot()
-		res.Message = fmt.Sprintf("opened %s as %s", tab.currentURL(), tab.id)
+		if req.activateRequested() {
+			res.Message = fmt.Sprintf("opened %s as %s", tab.currentURL(), tab.id)
+		} else {
+			res.Message = fmt.Sprintf("opened background tab %s as %s", tab.currentURL(), tab.id)
+		}
+		res.Data["opened_tab"] = tab.id
 		return res, nil
 	case "switch":
 		tab, err := s.resolveTab(req)
@@ -351,6 +359,7 @@ func (s *session) Tabs(ctx context.Context, req TabsRequest) (ActionResult, erro
 		s.setActiveTab(tab.id)
 		res := s.tabsSnapshot()
 		res.Message = fmt.Sprintf("switched to %s", tab.id)
+		res.Data["target_tab"] = tab.id
 		return res, nil
 	case "close":
 		current, err := s.resolveTab(req)
@@ -358,7 +367,7 @@ func (s *session) Tabs(ctx context.Context, req TabsRequest) (ActionResult, erro
 			return ActionResult{}, err
 		}
 		if s.tabCount() == 1 {
-			if _, err := s.createTab(ctx, "about:blank"); err != nil {
+			if _, err := s.createTab(ctx, "about:blank", true); err != nil {
 				s.runtime.setLastError(err)
 				return ActionResult{}, err
 			}
@@ -369,6 +378,7 @@ func (s *session) Tabs(ctx context.Context, req TabsRequest) (ActionResult, erro
 		}
 		res := s.tabsSnapshot()
 		res.Message = fmt.Sprintf("closed %s", current.id)
+		res.Data["closed_tab"] = current.id
 		return res, nil
 	default:
 		return ActionResult{}, fmt.Errorf("unsupported tabs action %q", action)
@@ -742,7 +752,7 @@ func newSession(rt *BuiltinRuntime, traceID, execPath string) (*session, error) 
 		sess.Close()
 		return nil, err
 	}
-	if _, err := sess.createTab(context.Background(), "about:blank"); err != nil {
+	if _, err := sess.createTab(context.Background(), "about:blank", true); err != nil {
 		sess.Close()
 		return nil, err
 	}
@@ -817,6 +827,9 @@ func (s *session) setActiveTab(id string) {
 	for _, tab := range s.tabs {
 		if tab != nil && tab.id == id {
 			s.activeTabID = id
+			tab.mu.Lock()
+			tab.activatedAt = time.Now()
+			tab.mu.Unlock()
 			s.updatedAt = time.Now()
 			return
 		}
@@ -856,18 +869,19 @@ func (s *session) resolveTab(req TabsRequest) (*tab, error) {
 	return tab, nil
 }
 
-func (s *session) createTab(ctx context.Context, targetURL string) (*tab, error) {
+func (s *session) createTab(ctx context.Context, targetURL string, activate bool) (*tab, error) {
 	targetURL = strings.TrimSpace(targetURL)
 	if targetURL == "" {
 		targetURL = "about:blank"
 	}
 	tabCtx, cancel := chromedp.NewContext(s.ctx)
 	tab := &tab{
-		id:        s.nextTabName(),
-		ctx:       tabCtx,
-		cancel:    cancel,
-		createdAt: time.Now(),
-		updatedAt: time.Now(),
+		id:          s.nextTabName(),
+		ctx:         tabCtx,
+		cancel:      cancel,
+		createdAt:   time.Now(),
+		updatedAt:   time.Now(),
+		activatedAt: time.Now(),
 	}
 	s.attachListeners(tab)
 	if err := tab.run(ctx,
@@ -886,8 +900,14 @@ func (s *session) createTab(ctx context.Context, targetURL string) (*tab, error)
 	}
 	s.mu.Lock()
 	s.tabs = append(s.tabs, tab)
-	s.activeTabID = tab.id
 	s.updatedAt = time.Now()
+	if activate || s.activeTabID == "" {
+		s.activeTabID = tab.id
+	} else {
+		tab.mu.Lock()
+		tab.activatedAt = time.Time{}
+		tab.mu.Unlock()
+	}
 	s.mu.Unlock()
 	return tab, nil
 }
@@ -922,14 +942,7 @@ func (s *session) closeTab(ctx context.Context, id string) error {
 	defer s.mu.Unlock()
 	s.tabs = append(s.tabs[:idx], s.tabs[idx+1:]...)
 	if s.activeTabID == id {
-		s.activeTabID = ""
-		if len(s.tabs) > 0 {
-			next := idx
-			if next >= len(s.tabs) {
-				next = len(s.tabs) - 1
-			}
-			s.activeTabID = s.tabs[next].id
-		}
+		s.activeTabID = s.preferredActiveTabIDLocked("")
 	}
 	s.updatedAt = time.Now()
 	return nil
@@ -949,6 +962,7 @@ func (s *session) tabsSnapshot() ActionResult {
 		Data: map[string]interface{}{
 			"tabs":       infos,
 			"active_tab": active,
+			"count":      len(infos),
 		},
 	}
 }
@@ -981,6 +995,33 @@ func (s *session) tabInfos() []TabInfo {
 		out = append(out, info)
 	}
 	return out
+}
+
+func (s *session) preferredActiveTabIDLocked(excludeID string) string {
+	var (
+		chosenID string
+		bestAt   time.Time
+	)
+	for _, tab := range s.tabs {
+		if tab == nil || tab.id == excludeID {
+			continue
+		}
+		tab.mu.RLock()
+		activatedAt := tab.activatedAt
+		tab.mu.RUnlock()
+		if chosenID == "" || activatedAt.After(bestAt) {
+			chosenID = tab.id
+			bestAt = activatedAt
+		}
+	}
+	return chosenID
+}
+
+func (r TabsRequest) activateRequested() bool {
+	if r.HasActivate {
+		return r.Activate
+	}
+	return true
 }
 
 func formatTabSummary(infos []TabInfo) string {
