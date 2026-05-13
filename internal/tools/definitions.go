@@ -71,6 +71,17 @@ const (
 	ToolBrowserScreenshot       = "browser_screenshot"
 	ToolBrowserConsole          = "browser_console"
 	ToolBrowserNetwork          = "browser_network"
+	ToolBrowserReload           = "browser_reload"
+	ToolBrowserViewport         = "browser_viewport"
+	ToolBrowserVisibility       = "browser_visibility"
+	ToolBrowserClipboard        = "browser_clipboard"
+	ToolBrowserCUA              = "browser_cua"
+	ToolBrowserDOMCUA           = "browser_dom_cua"
+	ToolBrowserLocator          = "browser_locator"
+	ToolBrowserDevLogs          = "browser_dev_logs"
+	ToolBrowserDownloads        = "browser_downloads"
+	ToolBrowserUserTabs         = "browser_user_tabs"
+	ToolBrowserSessionName      = "browser_session_name"
 	ToolGitStatus               = "git_status"
 	ToolGitAdd                  = "git_add"
 	ToolGitCommit               = "git_commit"
@@ -391,9 +402,10 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolBrowserScreenshot,
-			Description: "将当前页面保存为截图到指定路径。",
+			Description: "获取当前页面截图。path 可选；未传时返回可渲染图片数据，传入时保存到工作区内路径。",
 			Params: map[string]*schema.ParameterInfo{
-				"path": {Type: schema.String, Required: true, Desc: "输出文件路径"},
+				"path":      {Type: schema.String, Required: false, Desc: "可选：输出文件路径"},
+				"full_page": {Type: schema.Boolean, Required: false, Desc: "是否截取完整页面，默认视口截图"},
 			},
 			RiskLevel: RiskLevelMedium,
 			Examples: []ToolExample{
@@ -421,6 +433,118 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Examples: []ToolExample{
 				{Description: "读取最近网络请求", Input: map[string]any{"limit": 20}},
 			},
+		},
+		{
+			Name:        ToolBrowserReload,
+			Description: "重新加载当前浏览器标签页。",
+			Params: map[string]*schema.ParameterInfo{
+				"ignore_cache": {Type: schema.Boolean, Required: false, Desc: "可选：是否绕过缓存刷新"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolBrowserViewport,
+			Description: "读取、设置或重置当前浏览器视口。action 支持 get、set、reset。",
+			Params: map[string]*schema.ParameterInfo{
+				"action": {Type: schema.String, Required: false, Desc: "get、set 或 reset，默认 get"},
+				"width":  {Type: schema.Integer, Required: false, Desc: "set 时的宽度"},
+				"height": {Type: schema.Integer, Required: false, Desc: "set 时的高度"},
+				"mobile": {Type: schema.Boolean, Required: false, Desc: "是否模拟移动设备视口"},
+				"reset":  {Type: schema.Boolean, Required: false, Desc: "兼容字段：true 等价于 action=reset"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolBrowserVisibility,
+			Description: "读取或设置浏览器可见性状态。headless 后端会记录状态；桌面后端可映射为显示/隐藏面板。",
+			Params: map[string]*schema.ParameterInfo{
+				"action":  {Type: schema.String, Required: false, Desc: "get、show 或 hide，默认 get"},
+				"visible": {Type: schema.Boolean, Required: false, Desc: "兼容字段：true 显示，false 隐藏"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolBrowserClipboard,
+			Description: "读取或写入当前页面上下文中的剪贴板文本。action 支持 read、write。",
+			Params: map[string]*schema.ParameterInfo{
+				"action": {Type: schema.String, Required: true, Desc: "read 或 write"},
+				"text":   {Type: schema.String, Required: false, Desc: "write 时要写入的文本"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolBrowserCUA,
+			Description: "执行浏览器范围内的坐标 CUA 动作。action 支持 click、double_click、move、scroll、type、keypress。",
+			Params: map[string]*schema.ParameterInfo{
+				"action":   {Type: schema.String, Required: true, Desc: "click、double_click、move、scroll、type 或 keypress"},
+				"x":        {Type: schema.Integer, Required: false, Desc: "坐标 X"},
+				"y":        {Type: schema.Integer, Required: false, Desc: "坐标 Y"},
+				"scroll_x": {Type: schema.Integer, Required: false, Desc: "横向滚动量"},
+				"scroll_y": {Type: schema.Integer, Required: false, Desc: "纵向滚动量"},
+				"text":     {Type: schema.String, Required: false, Desc: "type 时要输入的文本"},
+				"keys":     {Type: schema.Array, Required: false, Desc: "keypress 时的按键列表"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolBrowserDOMCUA,
+			Description: "执行浏览器 DOM CUA 动作。action 支持 get_visible_dom、click、double_click、type、keypress、scroll。",
+			Params: map[string]*schema.ParameterInfo{
+				"action":  {Type: schema.String, Required: true, Desc: "get_visible_dom、click、double_click、type、keypress 或 scroll"},
+				"node_id": {Type: schema.String, Required: false, Desc: "来自 visible DOM/snapshot 的节点 ref"},
+				"text":    {Type: schema.String, Required: false, Desc: "type 时要输入的文本"},
+				"keys":    {Type: schema.Array, Required: false, Desc: "keypress 时的按键列表"},
+				"x":       {Type: schema.Integer, Required: false, Desc: "scroll 横向偏移"},
+				"y":       {Type: schema.Integer, Required: false, Desc: "scroll 纵向偏移"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolBrowserLocator,
+			Description: "Playwright locator 子集。action 支持 count、click、fill、type、press、check、uncheck、set_checked、select、text、attribute、state、wait。",
+			Params: map[string]*schema.ParameterInfo{
+				"selector":  {Type: schema.String, Required: true, Desc: "CSS selector"},
+				"action":    {Type: schema.String, Required: false, Desc: "locator 动作，默认 count"},
+				"text":      {Type: schema.String, Required: false, Desc: "fill/type/press 用文本或按键"},
+				"value":     {Type: schema.String, Required: false, Desc: "select 用值"},
+				"attribute": {Type: schema.String, Required: false, Desc: "attribute 动作的属性名"},
+				"state":     {Type: schema.String, Required: false, Desc: "state 动作的状态名，如 visible、enabled、checked"},
+				"checked":   {Type: schema.Boolean, Required: false, Desc: "set_checked 目标值"},
+				"timeout":   {Type: schema.Integer, Required: false, Desc: "wait 超时毫秒"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolBrowserDevLogs,
+			Description: "读取当前浏览器会话的开发日志，目前包含 console 日志并为后续浏览器后端保留扩展字段。",
+			Params: map[string]*schema.ParameterInfo{
+				"limit": {Type: schema.Integer, Required: false, Desc: "可选：返回条数限制"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolBrowserDownloads,
+			Description: "读取当前浏览器标签页记录到的下载事件。",
+			Params: map[string]*schema.ParameterInfo{
+				"limit": {Type: schema.Integer, Required: false, Desc: "可选：返回条数限制"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolBrowserUserTabs,
+			Description: "列出用户/当前会话标签页，兼容 Codex user tabs 能力。",
+			Params: map[string]*schema.ParameterInfo{
+				"include_background": {Type: schema.Boolean, Required: false, Desc: "是否包含后台标签页，当前内置后端会返回全部标签页"},
+			},
+			RiskLevel: RiskLevelMedium,
+		},
+		{
+			Name:        ToolBrowserSessionName,
+			Description: "设置当前浏览器 session 的展示名称。",
+			Params: map[string]*schema.ParameterInfo{
+				"name": {Type: schema.String, Required: true, Desc: "session 名称"},
+			},
+			RiskLevel: RiskLevelMedium,
 		},
 		{
 			Name:        ToolSkillsList,

@@ -232,11 +232,17 @@ func ClassifyToolDanger(call ToolCall) (category string, level string, summary s
 		return "memory:suggest", "low", "suggest memory", false
 	case ToolEnterWorktree:
 		return "git:worktree", "medium", "create git worktree", false
-	case ToolMCPListResources, ToolMCPReadResource, ToolStructuredOutput, ToolSnip, ToolBrowserStatus:
+	case ToolMCPListResources, ToolMCPReadResource, ToolStructuredOutput, ToolSnip, ToolBrowserStatus, ToolBrowserUserTabs, ToolBrowserDevLogs, ToolBrowserDownloads:
 		return "", "low", call.Tool, false
-	case ToolBrowserNavigate, ToolBrowserSnapshot, ToolBrowserInspect, ToolBrowserTabs, ToolBrowserWait, ToolBrowserConsole, ToolBrowserNetwork, ToolBrowserBack, ToolBrowserForward, ToolBrowserHover, ToolBrowserPressKey, ToolBrowserScroll:
+	case ToolBrowserNavigate, ToolBrowserSnapshot, ToolBrowserInspect, ToolBrowserTabs, ToolBrowserWait, ToolBrowserConsole, ToolBrowserNetwork, ToolBrowserBack, ToolBrowserForward, ToolBrowserHover, ToolBrowserPressKey, ToolBrowserScroll, ToolBrowserReload, ToolBrowserViewport, ToolBrowserVisibility, ToolBrowserSessionName:
+		if browserActionLooksHighRisk(call.Parameters) {
+			return "browser-high-risk", "high", "browser action: " + extractParamSummary(call.Parameters), true
+		}
 		return "browser", "medium", call.Tool, false
-	case ToolBrowserClick, ToolBrowserType, ToolBrowserSelect, ToolBrowserScreenshot:
+	case ToolBrowserClick, ToolBrowserType, ToolBrowserSelect, ToolBrowserScreenshot, ToolBrowserClipboard, ToolBrowserCUA, ToolBrowserDOMCUA, ToolBrowserLocator:
+		if browserActionLooksHighRisk(call.Parameters) {
+			return "browser-high-risk", "high", "browser action: " + extractParamSummary(call.Parameters), true
+		}
 		return "browser", "medium", call.Tool, false
 	case ToolPowerShell:
 		return "shell:powershell", "high", "powershell", true
@@ -358,6 +364,9 @@ func shellCommandBoundaryViolation(workspaceRoot, command string) string {
 		if strings.HasPrefix(cleaned, "~/") {
 			return fmt.Sprintf("access mode workspace-write blocks writes outside workspace or temporary directories: %s", cleaned)
 		}
+		if strings.HasPrefix(cleaned, "/") && !filepath.IsAbs(cleaned) && strings.Contains(strings.TrimPrefix(cleaned, "/"), "/") {
+			return fmt.Sprintf("access mode workspace-write blocks writes outside workspace or temporary directories: %s", cleaned)
+		}
 		if !filepath.IsAbs(cleaned) {
 			continue
 		}
@@ -469,6 +478,13 @@ func isReadOnlyToolCall(call ToolCall) bool {
 		strings.ToLower(ToolTodoRead),
 		strings.ToLower(ToolMCPStatus),
 		strings.ToLower(ToolBrowserStatus),
+		strings.ToLower(ToolBrowserSnapshot),
+		strings.ToLower(ToolBrowserInspect),
+		strings.ToLower(ToolBrowserConsole),
+		strings.ToLower(ToolBrowserNetwork),
+		strings.ToLower(ToolBrowserDevLogs),
+		strings.ToLower(ToolBrowserDownloads),
+		strings.ToLower(ToolBrowserUserTabs),
 		strings.ToLower(ToolGitStatus),
 		strings.ToLower(ToolGitBranchList),
 		strings.ToLower(ToolGitDiff),
@@ -530,7 +546,27 @@ func isReadOnlyToolCall(call ToolCall) bool {
 		strings.ToLower(ToolRemoteRepoCommitAndPush),
 		strings.ToLower(ToolRemoteRepoCreatePR),
 		strings.ToLower(ToolRemoteRepoCreateMR),
-		strings.ToLower(ToolRemoteRepoDisconnect):
+		strings.ToLower(ToolRemoteRepoDisconnect),
+		strings.ToLower(ToolBrowserNavigate),
+		strings.ToLower(ToolBrowserTabs),
+		strings.ToLower(ToolBrowserBack),
+		strings.ToLower(ToolBrowserForward),
+		strings.ToLower(ToolBrowserClick),
+		strings.ToLower(ToolBrowserHover),
+		strings.ToLower(ToolBrowserType),
+		strings.ToLower(ToolBrowserPressKey),
+		strings.ToLower(ToolBrowserSelect),
+		strings.ToLower(ToolBrowserWait),
+		strings.ToLower(ToolBrowserScroll),
+		strings.ToLower(ToolBrowserScreenshot),
+		strings.ToLower(ToolBrowserReload),
+		strings.ToLower(ToolBrowserViewport),
+		strings.ToLower(ToolBrowserVisibility),
+		strings.ToLower(ToolBrowserClipboard),
+		strings.ToLower(ToolBrowserCUA),
+		strings.ToLower(ToolBrowserDOMCUA),
+		strings.ToLower(ToolBrowserLocator),
+		strings.ToLower(ToolBrowserSessionName):
 		return false
 	}
 	_, _, _, dangerous := ClassifyToolDanger(call)
@@ -566,6 +602,54 @@ func extractParamSummary(params map[string]interface{}) string {
 		}
 	}
 	return ""
+}
+
+func browserActionLooksHighRisk(params map[string]interface{}) bool {
+	if params == nil {
+		return false
+	}
+	var parts []string
+	var walk func(interface{})
+	walk = func(v interface{}) {
+		switch x := v.(type) {
+		case string:
+			parts = append(parts, x)
+		case []string:
+			parts = append(parts, strings.Join(x, " "))
+		case []interface{}:
+			for _, item := range x {
+				walk(item)
+			}
+		case map[string]interface{}:
+			for k, item := range x {
+				parts = append(parts, k)
+				walk(item)
+			}
+		}
+	}
+	for key, value := range params {
+		parts = append(parts, key)
+		walk(value)
+	}
+	text := strings.ToLower(strings.Join(parts, " "))
+	if strings.TrimSpace(text) == "" {
+		return false
+	}
+	needles := []string{
+		"delete", "remove", "destroy", "drop", "cancel subscription",
+		"pay", "payment", "purchase", "checkout", "place order", "buy",
+		"send", "email", "mail", "submit", "publish", "post",
+		"upload", "attach", "file input",
+		"token", "api key", "apikey", "secret", "private key", "password", "credential",
+		"captcha", "2fa", "mfa", "verification code",
+		"删除", "移除", "支付", "付款", "购买", "下单", "发送", "发信", "邮件", "上传", "密钥", "密码", "验证码",
+	}
+	for _, needle := range needles {
+		if strings.Contains(text, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // ClassifyBashDanger 分类 Bash 命令危险等级

@@ -128,16 +128,21 @@ func (m *Manager) browserScrollStructured(ctx context.Context, params map[string
 
 func (m *Manager) browserScreenshotStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	path, _ := params["path"].(string)
-	resolved := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), path)
-	if resolved.ErrMsg != "" || !resolved.IsValid {
-		errMsg := strings.TrimSpace(resolved.ErrMsg)
-		if errMsg == "" {
-			errMsg = "invalid screenshot path"
+	fullPage, _ := params["full_page"].(bool)
+	resolvedPath := ""
+	if strings.TrimSpace(path) != "" {
+		resolved := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), path)
+		if resolved.ErrMsg != "" || !resolved.IsValid {
+			errMsg := strings.TrimSpace(resolved.ErrMsg)
+			if errMsg == "" {
+				errMsg = "invalid screenshot path"
+			}
+			return ToolResult{Type: "tool_result", Tool: ToolBrowserScreenshot, Status: "error", Error: errMsg}
 		}
-		return ToolResult{Type: "tool_result", Tool: ToolBrowserScreenshot, Status: "error", Error: errMsg}
+		resolvedPath = resolved.AbsPath
 	}
 	return m.runBrowserAction(ctx, ToolBrowserScreenshot, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
-		return sess.Screenshot(ctx, browser.ScreenshotRequest{Path: resolved.AbsPath})
+		return sess.Screenshot(ctx, browser.ScreenshotRequest{Path: resolvedPath, FullPage: fullPage})
 	})
 }
 
@@ -152,6 +157,130 @@ func (m *Manager) browserNetworkStructured(ctx context.Context, params map[strin
 	limit := intParam(params["limit"])
 	return m.runBrowserAction(ctx, ToolBrowserNetwork, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
 		return sess.Network(ctx, browser.NetworkRequest{Limit: limit})
+	})
+}
+
+func (m *Manager) browserReloadStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	return m.runBrowserAction(ctx, ToolBrowserReload, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.Reload(ctx, browser.ReloadRequest{})
+	})
+}
+
+func (m *Manager) browserViewportStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	action, _ := params["action"].(string)
+	if reset, _ := params["reset"].(bool); reset {
+		action = "reset"
+	}
+	width := intParam(params["width"])
+	height := intParam(params["height"])
+	return m.runBrowserAction(ctx, ToolBrowserViewport, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.Viewport(ctx, browser.ViewportRequest{Action: strings.TrimSpace(action), Width: width, Height: height})
+	})
+}
+
+func (m *Manager) browserVisibilityStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	action, _ := params["action"].(string)
+	visible, hasVisible := boolParamWithPresence(params["visible"])
+	if strings.TrimSpace(action) == "" && hasVisible {
+		if visible {
+			action = "show"
+		} else {
+			action = "hide"
+		}
+	}
+	return m.runBrowserAction(ctx, ToolBrowserVisibility, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.Visibility(ctx, browser.VisibilityRequest{Action: strings.TrimSpace(action), Visible: visible})
+	})
+}
+
+func (m *Manager) browserClipboardStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	action, _ := params["action"].(string)
+	text, _ := params["text"].(string)
+	return m.runBrowserAction(ctx, ToolBrowserClipboard, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.Clipboard(ctx, browser.ClipboardRequest{Action: strings.TrimSpace(action), Text: text})
+	})
+}
+
+func (m *Manager) browserCUAStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	action, _ := params["action"].(string)
+	text, _ := params["text"].(string)
+	button, _ := params["button"].(string)
+	return m.runBrowserAction(ctx, ToolBrowserCUA, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.CUA(ctx, browser.CUARequest{
+			Action:  strings.TrimSpace(action),
+			X:       intParam(params["x"]),
+			Y:       intParam(params["y"]),
+			ScrollX: intParam(params["scroll_x"]),
+			ScrollY: intParam(params["scroll_y"]),
+			Text:    text,
+			Keys:    keysFromParam(params["keys"]),
+			Button:  strings.TrimSpace(button),
+		})
+	})
+}
+
+func (m *Manager) browserDOMCUAStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	action, _ := params["action"].(string)
+	nodeID, _ := params["node_id"].(string)
+	text, _ := params["text"].(string)
+	return m.runBrowserAction(ctx, ToolBrowserDOMCUA, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.DOMCUA(ctx, browser.DOMCUARequest{
+			Action: strings.TrimSpace(action),
+			NodeID: strings.TrimSpace(nodeID),
+			X:      intParam(params["x"]),
+			Y:      intParam(params["y"]),
+			Text:   text,
+			Keys:   keysFromParam(params["keys"]),
+		})
+	})
+}
+
+func (m *Manager) browserLocatorStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	action, _ := params["action"].(string)
+	selector, _ := params["selector"].(string)
+	text, _ := params["text"].(string)
+	attribute, _ := params["attribute"].(string)
+	value, _ := params["value"].(string)
+	state, _ := params["state"].(string)
+	checked, _ := params["checked"].(bool)
+	return m.runBrowserAction(ctx, ToolBrowserLocator, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.Locator(ctx, browser.LocatorRequest{
+			Action:    strings.TrimSpace(action),
+			Selector:  strings.TrimSpace(selector),
+			Text:      text,
+			Attribute: strings.TrimSpace(attribute),
+			Value:     value,
+			State:     strings.TrimSpace(state),
+			Timeout:   intParam(params["timeout"]),
+			Checked:   checked,
+		})
+	})
+}
+
+func (m *Manager) browserDevLogsStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	limit := intParam(params["limit"])
+	return m.runBrowserAction(ctx, ToolBrowserDevLogs, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.DevLogs(ctx, browser.ConsoleRequest{Limit: limit})
+	})
+}
+
+func (m *Manager) browserDownloadsStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	limit := intParam(params["limit"])
+	return m.runBrowserAction(ctx, ToolBrowserDownloads, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.Downloads(ctx, browser.DownloadsRequest{Limit: limit})
+	})
+}
+
+func (m *Manager) browserUserTabsStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	return m.runBrowserAction(ctx, ToolBrowserUserTabs, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.UserTabs(ctx, browser.UserTabsRequest{})
+	})
+}
+
+func (m *Manager) browserSessionNameStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	name, _ := params["name"].(string)
+	return m.runBrowserAction(ctx, ToolBrowserSessionName, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.SetSessionName(ctx, browser.SessionNameRequest{Name: strings.TrimSpace(name)})
 	})
 }
 
@@ -246,6 +375,16 @@ func stringSliceFromParam(raw interface{}) []string {
 	default:
 		return nil
 	}
+}
+
+func keysFromParam(raw interface{}) []string {
+	if key, ok := raw.(string); ok {
+		if key = strings.TrimSpace(key); key != "" {
+			return []string{key}
+		}
+		return nil
+	}
+	return stringSliceFromParam(raw)
 }
 
 func intParam(raw interface{}) int {

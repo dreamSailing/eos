@@ -28,12 +28,20 @@ func (m *Manager) browserStatusStructured(ctx context.Context, params map[string
 	builtinLastError := ""
 	builtinCaps := []string(nil)
 	sessionCount := 0
+	builtinBackend := ""
+	builtinExecPath := ""
+	builtinVisible := false
+	var builtinViewport interface{}
 	var currentSession map[string]interface{}
 	if m.browserRT != nil {
 		rtStatus := m.browserRT.Status()
 		builtinReady = rtStatus.Ready
 		builtinLastError = strings.TrimSpace(rtStatus.LastError)
 		builtinCaps = append([]string(nil), rtStatus.Capabilities...)
+		builtinBackend = strings.TrimSpace(rtStatus.Backend)
+		builtinExecPath = strings.TrimSpace(rtStatus.ExecPath)
+		builtinVisible = rtStatus.Visible
+		builtinViewport = rtStatus.Viewport
 		snapshots := m.browserRT.SessionSnapshots()
 		sessionCount = len(snapshots)
 		if traceID != "" {
@@ -43,6 +51,7 @@ func (m *Manager) browserStatusStructured(ctx context.Context, params map[string
 				}
 				currentSession = map[string]interface{}{
 					"trace_id":   snap.TraceID,
+					"name":       snap.Name,
 					"active_tab": snap.ActiveTab,
 					"tab_count":  snap.TabCount,
 					"tabs":       snap.Tabs,
@@ -54,6 +63,8 @@ func (m *Manager) browserStatusStructured(ctx context.Context, params map[string
 
 	lines := []string{
 		fmt.Sprintf("builtin_ready=%t", builtinReady),
+		fmt.Sprintf("builtin_backend=%s", builtinBackend),
+		fmt.Sprintf("builtin_visible=%t", builtinVisible),
 		fmt.Sprintf("session_count=%d", sessionCount),
 		fmt.Sprintf("server=%s", strings.TrimSpace(status.ServerName)),
 		fmt.Sprintf("configured=%t", status.Configured),
@@ -62,6 +73,12 @@ func (m *Manager) browserStatusStructured(ctx context.Context, params map[string
 	}
 	if len(builtinCaps) > 0 {
 		lines = append(lines, "builtin_capabilities="+strings.Join(builtinCaps, ","))
+	}
+	if builtinExecPath != "" {
+		lines = append(lines, "builtin_exec_path="+builtinExecPath)
+	}
+	if builtinViewport != nil {
+		lines = append(lines, fmt.Sprintf("builtin_viewport=%v", builtinViewport))
 	}
 	if builtinLastError != "" {
 		lines = append(lines, "builtin_last_error="+builtinLastError)
@@ -98,6 +115,10 @@ func (m *Manager) browserStatusStructured(ctx context.Context, params map[string
 		Status: "success",
 		Data: map[string]interface{}{
 			"builtin_ready":        builtinReady,
+			"builtin_backend":      builtinBackend,
+			"builtin_exec_path":    builtinExecPath,
+			"builtin_visible":      builtinVisible,
+			"builtin_viewport":     builtinViewport,
 			"builtin_last_error":   builtinLastError,
 			"builtin_capabilities": builtinCaps,
 			"session_count":        sessionCount,

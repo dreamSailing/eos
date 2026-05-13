@@ -5,13 +5,12 @@ package runtime
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/tools"
 	"sort"
 	"strings"
-	"github.com/dreamSailing/eos/internal/tools"
 
 	"github.com/cloudwego/eino/components/tool"
 )
@@ -48,6 +47,17 @@ func getToolCategories() []toolCategory {
 		{
 			Name:     "交互",
 			ToolKeys: []string{tools.ToolUserConfirm, tools.ToolUserInput, tools.ToolUserSelect},
+		},
+		{
+			Name: "浏览器",
+			ToolKeys: []string{
+				tools.ToolBrowserStatus, tools.ToolBrowserNavigate, tools.ToolBrowserSnapshot, tools.ToolBrowserInspect, tools.ToolBrowserTabs,
+				tools.ToolBrowserBack, tools.ToolBrowserForward, tools.ToolBrowserReload, tools.ToolBrowserClick, tools.ToolBrowserHover,
+				tools.ToolBrowserType, tools.ToolBrowserPressKey, tools.ToolBrowserSelect, tools.ToolBrowserWait, tools.ToolBrowserScroll,
+				tools.ToolBrowserScreenshot, tools.ToolBrowserConsole, tools.ToolBrowserNetwork, tools.ToolBrowserViewport, tools.ToolBrowserVisibility,
+				tools.ToolBrowserClipboard, tools.ToolBrowserCUA, tools.ToolBrowserDOMCUA, tools.ToolBrowserLocator, tools.ToolBrowserDevLogs,
+				tools.ToolBrowserDownloads, tools.ToolBrowserUserTabs, tools.ToolBrowserSessionName,
+			},
 		},
 		{
 			Name:     "技能",

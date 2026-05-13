@@ -5,7 +5,6 @@ package runtime
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 // defaultDenyRules returns rules for dangerous commands that always require confirmation
 func defaultDenyRules() []ClassifierRule {
 	return []ClassifierRule{
@@ -45,6 +44,7 @@ func defaultDenyRules() []ClassifierRule {
 		{Pattern: "bg-task-start", Action: ActionDeny, Category: "bg-task-start", Description: "background task start", Source: "default"},
 		{Pattern: "bg-task-kill", Action: ActionDeny, Category: "bg-task-kill", Description: "background task kill", Source: "default"},
 		{Pattern: "bash-session-kill", Action: ActionDeny, Category: "bash-session-kill", Description: "bash session kill", Source: "default"},
+		{Pattern: "browser-high-risk", Action: ActionDeny, Category: "browser-high-risk", Description: "high risk browser action", Source: "default"},
 
 		// Restore checkpoint
 		{Pattern: `restore\s+checkpoint`, Action: ActionDeny, Category: "history", Description: "restore checkpoint", Source: "default"},
@@ -64,6 +64,14 @@ func defaultAllowRules() []ClassifierRule {
 		{Pattern: "todo_read", Action: ActionAllow, Category: "planning", Description: "read todo list", Source: "default"},
 		{Pattern: "skills_list", Action: ActionAllow, Category: "meta", Description: "list skills", Source: "default"},
 		{Pattern: "mcp_status", Action: ActionAllow, Category: "meta", Description: "MCP status", Source: "default"},
+		{Pattern: "browser_status", Action: ActionAllow, Category: "browser", Description: "browser status", Source: "default"},
+		{Pattern: "browser_snapshot", Action: ActionAllow, Category: "browser", Description: "browser snapshot", Source: "default"},
+		{Pattern: "browser_inspect", Action: ActionAllow, Category: "browser", Description: "browser inspect", Source: "default"},
+		{Pattern: "browser_console", Action: ActionAllow, Category: "browser", Description: "browser console logs", Source: "default"},
+		{Pattern: "browser_network", Action: ActionAllow, Category: "browser", Description: "browser network logs", Source: "default"},
+		{Pattern: "browser_dev_logs", Action: ActionAllow, Category: "browser", Description: "browser development logs", Source: "default"},
+		{Pattern: "browser_downloads", Action: ActionAllow, Category: "browser", Description: "browser download events", Source: "default"},
+		{Pattern: "browser_user_tabs", Action: ActionAllow, Category: "browser", Description: "browser user tabs", Source: "default"},
 		{Pattern: "git_status", Action: ActionAllow, Category: "git", Description: "git status", Source: "default"},
 		{Pattern: "git_branch_list", Action: ActionAllow, Category: "git", Description: "list branches", Source: "default"},
 		{Pattern: "git_diff", Action: ActionAllow, Category: "git", Description: "git diff", Source: "default"},

@@ -295,7 +295,7 @@ func TestBrowserToolsTabs(t *testing.T) {
 		t.Fatalf("tabs close failed: %+v", closeRes)
 	}
 	tabs, ok = closeRes.Data["tabs"].([]browser.TabInfo)
-	if !ok || len(tabs) != 2 || tabs[0].ID != "tab-1" || !tabs[0].Active {
+	if !ok || len(tabs) != 1 || tabs[0].ID != "tab-1" || !tabs[0].Active {
 		t.Fatalf("unexpected tabs after close: %#v", closeRes.Data["tabs"])
 	}
 	if active, _ := closeRes.Data["active_tab"].(string); active != "tab-1" {

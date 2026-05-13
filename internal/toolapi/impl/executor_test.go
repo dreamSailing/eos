@@ -5,7 +5,6 @@ package impl
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"os"
@@ -62,7 +61,7 @@ func TestExecutorInitializesSkillsAndMCPManagers(t *testing.T) {
 		t.Fatalf("skills_list status=%q", results[0].Status)
 	}
 	names, _ := results[0].Data["names"].([]string)
-	if len(names) == 0 || names[0] != "review" {
+	if !containsString(names, "review") {
 		t.Fatalf("skills_list names=%v", names)
 	}
 	if results[1].Status != "success" {
@@ -72,6 +71,15 @@ func TestExecutorInitializesSkillsAndMCPManagers(t *testing.T) {
 	if len(servers) != 1 {
 		t.Fatalf("mcp_status servers=%v", results[1].Data["servers"])
 	}
+}
+
+func containsString(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func TestExecutorHonorsReadOnlyAccessMode(t *testing.T) {

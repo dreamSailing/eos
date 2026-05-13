@@ -13,7 +13,7 @@ import (
 func TestBuiltinRuntimeStatus(t *testing.T) {
 	rt := NewBuiltinRuntime()
 	status := rt.Status()
-	if got := strings.Join(status.Capabilities, ","); got != "navigate,snapshot,inspect,tabs,back,forward,click,hover,type,press_key,select,wait,scroll,screenshot,console,network" {
+	if got := strings.Join(status.Capabilities, ","); got != "navigate,snapshot,inspect,tabs,back,forward,reload,click,hover,type,press_key,select,wait,scroll,screenshot,console,network,viewport,visibility,clipboard,dev_logs,user_tabs,locator,cua,dom_cua,downloads,session_name" {
 		t.Fatalf("capabilities = %q", got)
 	}
 	if !status.Ready && status.LastError == "" {
@@ -363,8 +363,8 @@ func TestBuiltinSessionTabs(t *testing.T) {
 		t.Fatalf("close failed: %v", err)
 	}
 	tabs, ok = closeRes.Data["tabs"].([]TabInfo)
-	if !ok || len(tabs) != 2 {
-		t.Fatalf("expected 2 tabs after close, got %#v", closeRes.Data["tabs"])
+	if !ok || len(tabs) != 1 {
+		t.Fatalf("expected 1 tab after close, got %#v", closeRes.Data["tabs"])
 	}
 	if active, _ := closeRes.Data["active_tab"].(string); active != "tab-1" {
 		t.Fatalf("active_tab after close = %q, want tab-1", active)

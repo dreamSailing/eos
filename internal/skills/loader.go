@@ -5,7 +5,6 @@ package skills
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"fmt"
 	"io/fs"
@@ -136,6 +135,7 @@ func (l *Loader) Scan() error {
 			)
 		}
 	}
+	l.registerBuiltinSkillsLocked()
 
 	slog.Info("skills.loader.scan.complete",
 		"component", utils.ComponentSystem,
@@ -175,7 +175,7 @@ func (l *Loader) scanSkillRoot(root string) error {
 		"dist":         true,
 		"build":        true,
 		"vendor":       true,
-		".eos":          true,
+		".eos":         true,
 		".trae":        true,
 	}
 	maxDepth := 8
