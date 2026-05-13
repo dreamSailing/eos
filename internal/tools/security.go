@@ -234,7 +234,7 @@ func ClassifyToolDanger(call ToolCall) (category string, level string, summary s
 		return "git:worktree", "medium", "create git worktree", false
 	case ToolMCPListResources, ToolMCPReadResource, ToolStructuredOutput, ToolSnip, ToolBrowserStatus:
 		return "", "low", call.Tool, false
-	case ToolBrowserNavigate, ToolBrowserSnapshot, ToolBrowserTabs, ToolBrowserWait, ToolBrowserConsole, ToolBrowserNetwork, ToolBrowserBack, ToolBrowserForward, ToolBrowserHover, ToolBrowserPressKey, ToolBrowserScroll:
+	case ToolBrowserNavigate, ToolBrowserSnapshot, ToolBrowserInspect, ToolBrowserTabs, ToolBrowserWait, ToolBrowserConsole, ToolBrowserNetwork, ToolBrowserBack, ToolBrowserForward, ToolBrowserHover, ToolBrowserPressKey, ToolBrowserScroll:
 		return "browser", "medium", call.Tool, false
 	case ToolBrowserClick, ToolBrowserType, ToolBrowserSelect, ToolBrowserScreenshot:
 		return "browser", "medium", call.Tool, false

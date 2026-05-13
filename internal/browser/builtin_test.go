@@ -13,7 +13,7 @@ import (
 func TestBuiltinRuntimeStatus(t *testing.T) {
 	rt := NewBuiltinRuntime()
 	status := rt.Status()
-	if got := strings.Join(status.Capabilities, ","); got != "navigate,snapshot,tabs,back,forward,click,hover,type,press_key,select,wait,scroll,screenshot,console,network" {
+	if got := strings.Join(status.Capabilities, ","); got != "navigate,snapshot,inspect,tabs,back,forward,click,hover,type,press_key,select,wait,scroll,screenshot,console,network" {
 		t.Fatalf("capabilities = %q", got)
 	}
 	if !status.Ready && status.LastError == "" {
@@ -176,6 +176,19 @@ func TestBuiltinSessionDOMActions(t *testing.T) {
 	}
 	if elements, ok := snap.Data["elements"].([]SnapshotElement); !ok || len(elements) == 0 {
 		t.Fatalf("snapshot missing structured elements: %#v", snap.Data["elements"])
+	}
+	if outline, ok := snap.Data["outline"].([]string); !ok || len(outline) == 0 {
+		t.Fatalf("snapshot missing outline: %#v", snap.Data["outline"])
+	}
+	inspect, err := sess.Inspect(ctx, InspectRequest{Ref: submitRef})
+	if err != nil {
+		t.Fatalf("inspect failed: %v", err)
+	}
+	if !strings.Contains(inspect.Message, "ref="+submitRef) {
+		t.Fatalf("inspect missing ref: %q", inspect.Message)
+	}
+	if detail, ok := inspect.Data["detail"].(InspectDetails); !ok || strings.TrimSpace(detail.Element.Ref) != submitRef {
+		t.Fatalf("inspect missing structured detail: %#v", inspect.Data["detail"])
 	}
 
 	console, err := sess.Console(ctx, ConsoleRequest{Limit: 10})

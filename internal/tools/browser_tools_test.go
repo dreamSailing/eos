@@ -74,6 +74,9 @@ func TestBrowserToolsDOMActions(t *testing.T) {
 	if snap.Status != "success" {
 		t.Fatalf("snapshot failed: %+v", snap)
 	}
+	if outline, ok := snap.Data["outline"].([]string); !ok || len(outline) == 0 {
+		t.Fatalf("snapshot missing outline: %#v", snap.Data["outline"])
+	}
 	nameRef := mustFindToolSnapshotRef(t, snap.Data["elements"], "#name")
 	hoverRef := mustFindToolSnapshotRef(t, snap.Data["elements"], "#hover-target")
 	keyboxRef := mustFindToolSnapshotRef(t, snap.Data["elements"], "#keybox")
@@ -135,6 +138,16 @@ func TestBrowserToolsDOMActions(t *testing.T) {
 	}
 	if elements, ok := snap.Data["elements"].([]browser.SnapshotElement); !ok || len(elements) == 0 {
 		t.Fatalf("snapshot missing structured elements: %#v", snap.Data["elements"])
+	}
+	inspect := mgr.browserInspectStructured(ctx, map[string]interface{}{"ref": submitRef})
+	if inspect.Status != "success" {
+		t.Fatalf("inspect failed: %+v", inspect)
+	}
+	if !strings.Contains(inspect.Display, "ref="+submitRef) {
+		t.Fatalf("inspect missing ref: %q", inspect.Display)
+	}
+	if detail, ok := inspect.Data["detail"].(browser.InspectDetails); !ok || strings.TrimSpace(detail.Element.Ref) != submitRef {
+		t.Fatalf("inspect missing structured detail: %#v", inspect.Data["detail"])
 	}
 	if !strings.Contains(snap.Display, "alice-us") {
 		t.Fatalf("snapshot missing updated DOM content: %q", snap.Display)

@@ -108,6 +108,7 @@ func NewManager() *Manager {
 		ToolBrowserStatus:           m.browserStatusStructured,
 		ToolBrowserNavigate:         m.browserNavigateStructured,
 		ToolBrowserSnapshot:         m.browserSnapshotStructured,
+		ToolBrowserInspect:          m.browserInspectStructured,
 		ToolBrowserTabs:             m.browserTabsStructured,
 		ToolBrowserBack:             m.browserBackStructured,
 		ToolBrowserForward:          m.browserForwardStructured,

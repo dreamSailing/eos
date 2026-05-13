@@ -28,7 +28,7 @@ var (
 	ErrNoLoadedPage     = errors.New("builtin browser session has no loaded page")
 	titlePattern        = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 	tagPattern          = regexp.MustCompile(`(?s)<[^>]+>`)
-	DefaultCapabilities = []string{"navigate", "snapshot", "tabs", "back", "forward", "click", "hover", "type", "press_key", "select", "wait", "scroll", "screenshot", "console", "network"}
+	DefaultCapabilities = []string{"navigate", "snapshot", "inspect", "tabs", "back", "forward", "click", "hover", "type", "press_key", "select", "wait", "scroll", "screenshot", "console", "network"}
 )
 
 type NavigateRequest struct {
@@ -48,6 +48,22 @@ type SnapshotElement struct {
 	Type        string `json:"type"`
 	Text        string `json:"text"`
 	Source      string `json:"source"`
+	Level       int    `json:"level"`
+}
+
+type InspectRequest struct {
+	Ref      string
+	Selector string
+}
+
+type InspectDetails struct {
+	Element     SnapshotElement    `json:"element"`
+	States      map[string]bool    `json:"states"`
+	Attributes  map[string]string  `json:"attributes"`
+	Bounds      map[string]float64 `json:"bounds"`
+	AX          map[string]string  `json:"ax"`
+	Ancestors   []string           `json:"ancestors,omitempty"`
+	Diagnostics map[string]any     `json:"diagnostics,omitempty"`
 }
 
 type TabsRequest struct {
@@ -131,6 +147,7 @@ type SessionBackend interface {
 	Capabilities() []string
 	Navigate(context.Context, NavigateRequest) (ActionResult, error)
 	Snapshot(context.Context, SnapshotRequest) (ActionResult, error)
+	Inspect(context.Context, InspectRequest) (ActionResult, error)
 	Tabs(context.Context, TabsRequest) (ActionResult, error)
 	Back(context.Context) (ActionResult, error)
 	Forward(context.Context) (ActionResult, error)
@@ -382,6 +399,54 @@ func (s *session) Snapshot(ctx context.Context, req SnapshotRequest) (ActionResu
 			"title":         title,
 			"elements":      elements,
 			"element_count": len(elements),
+			"outline":       snapshotOutline(elements),
+		},
+	}, nil
+}
+
+func (s *session) Inspect(ctx context.Context, req InspectRequest) (ActionResult, error) {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
+	selector := strings.TrimSpace(req.Selector)
+	ref := strings.TrimSpace(req.Ref)
+	if selector == "" && ref != "" {
+		selector, err = s.resolveActionSelector(ctx, tab, ref)
+		if err != nil {
+			return ActionResult{}, err
+		}
+	}
+	if selector == "" {
+		return ActionResult{}, fmt.Errorf("missing selector or ref")
+	}
+	if _, err := s.captureSnapshotElements(ctx, tab); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	var element SnapshotElement
+	if ref != "" {
+		if cached, ok := tab.elementByRef(ref); ok {
+			element = cached
+		}
+	}
+	if element.Ref == "" {
+		if matched, ok := tab.elementBySelector(selector); ok {
+			element = matched
+			ref = matched.Ref
+		}
+	}
+	details, err := s.inspectDetails(ctx, tab, ref, selector, element)
+	if err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	return ActionResult{
+		Message: formatInspectMessage(details),
+		Data: map[string]interface{}{
+			"ref":      details.Element.Ref,
+			"selector": selector,
+			"detail":   details,
 		},
 	}, nil
 }
@@ -891,29 +956,75 @@ func formatSnapshotMessage(tabID, url, title string, elements []SnapshotElement,
 	}
 	if len(elements) > 0 {
 		lines = append(lines, "refs:")
-		for _, el := range elements {
-			label := strings.TrimSpace(el.Name)
-			if label == "" {
-				label = strings.TrimSpace(el.Value)
-			}
-			if label == "" {
-				label = strings.TrimSpace(el.Text)
-			}
-			if label == "" {
-				label = "(unnamed)"
-			}
-			role := strings.TrimSpace(el.Role)
-			if role == "" {
-				role = strings.TrimSpace(el.Tag)
-			}
-			source := strings.TrimSpace(el.Source)
-			if source == "" {
-				source = "dom"
-			}
-			lines = append(lines, fmt.Sprintf("- [%s] %s %q {%s}", el.Ref, role, label, source))
-		}
+		lines = append(lines, snapshotOutline(elements)...)
 	}
 	lines = append(lines, "snapshot="+summary)
+	return strings.Join(lines, "\n")
+}
+
+func snapshotOutline(elements []SnapshotElement) []string {
+	lines := make([]string, 0, len(elements))
+	for _, el := range elements {
+		label := strings.TrimSpace(el.Name)
+		if label == "" {
+			label = strings.TrimSpace(el.Value)
+		}
+		if label == "" {
+			label = strings.TrimSpace(el.Text)
+		}
+		if label == "" {
+			label = "(unnamed)"
+		}
+		role := strings.TrimSpace(el.Role)
+		if role == "" {
+			role = strings.TrimSpace(el.Tag)
+		}
+		source := strings.TrimSpace(el.Source)
+		if source == "" {
+			source = "dom"
+		}
+		level := el.Level
+		if level < 0 {
+			level = 0
+		}
+		if level > 6 {
+			level = 6
+		}
+		indent := strings.Repeat("  ", level)
+		lines = append(lines, fmt.Sprintf("%s- [%s] %s %q {%s}", indent, el.Ref, role, label, source))
+	}
+	return lines
+}
+
+func formatInspectMessage(detail InspectDetails) string {
+	el := detail.Element
+	lines := []string{
+		fmt.Sprintf("ref=%s", strings.TrimSpace(el.Ref)),
+		fmt.Sprintf("role=%s", strings.TrimSpace(el.Role)),
+		fmt.Sprintf("name=%s", strings.TrimSpace(el.Name)),
+		fmt.Sprintf("selector=%s", strings.TrimSpace(el.Selector)),
+		fmt.Sprintf("source=%s", strings.TrimSpace(el.Source)),
+	}
+	if strings.TrimSpace(el.Value) != "" {
+		lines = append(lines, "value="+strings.TrimSpace(el.Value))
+	}
+	if strings.TrimSpace(el.Text) != "" {
+		lines = append(lines, "text="+strings.TrimSpace(el.Text))
+	}
+	if len(detail.Ancestors) > 0 {
+		lines = append(lines, "ancestors="+strings.Join(detail.Ancestors, " > "))
+	}
+	if len(detail.States) > 0 {
+		stateParts := make([]string, 0, len(detail.States))
+		for _, key := range []string{"visible", "disabled", "editable", "checked", "selected", "expanded"} {
+			if value, ok := detail.States[key]; ok {
+				stateParts = append(stateParts, fmt.Sprintf("%s=%t", key, value))
+			}
+		}
+		if len(stateParts) > 0 {
+			lines = append(lines, "states="+strings.Join(stateParts, ", "))
+		}
+	}
 	return strings.Join(lines, "\n")
 }
 
@@ -1716,6 +1827,7 @@ func (s *session) captureAXSnapshotElements(ctx context.Context, tab *tab) ([]Sn
 			return err
 		}
 		elements = make([]SnapshotElement, 0, len(nodes))
+		levels := axNodeLevels(nodes)
 		seenBackend := make(map[cdp.BackendNodeID]struct{}, len(nodes))
 		for _, node := range nodes {
 			if !isInterestingAXNode(node) {
@@ -1739,6 +1851,7 @@ func (s *session) captureAXSnapshotElements(ctx context.Context, tab *tab) ([]Sn
 				Type:        binding.Type,
 				Text:        binding.Text,
 				Source:      "ax",
+				Level:       levels[node.NodeID],
 			}
 			if strings.TrimSpace(element.Role) == "" {
 				element.Role = strings.TrimSpace(binding.Tag)
@@ -1755,6 +1868,125 @@ func (s *session) captureAXSnapshotElements(ctx context.Context, tab *tab) ([]Sn
 		return nil, err
 	}
 	return elements, nil
+}
+
+func (s *session) inspectDetails(ctx context.Context, tab *tab, ref, selector string, cached SnapshotElement) (InspectDetails, error) {
+	selectorJSON, _ := json.Marshal(selector)
+	script := fmt.Sprintf(`(() => {
+		const selector = %s;
+		const el = document.querySelector(selector);
+		if (!el) {
+			throw new Error("selector not found: " + selector);
+		}
+		const rect = el.getBoundingClientRect();
+		const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+		const visible = (() => {
+			const style = window.getComputedStyle(el);
+			return !!style && style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+		})();
+		const attrs = {};
+		for (const name of ['id', 'class', 'role', 'type', 'name', 'placeholder', 'href', 'aria-label', 'aria-expanded', 'aria-controls']) {
+			const value = el.getAttribute && el.getAttribute(name);
+			if (value !== null && value !== undefined && String(value) !== '') attrs[name] = String(value);
+		}
+		const ancestors = [];
+		let current = el.parentElement;
+		while (current && ancestors.length < 6) {
+			const label = normalize((current.getAttribute && (current.getAttribute('aria-label') || current.getAttribute('role'))) || current.tagName);
+			if (label) ancestors.push(label);
+			current = current.parentElement;
+		}
+		return {
+			text: normalize(el.innerText || el.textContent),
+			value: normalize(el.value),
+			name: normalize((el.getAttribute && el.getAttribute('aria-label')) || ''),
+			attributes: attrs,
+			states: {
+				visible,
+				disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
+				editable: !(el.readOnly) && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el.isContentEditable),
+				checked: !!el.checked || el.getAttribute('aria-checked') === 'true',
+				selected: !!el.selected || el.getAttribute('aria-selected') === 'true',
+				expanded: el.getAttribute('aria-expanded') === 'true'
+			},
+			bounds: {x: rect.x, y: rect.y, width: rect.width, height: rect.height},
+			ancestors
+		};
+	})()`, string(selectorJSON))
+	var live struct {
+		Text       string             `json:"text"`
+		Value      string             `json:"value"`
+		Name       string             `json:"name"`
+		Attributes map[string]string  `json:"attributes"`
+		States     map[string]bool    `json:"states"`
+		Bounds     map[string]float64 `json:"bounds"`
+		Ancestors  []string           `json:"ancestors"`
+	}
+	if err := tab.run(ctx, chromedp.Evaluate(script, &live)); err != nil {
+		return InspectDetails{}, err
+	}
+	element := cached
+	if strings.TrimSpace(element.Ref) == "" {
+		element.Ref = strings.TrimSpace(ref)
+	}
+	if strings.TrimSpace(element.Selector) == "" {
+		element.Selector = selector
+	}
+	if strings.TrimSpace(element.Text) == "" {
+		element.Text = strings.TrimSpace(live.Text)
+	}
+	if strings.TrimSpace(element.Value) == "" {
+		element.Value = strings.TrimSpace(live.Value)
+	}
+	if strings.TrimSpace(element.Name) == "" {
+		element.Name = strings.TrimSpace(live.Name)
+	}
+	details := InspectDetails{
+		Element:    element,
+		States:     live.States,
+		Attributes: live.Attributes,
+		Bounds:     live.Bounds,
+		Ancestors:  live.Ancestors,
+		AX: map[string]string{
+			"role":        strings.TrimSpace(element.Role),
+			"name":        strings.TrimSpace(element.Name),
+			"description": strings.TrimSpace(element.Description),
+			"value":       strings.TrimSpace(element.Value),
+			"source":      strings.TrimSpace(element.Source),
+		},
+		Diagnostics: map[string]any{
+			"level": element.Level,
+		},
+	}
+	return details, nil
+}
+
+func axNodeLevels(nodes []*accessibility.Node) map[accessibility.NodeID]int {
+	levels := make(map[accessibility.NodeID]int, len(nodes))
+	parents := make(map[accessibility.NodeID]accessibility.NodeID, len(nodes))
+	for _, node := range nodes {
+		if node != nil {
+			parents[node.NodeID] = node.ParentID
+		}
+	}
+	var levelOf func(accessibility.NodeID) int
+	levelOf = func(id accessibility.NodeID) int {
+		if level, ok := levels[id]; ok {
+			return level
+		}
+		parent := parents[id]
+		if parent == "" || parent == id {
+			levels[id] = 0
+			return 0
+		}
+		level := levelOf(parent) + 1
+		levels[id] = level
+		return level
+	}
+	for id := range parents {
+		levelOf(id)
+	}
+	return levels
 }
 
 func (s *session) resolveActionSelector(ctx context.Context, tab *tab, ref string) (string, error) {
@@ -1818,6 +2050,36 @@ func (t *tab) selectorForRef(ref string) string {
 		}
 	}
 	return ""
+}
+
+func (t *tab) elementByRef(ref string) (SnapshotElement, bool) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return SnapshotElement{}, false
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	for _, el := range t.elements {
+		if strings.TrimSpace(el.Ref) == ref {
+			return el, true
+		}
+	}
+	return SnapshotElement{}, false
+}
+
+func (t *tab) elementBySelector(selector string) (SnapshotElement, bool) {
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return SnapshotElement{}, false
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	for _, el := range t.elements {
+		if strings.TrimSpace(el.Selector) == selector {
+			return el, true
+		}
+	}
+	return SnapshotElement{}, false
 }
 
 func (s *session) attachListeners(tab *tab) {

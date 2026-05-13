@@ -57,6 +57,7 @@ const (
 	ToolBrowserStatus           = "browser_status"
 	ToolBrowserNavigate         = "browser_navigate"
 	ToolBrowserSnapshot         = "browser_snapshot"
+	ToolBrowserInspect          = "browser_inspect"
 	ToolBrowserTabs             = "browser_tabs"
 	ToolBrowserBack             = "browser_back"
 	ToolBrowserForward          = "browser_forward"
@@ -230,11 +231,24 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolBrowserSnapshot,
-			Description: "读取当前浏览器会话中的页面快照摘要，并返回当前 active tab 元信息以及可供后续交互的稳定元素 ref 列表。",
+			Description: "读取当前浏览器会话中的页面快照摘要，并返回当前 active tab 元信息、稳定元素 ref 列表以及轻量层级 outline。",
 			Params:      map[string]*schema.ParameterInfo{},
 			RiskLevel:   RiskLevelMedium,
 			Examples: []ToolExample{
 				{Description: "获取当前页面快照", Input: map[string]any{}},
+			},
+		},
+		{
+			Name:        ToolBrowserInspect,
+			Description: "读取某个页面元素的细粒度详情。优先推荐使用 browser_snapshot 返回的 ref，也兼容 selector。",
+			Params: map[string]*schema.ParameterInfo{
+				"ref":      {Type: schema.String, Required: false, Desc: "来自 browser_snapshot 的稳定元素引用"},
+				"selector": {Type: schema.String, Required: false, Desc: "兼容模式：目标元素选择器"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "查看快照元素详情", Input: map[string]any{"ref": "e1"}},
+				{Description: "查看按钮详情", Input: map[string]any{"selector": "button[type=submit]"}},
 			},
 		},
 		{

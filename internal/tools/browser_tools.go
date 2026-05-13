@@ -23,6 +23,14 @@ func (m *Manager) browserSnapshotStructured(ctx context.Context, params map[stri
 	})
 }
 
+func (m *Manager) browserInspectStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	ref, _ := params["ref"].(string)
+	selector, _ := params["selector"].(string)
+	return m.runBrowserAction(ctx, ToolBrowserInspect, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.Inspect(ctx, browser.InspectRequest{Ref: strings.TrimSpace(ref), Selector: strings.TrimSpace(selector)})
+	})
+}
+
 func (m *Manager) browserTabsStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	action, _ := params["action"].(string)
 	id, _ := params["id"].(string)
