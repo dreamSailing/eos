@@ -23,6 +23,22 @@ func (m *Manager) browserSnapshotStructured(ctx context.Context, params map[stri
 	})
 }
 
+func (m *Manager) browserTabsStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	action, _ := params["action"].(string)
+	id, _ := params["id"].(string)
+	url, _ := params["url"].(string)
+	index, hasIndex := intParamWithPresence(params["index"])
+	return m.runBrowserAction(ctx, ToolBrowserTabs, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.Tabs(ctx, browser.TabsRequest{
+			Action:   strings.TrimSpace(action),
+			ID:       strings.TrimSpace(id),
+			Index:    index,
+			HasIndex: hasIndex,
+			URL:      strings.TrimSpace(url),
+		})
+	})
+}
+
 func (m *Manager) browserBackStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	return m.runBrowserAction(ctx, ToolBrowserBack, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
 		return sess.Back(ctx)
@@ -146,15 +162,19 @@ func (m *Manager) runBrowserAction(ctx context.Context, toolName string, params 
 			Display: err.Error(),
 		}
 	}
+	data := map[string]interface{}{
+		"trace_id": traceID,
+		"message":  out.Message,
+		"params":   params,
+	}
+	for k, v := range out.Data {
+		data[k] = v
+	}
 	return ToolResult{
-		Type:   "tool_result",
-		Tool:   toolName,
-		Status: "success",
-		Data: map[string]interface{}{
-			"trace_id": traceID,
-			"message":  out.Message,
-			"params":   params,
-		},
+		Type:    "tool_result",
+		Tool:    toolName,
+		Status:  "success",
+		Data:    data,
 		Display: out.Message,
 	}
 }
@@ -218,5 +238,21 @@ func intParam(raw interface{}) int {
 		return int(v)
 	default:
 		return 0
+	}
+}
+
+func intParamWithPresence(raw interface{}) (int, bool) {
+	if raw == nil {
+		return 0, false
+	}
+	switch v := raw.(type) {
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
+	case float64:
+		return int(v), true
+	default:
+		return 0, false
 	}
 }

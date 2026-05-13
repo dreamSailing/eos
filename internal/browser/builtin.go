@@ -25,7 +25,7 @@ var (
 	ErrNoLoadedPage     = errors.New("builtin browser session has no loaded page")
 	titlePattern        = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 	tagPattern          = regexp.MustCompile(`(?s)<[^>]+>`)
-	DefaultCapabilities = []string{"navigate", "snapshot", "back", "forward", "click", "hover", "type", "press_key", "select", "wait", "scroll", "screenshot", "console", "network"}
+	DefaultCapabilities = []string{"navigate", "snapshot", "tabs", "back", "forward", "click", "hover", "type", "press_key", "select", "wait", "scroll", "screenshot", "console", "network"}
 )
 
 type NavigateRequest struct {
@@ -33,6 +33,22 @@ type NavigateRequest struct {
 }
 
 type SnapshotRequest struct{}
+
+type TabsRequest struct {
+	Action   string
+	ID       string
+	Index    int
+	HasIndex bool
+	URL      string
+}
+
+type TabInfo struct {
+	ID     string `json:"id"`
+	Index  int    `json:"index"`
+	URL    string `json:"url"`
+	Title  string `json:"title"`
+	Active bool   `json:"active"`
+}
 
 type HoverRequest struct {
 	Selector string
@@ -82,12 +98,14 @@ type NetworkRequest struct {
 
 type ActionResult struct {
 	Message string
+	Data    map[string]interface{}
 }
 
 type SessionBackend interface {
 	Capabilities() []string
 	Navigate(context.Context, NavigateRequest) (ActionResult, error)
 	Snapshot(context.Context, SnapshotRequest) (ActionResult, error)
+	Tabs(context.Context, TabsRequest) (ActionResult, error)
 	Back(context.Context) (ActionResult, error)
 	Forward(context.Context) (ActionResult, error)
 	Click(context.Context, ClickRequest) (ActionResult, error)
@@ -123,7 +141,20 @@ type session struct {
 	allocCancel context.CancelFunc
 	cancel      context.CancelFunc
 	ctx         context.Context
-	opMu        sync.Mutex
+
+	mu          sync.RWMutex
+	createdAt   time.Time
+	updatedAt   time.Time
+	nextTabID   int
+	activeTabID string
+	tabs        []*tab
+}
+
+type tab struct {
+	id     string
+	ctx    context.Context
+	cancel context.CancelFunc
+	opMu   sync.Mutex
 
 	mu        sync.RWMutex
 	createdAt time.Time
@@ -245,11 +276,15 @@ func (s *session) Capabilities() []string {
 }
 
 func (s *session) Navigate(ctx context.Context, req NavigateRequest) (ActionResult, error) {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
 	target := strings.TrimSpace(req.URL)
 	if target == "" {
 		return ActionResult{}, fmt.Errorf("missing url")
 	}
-	err := s.run(ctx,
+	err = tab.run(ctx,
 		network.Enable(),
 		cdruntime.Enable(),
 		page.Enable(),
@@ -260,18 +295,21 @@ func (s *session) Navigate(ctx context.Context, req NavigateRequest) (ActionResu
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	url, title, _, err := s.refreshPageState(ctx)
+	url, title, _, err := s.refreshTabPageState(ctx, tab)
 	if err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	return ActionResult{Message: fmt.Sprintf("navigated to %s (title=%q)", url, title)}, nil
+	return ActionResult{Message: fmt.Sprintf("navigated %s to %s (title=%q)", tab.id, url, title)}, nil
 }
 
 func (s *session) Snapshot(ctx context.Context, req SnapshotRequest) (ActionResult, error) {
-	_ = ctx
 	_ = req
-	url, title, html, err := s.refreshPageState(ctx)
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
+	url, title, html, err := s.refreshTabPageState(ctx, tab)
 	if err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
@@ -280,65 +318,134 @@ func (s *session) Snapshot(ctx context.Context, req SnapshotRequest) (ActionResu
 		return ActionResult{}, ErrNoLoadedPage
 	}
 	return ActionResult{
-		Message: fmt.Sprintf("url=%s\ntitle=%s\nsnapshot=%s", url, title, summarizeHTMLSnapshot(html)),
+		Message: fmt.Sprintf("tab=%s\nurl=%s\ntitle=%s\nsnapshot=%s", tab.id, url, title, summarizeHTMLSnapshot(html)),
 	}, nil
 }
 
+func (s *session) Tabs(ctx context.Context, req TabsRequest) (ActionResult, error) {
+	action := strings.ToLower(strings.TrimSpace(req.Action))
+	if action == "" {
+		action = "list"
+	}
+	switch action {
+	case "list":
+		return s.tabsResult("listed tabs"), nil
+	case "new":
+		tab, err := s.createTab(ctx, strings.TrimSpace(req.URL))
+		if err != nil {
+			s.runtime.setLastError(err)
+			return ActionResult{}, err
+		}
+		res := s.tabsSnapshot()
+		res.Message = fmt.Sprintf("opened %s as %s", tab.currentURL(), tab.id)
+		return res, nil
+	case "switch":
+		tab, err := s.resolveTab(req)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		if _, _, _, err := s.refreshTabPageState(ctx, tab); err != nil && !errors.Is(err, ErrNoLoadedPage) {
+			s.runtime.setLastError(err)
+			return ActionResult{}, err
+		}
+		s.setActiveTab(tab.id)
+		res := s.tabsSnapshot()
+		res.Message = fmt.Sprintf("switched to %s", tab.id)
+		return res, nil
+	case "close":
+		current, err := s.resolveTab(req)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		if s.tabCount() == 1 {
+			if _, err := s.createTab(ctx, "about:blank"); err != nil {
+				s.runtime.setLastError(err)
+				return ActionResult{}, err
+			}
+		}
+		if err := s.closeTab(ctx, current.id); err != nil {
+			s.runtime.setLastError(err)
+			return ActionResult{}, err
+		}
+		res := s.tabsSnapshot()
+		res.Message = fmt.Sprintf("closed %s", current.id)
+		return res, nil
+	default:
+		return ActionResult{}, fmt.Errorf("unsupported tabs action %q", action)
+	}
+}
+
 func (s *session) Back(ctx context.Context) (ActionResult, error) {
-	if !s.hasPage() {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
+	if !tab.hasPage() {
 		return ActionResult{}, ErrNoLoadedPage
 	}
-	if err := s.run(ctx,
+	if err := tab.run(ctx,
 		chromedp.NavigateBack(),
 		chromedp.WaitReady("html", chromedp.ByQuery),
 	); err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	url, title, _, err := s.refreshPageState(ctx)
+	url, title, _, err := s.refreshTabPageState(ctx, tab)
 	if err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	return ActionResult{Message: fmt.Sprintf("navigated back to %s (title=%q)", url, title)}, nil
+	return ActionResult{Message: fmt.Sprintf("navigated %s back to %s (title=%q)", tab.id, url, title)}, nil
 }
 
 func (s *session) Forward(ctx context.Context) (ActionResult, error) {
-	if !s.hasPage() {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
+	if !tab.hasPage() {
 		return ActionResult{}, ErrNoLoadedPage
 	}
-	if err := s.run(ctx,
+	if err := tab.run(ctx,
 		chromedp.NavigateForward(),
 		chromedp.WaitReady("html", chromedp.ByQuery),
 	); err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	url, title, _, err := s.refreshPageState(ctx)
+	url, title, _, err := s.refreshTabPageState(ctx, tab)
 	if err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	return ActionResult{Message: fmt.Sprintf("navigated forward to %s (title=%q)", url, title)}, nil
+	return ActionResult{Message: fmt.Sprintf("navigated %s forward to %s (title=%q)", tab.id, url, title)}, nil
 }
 
 func (s *session) Click(ctx context.Context, req ClickRequest) (ActionResult, error) {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
 	selector := strings.TrimSpace(req.Selector)
 	if selector == "" {
 		return ActionResult{}, fmt.Errorf("missing selector")
 	}
-	if err := s.run(ctx, chromedp.Click(selector, chromedp.ByQuery)); err != nil {
+	if err := tab.run(ctx, chromedp.Click(selector, chromedp.ByQuery)); err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	if _, _, _, err := s.refreshPageState(ctx); err != nil {
+	if _, _, _, err := s.refreshTabPageState(ctx, tab); err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	return ActionResult{Message: fmt.Sprintf("clicked %s", selector)}, nil
+	return ActionResult{Message: fmt.Sprintf("clicked %s on %s", selector, tab.id)}, nil
 }
 
 func (s *session) Hover(ctx context.Context, req HoverRequest) (ActionResult, error) {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
 	selector := strings.TrimSpace(req.Selector)
 	if selector == "" {
 		return ActionResult{}, fmt.Errorf("missing selector")
@@ -355,26 +462,30 @@ func (s *session) Hover(ctx context.Context, req HoverRequest) (ActionResult, er
 		}
 		return true;
 	})()`, string(selectorJSON), string(selectorJSON))
-	if err := s.run(ctx,
+	if err := tab.run(ctx,
 		chromedp.WaitVisible(selector, chromedp.ByQuery),
 		chromedp.Evaluate(script, nil),
 	); err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	if _, _, _, err := s.refreshPageState(ctx); err != nil {
+	if _, _, _, err := s.refreshTabPageState(ctx, tab); err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	return ActionResult{Message: fmt.Sprintf("hovered %s", selector)}, nil
+	return ActionResult{Message: fmt.Sprintf("hovered %s on %s", selector, tab.id)}, nil
 }
 
 func (s *session) Type(ctx context.Context, req TypeRequest) (ActionResult, error) {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
 	selector := strings.TrimSpace(req.Selector)
 	if selector == "" {
 		return ActionResult{}, fmt.Errorf("missing selector")
 	}
-	if err := s.run(ctx,
+	if err := tab.run(ctx,
 		chromedp.WaitVisible(selector, chromedp.ByQuery),
 		chromedp.SetValue(selector, "", chromedp.ByQuery),
 		chromedp.SendKeys(selector, req.Text, chromedp.ByQuery),
@@ -382,44 +493,51 @@ func (s *session) Type(ctx context.Context, req TypeRequest) (ActionResult, erro
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	if _, _, _, err := s.refreshPageState(ctx); err != nil {
+	if _, _, _, err := s.refreshTabPageState(ctx, tab); err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	return ActionResult{Message: fmt.Sprintf("typed into %s", selector)}, nil
+	return ActionResult{Message: fmt.Sprintf("typed into %s on %s", selector, tab.id)}, nil
 }
 
 func (s *session) PressKey(ctx context.Context, req KeyRequest) (ActionResult, error) {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
 	keys := req.Keys
 	if strings.TrimSpace(keys) == "" {
 		return ActionResult{}, fmt.Errorf("missing keys")
 	}
 	selector := strings.TrimSpace(req.Selector)
-	var err error
 	if selector != "" {
-		err = s.run(ctx,
+		err = tab.run(ctx,
 			chromedp.WaitVisible(selector, chromedp.ByQuery),
 			chromedp.Focus(selector, chromedp.ByQuery),
 			chromedp.SendKeys(selector, keys, chromedp.ByQuery),
 		)
 	} else {
-		err = s.run(ctx, chromedp.KeyEvent(keys))
+		err = tab.run(ctx, chromedp.KeyEvent(keys))
 	}
 	if err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	if _, _, _, err := s.refreshPageState(ctx); err != nil {
+	if _, _, _, err := s.refreshTabPageState(ctx, tab); err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
 	if selector != "" {
-		return ActionResult{Message: fmt.Sprintf("sent keys to %s", selector)}, nil
+		return ActionResult{Message: fmt.Sprintf("sent keys to %s on %s", selector, tab.id)}, nil
 	}
-	return ActionResult{Message: fmt.Sprintf("sent keys %q", keys)}, nil
+	return ActionResult{Message: fmt.Sprintf("sent keys %q on %s", keys, tab.id)}, nil
 }
 
 func (s *session) Select(ctx context.Context, req SelectRequest) (ActionResult, error) {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
 	selector := strings.TrimSpace(req.Selector)
 	if selector == "" {
 		return ActionResult{}, fmt.Errorf("missing selector")
@@ -428,20 +546,24 @@ func (s *session) Select(ctx context.Context, req SelectRequest) (ActionResult, 
 	if len(values) == 0 {
 		return ActionResult{}, fmt.Errorf("missing values")
 	}
-	selected, err := s.selectValues(ctx, selector, values)
+	selected, err := s.selectValues(ctx, tab, selector, values)
 	if err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	if _, _, _, err := s.refreshPageState(ctx); err != nil {
+	if _, _, _, err := s.refreshTabPageState(ctx, tab); err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	return ActionResult{Message: fmt.Sprintf("selected %s on %s", strings.Join(selected, ","), selector)}, nil
+	return ActionResult{Message: fmt.Sprintf("selected %s on %s (%s)", strings.Join(selected, ","), selector, tab.id)}, nil
 }
 
 func (s *session) Wait(ctx context.Context, req WaitRequest) (ActionResult, error) {
-	if !s.hasPage() {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
+	if !tab.hasPage() {
 		return ActionResult{}, ErrNoLoadedPage
 	}
 	timeout := time.Duration(req.Timeout) * time.Millisecond
@@ -452,15 +574,15 @@ func (s *session) Wait(ctx context.Context, req WaitRequest) (ActionResult, erro
 	defer cancel()
 	selector := strings.TrimSpace(req.Selector)
 	if selector != "" {
-		if err := s.run(waitCtx, chromedp.WaitVisible(selector, chromedp.ByQuery)); err != nil {
+		if err := tab.run(waitCtx, chromedp.WaitVisible(selector, chromedp.ByQuery)); err != nil {
 			s.runtime.setLastError(err)
 			return ActionResult{}, err
 		}
-		if _, _, _, err := s.refreshPageState(waitCtx); err != nil {
+		if _, _, _, err := s.refreshTabPageState(waitCtx, tab); err != nil {
 			s.runtime.setLastError(err)
 			return ActionResult{}, err
 		}
-		return ActionResult{Message: fmt.Sprintf("waited for %s", selector)}, nil
+		return ActionResult{Message: fmt.Sprintf("waited for %s on %s", selector, tab.id)}, nil
 	}
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -469,11 +591,15 @@ func (s *session) Wait(ctx context.Context, req WaitRequest) (ActionResult, erro
 		return ActionResult{}, waitCtx.Err()
 	case <-timer.C:
 	}
-	return ActionResult{Message: fmt.Sprintf("waited %s", timeout)}, nil
+	return ActionResult{Message: fmt.Sprintf("waited %s on %s", timeout, tab.id)}, nil
 }
 
 func (s *session) Scroll(ctx context.Context, req ScrollRequest) (ActionResult, error) {
-	if !s.hasPage() {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
+	if !tab.hasPage() {
 		return ActionResult{}, ErrNoLoadedPage
 	}
 	selector := strings.TrimSpace(req.Selector)
@@ -487,39 +613,43 @@ func (s *session) Scroll(ctx context.Context, req ScrollRequest) (ActionResult, 
 			el.scrollIntoView({block: "center", inline: "center"});
 			return true;
 		})()`, string(selectorJSON), string(selectorJSON))
-		if err := s.run(ctx, chromedp.Evaluate(script, nil)); err != nil {
+		if err := tab.run(ctx, chromedp.Evaluate(script, nil)); err != nil {
 			s.runtime.setLastError(err)
 			return ActionResult{}, err
 		}
-		if _, _, _, err := s.refreshPageState(ctx); err != nil {
+		if _, _, _, err := s.refreshTabPageState(ctx, tab); err != nil {
 			s.runtime.setLastError(err)
 			return ActionResult{}, err
 		}
-		return ActionResult{Message: fmt.Sprintf("scrolled %s into view", selector)}, nil
+		return ActionResult{Message: fmt.Sprintf("scrolled %s into view on %s", selector, tab.id)}, nil
 	}
 	script := fmt.Sprintf(`(() => { window.scrollBy(%d, %d); return window.scrollY; })()`, req.X, req.Y)
 	var scrollY float64
-	if err := s.run(ctx, chromedp.Evaluate(script, &scrollY)); err != nil {
+	if err := tab.run(ctx, chromedp.Evaluate(script, &scrollY)); err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	if _, _, _, err := s.refreshPageState(ctx); err != nil {
+	if _, _, _, err := s.refreshTabPageState(ctx, tab); err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	return ActionResult{Message: fmt.Sprintf("scrolled window to y=%.0f", scrollY)}, nil
+	return ActionResult{Message: fmt.Sprintf("scrolled %s to y=%.0f", tab.id, scrollY)}, nil
 }
 
 func (s *session) Screenshot(ctx context.Context, req ScreenshotRequest) (ActionResult, error) {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
 	path := strings.TrimSpace(req.Path)
 	if path == "" {
 		return ActionResult{}, fmt.Errorf("missing screenshot path")
 	}
-	if !s.hasPage() {
+	if !tab.hasPage() {
 		return ActionResult{}, ErrNoLoadedPage
 	}
 	var buf []byte
-	if err := s.run(ctx, chromedp.FullScreenshot(&buf, 90)); err != nil {
+	if err := tab.run(ctx, chromedp.FullScreenshot(&buf, 90)); err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
@@ -529,35 +659,43 @@ func (s *session) Screenshot(ctx context.Context, req ScreenshotRequest) (Action
 	if err := os.WriteFile(path, buf, 0o644); err != nil {
 		return ActionResult{}, err
 	}
-	return ActionResult{Message: fmt.Sprintf("saved screenshot to %s", path)}, nil
+	return ActionResult{Message: fmt.Sprintf("saved screenshot for %s to %s", tab.id, path)}, nil
 }
 
 func (s *session) Console(ctx context.Context, req ConsoleRequest) (ActionResult, error) {
 	_ = ctx
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if len(s.console) == 0 {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
+	tab.mu.RLock()
+	defer tab.mu.RUnlock()
+	if len(tab.console) == 0 {
 		return ActionResult{Message: "no console messages recorded"}, nil
 	}
 	limit := req.Limit
-	if limit <= 0 || limit > len(s.console) {
-		limit = len(s.console)
+	if limit <= 0 || limit > len(tab.console) {
+		limit = len(tab.console)
 	}
-	return ActionResult{Message: strings.Join(s.console[len(s.console)-limit:], "\n")}, nil
+	return ActionResult{Message: strings.Join(tab.console[len(tab.console)-limit:], "\n")}, nil
 }
 
 func (s *session) Network(ctx context.Context, req NetworkRequest) (ActionResult, error) {
 	_ = ctx
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if len(s.network) == 0 {
+	tab, err := s.mustActiveTab()
+	if err != nil {
+		return ActionResult{}, err
+	}
+	tab.mu.RLock()
+	defer tab.mu.RUnlock()
+	if len(tab.network) == 0 {
 		return ActionResult{}, ErrNoLoadedPage
 	}
 	limit := req.Limit
-	if limit <= 0 || limit > len(s.network) {
-		limit = len(s.network)
+	if limit <= 0 || limit > len(tab.network) {
+		limit = len(tab.network)
 	}
-	return ActionResult{Message: strings.Join(s.network[len(s.network)-limit:], "\n")}, nil
+	return ActionResult{Message: strings.Join(tab.network[len(tab.network)-limit:], "\n")}, nil
 }
 
 func (r *BuiltinRuntime) setLastError(err error) {
@@ -588,20 +726,23 @@ func summarizeHTMLSnapshot(html string) string {
 
 func newSession(rt *BuiltinRuntime, traceID, execPath string) (*session, error) {
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocatorOptions(execPath)...)
-	ctx, cancel := chromedp.NewContext(allocCtx)
+	browserCtx, cancel := chromedp.NewContext(allocCtx)
 	sess := &session{
 		runtime:     rt,
 		traceID:     traceID,
 		allocCancel: allocCancel,
 		cancel:      cancel,
-		ctx:         ctx,
+		ctx:         browserCtx,
 		createdAt:   time.Now(),
 		updatedAt:   time.Now(),
 	}
-	sess.attachListeners()
-	initCtx, initCancel := context.WithTimeout(ctx, 20*time.Second)
+	initCtx, initCancel := context.WithTimeout(browserCtx, 20*time.Second)
 	defer initCancel()
-	if err := chromedp.Run(initCtx, network.Enable(), cdruntime.Enable(), page.Enable()); err != nil {
+	if err := chromedp.Run(initCtx, chromedp.ActionFunc(func(context.Context) error { return nil })); err != nil {
+		sess.Close()
+		return nil, err
+	}
+	if _, err := sess.createTab(context.Background(), "about:blank"); err != nil {
 		sess.Close()
 		return nil, err
 	}
@@ -624,6 +765,16 @@ func allocatorOptions(execPath string) []chromedp.ExecAllocatorOption {
 }
 
 func (s *session) Close() {
+	s.mu.Lock()
+	tabs := append([]*tab(nil), s.tabs...)
+	s.tabs = nil
+	s.activeTabID = ""
+	s.mu.Unlock()
+	for _, tab := range tabs {
+		if tab != nil {
+			tab.cancel()
+		}
+	}
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -632,55 +783,239 @@ func (s *session) Close() {
 	}
 }
 
-func (s *session) hasPage() bool {
+func (s *session) mustActiveTab() (*tab, error) {
+	tab := s.activeTab()
+	if tab == nil {
+		return nil, ErrNoLoadedPage
+	}
+	return tab, nil
+}
+
+func (s *session) activeTab() *tab {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return strings.TrimSpace(s.lastURL) != ""
+	return s.activeTabLocked()
 }
 
-func (s *session) run(parent context.Context, actions ...chromedp.Action) error {
-	s.opMu.Lock()
-	defer s.opMu.Unlock()
-	opCtx, cleanup := s.operationContext(parent)
-	defer cleanup()
-	return chromedp.Run(opCtx, actions...)
-}
-
-func (s *session) operationContext(parent context.Context) (context.Context, func()) {
-	var (
-		opCtx  context.Context
-		cancel context.CancelFunc
-	)
-	if parent != nil {
-		if deadline, ok := parent.Deadline(); ok {
-			opCtx, cancel = context.WithDeadline(s.ctx, deadline)
-		} else {
-			opCtx, cancel = context.WithCancel(s.ctx)
-		}
-		stop := make(chan struct{})
-		go func() {
-			select {
-			case <-parent.Done():
-				cancel()
-			case <-stop:
+func (s *session) activeTabLocked() *tab {
+	if s.activeTabID != "" {
+		for _, tab := range s.tabs {
+			if tab != nil && tab.id == s.activeTabID {
+				return tab
 			}
-		}()
-		return opCtx, func() {
-			close(stop)
-			cancel()
 		}
 	}
-	opCtx, cancel = context.WithCancel(s.ctx)
-	return opCtx, cancel
+	if len(s.tabs) == 0 {
+		return nil
+	}
+	return s.tabs[0]
 }
 
-func (s *session) refreshPageState(ctx context.Context) (string, string, string, error) {
+func (s *session) setActiveTab(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, tab := range s.tabs {
+		if tab != nil && tab.id == id {
+			s.activeTabID = id
+			s.updatedAt = time.Now()
+			return
+		}
+	}
+}
+
+func (s *session) tabCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.tabs)
+}
+
+func (s *session) resolveTab(req TabsRequest) (*tab, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if req.ID != "" {
+		for _, tab := range s.tabs {
+			if tab != nil && tab.id == strings.TrimSpace(req.ID) {
+				return tab, nil
+			}
+		}
+		return nil, fmt.Errorf("unknown tab id %q", strings.TrimSpace(req.ID))
+	}
+	if req.HasIndex {
+		if req.Index < 0 || req.Index >= len(s.tabs) {
+			return nil, fmt.Errorf("tab index %d out of range", req.Index)
+		}
+		if s.tabs[req.Index] == nil {
+			return nil, fmt.Errorf("tab index %d unavailable", req.Index)
+		}
+		return s.tabs[req.Index], nil
+	}
+	tab := s.activeTabLocked()
+	if tab == nil {
+		return nil, ErrNoLoadedPage
+	}
+	return tab, nil
+}
+
+func (s *session) createTab(ctx context.Context, targetURL string) (*tab, error) {
+	targetURL = strings.TrimSpace(targetURL)
+	if targetURL == "" {
+		targetURL = "about:blank"
+	}
+	tabCtx, cancel := chromedp.NewContext(s.ctx)
+	tab := &tab{
+		id:        s.nextTabName(),
+		ctx:       tabCtx,
+		cancel:    cancel,
+		createdAt: time.Now(),
+		updatedAt: time.Now(),
+	}
+	s.attachListeners(tab)
+	if err := tab.run(ctx,
+		network.Enable(),
+		cdruntime.Enable(),
+		page.Enable(),
+		chromedp.Navigate(targetURL),
+		chromedp.WaitReady("html", chromedp.ByQuery),
+	); err != nil {
+		cancel()
+		return nil, err
+	}
+	if _, _, _, err := s.refreshTabPageState(ctx, tab); err != nil {
+		cancel()
+		return nil, err
+	}
+	s.mu.Lock()
+	s.tabs = append(s.tabs, tab)
+	s.activeTabID = tab.id
+	s.updatedAt = time.Now()
+	s.mu.Unlock()
+	return tab, nil
+}
+
+func (s *session) nextTabName() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nextTabID++
+	return fmt.Sprintf("tab-%d", s.nextTabID)
+}
+
+func (s *session) closeTab(ctx context.Context, id string) error {
+	s.mu.RLock()
+	idx := -1
+	var victim *tab
+	for i, tab := range s.tabs {
+		if tab != nil && tab.id == id {
+			idx = i
+			victim = tab
+			break
+		}
+	}
+	s.mu.RUnlock()
+	if idx < 0 || victim == nil {
+		return fmt.Errorf("unknown tab id %q", id)
+	}
+	if err := victim.run(ctx, page.Close()); err != nil {
+		return err
+	}
+	victim.cancel()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tabs = append(s.tabs[:idx], s.tabs[idx+1:]...)
+	if s.activeTabID == id {
+		s.activeTabID = ""
+		if len(s.tabs) > 0 {
+			next := idx
+			if next >= len(s.tabs) {
+				next = len(s.tabs) - 1
+			}
+			s.activeTabID = s.tabs[next].id
+		}
+	}
+	s.updatedAt = time.Now()
+	return nil
+}
+
+func (s *session) tabsSnapshot() ActionResult {
+	infos := s.tabInfos()
+	active := ""
+	for _, info := range infos {
+		if info.Active {
+			active = info.ID
+			break
+		}
+	}
+	return ActionResult{
+		Message: formatTabSummary(infos),
+		Data: map[string]interface{}{
+			"tabs":       infos,
+			"active_tab": active,
+		},
+	}
+}
+
+func (s *session) tabsResult(message string) ActionResult {
+	res := s.tabsSnapshot()
+	if strings.TrimSpace(message) != "" {
+		res.Message = message + "\n" + res.Message
+	}
+	return res
+}
+
+func (s *session) tabInfos() []TabInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]TabInfo, 0, len(s.tabs))
+	for i, tab := range s.tabs {
+		if tab == nil {
+			continue
+		}
+		tab.mu.RLock()
+		info := TabInfo{
+			ID:     tab.id,
+			Index:  i,
+			URL:    strings.TrimSpace(tab.lastURL),
+			Title:  strings.TrimSpace(tab.lastTitle),
+			Active: tab.id == s.activeTabID,
+		}
+		tab.mu.RUnlock()
+		out = append(out, info)
+	}
+	return out
+}
+
+func formatTabSummary(infos []TabInfo) string {
+	if len(infos) == 0 {
+		return "no tabs"
+	}
+	lines := make([]string, 0, len(infos))
+	for _, info := range infos {
+		prefix := "-"
+		if info.Active {
+			prefix = "*"
+		}
+		title := strings.TrimSpace(info.Title)
+		if title == "" {
+			title = "(untitled)"
+		}
+		url := strings.TrimSpace(info.URL)
+		if url == "" {
+			url = "about:blank"
+		}
+		lines = append(lines, fmt.Sprintf("%s [%d] %s %s %s", prefix, info.Index, info.ID, title, url))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (s *session) refreshTabPageState(ctx context.Context, tab *tab) (string, string, string, error) {
+	if tab == nil {
+		return "", "", "", ErrNoLoadedPage
+	}
 	var (
 		url   string
 		title string
 		html  string
 	)
-	if err := s.run(ctx,
+	if err := tab.run(ctx,
 		chromedp.Location(&url),
 		chromedp.Title(&title),
 		chromedp.OuterHTML("html", &html, chromedp.ByQuery),
@@ -691,16 +1026,19 @@ func (s *session) refreshPageState(ctx context.Context) (string, string, string,
 	if url == "" {
 		return "", "", "", ErrNoLoadedPage
 	}
+	tab.mu.Lock()
+	tab.updatedAt = time.Now()
+	tab.lastURL = url
+	tab.lastTitle = strings.TrimSpace(title)
+	tab.lastHTML = html
+	tab.mu.Unlock()
 	s.mu.Lock()
 	s.updatedAt = time.Now()
-	s.lastURL = url
-	s.lastTitle = strings.TrimSpace(title)
-	s.lastHTML = html
 	s.mu.Unlock()
 	return url, strings.TrimSpace(title), html, nil
 }
 
-func (s *session) selectValues(ctx context.Context, selector string, values []string) ([]string, error) {
+func (s *session) selectValues(ctx context.Context, tab *tab, selector string, values []string) ([]string, error) {
 	selectorJSON, _ := json.Marshal(selector)
 	valuesJSON, _ := json.Marshal(values)
 	script := fmt.Sprintf(`(() => {
@@ -722,7 +1060,7 @@ func (s *session) selectValues(ctx context.Context, selector string, values []st
 		return Array.from(el.selectedOptions).map((option) => String(option.value || option.text));
 	})()`, string(selectorJSON), string(valuesJSON))
 	var selected []string
-	if err := s.run(ctx,
+	if err := tab.run(ctx,
 		chromedp.WaitVisible(selector, chromedp.ByQuery),
 		chromedp.Evaluate(script, &selected),
 	); err != nil {
@@ -731,45 +1069,96 @@ func (s *session) selectValues(ctx context.Context, selector string, values []st
 	return selected, nil
 }
 
-func (s *session) attachListeners() {
-	chromedp.ListenTarget(s.ctx, func(ev any) {
+func (s *session) attachListeners(tab *tab) {
+	chromedp.ListenTarget(tab.ctx, func(ev any) {
 		switch evt := ev.(type) {
 		case *cdruntime.EventConsoleAPICalled:
-			s.appendConsole(formatConsoleEvent(evt))
+			tab.appendConsole(formatConsoleEvent(evt))
 		case *cdruntime.EventExceptionThrown:
 			if evt.ExceptionDetails != nil {
-				s.appendConsole(strings.TrimSpace(evt.ExceptionDetails.Error()))
+				tab.appendConsole(strings.TrimSpace(evt.ExceptionDetails.Error()))
 			}
 		case *network.EventRequestWillBeSent:
 			if evt.Request != nil {
-				s.appendNetwork(fmt.Sprintf("%s %s", evt.Request.Method, strings.TrimSpace(evt.Request.URL)))
+				tab.appendNetwork(fmt.Sprintf("%s %s", evt.Request.Method, strings.TrimSpace(evt.Request.URL)))
 			}
 		case *network.EventResponseReceived:
 			if evt.Response != nil {
-				s.appendNetwork(fmt.Sprintf("%s -> %d", strings.TrimSpace(evt.Response.URL), int(evt.Response.Status)))
+				tab.appendNetwork(fmt.Sprintf("%s -> %d", strings.TrimSpace(evt.Response.URL), int(evt.Response.Status)))
 			}
 		}
 	})
 }
 
-func (s *session) appendConsole(line string) {
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.console = appendBounded(s.console, line, 200)
+func (t *tab) hasPage() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return strings.TrimSpace(t.lastURL) != ""
 }
 
-func (s *session) appendNetwork(line string) {
+func (t *tab) currentURL() string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	if strings.TrimSpace(t.lastURL) == "" {
+		return "about:blank"
+	}
+	return strings.TrimSpace(t.lastURL)
+}
+
+func (t *tab) run(parent context.Context, actions ...chromedp.Action) error {
+	t.opMu.Lock()
+	defer t.opMu.Unlock()
+	opCtx, cleanup := t.operationContext(parent)
+	defer cleanup()
+	return chromedp.Run(opCtx, actions...)
+}
+
+func (t *tab) operationContext(parent context.Context) (context.Context, func()) {
+	var (
+		opCtx  context.Context
+		cancel context.CancelFunc
+	)
+	if parent != nil {
+		if deadline, ok := parent.Deadline(); ok {
+			opCtx, cancel = context.WithDeadline(t.ctx, deadline)
+		} else {
+			opCtx, cancel = context.WithCancel(t.ctx)
+		}
+		stop := make(chan struct{})
+		go func() {
+			select {
+			case <-parent.Done():
+				cancel()
+			case <-stop:
+			}
+		}()
+		return opCtx, func() {
+			close(stop)
+			cancel()
+		}
+	}
+	opCtx, cancel = context.WithCancel(t.ctx)
+	return opCtx, cancel
+}
+
+func (t *tab) appendConsole(line string) {
 	line = strings.TrimSpace(line)
 	if line == "" {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.network = appendBounded(s.network, line, 400)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.console = appendBounded(t.console, line, 200)
+}
+
+func (t *tab) appendNetwork(line string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.network = appendBounded(t.network, line, 400)
 }
 
 func appendBounded(lines []string, line string, max int) []string {

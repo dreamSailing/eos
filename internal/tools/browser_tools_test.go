@@ -152,3 +152,68 @@ func TestBrowserToolsDOMActions(t *testing.T) {
 		t.Fatal("expected non-empty screenshot output")
 	}
 }
+
+func TestBrowserToolsTabs(t *testing.T) {
+	mgr := NewManager()
+	rt := browser.NewBuiltinRuntime()
+	if !rt.Status().Ready {
+		t.Skipf("builtin browser unavailable: %s", rt.Status().LastError)
+	}
+	mgr.SetBrowserRuntime(rt)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		switch r.URL.Path {
+		case "/two":
+			_, _ = w.Write([]byte(`<!doctype html><html><head><title>Two</title></head><body><h1>Two</h1></body></html>`))
+		default:
+			_, _ = w.Write([]byte(`<!doctype html><html><head><title>One</title></head><body><h1>One</h1></body></html>`))
+		}
+	}))
+	defer srv.Close()
+
+	root := t.TempDir()
+	ctx := WithWorkspaceRoot(WithTraceID(context.Background(), "rid-browser-tabs"), root)
+
+	if nav := mgr.browserNavigateStructured(ctx, map[string]interface{}{"url": srv.URL}); nav.Status != "success" {
+		t.Fatalf("navigate failed: %+v", nav)
+	}
+	listRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "list"})
+	if listRes.Status != "success" {
+		t.Fatalf("tabs list failed: %+v", listRes)
+	}
+	tabsAny, ok := listRes.Data["tabs"]
+	if !ok {
+		t.Fatalf("tabs list missing tabs: %+v", listRes.Data)
+	}
+	tabs, ok := tabsAny.([]browser.TabInfo)
+	if !ok || len(tabs) != 1 {
+		t.Fatalf("expected 1 tab, got %#v", tabsAny)
+	}
+
+	newRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "new", "url": srv.URL + "/two"})
+	if newRes.Status != "success" {
+		t.Fatalf("tabs new failed: %+v", newRes)
+	}
+	if active, _ := newRes.Data["active_tab"].(string); active != "tab-2" {
+		t.Fatalf("active_tab = %q, want tab-2", active)
+	}
+
+	switchRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "switch", "index": 0})
+	if switchRes.Status != "success" {
+		t.Fatalf("tabs switch failed: %+v", switchRes)
+	}
+	snap := mgr.browserSnapshotStructured(ctx, map[string]interface{}{})
+	if snap.Status != "success" || !strings.Contains(snap.Display, "One") {
+		t.Fatalf("snapshot after switch failed: %+v", snap)
+	}
+
+	closeRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "close", "id": "tab-2"})
+	if closeRes.Status != "success" {
+		t.Fatalf("tabs close failed: %+v", closeRes)
+	}
+	tabs, ok = closeRes.Data["tabs"].([]browser.TabInfo)
+	if !ok || len(tabs) != 1 || tabs[0].ID != "tab-1" || !tabs[0].Active {
+		t.Fatalf("unexpected tabs after close: %#v", closeRes.Data["tabs"])
+	}
+}

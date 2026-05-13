@@ -13,7 +13,7 @@ import (
 func TestBuiltinRuntimeStatus(t *testing.T) {
 	rt := NewBuiltinRuntime()
 	status := rt.Status()
-	if got := strings.Join(status.Capabilities, ","); got != "navigate,snapshot,back,forward,click,hover,type,press_key,select,wait,scroll,screenshot,console,network" {
+	if got := strings.Join(status.Capabilities, ","); got != "navigate,snapshot,tabs,back,forward,click,hover,type,press_key,select,wait,scroll,screenshot,console,network" {
 		t.Fatalf("capabilities = %q", got)
 	}
 	if !status.Ready && status.LastError == "" {
@@ -189,5 +189,84 @@ func TestBuiltinSessionDOMActions(t *testing.T) {
 	}
 	if info.Size() == 0 {
 		t.Fatal("expected non-empty screenshot output")
+	}
+}
+
+func TestBuiltinSessionTabs(t *testing.T) {
+	rt := NewBuiltinRuntime()
+	if !rt.Status().Ready {
+		t.Skipf("builtin browser unavailable: %s", rt.Status().LastError)
+	}
+	sess, err := rt.Session("trace-tabs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.ReleaseTrace("trace-tabs")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		switch r.URL.Path {
+		case "/two":
+			_, _ = w.Write([]byte(`<!doctype html><html><head><title>Two</title></head><body><h1>Two</h1></body></html>`))
+		default:
+			_, _ = w.Write([]byte(`<!doctype html><html><head><title>One</title></head><body><h1>One</h1></body></html>`))
+		}
+	}))
+	defer srv.Close()
+
+	ctx := context.Background()
+	if _, err := sess.Navigate(ctx, NavigateRequest{URL: srv.URL}); err != nil {
+		t.Fatalf("navigate first failed: %v", err)
+	}
+	listRes, err := sess.Tabs(ctx, TabsRequest{Action: "list"})
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	tabsAny, ok := listRes.Data["tabs"]
+	if !ok {
+		t.Fatalf("list result missing tabs: %+v", listRes.Data)
+	}
+	tabs, ok := tabsAny.([]TabInfo)
+	if !ok || len(tabs) != 1 {
+		t.Fatalf("expected 1 tab, got %#v", tabsAny)
+	}
+
+	newRes, err := sess.Tabs(ctx, TabsRequest{Action: "new", URL: srv.URL + "/two"})
+	if err != nil {
+		t.Fatalf("new tab failed: %v", err)
+	}
+	tabs, ok = newRes.Data["tabs"].([]TabInfo)
+	if !ok || len(tabs) != 2 {
+		t.Fatalf("expected 2 tabs after open, got %#v", newRes.Data["tabs"])
+	}
+	if active, _ := newRes.Data["active_tab"].(string); active != "tab-2" {
+		t.Fatalf("active_tab = %q, want tab-2", active)
+	}
+
+	switchRes, err := sess.Tabs(ctx, TabsRequest{Action: "switch", Index: 0, HasIndex: true})
+	if err != nil {
+		t.Fatalf("switch failed: %v", err)
+	}
+	if active, _ := switchRes.Data["active_tab"].(string); active != "tab-1" {
+		t.Fatalf("active_tab after switch = %q, want tab-1", active)
+	}
+	snap, err := sess.Snapshot(ctx, SnapshotRequest{})
+	if err != nil {
+		t.Fatalf("snapshot after switch failed: %v", err)
+	}
+	if !strings.Contains(snap.Message, "One") {
+		t.Fatalf("snapshot missing first tab content: %q", snap.Message)
+	}
+
+	closeRes, err := sess.Tabs(ctx, TabsRequest{Action: "close", ID: "tab-2"})
+	if err != nil {
+		t.Fatalf("close failed: %v", err)
+	}
+	tabs, ok = closeRes.Data["tabs"].([]TabInfo)
+	if !ok || len(tabs) != 1 {
+		t.Fatalf("expected 1 tab after close, got %#v", closeRes.Data["tabs"])
+	}
+	if tabs[0].ID != "tab-1" || !tabs[0].Active {
+		t.Fatalf("unexpected remaining tab state: %#v", tabs[0])
 	}
 }
