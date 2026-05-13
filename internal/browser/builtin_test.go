@@ -13,7 +13,7 @@ import (
 func TestBuiltinRuntimeStatus(t *testing.T) {
 	rt := NewBuiltinRuntime()
 	status := rt.Status()
-	if got := strings.Join(status.Capabilities, ","); got != "navigate,snapshot,click,type,select,wait,screenshot,console,network" {
+	if got := strings.Join(status.Capabilities, ","); got != "navigate,snapshot,back,forward,click,hover,type,press_key,select,wait,scroll,screenshot,console,network" {
 		t.Fatalf("capabilities = %q", got)
 	}
 	if !status.Ready && status.LastError == "" {
@@ -49,19 +49,45 @@ func TestBuiltinSessionDOMActions(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		_, _ = w.Write([]byte(`<!doctype html>
+		switch r.URL.Path {
+		case "/second":
+			_, _ = w.Write([]byte(`<!doctype html>
+<html>
+<head><title>Second</title></head>
+<body>
+  <h1 id="page">Second Page</h1>
+</body>
+</html>`))
+		default:
+			_, _ = w.Write([]byte(`<!doctype html>
 <html>
 <head><title>Demo</title></head>
 <body>
   <input id="name" value="">
+  <input id="keybox" onkeydown="document.getElementById('key-status').textContent=event.key; console.log('key', event.key);">
   <select id="region">
     <option value="cn">China</option>
     <option value="us">United States</option>
   </select>
+  <div id="hover-target" onmouseover="document.getElementById('hover-status').textContent='hovered';">Hover Target</div>
+  <div id="hover-status"></div>
+  <div id="key-status"></div>
+  <div id="scroll-status"></div>
   <button id="submit" onclick="const out=document.getElementById('output'); out.textContent=document.getElementById('name').value + '-' + document.getElementById('region').value; out.style.display='block'; console.log('submitted', out.textContent);">Submit</button>
   <div id="output" style="display:none"></div>
+  <div style="height: 1600px"></div>
+  <div id="footer">Footer</div>
+  <a id="to-second" href="/second">Second Page</a>
+  <script>
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 100) {
+        document.getElementById('scroll-status').textContent = 'scrolled';
+      }
+    });
+  </script>
 </body>
 </html>`))
+		}
 	}))
 	defer srv.Close()
 
@@ -72,6 +98,15 @@ func TestBuiltinSessionDOMActions(t *testing.T) {
 	if _, err := sess.Type(ctx, TypeRequest{Selector: "#name", Text: "alice"}); err != nil {
 		t.Fatalf("type failed: %v", err)
 	}
+	if _, err := sess.Hover(ctx, HoverRequest{Selector: "#hover-target"}); err != nil {
+		t.Fatalf("hover failed: %v", err)
+	}
+	if _, err := sess.Type(ctx, TypeRequest{Selector: "#keybox", Text: "z"}); err != nil {
+		t.Fatalf("type keybox failed: %v", err)
+	}
+	if _, err := sess.PressKey(ctx, KeyRequest{Selector: "#keybox", Keys: "\n"}); err != nil {
+		t.Fatalf("press key failed: %v", err)
+	}
 	if _, err := sess.Select(ctx, SelectRequest{Selector: "#region", Values: []string{"us"}}); err != nil {
 		t.Fatalf("select failed: %v", err)
 	}
@@ -81,6 +116,34 @@ func TestBuiltinSessionDOMActions(t *testing.T) {
 	if _, err := sess.Wait(ctx, WaitRequest{Selector: "#output", Timeout: 3000}); err != nil {
 		t.Fatalf("wait failed: %v", err)
 	}
+	if _, err := sess.Scroll(ctx, ScrollRequest{Y: 500}); err != nil {
+		t.Fatalf("scroll failed: %v", err)
+	}
+	if _, err := sess.Click(ctx, ClickRequest{Selector: "#to-second"}); err != nil {
+		t.Fatalf("navigate to second failed: %v", err)
+	}
+	if _, err := sess.Wait(ctx, WaitRequest{Selector: "#page", Timeout: 3000}); err != nil {
+		t.Fatalf("wait second failed: %v", err)
+	}
+	if _, err := sess.Back(ctx); err != nil {
+		t.Fatalf("back failed: %v", err)
+	}
+	if _, err := sess.Wait(ctx, WaitRequest{Selector: "#output", Timeout: 3000}); err != nil {
+		t.Fatalf("wait after back failed: %v", err)
+	}
+	if _, err := sess.Forward(ctx); err != nil {
+		t.Fatalf("forward failed: %v", err)
+	}
+	if _, err := sess.Wait(ctx, WaitRequest{Selector: "#page", Timeout: 3000}); err != nil {
+		t.Fatalf("wait after forward failed: %v", err)
+	}
+	backRes, err := sess.Back(ctx)
+	if err != nil {
+		t.Fatalf("final back failed: %v", err)
+	}
+	if !strings.Contains(backRes.Message, srv.URL) {
+		t.Fatalf("back message missing origin URL: %q", backRes.Message)
+	}
 
 	snap, err := sess.Snapshot(ctx, SnapshotRequest{})
 	if err != nil {
@@ -88,6 +151,15 @@ func TestBuiltinSessionDOMActions(t *testing.T) {
 	}
 	if !strings.Contains(snap.Message, "alice-us") {
 		t.Fatalf("snapshot missing updated DOM content: %q", snap.Message)
+	}
+	if !strings.Contains(snap.Message, "hovered") {
+		t.Fatalf("snapshot missing hover effect: %q", snap.Message)
+	}
+	if !strings.Contains(snap.Message, "Enter") {
+		t.Fatalf("snapshot missing key effect: %q", snap.Message)
+	}
+	if !strings.Contains(snap.Message, "scrolled") {
+		t.Fatalf("snapshot missing scroll effect: %q", snap.Message)
 	}
 
 	console, err := sess.Console(ctx, ConsoleRequest{Limit: 10})

@@ -23,10 +23,29 @@ func (m *Manager) browserSnapshotStructured(ctx context.Context, params map[stri
 	})
 }
 
+func (m *Manager) browserBackStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	return m.runBrowserAction(ctx, ToolBrowserBack, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.Back(ctx)
+	})
+}
+
+func (m *Manager) browserForwardStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	return m.runBrowserAction(ctx, ToolBrowserForward, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.Forward(ctx)
+	})
+}
+
 func (m *Manager) browserClickStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	selector, _ := params["selector"].(string)
 	return m.runBrowserAction(ctx, ToolBrowserClick, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
 		return sess.Click(ctx, browser.ClickRequest{Selector: strings.TrimSpace(selector)})
+	})
+}
+
+func (m *Manager) browserHoverStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	selector, _ := params["selector"].(string)
+	return m.runBrowserAction(ctx, ToolBrowserHover, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.Hover(ctx, browser.HoverRequest{Selector: strings.TrimSpace(selector)})
 	})
 }
 
@@ -35,6 +54,14 @@ func (m *Manager) browserTypeStructured(ctx context.Context, params map[string]i
 	text, _ := params["text"].(string)
 	return m.runBrowserAction(ctx, ToolBrowserType, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
 		return sess.Type(ctx, browser.TypeRequest{Selector: strings.TrimSpace(selector), Text: text})
+	})
+}
+
+func (m *Manager) browserPressKeyStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	selector, _ := params["selector"].(string)
+	keys, _ := params["keys"].(string)
+	return m.runBrowserAction(ctx, ToolBrowserPressKey, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.PressKey(ctx, browser.KeyRequest{Selector: strings.TrimSpace(selector), Keys: keys})
 	})
 }
 
@@ -51,6 +78,15 @@ func (m *Manager) browserWaitStructured(ctx context.Context, params map[string]i
 	timeout := intParam(params["timeout"])
 	return m.runBrowserAction(ctx, ToolBrowserWait, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
 		return sess.Wait(ctx, browser.WaitRequest{Selector: strings.TrimSpace(selector), Timeout: timeout})
+	})
+}
+
+func (m *Manager) browserScrollStructured(ctx context.Context, params map[string]interface{}) ToolResult {
+	selector, _ := params["selector"].(string)
+	x := intParam(params["x"])
+	y := intParam(params["y"])
+	return m.runBrowserAction(ctx, ToolBrowserScroll, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
+		return sess.Scroll(ctx, browser.ScrollRequest{Selector: strings.TrimSpace(selector), X: x, Y: y})
 	})
 }
 

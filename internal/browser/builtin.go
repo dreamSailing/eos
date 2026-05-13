@@ -25,7 +25,7 @@ var (
 	ErrNoLoadedPage     = errors.New("builtin browser session has no loaded page")
 	titlePattern        = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 	tagPattern          = regexp.MustCompile(`(?s)<[^>]+>`)
-	DefaultCapabilities = []string{"navigate", "snapshot", "click", "type", "select", "wait", "screenshot", "console", "network"}
+	DefaultCapabilities = []string{"navigate", "snapshot", "back", "forward", "click", "hover", "type", "press_key", "select", "wait", "scroll", "screenshot", "console", "network"}
 )
 
 type NavigateRequest struct {
@@ -33,6 +33,21 @@ type NavigateRequest struct {
 }
 
 type SnapshotRequest struct{}
+
+type HoverRequest struct {
+	Selector string
+}
+
+type KeyRequest struct {
+	Selector string
+	Keys     string
+}
+
+type ScrollRequest struct {
+	Selector string
+	X        int
+	Y        int
+}
 
 type ClickRequest struct {
 	Selector string
@@ -73,10 +88,15 @@ type SessionBackend interface {
 	Capabilities() []string
 	Navigate(context.Context, NavigateRequest) (ActionResult, error)
 	Snapshot(context.Context, SnapshotRequest) (ActionResult, error)
+	Back(context.Context) (ActionResult, error)
+	Forward(context.Context) (ActionResult, error)
 	Click(context.Context, ClickRequest) (ActionResult, error)
+	Hover(context.Context, HoverRequest) (ActionResult, error)
 	Type(context.Context, TypeRequest) (ActionResult, error)
+	PressKey(context.Context, KeyRequest) (ActionResult, error)
 	Select(context.Context, SelectRequest) (ActionResult, error)
 	Wait(context.Context, WaitRequest) (ActionResult, error)
+	Scroll(context.Context, ScrollRequest) (ActionResult, error)
 	Screenshot(context.Context, ScreenshotRequest) (ActionResult, error)
 	Console(context.Context, ConsoleRequest) (ActionResult, error)
 	Network(context.Context, NetworkRequest) (ActionResult, error)
@@ -264,6 +284,44 @@ func (s *session) Snapshot(ctx context.Context, req SnapshotRequest) (ActionResu
 	}, nil
 }
 
+func (s *session) Back(ctx context.Context) (ActionResult, error) {
+	if !s.hasPage() {
+		return ActionResult{}, ErrNoLoadedPage
+	}
+	if err := s.run(ctx,
+		chromedp.NavigateBack(),
+		chromedp.WaitReady("html", chromedp.ByQuery),
+	); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	url, title, _, err := s.refreshPageState(ctx)
+	if err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	return ActionResult{Message: fmt.Sprintf("navigated back to %s (title=%q)", url, title)}, nil
+}
+
+func (s *session) Forward(ctx context.Context) (ActionResult, error) {
+	if !s.hasPage() {
+		return ActionResult{}, ErrNoLoadedPage
+	}
+	if err := s.run(ctx,
+		chromedp.NavigateForward(),
+		chromedp.WaitReady("html", chromedp.ByQuery),
+	); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	url, title, _, err := s.refreshPageState(ctx)
+	if err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	return ActionResult{Message: fmt.Sprintf("navigated forward to %s (title=%q)", url, title)}, nil
+}
+
 func (s *session) Click(ctx context.Context, req ClickRequest) (ActionResult, error) {
 	selector := strings.TrimSpace(req.Selector)
 	if selector == "" {
@@ -278,6 +336,37 @@ func (s *session) Click(ctx context.Context, req ClickRequest) (ActionResult, er
 		return ActionResult{}, err
 	}
 	return ActionResult{Message: fmt.Sprintf("clicked %s", selector)}, nil
+}
+
+func (s *session) Hover(ctx context.Context, req HoverRequest) (ActionResult, error) {
+	selector := strings.TrimSpace(req.Selector)
+	if selector == "" {
+		return ActionResult{}, fmt.Errorf("missing selector")
+	}
+	selectorJSON, _ := json.Marshal(selector)
+	script := fmt.Sprintf(`(() => {
+		const el = document.querySelector(%s);
+		if (!el) {
+			throw new Error("selector not found: " + %s);
+		}
+		el.scrollIntoView({block: "center", inline: "center"});
+		for (const type of ["mouseover", "mouseenter", "mousemove"]) {
+			el.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, view: window}));
+		}
+		return true;
+	})()`, string(selectorJSON), string(selectorJSON))
+	if err := s.run(ctx,
+		chromedp.WaitVisible(selector, chromedp.ByQuery),
+		chromedp.Evaluate(script, nil),
+	); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	if _, _, _, err := s.refreshPageState(ctx); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	return ActionResult{Message: fmt.Sprintf("hovered %s", selector)}, nil
 }
 
 func (s *session) Type(ctx context.Context, req TypeRequest) (ActionResult, error) {
@@ -298,6 +387,36 @@ func (s *session) Type(ctx context.Context, req TypeRequest) (ActionResult, erro
 		return ActionResult{}, err
 	}
 	return ActionResult{Message: fmt.Sprintf("typed into %s", selector)}, nil
+}
+
+func (s *session) PressKey(ctx context.Context, req KeyRequest) (ActionResult, error) {
+	keys := req.Keys
+	if strings.TrimSpace(keys) == "" {
+		return ActionResult{}, fmt.Errorf("missing keys")
+	}
+	selector := strings.TrimSpace(req.Selector)
+	var err error
+	if selector != "" {
+		err = s.run(ctx,
+			chromedp.WaitVisible(selector, chromedp.ByQuery),
+			chromedp.Focus(selector, chromedp.ByQuery),
+			chromedp.SendKeys(selector, keys, chromedp.ByQuery),
+		)
+	} else {
+		err = s.run(ctx, chromedp.KeyEvent(keys))
+	}
+	if err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	if _, _, _, err := s.refreshPageState(ctx); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	if selector != "" {
+		return ActionResult{Message: fmt.Sprintf("sent keys to %s", selector)}, nil
+	}
+	return ActionResult{Message: fmt.Sprintf("sent keys %q", keys)}, nil
 }
 
 func (s *session) Select(ctx context.Context, req SelectRequest) (ActionResult, error) {
@@ -351,6 +470,44 @@ func (s *session) Wait(ctx context.Context, req WaitRequest) (ActionResult, erro
 	case <-timer.C:
 	}
 	return ActionResult{Message: fmt.Sprintf("waited %s", timeout)}, nil
+}
+
+func (s *session) Scroll(ctx context.Context, req ScrollRequest) (ActionResult, error) {
+	if !s.hasPage() {
+		return ActionResult{}, ErrNoLoadedPage
+	}
+	selector := strings.TrimSpace(req.Selector)
+	if selector != "" {
+		selectorJSON, _ := json.Marshal(selector)
+		script := fmt.Sprintf(`(() => {
+			const el = document.querySelector(%s);
+			if (!el) {
+				throw new Error("selector not found: " + %s);
+			}
+			el.scrollIntoView({block: "center", inline: "center"});
+			return true;
+		})()`, string(selectorJSON), string(selectorJSON))
+		if err := s.run(ctx, chromedp.Evaluate(script, nil)); err != nil {
+			s.runtime.setLastError(err)
+			return ActionResult{}, err
+		}
+		if _, _, _, err := s.refreshPageState(ctx); err != nil {
+			s.runtime.setLastError(err)
+			return ActionResult{}, err
+		}
+		return ActionResult{Message: fmt.Sprintf("scrolled %s into view", selector)}, nil
+	}
+	script := fmt.Sprintf(`(() => { window.scrollBy(%d, %d); return window.scrollY; })()`, req.X, req.Y)
+	var scrollY float64
+	if err := s.run(ctx, chromedp.Evaluate(script, &scrollY)); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	if _, _, _, err := s.refreshPageState(ctx); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	return ActionResult{Message: fmt.Sprintf("scrolled window to y=%.0f", scrollY)}, nil
 }
 
 func (s *session) Screenshot(ctx context.Context, req ScreenshotRequest) (ActionResult, error) {

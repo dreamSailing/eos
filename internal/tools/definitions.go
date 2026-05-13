@@ -57,10 +57,15 @@ const (
 	ToolBrowserStatus           = "browser_status"
 	ToolBrowserNavigate         = "browser_navigate"
 	ToolBrowserSnapshot         = "browser_snapshot"
+	ToolBrowserBack             = "browser_back"
+	ToolBrowserForward          = "browser_forward"
 	ToolBrowserClick            = "browser_click"
+	ToolBrowserHover            = "browser_hover"
 	ToolBrowserType             = "browser_type"
+	ToolBrowserPressKey         = "browser_press_key"
 	ToolBrowserSelect           = "browser_select"
 	ToolBrowserWait             = "browser_wait"
+	ToolBrowserScroll           = "browser_scroll"
 	ToolBrowserScreenshot       = "browser_screenshot"
 	ToolBrowserConsole          = "browser_console"
 	ToolBrowserNetwork          = "browser_network"
@@ -232,8 +237,26 @@ func GetAllToolDefinitions() []ToolDefinition {
 			},
 		},
 		{
+			Name:        ToolBrowserBack,
+			Description: "让当前浏览器会话回退到上一页。",
+			Params:      map[string]*schema.ParameterInfo{},
+			RiskLevel:   RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "回到上一页", Input: map[string]any{}},
+			},
+		},
+		{
+			Name:        ToolBrowserForward,
+			Description: "让当前浏览器会话前进到下一页。",
+			Params:      map[string]*schema.ParameterInfo{},
+			RiskLevel:   RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "前进到下一页", Input: map[string]any{}},
+			},
+		},
+		{
 			Name:        ToolBrowserClick,
-			Description: "在当前页面点击指定选择器。当前内置浏览器仅在后端支持 DOM 操作时生效。",
+			Description: "在当前页面点击指定选择器。",
 			Params: map[string]*schema.ParameterInfo{
 				"selector": {Type: schema.String, Required: true, Desc: "目标元素选择器"},
 			},
@@ -243,8 +266,19 @@ func GetAllToolDefinitions() []ToolDefinition {
 			},
 		},
 		{
+			Name:        ToolBrowserHover,
+			Description: "在当前页面悬停到指定元素上。",
+			Params: map[string]*schema.ParameterInfo{
+				"selector": {Type: schema.String, Required: true, Desc: "目标元素选择器"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "悬停到菜单按钮", Input: map[string]any{"selector": ".menu-trigger"}},
+			},
+		},
+		{
 			Name:        ToolBrowserType,
-			Description: "在当前页面向输入框填写文本。当前内置浏览器仅在后端支持 DOM 操作时生效。",
+			Description: "在当前页面向输入框填写文本。",
 			Params: map[string]*schema.ParameterInfo{
 				"selector": {Type: schema.String, Required: true, Desc: "输入框选择器"},
 				"text":     {Type: schema.String, Required: true, Desc: "要输入的文本"},
@@ -255,8 +289,20 @@ func GetAllToolDefinitions() []ToolDefinition {
 			},
 		},
 		{
+			Name:        ToolBrowserPressKey,
+			Description: "向当前页面或指定元素发送键盘按键。",
+			Params: map[string]*schema.ParameterInfo{
+				"keys":     {Type: schema.String, Required: true, Desc: "要发送的键值，如 Enter、Tab 或普通文本"},
+				"selector": {Type: schema.String, Required: false, Desc: "可选：先聚焦的目标元素"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "向输入框发送回车键", Input: map[string]any{"selector": "#search", "keys": "\n"}},
+			},
+		},
+		{
 			Name:        ToolBrowserSelect,
-			Description: "在当前页面选择下拉选项。当前内置浏览器仅在后端支持 DOM 操作时生效。",
+			Description: "在当前页面选择下拉选项。",
 			Params: map[string]*schema.ParameterInfo{
 				"selector": {Type: schema.String, Required: true, Desc: "下拉框选择器"},
 				"values":   {Type: schema.Array, Required: true, Desc: "要选择的值列表"},
@@ -279,8 +325,22 @@ func GetAllToolDefinitions() []ToolDefinition {
 			},
 		},
 		{
+			Name:        ToolBrowserScroll,
+			Description: "滚动窗口或将指定元素滚动到视口内。",
+			Params: map[string]*schema.ParameterInfo{
+				"selector": {Type: schema.String, Required: false, Desc: "可选：要滚动到视口内的元素"},
+				"x":        {Type: schema.Integer, Required: false, Desc: "可选：窗口横向滚动偏移"},
+				"y":        {Type: schema.Integer, Required: false, Desc: "可选：窗口纵向滚动偏移"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "窗口向下滚动", Input: map[string]any{"y": 600}},
+				{Description: "将元素滚动到视口内", Input: map[string]any{"selector": "#footer"}},
+			},
+		},
+		{
 			Name:        ToolBrowserScreenshot,
-			Description: "将当前页面保存到指定路径。当前内置浏览器会写出 HTML 快照以便调试。",
+			Description: "将当前页面保存为截图到指定路径。",
 			Params: map[string]*schema.ParameterInfo{
 				"path": {Type: schema.String, Required: true, Desc: "输出文件路径"},
 			},
@@ -291,7 +351,7 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolBrowserConsole,
-			Description: "读取当前浏览器会话的控制台信息。当前内置浏览器仅在后端支持脚本执行时生效。",
+			Description: "读取当前浏览器会话的控制台信息。",
 			Params: map[string]*schema.ParameterInfo{
 				"limit": {Type: schema.Integer, Required: false, Desc: "可选：返回条数限制"},
 			},
