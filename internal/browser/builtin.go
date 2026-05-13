@@ -34,6 +34,16 @@ type NavigateRequest struct {
 
 type SnapshotRequest struct{}
 
+type SnapshotElement struct {
+	Ref      string `json:"ref"`
+	Role     string `json:"role"`
+	Name     string `json:"name"`
+	Selector string `json:"selector"`
+	Tag      string `json:"tag"`
+	Type     string `json:"type"`
+	Text     string `json:"text"`
+}
+
 type TabsRequest struct {
 	Action      string
 	ID          string
@@ -55,35 +65,42 @@ type TabInfo struct {
 
 type HoverRequest struct {
 	Selector string
+	Ref      string
 }
 
 type KeyRequest struct {
 	Selector string
+	Ref      string
 	Keys     string
 }
 
 type ScrollRequest struct {
 	Selector string
+	Ref      string
 	X        int
 	Y        int
 }
 
 type ClickRequest struct {
 	Selector string
+	Ref      string
 }
 
 type TypeRequest struct {
 	Selector string
+	Ref      string
 	Text     string
 }
 
 type SelectRequest struct {
 	Selector string
+	Ref      string
 	Values   []string
 }
 
 type WaitRequest struct {
 	Selector string
+	Ref      string
 	Timeout  int
 }
 
@@ -174,6 +191,7 @@ type tab struct {
 	lastURL     string
 	lastTitle   string
 	lastHTML    string
+	elements    []SnapshotElement
 	console     []string
 	network     []string
 }
@@ -345,12 +363,19 @@ func (s *session) Snapshot(ctx context.Context, req SnapshotRequest) (ActionResu
 	if strings.TrimSpace(url) == "" {
 		return ActionResult{}, ErrNoLoadedPage
 	}
+	elements, err := s.captureSnapshotElements(ctx, tab)
+	if err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
 	return ActionResult{
-		Message: fmt.Sprintf("tab=%s\nurl=%s\ntitle=%s\nsnapshot=%s", tab.id, url, title, summarizeHTMLSnapshot(html)),
+		Message: formatSnapshotMessage(tab.id, url, title, elements, summarizeHTMLSnapshot(html)),
 		Data: map[string]interface{}{
-			"tab":   s.tabInfo(tab),
-			"url":   url,
-			"title": title,
+			"tab":           s.tabInfo(tab),
+			"url":           url,
+			"title":         title,
+			"elements":      elements,
+			"element_count": len(elements),
 		},
 	}, nil
 }
@@ -526,7 +551,10 @@ func (s *session) Click(ctx context.Context, req ClickRequest) (ActionResult, er
 	}
 	selector := strings.TrimSpace(req.Selector)
 	if selector == "" {
-		return ActionResult{}, fmt.Errorf("missing selector")
+		selector, err = s.resolveActionSelector(ctx, tab, req.Ref)
+		if err != nil {
+			return ActionResult{}, err
+		}
 	}
 	if err := tab.run(ctx, chromedp.Click(selector, chromedp.ByQuery)); err != nil {
 		s.runtime.setLastError(err)
@@ -546,7 +574,10 @@ func (s *session) Hover(ctx context.Context, req HoverRequest) (ActionResult, er
 	}
 	selector := strings.TrimSpace(req.Selector)
 	if selector == "" {
-		return ActionResult{}, fmt.Errorf("missing selector")
+		selector, err = s.resolveActionSelector(ctx, tab, req.Ref)
+		if err != nil {
+			return ActionResult{}, err
+		}
 	}
 	selectorJSON, _ := json.Marshal(selector)
 	script := fmt.Sprintf(`(() => {
@@ -581,7 +612,10 @@ func (s *session) Type(ctx context.Context, req TypeRequest) (ActionResult, erro
 	}
 	selector := strings.TrimSpace(req.Selector)
 	if selector == "" {
-		return ActionResult{}, fmt.Errorf("missing selector")
+		selector, err = s.resolveActionSelector(ctx, tab, req.Ref)
+		if err != nil {
+			return ActionResult{}, err
+		}
 	}
 	if err := tab.run(ctx,
 		chromedp.WaitVisible(selector, chromedp.ByQuery),
@@ -608,6 +642,12 @@ func (s *session) PressKey(ctx context.Context, req KeyRequest) (ActionResult, e
 		return ActionResult{}, fmt.Errorf("missing keys")
 	}
 	selector := strings.TrimSpace(req.Selector)
+	if selector == "" && strings.TrimSpace(req.Ref) != "" {
+		selector, err = s.resolveActionSelector(ctx, tab, req.Ref)
+		if err != nil {
+			return ActionResult{}, err
+		}
+	}
 	if selector != "" {
 		err = tab.run(ctx,
 			chromedp.WaitVisible(selector, chromedp.ByQuery),
@@ -638,7 +678,10 @@ func (s *session) Select(ctx context.Context, req SelectRequest) (ActionResult, 
 	}
 	selector := strings.TrimSpace(req.Selector)
 	if selector == "" {
-		return ActionResult{}, fmt.Errorf("missing selector")
+		selector, err = s.resolveActionSelector(ctx, tab, req.Ref)
+		if err != nil {
+			return ActionResult{}, err
+		}
 	}
 	values := compactValues(req.Values)
 	if len(values) == 0 {
@@ -671,6 +714,12 @@ func (s *session) Wait(ctx context.Context, req WaitRequest) (ActionResult, erro
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	selector := strings.TrimSpace(req.Selector)
+	if selector == "" && strings.TrimSpace(req.Ref) != "" {
+		selector, err = s.resolveActionSelector(waitCtx, tab, req.Ref)
+		if err != nil {
+			return ActionResult{}, err
+		}
+	}
 	if selector != "" {
 		if err := tab.run(waitCtx, chromedp.WaitVisible(selector, chromedp.ByQuery)); err != nil {
 			s.runtime.setLastError(err)
@@ -701,6 +750,12 @@ func (s *session) Scroll(ctx context.Context, req ScrollRequest) (ActionResult, 
 		return ActionResult{}, ErrNoLoadedPage
 	}
 	selector := strings.TrimSpace(req.Selector)
+	if selector == "" && strings.TrimSpace(req.Ref) != "" {
+		selector, err = s.resolveActionSelector(ctx, tab, req.Ref)
+		if err != nil {
+			return ActionResult{}, err
+		}
+	}
 	if selector != "" {
 		selectorJSON, _ := json.Marshal(selector)
 		script := fmt.Sprintf(`(() => {
@@ -820,6 +875,33 @@ func summarizeHTMLSnapshot(html string) string {
 		text = text[:320] + "..."
 	}
 	return strings.TrimSpace(text)
+}
+
+func formatSnapshotMessage(tabID, url, title string, elements []SnapshotElement, summary string) string {
+	lines := []string{
+		fmt.Sprintf("tab=%s", tabID),
+		fmt.Sprintf("url=%s", url),
+		fmt.Sprintf("title=%s", title),
+	}
+	if len(elements) > 0 {
+		lines = append(lines, "refs:")
+		for _, el := range elements {
+			label := strings.TrimSpace(el.Name)
+			if label == "" {
+				label = strings.TrimSpace(el.Text)
+			}
+			if label == "" {
+				label = "(unnamed)"
+			}
+			role := strings.TrimSpace(el.Role)
+			if role == "" {
+				role = strings.TrimSpace(el.Tag)
+			}
+			lines = append(lines, fmt.Sprintf("- [%s] %s %q", el.Ref, role, label))
+		}
+	}
+	lines = append(lines, "snapshot="+summary)
+	return strings.Join(lines, "\n")
 }
 
 func newSession(rt *BuiltinRuntime, traceID, execPath string) (*session, error) {
@@ -1371,6 +1453,119 @@ func (s *session) refreshTabPageState(ctx context.Context, tab *tab) (string, st
 	return url, strings.TrimSpace(title), html, nil
 }
 
+func (s *session) captureSnapshotElements(ctx context.Context, tab *tab) ([]SnapshotElement, error) {
+	if tab == nil {
+		return nil, ErrNoLoadedPage
+	}
+	const script = `(() => {
+		const root = document.documentElement;
+		if (!root) {
+			return [];
+		}
+		const interesting = Array.from(document.querySelectorAll('a,button,input,select,textarea,summary,[role],[contenteditable=""],[contenteditable="true"],[tabindex]'));
+		const isVisible = (el) => {
+			const style = window.getComputedStyle(el);
+			if (!style || style.visibility === 'hidden' || style.display === 'none') return false;
+			const rect = el.getBoundingClientRect();
+			return rect.width > 0 && rect.height > 0;
+		};
+		const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+		const cssEscape = (value) => {
+			if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(value);
+			return String(value).replace(/["\\]/g, '\\$&');
+		};
+		const roleOf = (el) => {
+			const explicit = normalize(el.getAttribute('role'));
+			if (explicit) return explicit;
+			const tag = el.tagName.toLowerCase();
+			switch (tag) {
+				case 'a': return 'link';
+				case 'button': return 'button';
+				case 'input': {
+					const type = normalize(el.getAttribute('type')) || 'text';
+					if (type === 'checkbox') return 'checkbox';
+					if (type === 'radio') return 'radio';
+					if (type === 'submit' || type === 'button' || type === 'reset') return 'button';
+					return 'textbox';
+				}
+				case 'select': return 'combobox';
+				case 'textarea': return 'textbox';
+				default: return tag;
+			}
+		};
+		const nameOf = (el) => {
+			const aria = normalize(el.getAttribute('aria-label'));
+			if (aria) return aria;
+			const labelledBy = normalize(el.getAttribute('aria-labelledby'));
+			if (labelledBy) {
+				const text = labelledBy.split(/\s+/).map((id) => {
+					const node = document.getElementById(id);
+					return normalize(node ? node.textContent : '');
+				}).filter(Boolean).join(' ');
+				if (text) return text;
+			}
+			if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+				const placeholder = normalize(el.getAttribute('placeholder'));
+				if (placeholder) return placeholder;
+				const value = normalize(el.value);
+				if (value) return value;
+			}
+			return normalize(el.innerText || el.textContent);
+		};
+		const selectorOf = (el, ref) => {
+			if (el.id) return '#' + cssEscape(el.id);
+			return '[data-eos-ref="' + cssEscape(ref) + '"]';
+		};
+		let counter = Number(root.getAttribute('data-eos-ref-counter') || '0');
+		const out = [];
+		for (const el of interesting) {
+			if (!(el instanceof HTMLElement) || !isVisible(el)) continue;
+			let ref = normalize(el.getAttribute('data-eos-ref'));
+			if (!ref) {
+				counter += 1;
+				ref = 'e' + String(counter);
+				el.setAttribute('data-eos-ref', ref);
+			}
+			out.push({
+				ref,
+				role: roleOf(el),
+				name: nameOf(el),
+				selector: selectorOf(el, ref),
+				tag: el.tagName.toLowerCase(),
+				type: normalize(el.getAttribute('type')),
+				text: normalize(el.innerText || el.textContent),
+			});
+		}
+		root.setAttribute('data-eos-ref-counter', String(counter));
+		return out;
+	})()`
+	var elements []SnapshotElement
+	if err := tab.run(ctx, chromedp.Evaluate(script, &elements)); err != nil {
+		return nil, err
+	}
+	tab.mu.Lock()
+	tab.elements = append([]SnapshotElement(nil), elements...)
+	tab.mu.Unlock()
+	return elements, nil
+}
+
+func (s *session) resolveActionSelector(ctx context.Context, tab *tab, ref string) (string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", fmt.Errorf("missing selector or ref")
+	}
+	if selector := tab.selectorForRef(ref); selector != "" {
+		return selector, nil
+	}
+	if _, err := s.captureSnapshotElements(ctx, tab); err != nil {
+		return "", err
+	}
+	if selector := tab.selectorForRef(ref); selector != "" {
+		return selector, nil
+	}
+	return "", fmt.Errorf("unknown element ref %q; run browser_snapshot again", ref)
+}
+
 func (s *session) selectValues(ctx context.Context, tab *tab, selector string, values []string) ([]string, error) {
 	selectorJSON, _ := json.Marshal(selector)
 	valuesJSON, _ := json.Marshal(values)
@@ -1400,6 +1595,21 @@ func (s *session) selectValues(ctx context.Context, tab *tab, selector string, v
 		return nil, err
 	}
 	return selected, nil
+}
+
+func (t *tab) selectorForRef(ref string) string {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return ""
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	for _, el := range t.elements {
+		if strings.TrimSpace(el.Ref) == ref {
+			return strings.TrimSpace(el.Selector)
+		}
+	}
+	return ""
 }
 
 func (s *session) attachListeners(tab *tab) {

@@ -74,31 +74,41 @@ func TestBrowserToolsDOMActions(t *testing.T) {
 	if snap.Status != "success" {
 		t.Fatalf("snapshot failed: %+v", snap)
 	}
-	if typeRes := mgr.browserTypeStructured(ctx, map[string]interface{}{"selector": "#name", "text": "alice"}); typeRes.Status != "success" {
+	nameRef := mustFindToolSnapshotRef(t, snap.Data["elements"], "#name")
+	hoverRef := mustFindToolSnapshotRef(t, snap.Data["elements"], "#hover-target")
+	keyboxRef := mustFindToolSnapshotRef(t, snap.Data["elements"], "#keybox")
+	regionRef := mustFindToolSnapshotRef(t, snap.Data["elements"], "#region")
+	submitRef := mustFindToolSnapshotRef(t, snap.Data["elements"], "#submit")
+	secondRef := mustFindToolSnapshotRef(t, snap.Data["elements"], "#to-second")
+	if typeRes := mgr.browserTypeStructured(ctx, map[string]interface{}{"ref": nameRef, "text": "alice"}); typeRes.Status != "success" {
 		t.Fatalf("type failed: %+v", typeRes)
 	}
-	if hoverRes := mgr.browserHoverStructured(ctx, map[string]interface{}{"selector": "#hover-target"}); hoverRes.Status != "success" {
+	if hoverRes := mgr.browserHoverStructured(ctx, map[string]interface{}{"ref": hoverRef}); hoverRes.Status != "success" {
 		t.Fatalf("hover failed: %+v", hoverRes)
 	}
-	if typeRes := mgr.browserTypeStructured(ctx, map[string]interface{}{"selector": "#keybox", "text": "z"}); typeRes.Status != "success" {
+	if typeRes := mgr.browserTypeStructured(ctx, map[string]interface{}{"ref": keyboxRef, "text": "z"}); typeRes.Status != "success" {
 		t.Fatalf("keybox type failed: %+v", typeRes)
 	}
-	if keyRes := mgr.browserPressKeyStructured(ctx, map[string]interface{}{"selector": "#keybox", "keys": "\n"}); keyRes.Status != "success" {
+	if keyRes := mgr.browserPressKeyStructured(ctx, map[string]interface{}{"ref": keyboxRef, "keys": "\n"}); keyRes.Status != "success" {
 		t.Fatalf("press key failed: %+v", keyRes)
 	}
-	if selectRes := mgr.browserSelectStructured(ctx, map[string]interface{}{"selector": "#region", "values": []string{"us"}}); selectRes.Status != "success" {
+	if selectRes := mgr.browserSelectStructured(ctx, map[string]interface{}{"ref": regionRef, "values": []string{"us"}}); selectRes.Status != "success" {
 		t.Fatalf("select failed: %+v", selectRes)
 	}
-	if clickRes := mgr.browserClickStructured(ctx, map[string]interface{}{"selector": "#submit"}); clickRes.Status != "success" {
+	if clickRes := mgr.browserClickStructured(ctx, map[string]interface{}{"ref": submitRef}); clickRes.Status != "success" {
 		t.Fatalf("click failed: %+v", clickRes)
 	}
-	if waitRes := mgr.browserWaitStructured(ctx, map[string]interface{}{"selector": "#output", "timeout": 3000}); waitRes.Status != "success" {
+	outputRef := "e-missing"
+	if nextSnap := mgr.browserSnapshotStructured(ctx, map[string]interface{}{}); nextSnap.Status == "success" {
+		outputRef = mustFindToolSnapshotRef(t, nextSnap.Data["elements"], "#output")
+	}
+	if waitRes := mgr.browserWaitStructured(ctx, map[string]interface{}{"ref": outputRef, "timeout": 3000}); waitRes.Status != "success" {
 		t.Fatalf("wait failed: %+v", waitRes)
 	}
 	if scrollRes := mgr.browserScrollStructured(ctx, map[string]interface{}{"y": 500}); scrollRes.Status != "success" {
 		t.Fatalf("scroll failed: %+v", scrollRes)
 	}
-	if nav2 := mgr.browserClickStructured(ctx, map[string]interface{}{"selector": "#to-second"}); nav2.Status != "success" {
+	if nav2 := mgr.browserClickStructured(ctx, map[string]interface{}{"ref": secondRef}); nav2.Status != "success" {
 		t.Fatalf("second page click failed: %+v", nav2)
 	}
 	if waitRes := mgr.browserWaitStructured(ctx, map[string]interface{}{"selector": "#page", "timeout": 3000}); waitRes.Status != "success" {
@@ -122,6 +132,9 @@ func TestBrowserToolsDOMActions(t *testing.T) {
 	snap = mgr.browserSnapshotStructured(ctx, map[string]interface{}{})
 	if snap.Status != "success" {
 		t.Fatalf("snapshot after click failed: %+v", snap)
+	}
+	if elements, ok := snap.Data["elements"].([]browser.SnapshotElement); !ok || len(elements) == 0 {
+		t.Fatalf("snapshot missing structured elements: %#v", snap.Data["elements"])
 	}
 	if !strings.Contains(snap.Display, "alice-us") {
 		t.Fatalf("snapshot missing updated DOM content: %q", snap.Display)
@@ -151,6 +164,21 @@ func TestBrowserToolsDOMActions(t *testing.T) {
 	if info.Size() == 0 {
 		t.Fatal("expected non-empty screenshot output")
 	}
+}
+
+func mustFindToolSnapshotRef(t *testing.T, raw interface{}, selector string) string {
+	t.Helper()
+	elements, ok := raw.([]browser.SnapshotElement)
+	if !ok {
+		t.Fatalf("elements type = %T, want []browser.SnapshotElement", raw)
+	}
+	for _, el := range elements {
+		if el.Selector == selector {
+			return el.Ref
+		}
+	}
+	t.Fatalf("missing snapshot ref for selector %s in %#v", selector, elements)
+	return ""
 }
 
 func TestBrowserToolsTabs(t *testing.T) {

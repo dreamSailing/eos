@@ -230,7 +230,7 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolBrowserSnapshot,
-			Description: "读取当前浏览器会话中的页面快照摘要，并返回当前 active tab 的结构化元信息。",
+			Description: "读取当前浏览器会话中的页面快照摘要，并返回当前 active tab 元信息以及可供后续交互的稳定元素 ref 列表。",
 			Params:      map[string]*schema.ParameterInfo{},
 			RiskLevel:   RiskLevelMedium,
 			Examples: []ToolExample{
@@ -282,35 +282,41 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolBrowserClick,
-			Description: "在当前页面点击指定选择器。",
+			Description: "在当前页面点击目标元素，优先推荐使用 browser_snapshot 返回的 ref，也兼容 selector。",
 			Params: map[string]*schema.ParameterInfo{
-				"selector": {Type: schema.String, Required: true, Desc: "目标元素选择器"},
+				"ref":      {Type: schema.String, Required: false, Desc: "来自 browser_snapshot 的稳定元素引用"},
+				"selector": {Type: schema.String, Required: false, Desc: "兼容模式：目标元素选择器"},
 			},
 			RiskLevel: RiskLevelMedium,
 			Examples: []ToolExample{
+				{Description: "点击快照元素", Input: map[string]any{"ref": "e1"}},
 				{Description: "点击登录按钮", Input: map[string]any{"selector": "button[type=submit]"}},
 			},
 		},
 		{
 			Name:        ToolBrowserHover,
-			Description: "在当前页面悬停到指定元素上。",
+			Description: "在当前页面悬停到指定元素上，优先推荐使用 ref，也兼容 selector。",
 			Params: map[string]*schema.ParameterInfo{
-				"selector": {Type: schema.String, Required: true, Desc: "目标元素选择器"},
+				"ref":      {Type: schema.String, Required: false, Desc: "来自 browser_snapshot 的稳定元素引用"},
+				"selector": {Type: schema.String, Required: false, Desc: "兼容模式：目标元素选择器"},
 			},
 			RiskLevel: RiskLevelMedium,
 			Examples: []ToolExample{
+				{Description: "悬停到快照元素", Input: map[string]any{"ref": "e2"}},
 				{Description: "悬停到菜单按钮", Input: map[string]any{"selector": ".menu-trigger"}},
 			},
 		},
 		{
 			Name:        ToolBrowserType,
-			Description: "在当前页面向输入框填写文本。",
+			Description: "在当前页面向输入框填写文本，优先推荐使用 ref，也兼容 selector。",
 			Params: map[string]*schema.ParameterInfo{
-				"selector": {Type: schema.String, Required: true, Desc: "输入框选择器"},
+				"ref":      {Type: schema.String, Required: false, Desc: "来自 browser_snapshot 的稳定元素引用"},
+				"selector": {Type: schema.String, Required: false, Desc: "兼容模式：输入框选择器"},
 				"text":     {Type: schema.String, Required: true, Desc: "要输入的文本"},
 			},
 			RiskLevel: RiskLevelMedium,
 			Examples: []ToolExample{
+				{Description: "向快照输入框填值", Input: map[string]any{"ref": "e3", "text": "admin@example.com"}},
 				{Description: "填写邮箱", Input: map[string]any{"selector": "input[type=email]", "text": "admin@example.com"}},
 			},
 		},
@@ -319,6 +325,7 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Description: "向当前页面或指定元素发送键盘按键。",
 			Params: map[string]*schema.ParameterInfo{
 				"keys":     {Type: schema.String, Required: true, Desc: "要发送的键值，如 Enter、Tab 或普通文本"},
+				"ref":      {Type: schema.String, Required: false, Desc: "可选：来自 browser_snapshot 的稳定元素引用"},
 				"selector": {Type: schema.String, Required: false, Desc: "可选：先聚焦的目标元素"},
 			},
 			RiskLevel: RiskLevelMedium,
@@ -328,13 +335,15 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolBrowserSelect,
-			Description: "在当前页面选择下拉选项。",
+			Description: "在当前页面选择下拉选项，优先推荐使用 ref，也兼容 selector。",
 			Params: map[string]*schema.ParameterInfo{
-				"selector": {Type: schema.String, Required: true, Desc: "下拉框选择器"},
+				"ref":      {Type: schema.String, Required: false, Desc: "来自 browser_snapshot 的稳定元素引用"},
+				"selector": {Type: schema.String, Required: false, Desc: "兼容模式：下拉框选择器"},
 				"values":   {Type: schema.Array, Required: true, Desc: "要选择的值列表"},
 			},
 			RiskLevel: RiskLevelMedium,
 			Examples: []ToolExample{
+				{Description: "选择快照下拉框中的值", Input: map[string]any{"ref": "e4", "values": []string{"cn"}}},
 				{Description: "选择一个地区", Input: map[string]any{"selector": "select#region", "values": []string{"cn"}}},
 			},
 		},
@@ -342,6 +351,7 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Name:        ToolBrowserWait,
 			Description: "等待页面变化或超时。可选传入选择器和超时时间（毫秒）。",
 			Params: map[string]*schema.ParameterInfo{
+				"ref":      {Type: schema.String, Required: false, Desc: "可选：来自 browser_snapshot 的稳定元素引用"},
 				"selector": {Type: schema.String, Required: false, Desc: "可选：等待的选择器"},
 				"timeout":  {Type: schema.Integer, Required: false, Desc: "可选：等待毫秒数"},
 			},
@@ -354,6 +364,7 @@ func GetAllToolDefinitions() []ToolDefinition {
 			Name:        ToolBrowserScroll,
 			Description: "滚动窗口或将指定元素滚动到视口内。",
 			Params: map[string]*schema.ParameterInfo{
+				"ref":      {Type: schema.String, Required: false, Desc: "可选：来自 browser_snapshot 的稳定元素引用"},
 				"selector": {Type: schema.String, Required: false, Desc: "可选：要滚动到视口内的元素"},
 				"x":        {Type: schema.Integer, Required: false, Desc: "可选：窗口横向滚动偏移"},
 				"y":        {Type: schema.Integer, Required: false, Desc: "可选：窗口纵向滚动偏移"},

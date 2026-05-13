@@ -95,22 +95,32 @@ func TestBuiltinSessionDOMActions(t *testing.T) {
 	if _, err := sess.Navigate(ctx, NavigateRequest{URL: srv.URL}); err != nil {
 		t.Fatalf("navigate failed: %v", err)
 	}
-	if _, err := sess.Type(ctx, TypeRequest{Selector: "#name", Text: "alice"}); err != nil {
+	snap, err := sess.Snapshot(ctx, SnapshotRequest{})
+	if err != nil {
+		t.Fatalf("initial snapshot failed: %v", err)
+	}
+	nameRef := mustFindSnapshotRef(t, snap.Data["elements"], "#name")
+	hoverRef := mustFindSnapshotRef(t, snap.Data["elements"], "#hover-target")
+	keyboxRef := mustFindSnapshotRef(t, snap.Data["elements"], "#keybox")
+	regionRef := mustFindSnapshotRef(t, snap.Data["elements"], "#region")
+	submitRef := mustFindSnapshotRef(t, snap.Data["elements"], "#submit")
+	secondRef := mustFindSnapshotRef(t, snap.Data["elements"], "#to-second")
+	if _, err := sess.Type(ctx, TypeRequest{Ref: nameRef, Text: "alice"}); err != nil {
 		t.Fatalf("type failed: %v", err)
 	}
-	if _, err := sess.Hover(ctx, HoverRequest{Selector: "#hover-target"}); err != nil {
+	if _, err := sess.Hover(ctx, HoverRequest{Ref: hoverRef}); err != nil {
 		t.Fatalf("hover failed: %v", err)
 	}
-	if _, err := sess.Type(ctx, TypeRequest{Selector: "#keybox", Text: "z"}); err != nil {
+	if _, err := sess.Type(ctx, TypeRequest{Ref: keyboxRef, Text: "z"}); err != nil {
 		t.Fatalf("type keybox failed: %v", err)
 	}
-	if _, err := sess.PressKey(ctx, KeyRequest{Selector: "#keybox", Keys: "\n"}); err != nil {
+	if _, err := sess.PressKey(ctx, KeyRequest{Ref: keyboxRef, Keys: "\n"}); err != nil {
 		t.Fatalf("press key failed: %v", err)
 	}
-	if _, err := sess.Select(ctx, SelectRequest{Selector: "#region", Values: []string{"us"}}); err != nil {
+	if _, err := sess.Select(ctx, SelectRequest{Ref: regionRef, Values: []string{"us"}}); err != nil {
 		t.Fatalf("select failed: %v", err)
 	}
-	if _, err := sess.Click(ctx, ClickRequest{Selector: "#submit"}); err != nil {
+	if _, err := sess.Click(ctx, ClickRequest{Ref: submitRef}); err != nil {
 		t.Fatalf("click failed: %v", err)
 	}
 	if _, err := sess.Wait(ctx, WaitRequest{Selector: "#output", Timeout: 3000}); err != nil {
@@ -119,7 +129,7 @@ func TestBuiltinSessionDOMActions(t *testing.T) {
 	if _, err := sess.Scroll(ctx, ScrollRequest{Y: 500}); err != nil {
 		t.Fatalf("scroll failed: %v", err)
 	}
-	if _, err := sess.Click(ctx, ClickRequest{Selector: "#to-second"}); err != nil {
+	if _, err := sess.Click(ctx, ClickRequest{Ref: secondRef}); err != nil {
 		t.Fatalf("navigate to second failed: %v", err)
 	}
 	if _, err := sess.Wait(ctx, WaitRequest{Selector: "#page", Timeout: 3000}); err != nil {
@@ -145,9 +155,12 @@ func TestBuiltinSessionDOMActions(t *testing.T) {
 		t.Fatalf("back message missing origin URL: %q", backRes.Message)
 	}
 
-	snap, err := sess.Snapshot(ctx, SnapshotRequest{})
+	snap, err = sess.Snapshot(ctx, SnapshotRequest{})
 	if err != nil {
 		t.Fatalf("snapshot failed: %v", err)
+	}
+	if !strings.Contains(snap.Message, "[") {
+		t.Fatalf("snapshot missing ref listing: %q", snap.Message)
 	}
 	if !strings.Contains(snap.Message, "alice-us") {
 		t.Fatalf("snapshot missing updated DOM content: %q", snap.Message)
@@ -160,6 +173,9 @@ func TestBuiltinSessionDOMActions(t *testing.T) {
 	}
 	if !strings.Contains(snap.Message, "scrolled") {
 		t.Fatalf("snapshot missing scroll effect: %q", snap.Message)
+	}
+	if elements, ok := snap.Data["elements"].([]SnapshotElement); !ok || len(elements) == 0 {
+		t.Fatalf("snapshot missing structured elements: %#v", snap.Data["elements"])
 	}
 
 	console, err := sess.Console(ctx, ConsoleRequest{Limit: 10})
@@ -190,6 +206,21 @@ func TestBuiltinSessionDOMActions(t *testing.T) {
 	if info.Size() == 0 {
 		t.Fatal("expected non-empty screenshot output")
 	}
+}
+
+func mustFindSnapshotRef(t *testing.T, raw interface{}, selector string) string {
+	t.Helper()
+	elements, ok := raw.([]SnapshotElement)
+	if !ok {
+		t.Fatalf("elements type = %T, want []SnapshotElement", raw)
+	}
+	for _, el := range elements {
+		if el.Selector == selector {
+			return el.Ref
+		}
+	}
+	t.Fatalf("missing snapshot ref for selector %s in %#v", selector, elements)
+	return ""
 }
 
 func TestBuiltinSessionTabs(t *testing.T) {

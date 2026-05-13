@@ -58,56 +58,63 @@ func (m *Manager) browserForwardStructured(ctx context.Context, params map[strin
 
 func (m *Manager) browserClickStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	selector, _ := params["selector"].(string)
+	ref, _ := params["ref"].(string)
 	return m.runBrowserAction(ctx, ToolBrowserClick, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
-		return sess.Click(ctx, browser.ClickRequest{Selector: strings.TrimSpace(selector)})
+		return sess.Click(ctx, browser.ClickRequest{Selector: strings.TrimSpace(selector), Ref: strings.TrimSpace(ref)})
 	})
 }
 
 func (m *Manager) browserHoverStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	selector, _ := params["selector"].(string)
+	ref, _ := params["ref"].(string)
 	return m.runBrowserAction(ctx, ToolBrowserHover, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
-		return sess.Hover(ctx, browser.HoverRequest{Selector: strings.TrimSpace(selector)})
+		return sess.Hover(ctx, browser.HoverRequest{Selector: strings.TrimSpace(selector), Ref: strings.TrimSpace(ref)})
 	})
 }
 
 func (m *Manager) browserTypeStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	selector, _ := params["selector"].(string)
+	ref, _ := params["ref"].(string)
 	text, _ := params["text"].(string)
 	return m.runBrowserAction(ctx, ToolBrowserType, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
-		return sess.Type(ctx, browser.TypeRequest{Selector: strings.TrimSpace(selector), Text: text})
+		return sess.Type(ctx, browser.TypeRequest{Selector: strings.TrimSpace(selector), Ref: strings.TrimSpace(ref), Text: text})
 	})
 }
 
 func (m *Manager) browserPressKeyStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	selector, _ := params["selector"].(string)
+	ref, _ := params["ref"].(string)
 	keys, _ := params["keys"].(string)
 	return m.runBrowserAction(ctx, ToolBrowserPressKey, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
-		return sess.PressKey(ctx, browser.KeyRequest{Selector: strings.TrimSpace(selector), Keys: keys})
+		return sess.PressKey(ctx, browser.KeyRequest{Selector: strings.TrimSpace(selector), Ref: strings.TrimSpace(ref), Keys: keys})
 	})
 }
 
 func (m *Manager) browserSelectStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	selector, _ := params["selector"].(string)
+	ref, _ := params["ref"].(string)
 	values := stringSliceFromParam(params["values"])
 	return m.runBrowserAction(ctx, ToolBrowserSelect, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
-		return sess.Select(ctx, browser.SelectRequest{Selector: strings.TrimSpace(selector), Values: values})
+		return sess.Select(ctx, browser.SelectRequest{Selector: strings.TrimSpace(selector), Ref: strings.TrimSpace(ref), Values: values})
 	})
 }
 
 func (m *Manager) browserWaitStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	selector, _ := params["selector"].(string)
+	ref, _ := params["ref"].(string)
 	timeout := intParam(params["timeout"])
 	return m.runBrowserAction(ctx, ToolBrowserWait, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
-		return sess.Wait(ctx, browser.WaitRequest{Selector: strings.TrimSpace(selector), Timeout: timeout})
+		return sess.Wait(ctx, browser.WaitRequest{Selector: strings.TrimSpace(selector), Ref: strings.TrimSpace(ref), Timeout: timeout})
 	})
 }
 
 func (m *Manager) browserScrollStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	selector, _ := params["selector"].(string)
+	ref, _ := params["ref"].(string)
 	x := intParam(params["x"])
 	y := intParam(params["y"])
 	return m.runBrowserAction(ctx, ToolBrowserScroll, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
-		return sess.Scroll(ctx, browser.ScrollRequest{Selector: strings.TrimSpace(selector), X: x, Y: y})
+		return sess.Scroll(ctx, browser.ScrollRequest{Selector: strings.TrimSpace(selector), Ref: strings.TrimSpace(ref), X: x, Y: y})
 	})
 }
 
