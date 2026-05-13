@@ -230,7 +230,7 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolBrowserSnapshot,
-			Description: "读取当前浏览器会话中的页面快照摘要。",
+			Description: "读取当前浏览器会话中的页面快照摘要，并返回当前 active tab 的结构化元信息。",
 			Params:      map[string]*schema.ParameterInfo{},
 			RiskLevel:   RiskLevelMedium,
 			Examples: []ToolExample{
@@ -239,7 +239,7 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolBrowserTabs,
-			Description: "管理当前浏览器会话的标签页。支持 list、new、switch、close 四种 action，切换或关闭时可用 id、index 或 match 定位目标标签页。",
+			Description: "管理当前浏览器会话的标签页。支持 list、current、new、switch、activate_last、close 六种 action，切换或关闭时可用 id、index 或 match 定位目标标签页。",
 			Params: map[string]*schema.ParameterInfo{
 				"action":   {Type: schema.String, Required: true, Desc: "操作类型：list、new、switch 或 close"},
 				"id":       {Type: schema.String, Required: false, Desc: "可选：目标标签页 ID"},
@@ -251,10 +251,12 @@ func GetAllToolDefinitions() []ToolDefinition {
 			RiskLevel: RiskLevelMedium,
 			Examples: []ToolExample{
 				{Description: "列出当前标签页", Input: map[string]any{"action": "list"}},
+				{Description: "读取当前 active 标签页", Input: map[string]any{"action": "current"}},
 				{Description: "打开新标签页", Input: map[string]any{"action": "new", "url": "https://example.com"}},
 				{Description: "后台打开新标签页", Input: map[string]any{"action": "new", "url": "https://example.com/docs", "activate": false}},
 				{Description: "切换到第二个标签页", Input: map[string]any{"action": "switch", "index": 1}},
 				{Description: "按标题或 URL 匹配切换标签页", Input: map[string]any{"action": "switch", "match": "docs"}},
+				{Description: "切回最近活跃的标签页", Input: map[string]any{"action": "activate_last"}},
 				{Description: "关闭指定标签页", Input: map[string]any{"action": "close", "id": "tab-2"}},
 			},
 		},

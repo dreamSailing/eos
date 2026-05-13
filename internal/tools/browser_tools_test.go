@@ -217,9 +217,29 @@ func TestBrowserToolsTabs(t *testing.T) {
 	if switchRes.Status != "success" {
 		t.Fatalf("tabs switch failed: %+v", switchRes)
 	}
+	currentRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "current"})
+	if currentRes.Status != "success" {
+		t.Fatalf("tabs current failed: %+v", currentRes)
+	}
+	if target, _ := currentRes.Data["target_tab"].(string); target != "tab-1" {
+		t.Fatalf("target_tab for current = %q, want tab-1", target)
+	}
+	if currentInfo, ok := currentRes.Data["tab"].(browser.TabInfo); !ok || currentInfo.ID != "tab-1" || !currentInfo.Active {
+		t.Fatalf("unexpected current tab info: %#v", currentRes.Data["tab"])
+	}
+	lastRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "activate_last"})
+	if lastRes.Status != "success" {
+		t.Fatalf("tabs activate_last failed: %+v", lastRes)
+	}
+	if target, _ := lastRes.Data["target_tab"].(string); target != "tab-3" {
+		t.Fatalf("target_tab for activate_last = %q, want tab-3", target)
+	}
 	snap := mgr.browserSnapshotStructured(ctx, map[string]interface{}{})
-	if snap.Status != "success" || !strings.Contains(snap.Display, "One") {
+	if snap.Status != "success" || !strings.Contains(snap.Display, "Two") {
 		t.Fatalf("snapshot after switch failed: %+v", snap)
+	}
+	if snapInfo, ok := snap.Data["tab"].(browser.TabInfo); !ok || snapInfo.ID != "tab-3" || !snapInfo.Active {
+		t.Fatalf("snapshot missing tab info: %#v", snap.Data["tab"])
 	}
 	closeMatchRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "close", "match": "bg=1"})
 	if closeMatchRes.Status != "success" {

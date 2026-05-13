@@ -347,6 +347,11 @@ func (s *session) Snapshot(ctx context.Context, req SnapshotRequest) (ActionResu
 	}
 	return ActionResult{
 		Message: fmt.Sprintf("tab=%s\nurl=%s\ntitle=%s\nsnapshot=%s", tab.id, url, title, summarizeHTMLSnapshot(html)),
+		Data: map[string]interface{}{
+			"tab":   s.tabInfo(tab),
+			"url":   url,
+			"title": title,
+		},
 	}, nil
 }
 
@@ -358,6 +363,21 @@ func (s *session) Tabs(ctx context.Context, req TabsRequest) (ActionResult, erro
 	switch action {
 	case "list":
 		return s.tabsResult("listed tabs"), nil
+	case "current":
+		tab, err := s.mustActiveTab()
+		if err != nil {
+			return ActionResult{}, err
+		}
+		if _, _, _, err := s.refreshTabPageState(ctx, tab); err != nil && !errors.Is(err, ErrNoLoadedPage) {
+			s.runtime.setLastError(err)
+			return ActionResult{}, err
+		}
+		info := s.tabInfo(tab)
+		res := s.tabsSnapshot()
+		res.Message = fmt.Sprintf("current tab is %s", tab.id)
+		res.Data["tab"] = info
+		res.Data["target_tab"] = tab.id
+		return res, nil
 	case "new":
 		tab, err := s.createTab(ctx, strings.TrimSpace(req.URL), req.activateRequested())
 		if err != nil {
@@ -384,6 +404,19 @@ func (s *session) Tabs(ctx context.Context, req TabsRequest) (ActionResult, erro
 		s.setActiveTab(tab.id)
 		res := s.tabsSnapshot()
 		res.Message = fmt.Sprintf("switched to %s", tab.id)
+		res.Data["target_tab"] = tab.id
+		return res, nil
+	case "activate_last":
+		tab, err := s.activateLastTab()
+		if err != nil {
+			return ActionResult{}, err
+		}
+		if _, _, _, err := s.refreshTabPageState(ctx, tab); err != nil && !errors.Is(err, ErrNoLoadedPage) {
+			s.runtime.setLastError(err)
+			return ActionResult{}, err
+		}
+		res := s.tabsSnapshot()
+		res.Message = fmt.Sprintf("activated last tab %s", tab.id)
 		res.Data["target_tab"] = tab.id
 		return res, nil
 	case "close":
@@ -861,6 +894,30 @@ func (s *session) setActiveTab(id string) {
 	}
 }
 
+func (s *session) activateLastTab() (*tab, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	currentID := s.activeTabID
+	targetID := s.preferredActiveTabIDLocked(currentID)
+	if strings.TrimSpace(targetID) == "" {
+		if current := s.activeTabLocked(); current != nil {
+			return current, nil
+		}
+		return nil, ErrNoLoadedPage
+	}
+	for _, tab := range s.tabs {
+		if tab != nil && tab.id == targetID {
+			s.activeTabID = targetID
+			tab.mu.Lock()
+			tab.activatedAt = time.Now()
+			tab.mu.Unlock()
+			s.updatedAt = time.Now()
+			return tab, nil
+		}
+	}
+	return nil, ErrNoLoadedPage
+}
+
 func (s *session) tabCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -1068,17 +1125,45 @@ func (s *session) tabInfos() []TabInfo {
 			continue
 		}
 		tab.mu.RLock()
-		info := TabInfo{
-			ID:     tab.id,
-			Index:  i,
-			URL:    strings.TrimSpace(tab.lastURL),
-			Title:  strings.TrimSpace(tab.lastTitle),
-			Active: tab.id == s.activeTabID,
-		}
+		info := s.tabInfoLocked(tab, i)
 		tab.mu.RUnlock()
 		out = append(out, info)
 	}
 	return out
+}
+
+func (s *session) tabInfo(tab *tab) TabInfo {
+	if tab == nil {
+		return TabInfo{}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for i, candidate := range s.tabs {
+		if candidate == tab {
+			candidate.mu.RLock()
+			defer candidate.mu.RUnlock()
+			return s.tabInfoLocked(candidate, i)
+		}
+	}
+	tab.mu.RLock()
+	defer tab.mu.RUnlock()
+	return TabInfo{
+		ID:     tab.id,
+		Index:  -1,
+		URL:    strings.TrimSpace(tab.lastURL),
+		Title:  strings.TrimSpace(tab.lastTitle),
+		Active: tab.id == s.activeTabID,
+	}
+}
+
+func (s *session) tabInfoLocked(tab *tab, index int) TabInfo {
+	return TabInfo{
+		ID:     tab.id,
+		Index:  index,
+		URL:    strings.TrimSpace(tab.lastURL),
+		Title:  strings.TrimSpace(tab.lastTitle),
+		Active: tab.id == s.activeTabID,
+	}
 }
 
 func (s *session) snapshot() SessionSnapshot {

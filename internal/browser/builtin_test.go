@@ -268,12 +268,32 @@ func TestBuiltinSessionTabs(t *testing.T) {
 	if active, _ := switchRes.Data["active_tab"].(string); active != "tab-1" {
 		t.Fatalf("active_tab after switch = %q, want tab-1", active)
 	}
+	currentRes, err := sess.Tabs(ctx, TabsRequest{Action: "current"})
+	if err != nil {
+		t.Fatalf("current failed: %v", err)
+	}
+	if target, _ := currentRes.Data["target_tab"].(string); target != "tab-1" {
+		t.Fatalf("target_tab for current = %q, want tab-1", target)
+	}
+	if currentInfo, ok := currentRes.Data["tab"].(TabInfo); !ok || currentInfo.ID != "tab-1" || !currentInfo.Active {
+		t.Fatalf("unexpected current tab info: %#v", currentRes.Data["tab"])
+	}
+	lastRes, err := sess.Tabs(ctx, TabsRequest{Action: "activate_last"})
+	if err != nil {
+		t.Fatalf("activate_last failed: %v", err)
+	}
+	if target, _ := lastRes.Data["target_tab"].(string); target != "tab-3" {
+		t.Fatalf("target_tab for activate_last = %q, want tab-3", target)
+	}
 	snap, err := sess.Snapshot(ctx, SnapshotRequest{})
 	if err != nil {
 		t.Fatalf("snapshot after switch failed: %v", err)
 	}
-	if !strings.Contains(snap.Message, "One") {
-		t.Fatalf("snapshot missing first tab content: %q", snap.Message)
+	if !strings.Contains(snap.Message, "Two") {
+		t.Fatalf("snapshot missing active tab content: %q", snap.Message)
+	}
+	if snapInfo, ok := snap.Data["tab"].(TabInfo); !ok || snapInfo.ID != "tab-3" || !snapInfo.Active {
+		t.Fatalf("snapshot missing tab info: %#v", snap.Data["tab"])
 	}
 	closeByMatchRes, err := sess.Tabs(ctx, TabsRequest{Action: "close", Query: "bg=1"})
 	if err != nil {
