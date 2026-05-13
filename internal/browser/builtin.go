@@ -2,26 +2,30 @@ package browser
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/page"
+	cdruntime "github.com/chromedp/cdproto/runtime"
+	"github.com/chromedp/chromedp"
 )
 
 var (
-	ErrRuntimeClosed     = errors.New("builtin browser runtime is closed")
-	ErrNoLoadedPage      = errors.New("builtin browser session has no loaded page")
-	ErrUnsupportedAction = errors.New("builtin browser runtime does not support this action yet")
-	titlePattern         = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
-	tagPattern           = regexp.MustCompile(`(?s)<[^>]+>`)
-	DefaultCapabilities  = []string{"navigate", "snapshot", "wait", "network"}
+	ErrRuntimeClosed    = errors.New("builtin browser runtime is closed")
+	ErrNoLoadedPage     = errors.New("builtin browser session has no loaded page")
+	titlePattern        = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
+	tagPattern          = regexp.MustCompile(`(?s)<[^>]+>`)
+	DefaultCapabilities = []string{"navigate", "snapshot", "click", "type", "select", "wait", "screenshot", "console", "network"}
 )
 
 type NavigateRequest struct {
@@ -86,8 +90,8 @@ type RuntimeStatus struct {
 
 type BuiltinRuntime struct {
 	mu        sync.RWMutex
-	client    *http.Client
 	sessions  map[string]*session
+	execPath  string
 	lastError string
 	closed    bool
 }
@@ -96,27 +100,38 @@ type session struct {
 	runtime *BuiltinRuntime
 	traceID string
 
+	allocCancel context.CancelFunc
+	cancel      context.CancelFunc
+	ctx         context.Context
+	opMu        sync.Mutex
+
 	mu        sync.RWMutex
 	createdAt time.Time
 	updatedAt time.Time
 	lastURL   string
 	lastTitle string
 	lastHTML  string
+	console   []string
 	network   []string
 }
 
 func NewBuiltinRuntime() *BuiltinRuntime {
-	return &BuiltinRuntime{
-		client:   &http.Client{Timeout: 20 * time.Second},
+	execPath := findBrowserBinary()
+	rt := &BuiltinRuntime{
 		sessions: make(map[string]*session),
+		execPath: execPath,
 	}
+	if execPath == "" {
+		rt.lastError = "no supported Chrome/Chromium executable found"
+	}
+	return rt
 }
 
 func (r *BuiltinRuntime) Status() RuntimeStatus {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return RuntimeStatus{
-		Ready:        !r.closed && r.client != nil,
+		Ready:        !r.closed && strings.TrimSpace(r.execPath) != "",
 		LastError:    strings.TrimSpace(r.lastError),
 		Capabilities: append([]string(nil), DefaultCapabilities...),
 	}
@@ -136,20 +151,39 @@ func (r *BuiltinRuntime) Session(traceID string) (SessionBackend, error) {
 		return nil, fmt.Errorf("missing trace id")
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.closed {
 		r.lastError = ErrRuntimeClosed.Error()
+		r.mu.Unlock()
 		return nil, ErrRuntimeClosed
 	}
 	if sess, ok := r.sessions[traceID]; ok {
+		r.mu.Unlock()
 		return sess, nil
 	}
-	now := time.Now()
-	sess := &session{
-		runtime:   r,
-		traceID:   traceID,
-		createdAt: now,
-		updatedAt: now,
+	execPath := strings.TrimSpace(r.execPath)
+	r.mu.Unlock()
+	if execPath == "" {
+		err := fmt.Errorf("builtin browser runtime unavailable: %s", noBrowserMessage())
+		r.setLastError(err)
+		return nil, err
+	}
+
+	sess, err := newSession(r, traceID, execPath)
+	if err != nil {
+		r.setLastError(err)
+		return nil, err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		sess.Close()
+		r.lastError = ErrRuntimeClosed.Error()
+		return nil, ErrRuntimeClosed
+	}
+	if existing, ok := r.sessions[traceID]; ok {
+		sess.Close()
+		return existing, nil
 	}
 	r.sessions[traceID] = sess
 	return sess, nil
@@ -161,8 +195,12 @@ func (r *BuiltinRuntime) ReleaseTrace(traceID string) {
 		return
 	}
 	r.mu.Lock()
+	sess := r.sessions[traceID]
 	delete(r.sessions, traceID)
 	r.mu.Unlock()
+	if sess != nil {
+		sess.Close()
+	}
 }
 
 func (r *BuiltinRuntime) SessionCount() int {
@@ -174,8 +212,12 @@ func (r *BuiltinRuntime) SessionCount() int {
 func (r *BuiltinRuntime) Close() {
 	r.mu.Lock()
 	r.closed = true
+	sessions := r.sessions
 	r.sessions = make(map[string]*session)
 	r.mu.Unlock()
+	for _, sess := range sessions {
+		sess.Close()
+	}
 }
 
 func (s *session) Capabilities() []string {
@@ -187,127 +229,164 @@ func (s *session) Navigate(ctx context.Context, req NavigateRequest) (ActionResu
 	if target == "" {
 		return ActionResult{}, fmt.Errorf("missing url")
 	}
-	parsed, err := url.Parse(target)
+	err := s.run(ctx,
+		network.Enable(),
+		cdruntime.Enable(),
+		page.Enable(),
+		chromedp.Navigate(target),
+		chromedp.WaitReady("html", chromedp.ByQuery),
+	)
 	if err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	if parsed.Scheme == "" || parsed.Host == "" {
-		err = fmt.Errorf("url must include scheme and host: %s", target)
-		s.runtime.setLastError(err)
-		return ActionResult{}, err
-	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	url, title, _, err := s.refreshPageState(ctx)
 	if err != nil {
 		s.runtime.setLastError(err)
 		return ActionResult{}, err
 	}
-	httpReq.Header.Set("User-Agent", "eos-builtin-browser/0.1")
-	resp, err := s.runtime.client.Do(httpReq)
-	if err != nil {
-		s.runtime.setLastError(err)
-		return ActionResult{}, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		s.runtime.setLastError(err)
-		return ActionResult{}, err
-	}
-	title := extractHTMLTitle(string(body))
-
-	s.mu.Lock()
-	s.updatedAt = time.Now()
-	s.lastURL = parsed.String()
-	s.lastTitle = title
-	s.lastHTML = string(body)
-	s.network = append(s.network, fmt.Sprintf("%s %s -> %d", http.MethodGet, parsed.String(), resp.StatusCode))
-	s.mu.Unlock()
-
-	return ActionResult{Message: fmt.Sprintf("navigated to %s (status=%d, title=%q)", parsed.String(), resp.StatusCode, title)}, nil
+	return ActionResult{Message: fmt.Sprintf("navigated to %s (title=%q)", url, title)}, nil
 }
 
 func (s *session) Snapshot(ctx context.Context, req SnapshotRequest) (ActionResult, error) {
 	_ = ctx
 	_ = req
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if strings.TrimSpace(s.lastURL) == "" {
+	url, title, html, err := s.refreshPageState(ctx)
+	if err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	if strings.TrimSpace(url) == "" {
 		return ActionResult{}, ErrNoLoadedPage
 	}
 	return ActionResult{
-		Message: fmt.Sprintf("url=%s\ntitle=%s\nsnapshot=%s", s.lastURL, s.lastTitle, summarizeHTMLSnapshot(s.lastHTML)),
+		Message: fmt.Sprintf("url=%s\ntitle=%s\nsnapshot=%s", url, title, summarizeHTMLSnapshot(html)),
 	}, nil
 }
 
 func (s *session) Click(ctx context.Context, req ClickRequest) (ActionResult, error) {
-	_ = ctx
-	_ = req
-	return ActionResult{}, fmt.Errorf("%w: click requires a DOM-capable backend", ErrUnsupportedAction)
+	selector := strings.TrimSpace(req.Selector)
+	if selector == "" {
+		return ActionResult{}, fmt.Errorf("missing selector")
+	}
+	if err := s.run(ctx, chromedp.Click(selector, chromedp.ByQuery)); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	if _, _, _, err := s.refreshPageState(ctx); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	return ActionResult{Message: fmt.Sprintf("clicked %s", selector)}, nil
 }
 
 func (s *session) Type(ctx context.Context, req TypeRequest) (ActionResult, error) {
-	_ = ctx
-	_ = req
-	return ActionResult{}, fmt.Errorf("%w: type requires a DOM-capable backend", ErrUnsupportedAction)
+	selector := strings.TrimSpace(req.Selector)
+	if selector == "" {
+		return ActionResult{}, fmt.Errorf("missing selector")
+	}
+	if err := s.run(ctx,
+		chromedp.WaitVisible(selector, chromedp.ByQuery),
+		chromedp.SetValue(selector, "", chromedp.ByQuery),
+		chromedp.SendKeys(selector, req.Text, chromedp.ByQuery),
+	); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	if _, _, _, err := s.refreshPageState(ctx); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	return ActionResult{Message: fmt.Sprintf("typed into %s", selector)}, nil
 }
 
 func (s *session) Select(ctx context.Context, req SelectRequest) (ActionResult, error) {
-	_ = ctx
-	_ = req
-	return ActionResult{}, fmt.Errorf("%w: select requires a DOM-capable backend", ErrUnsupportedAction)
+	selector := strings.TrimSpace(req.Selector)
+	if selector == "" {
+		return ActionResult{}, fmt.Errorf("missing selector")
+	}
+	values := compactValues(req.Values)
+	if len(values) == 0 {
+		return ActionResult{}, fmt.Errorf("missing values")
+	}
+	selected, err := s.selectValues(ctx, selector, values)
+	if err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	if _, _, _, err := s.refreshPageState(ctx); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
+	}
+	return ActionResult{Message: fmt.Sprintf("selected %s on %s", strings.Join(selected, ","), selector)}, nil
 }
 
 func (s *session) Wait(ctx context.Context, req WaitRequest) (ActionResult, error) {
-	s.mu.RLock()
-	hasPage := strings.TrimSpace(s.lastURL) != ""
-	s.mu.RUnlock()
-	if !hasPage {
+	if !s.hasPage() {
 		return ActionResult{}, ErrNoLoadedPage
 	}
 	timeout := time.Duration(req.Timeout) * time.Millisecond
 	if timeout <= 0 {
-		timeout = 250 * time.Millisecond
+		timeout = time.Second
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	selector := strings.TrimSpace(req.Selector)
+	if selector != "" {
+		if err := s.run(waitCtx, chromedp.WaitVisible(selector, chromedp.ByQuery)); err != nil {
+			s.runtime.setLastError(err)
+			return ActionResult{}, err
+		}
+		if _, _, _, err := s.refreshPageState(waitCtx); err != nil {
+			s.runtime.setLastError(err)
+			return ActionResult{}, err
+		}
+		return ActionResult{Message: fmt.Sprintf("waited for %s", selector)}, nil
 	}
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
-	case <-ctx.Done():
-		return ActionResult{}, ctx.Err()
+	case <-waitCtx.Done():
+		return ActionResult{}, waitCtx.Err()
 	case <-timer.C:
-	}
-	if strings.TrimSpace(req.Selector) != "" {
-		return ActionResult{Message: fmt.Sprintf("waited %s without DOM probing; selector=%s", timeout, strings.TrimSpace(req.Selector))}, nil
 	}
 	return ActionResult{Message: fmt.Sprintf("waited %s", timeout)}, nil
 }
 
 func (s *session) Screenshot(ctx context.Context, req ScreenshotRequest) (ActionResult, error) {
-	_ = ctx
 	path := strings.TrimSpace(req.Path)
 	if path == "" {
-		return ActionResult{}, fmt.Errorf("%w: screenshot path is required", ErrUnsupportedAction)
+		return ActionResult{}, fmt.Errorf("missing screenshot path")
 	}
-	s.mu.RLock()
-	html := s.lastHTML
-	hasPage := strings.TrimSpace(s.lastURL) != ""
-	s.mu.RUnlock()
-	if !hasPage {
+	if !s.hasPage() {
 		return ActionResult{}, ErrNoLoadedPage
+	}
+	var buf []byte
+	if err := s.run(ctx, chromedp.FullScreenshot(&buf, 90)); err != nil {
+		s.runtime.setLastError(err)
+		return ActionResult{}, err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return ActionResult{}, err
 	}
-	if err := os.WriteFile(path, []byte(html), 0o644); err != nil {
+	if err := os.WriteFile(path, buf, 0o644); err != nil {
 		return ActionResult{}, err
 	}
-	return ActionResult{Message: fmt.Sprintf("builtin minimal backend wrote HTML snapshot to %s instead of a raster screenshot", path)}, nil
+	return ActionResult{Message: fmt.Sprintf("saved screenshot to %s", path)}, nil
 }
 
 func (s *session) Console(ctx context.Context, req ConsoleRequest) (ActionResult, error) {
 	_ = ctx
-	_ = req
-	return ActionResult{}, fmt.Errorf("%w: console inspection requires script execution", ErrUnsupportedAction)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.console) == 0 {
+		return ActionResult{Message: "no console messages recorded"}, nil
+	}
+	limit := req.Limit
+	if limit <= 0 || limit > len(s.console) {
+		limit = len(s.console)
+	}
+	return ActionResult{Message: strings.Join(s.console[len(s.console)-limit:], "\n")}, nil
 }
 
 func (s *session) Network(ctx context.Context, req NetworkRequest) (ActionResult, error) {
@@ -348,4 +427,296 @@ func summarizeHTMLSnapshot(html string) string {
 		text = text[:320] + "..."
 	}
 	return strings.TrimSpace(text)
+}
+
+func newSession(rt *BuiltinRuntime, traceID, execPath string) (*session, error) {
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocatorOptions(execPath)...)
+	ctx, cancel := chromedp.NewContext(allocCtx)
+	sess := &session{
+		runtime:     rt,
+		traceID:     traceID,
+		allocCancel: allocCancel,
+		cancel:      cancel,
+		ctx:         ctx,
+		createdAt:   time.Now(),
+		updatedAt:   time.Now(),
+	}
+	sess.attachListeners()
+	initCtx, initCancel := context.WithTimeout(ctx, 20*time.Second)
+	defer initCancel()
+	if err := chromedp.Run(initCtx, network.Enable(), cdruntime.Enable(), page.Enable()); err != nil {
+		sess.Close()
+		return nil, err
+	}
+	return sess, nil
+}
+
+func allocatorOptions(execPath string) []chromedp.ExecAllocatorOption {
+	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
+	opts = append(opts,
+		chromedp.ExecPath(execPath),
+		chromedp.Flag("headless", true),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("hide-scrollbars", true),
+		chromedp.Flag("mute-audio", true),
+		chromedp.Flag("window-size", "1440,1024"),
+	)
+	return opts
+}
+
+func (s *session) Close() {
+	if s.cancel != nil {
+		s.cancel()
+	}
+	if s.allocCancel != nil {
+		s.allocCancel()
+	}
+}
+
+func (s *session) hasPage() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return strings.TrimSpace(s.lastURL) != ""
+}
+
+func (s *session) run(parent context.Context, actions ...chromedp.Action) error {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	opCtx, cleanup := s.operationContext(parent)
+	defer cleanup()
+	return chromedp.Run(opCtx, actions...)
+}
+
+func (s *session) operationContext(parent context.Context) (context.Context, func()) {
+	var (
+		opCtx  context.Context
+		cancel context.CancelFunc
+	)
+	if parent != nil {
+		if deadline, ok := parent.Deadline(); ok {
+			opCtx, cancel = context.WithDeadline(s.ctx, deadline)
+		} else {
+			opCtx, cancel = context.WithCancel(s.ctx)
+		}
+		stop := make(chan struct{})
+		go func() {
+			select {
+			case <-parent.Done():
+				cancel()
+			case <-stop:
+			}
+		}()
+		return opCtx, func() {
+			close(stop)
+			cancel()
+		}
+	}
+	opCtx, cancel = context.WithCancel(s.ctx)
+	return opCtx, cancel
+}
+
+func (s *session) refreshPageState(ctx context.Context) (string, string, string, error) {
+	var (
+		url   string
+		title string
+		html  string
+	)
+	if err := s.run(ctx,
+		chromedp.Location(&url),
+		chromedp.Title(&title),
+		chromedp.OuterHTML("html", &html, chromedp.ByQuery),
+	); err != nil {
+		return "", "", "", err
+	}
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return "", "", "", ErrNoLoadedPage
+	}
+	s.mu.Lock()
+	s.updatedAt = time.Now()
+	s.lastURL = url
+	s.lastTitle = strings.TrimSpace(title)
+	s.lastHTML = html
+	s.mu.Unlock()
+	return url, strings.TrimSpace(title), html, nil
+}
+
+func (s *session) selectValues(ctx context.Context, selector string, values []string) ([]string, error) {
+	selectorJSON, _ := json.Marshal(selector)
+	valuesJSON, _ := json.Marshal(values)
+	script := fmt.Sprintf(`(() => {
+		const selector = %s;
+		const values = %s.map(String);
+		const el = document.querySelector(selector);
+		if (!el) {
+			throw new Error("selector not found: " + selector);
+		}
+		if (!(el instanceof HTMLSelectElement)) {
+			throw new Error("selector is not a select element: " + selector);
+		}
+		const wanted = new Set(values);
+		for (const option of Array.from(el.options)) {
+			option.selected = wanted.has(String(option.value)) || wanted.has(String(option.text));
+		}
+		el.dispatchEvent(new Event("input", { bubbles: true }));
+		el.dispatchEvent(new Event("change", { bubbles: true }));
+		return Array.from(el.selectedOptions).map((option) => String(option.value || option.text));
+	})()`, string(selectorJSON), string(valuesJSON))
+	var selected []string
+	if err := s.run(ctx,
+		chromedp.WaitVisible(selector, chromedp.ByQuery),
+		chromedp.Evaluate(script, &selected),
+	); err != nil {
+		return nil, err
+	}
+	return selected, nil
+}
+
+func (s *session) attachListeners() {
+	chromedp.ListenTarget(s.ctx, func(ev any) {
+		switch evt := ev.(type) {
+		case *cdruntime.EventConsoleAPICalled:
+			s.appendConsole(formatConsoleEvent(evt))
+		case *cdruntime.EventExceptionThrown:
+			if evt.ExceptionDetails != nil {
+				s.appendConsole(strings.TrimSpace(evt.ExceptionDetails.Error()))
+			}
+		case *network.EventRequestWillBeSent:
+			if evt.Request != nil {
+				s.appendNetwork(fmt.Sprintf("%s %s", evt.Request.Method, strings.TrimSpace(evt.Request.URL)))
+			}
+		case *network.EventResponseReceived:
+			if evt.Response != nil {
+				s.appendNetwork(fmt.Sprintf("%s -> %d", strings.TrimSpace(evt.Response.URL), int(evt.Response.Status)))
+			}
+		}
+	})
+}
+
+func (s *session) appendConsole(line string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.console = appendBounded(s.console, line, 200)
+}
+
+func (s *session) appendNetwork(line string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.network = appendBounded(s.network, line, 400)
+}
+
+func appendBounded(lines []string, line string, max int) []string {
+	lines = append(lines, line)
+	if max > 0 && len(lines) > max {
+		lines = append([]string(nil), lines[len(lines)-max:]...)
+	}
+	return lines
+}
+
+func formatConsoleEvent(evt *cdruntime.EventConsoleAPICalled) string {
+	if evt == nil {
+		return ""
+	}
+	parts := make([]string, 0, len(evt.Args))
+	for _, arg := range evt.Args {
+		parts = append(parts, formatRemoteObject(arg))
+	}
+	if len(parts) == 0 {
+		return string(evt.Type)
+	}
+	return fmt.Sprintf("%s: %s", evt.Type, strings.Join(parts, " "))
+}
+
+func formatRemoteObject(obj *cdruntime.RemoteObject) string {
+	if obj == nil {
+		return ""
+	}
+	if len(obj.Value) > 0 {
+		var v any
+		if err := json.Unmarshal(obj.Value, &v); err == nil {
+			return strings.TrimSpace(fmt.Sprint(v))
+		}
+		return strings.TrimSpace(obj.Value.String())
+	}
+	if obj.UnserializableValue != "" {
+		return strings.TrimSpace(string(obj.UnserializableValue))
+	}
+	if strings.TrimSpace(obj.Description) != "" {
+		return strings.TrimSpace(obj.Description)
+	}
+	if strings.TrimSpace(obj.ClassName) != "" {
+		return strings.TrimSpace(obj.ClassName)
+	}
+	return strings.TrimSpace(string(obj.Type))
+}
+
+func compactValues(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func findBrowserBinary() string {
+	candidates := []string{
+		os.Getenv("CHROME_BIN"),
+		os.Getenv("CHROMIUM_BIN"),
+		os.Getenv("BROWSER_BIN"),
+	}
+	switch goruntime.GOOS {
+	case "darwin":
+		candidates = append(candidates,
+			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+			"/Applications/Chromium.app/Contents/MacOS/Chromium",
+		)
+	case "windows":
+		candidates = append(candidates,
+			"chrome",
+			"chrome.exe",
+			"chromium.exe",
+			`C:\Program Files\Google\Chrome\Application\chrome.exe`,
+			`C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`,
+		)
+	default:
+		candidates = append(candidates,
+			"headless_shell",
+			"headless-shell",
+			"chromium",
+			"chromium-browser",
+			"google-chrome",
+			"google-chrome-stable",
+			"google-chrome-beta",
+			"chrome",
+			"/usr/bin/google-chrome",
+			"/snap/bin/chromium",
+		)
+	}
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if fullPath, err := exec.LookPath(candidate); err == nil {
+			return fullPath
+		}
+	}
+	return ""
+}
+
+func noBrowserMessage() string {
+	return "install Chrome/Chromium or set CHROME_BIN/CHROMIUM_BIN"
 }
