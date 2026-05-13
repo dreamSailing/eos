@@ -14,6 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chromedp/cdproto/accessibility"
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/dom"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	cdruntime "github.com/chromedp/cdproto/runtime"
@@ -35,13 +38,16 @@ type NavigateRequest struct {
 type SnapshotRequest struct{}
 
 type SnapshotElement struct {
-	Ref      string `json:"ref"`
-	Role     string `json:"role"`
-	Name     string `json:"name"`
-	Selector string `json:"selector"`
-	Tag      string `json:"tag"`
-	Type     string `json:"type"`
-	Text     string `json:"text"`
+	Ref         string `json:"ref"`
+	Role        string `json:"role"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Value       string `json:"value,omitempty"`
+	Selector    string `json:"selector"`
+	Tag         string `json:"tag"`
+	Type        string `json:"type"`
+	Text        string `json:"text"`
+	Source      string `json:"source"`
 }
 
 type TabsRequest struct {
@@ -888,6 +894,9 @@ func formatSnapshotMessage(tabID, url, title string, elements []SnapshotElement,
 		for _, el := range elements {
 			label := strings.TrimSpace(el.Name)
 			if label == "" {
+				label = strings.TrimSpace(el.Value)
+			}
+			if label == "" {
 				label = strings.TrimSpace(el.Text)
 			}
 			if label == "" {
@@ -897,11 +906,141 @@ func formatSnapshotMessage(tabID, url, title string, elements []SnapshotElement,
 			if role == "" {
 				role = strings.TrimSpace(el.Tag)
 			}
-			lines = append(lines, fmt.Sprintf("- [%s] %s %q", el.Ref, role, label))
+			source := strings.TrimSpace(el.Source)
+			if source == "" {
+				source = "dom"
+			}
+			lines = append(lines, fmt.Sprintf("- [%s] %s %q {%s}", el.Ref, role, label, source))
 		}
 	}
 	lines = append(lines, "snapshot="+summary)
 	return strings.Join(lines, "\n")
+}
+
+type axDOMBinding struct {
+	Ref      string `json:"ref"`
+	Selector string `json:"selector"`
+	Tag      string `json:"tag"`
+	Type     string `json:"type"`
+	Text     string `json:"text"`
+	Name     string `json:"name"`
+}
+
+func bindAXNodeToDOM(ctx context.Context, backendNodeID cdp.BackendNodeID) (axDOMBinding, error) {
+	if backendNodeID == 0 {
+		return axDOMBinding{}, fmt.Errorf("missing backend node id")
+	}
+	object, err := dom.ResolveNode().WithBackendNodeID(backendNodeID).Do(ctx)
+	if err != nil {
+		return axDOMBinding{}, err
+	}
+	if object == nil || object.ObjectID == "" {
+		return axDOMBinding{}, fmt.Errorf("unable to resolve backend node %d", backendNodeID)
+	}
+	const fn = `function() {
+		const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+		const cssEscape = (value) => {
+			if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(value);
+			return String(value).replace(/["\\]/g, '\\$&');
+		};
+		const root = document.documentElement;
+		let ref = this.getAttribute && this.getAttribute('data-eos-ref');
+		if (!ref) {
+			let counter = Number(root && root.getAttribute('data-eos-ref-counter') || '0') + 1;
+			ref = 'e' + String(counter);
+			if (root) root.setAttribute('data-eos-ref-counter', String(counter));
+			if (this.setAttribute) this.setAttribute('data-eos-ref', ref);
+		}
+		let selector = '';
+		if (this.id) selector = '#' + cssEscape(this.id);
+		else selector = '[data-eos-ref="' + cssEscape(ref) + '"]';
+		return {
+			ref,
+			selector,
+			tag: normalize(this.tagName || '').toLowerCase(),
+			type: normalize(this.getAttribute && this.getAttribute('type')),
+			text: normalize(this.innerText || this.textContent),
+			name: normalize((this.getAttribute && this.getAttribute('aria-label')) || '')
+		};
+	}`
+	result, exceptionDetails, err := cdruntime.CallFunctionOn(fn).
+		WithObjectID(object.ObjectID).
+		WithReturnByValue(true).
+		WithAwaitPromise(true).
+		Do(ctx)
+	if err != nil {
+		return axDOMBinding{}, err
+	}
+	if exceptionDetails != nil {
+		return axDOMBinding{}, fmt.Errorf("failed to bind backend node %d", backendNodeID)
+	}
+	var binding axDOMBinding
+	if err := json.Unmarshal(result.Value, &binding); err != nil {
+		return axDOMBinding{}, err
+	}
+	if strings.TrimSpace(binding.Ref) == "" || strings.TrimSpace(binding.Selector) == "" {
+		return axDOMBinding{}, fmt.Errorf("invalid binding for backend node %d", backendNodeID)
+	}
+	return binding, nil
+}
+
+func isInterestingAXNode(node *accessibility.Node) bool {
+	if node == nil || node.Ignored || node.BackendDOMNodeID == 0 {
+		return false
+	}
+	role := strings.ToLower(strings.TrimSpace(axValueString(node.Role)))
+	if role == "" || role == "none" || role == "generic" || role == "section" || role == "strong" || role == "statictext" || role == "inlineTextBox" {
+		return false
+	}
+	if axPropertyTruthy(node.Properties, accessibility.PropertyNameFocusable) ||
+		axPropertyTruthy(node.Properties, accessibility.PropertyNameEditable) ||
+		axPropertyTruthy(node.Properties, accessibility.PropertyNameSettable) {
+		return true
+	}
+	if strings.TrimSpace(axValueString(node.Name)) != "" || strings.TrimSpace(axValueString(node.Value)) != "" {
+		return true
+	}
+	switch role {
+	case "button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio", "switch", "menuitem", "menuitemcheckbox", "menuitemradio", "option", "tab", "slider", "spinbutton":
+		return true
+	default:
+		return false
+	}
+}
+
+func axValueString(v *accessibility.Value) string {
+	if v == nil || len(v.Value) == 0 {
+		return ""
+	}
+	var raw any
+	if err := json.Unmarshal(v.Value, &raw); err == nil {
+		return strings.TrimSpace(fmt.Sprint(raw))
+	}
+	return strings.TrimSpace(v.Value.String())
+}
+
+func axPropertyValue(props []*accessibility.Property, name accessibility.PropertyName) string {
+	for _, prop := range props {
+		if prop != nil && prop.Name == name {
+			return axValueString(prop.Value)
+		}
+	}
+	return ""
+}
+
+func axPropertyTruthy(props []*accessibility.Property, name accessibility.PropertyName) bool {
+	value := strings.ToLower(strings.TrimSpace(axPropertyValue(props, name)))
+	return value == "true" || value == "1"
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func newSession(rt *BuiltinRuntime, traceID, execPath string) (*session, error) {
@@ -1454,6 +1593,17 @@ func (s *session) refreshTabPageState(ctx context.Context, tab *tab) (string, st
 }
 
 func (s *session) captureSnapshotElements(ctx context.Context, tab *tab) ([]SnapshotElement, error) {
+	elements, err := s.captureAXSnapshotElements(ctx, tab)
+	if err == nil && len(elements) > 0 {
+		tab.mu.Lock()
+		tab.elements = append([]SnapshotElement(nil), elements...)
+		tab.mu.Unlock()
+		return elements, nil
+	}
+	return s.captureDOMSnapshotElements(ctx, tab)
+}
+
+func (s *session) captureDOMSnapshotElements(ctx context.Context, tab *tab) ([]SnapshotElement, error) {
 	if tab == nil {
 		return nil, ErrNoLoadedPage
 	}
@@ -1530,10 +1680,13 @@ func (s *session) captureSnapshotElements(ctx context.Context, tab *tab) ([]Snap
 				ref,
 				role: roleOf(el),
 				name: nameOf(el),
+				description: '',
+				value: '',
 				selector: selectorOf(el, ref),
 				tag: el.tagName.toLowerCase(),
 				type: normalize(el.getAttribute('type')),
 				text: normalize(el.innerText || el.textContent),
+				source: 'dom',
 			});
 		}
 		root.setAttribute('data-eos-ref-counter', String(counter));
@@ -1546,6 +1699,61 @@ func (s *session) captureSnapshotElements(ctx context.Context, tab *tab) ([]Snap
 	tab.mu.Lock()
 	tab.elements = append([]SnapshotElement(nil), elements...)
 	tab.mu.Unlock()
+	return elements, nil
+}
+
+func (s *session) captureAXSnapshotElements(ctx context.Context, tab *tab) ([]SnapshotElement, error) {
+	if tab == nil {
+		return nil, ErrNoLoadedPage
+	}
+	var elements []SnapshotElement
+	err := tab.withTargetContext(ctx, func(opCtx context.Context) error {
+		if err := accessibility.Enable().Do(opCtx); err != nil {
+			return err
+		}
+		nodes, err := accessibility.GetFullAXTree().Do(opCtx)
+		if err != nil {
+			return err
+		}
+		elements = make([]SnapshotElement, 0, len(nodes))
+		seenBackend := make(map[cdp.BackendNodeID]struct{}, len(nodes))
+		for _, node := range nodes {
+			if !isInterestingAXNode(node) {
+				continue
+			}
+			if _, ok := seenBackend[node.BackendDOMNodeID]; ok {
+				continue
+			}
+			binding, err := bindAXNodeToDOM(opCtx, node.BackendDOMNodeID)
+			if err != nil {
+				continue
+			}
+			element := SnapshotElement{
+				Ref:         binding.Ref,
+				Role:        axValueString(node.Role),
+				Name:        firstNonEmpty(axValueString(node.Name), binding.Name, binding.Text),
+				Description: axValueString(node.Description),
+				Value:       axValueString(node.Value),
+				Selector:    binding.Selector,
+				Tag:         binding.Tag,
+				Type:        binding.Type,
+				Text:        binding.Text,
+				Source:      "ax",
+			}
+			if strings.TrimSpace(element.Role) == "" {
+				element.Role = strings.TrimSpace(binding.Tag)
+			}
+			if strings.TrimSpace(element.Name) == "" && strings.TrimSpace(element.Value) == "" && strings.TrimSpace(element.Text) == "" {
+				continue
+			}
+			seenBackend[node.BackendDOMNodeID] = struct{}{}
+			elements = append(elements, element)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
 	return elements, nil
 }
 
@@ -1654,6 +1862,14 @@ func (t *tab) run(parent context.Context, actions ...chromedp.Action) error {
 	opCtx, cleanup := t.operationContext(parent)
 	defer cleanup()
 	return chromedp.Run(opCtx, actions...)
+}
+
+func (t *tab) withTargetContext(parent context.Context, fn func(context.Context) error) error {
+	t.opMu.Lock()
+	defer t.opMu.Unlock()
+	opCtx, cleanup := t.operationContext(parent)
+	defer cleanup()
+	return fn(opCtx)
 }
 
 func (t *tab) operationContext(parent context.Context) (context.Context, func()) {
