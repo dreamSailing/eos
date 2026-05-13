@@ -263,6 +263,55 @@ func TestBrowserToolsTabs(t *testing.T) {
 	if closed, _ := closeRes.Data["closed_tab"].(string); closed != "tab-2" {
 		t.Fatalf("closed_tab = %q, want tab-2", closed)
 	}
+
+	reopenLeftRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "new", "url": srv.URL + "/two?a=1"})
+	if reopenLeftRes.Status != "success" {
+		t.Fatalf("tabs reopen left failed: %+v", reopenLeftRes)
+	}
+	leftID, _ := reopenLeftRes.Data["opened_tab"].(string)
+	reopenRightRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "new", "url": srv.URL + "/two?a=2", "activate": false})
+	if reopenRightRes.Status != "success" {
+		t.Fatalf("tabs reopen right failed: %+v", reopenRightRes)
+	}
+	rightID, _ := reopenRightRes.Data["opened_tab"].(string)
+	closeRightRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "close_right", "index": 0})
+	if closeRightRes.Status != "success" {
+		t.Fatalf("tabs close_right failed: %+v", closeRightRes)
+	}
+	if active, _ := closeRightRes.Data["active_tab"].(string); active != "tab-1" {
+		t.Fatalf("active_tab after close_right = %q, want tab-1", active)
+	}
+	if closedTabs, ok := closeRightRes.Data["closed_tabs"].([]string); !ok || len(closedTabs) != 2 || closedTabs[0] != leftID || closedTabs[1] != rightID {
+		t.Fatalf("closed_tabs after close_right = %#v", closeRightRes.Data["closed_tabs"])
+	}
+
+	keepRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "new", "url": srv.URL + "/two?keep=1"})
+	if keepRes.Status != "success" {
+		t.Fatalf("tabs keep open failed: %+v", keepRes)
+	}
+	keepID, _ := keepRes.Data["opened_tab"].(string)
+	dropRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "new", "url": srv.URL + "/two?drop=1", "activate": false})
+	if dropRes.Status != "success" {
+		t.Fatalf("tabs drop open failed: %+v", dropRes)
+	}
+	dropID, _ := dropRes.Data["opened_tab"].(string)
+	closeOthersRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "close_others", "match": "keep=1"})
+	if closeOthersRes.Status != "success" {
+		t.Fatalf("tabs close_others failed: %+v", closeOthersRes)
+	}
+	if active, _ := closeOthersRes.Data["active_tab"].(string); active != keepID {
+		t.Fatalf("active_tab after close_others = %q, want %s", active, keepID)
+	}
+	if target, _ := closeOthersRes.Data["target_tab"].(string); target != keepID {
+		t.Fatalf("target_tab after close_others = %q, want %s", target, keepID)
+	}
+	if closedTabs, ok := closeOthersRes.Data["closed_tabs"].([]string); !ok || len(closedTabs) != 2 || closedTabs[0] != "tab-1" || closedTabs[1] != dropID {
+		t.Fatalf("closed_tabs after close_others = %#v", closeOthersRes.Data["closed_tabs"])
+	}
+	tabs, ok = closeOthersRes.Data["tabs"].([]browser.TabInfo)
+	if !ok || len(tabs) != 1 || tabs[0].ID != keepID || !tabs[0].Active {
+		t.Fatalf("unexpected tabs after close_others: %#v", closeOthersRes.Data["tabs"])
+	}
 }
 
 func TestBrowserStatusIncludesBuiltinSession(t *testing.T) {

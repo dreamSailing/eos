@@ -419,6 +419,36 @@ func (s *session) Tabs(ctx context.Context, req TabsRequest) (ActionResult, erro
 		res.Message = fmt.Sprintf("activated last tab %s", tab.id)
 		res.Data["target_tab"] = tab.id
 		return res, nil
+	case "close_others":
+		target, err := s.resolveTab(req)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		closed, err := s.closeOtherTabs(ctx, target.id)
+		if err != nil {
+			s.runtime.setLastError(err)
+			return ActionResult{}, err
+		}
+		res := s.tabsSnapshot()
+		res.Message = fmt.Sprintf("closed %d other tabs around %s", len(closed), target.id)
+		res.Data["target_tab"] = target.id
+		res.Data["closed_tabs"] = closed
+		return res, nil
+	case "close_right":
+		target, err := s.resolveTab(req)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		closed, err := s.closeTabsRightOf(ctx, target.id)
+		if err != nil {
+			s.runtime.setLastError(err)
+			return ActionResult{}, err
+		}
+		res := s.tabsSnapshot()
+		res.Message = fmt.Sprintf("closed %d tabs to the right of %s", len(closed), target.id)
+		res.Data["target_tab"] = target.id
+		res.Data["closed_tabs"] = closed
+		return res, nil
 	case "close":
 		current, err := s.resolveTab(req)
 		if err != nil {
@@ -1086,6 +1116,83 @@ func (s *session) closeTab(ctx context.Context, id string) error {
 		s.activeTabID = s.preferredActiveTabIDLocked("")
 	}
 	s.updatedAt = time.Now()
+	return nil
+}
+
+func (s *session) closeOtherTabs(ctx context.Context, keepID string) ([]string, error) {
+	s.mu.RLock()
+	ids := make([]string, 0, len(s.tabs))
+	for _, tab := range s.tabs {
+		if tab != nil && tab.id != keepID {
+			ids = append(ids, tab.id)
+		}
+	}
+	s.mu.RUnlock()
+	if err := s.closeTabsByID(ctx, ids, keepID); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (s *session) closeTabsRightOf(ctx context.Context, targetID string) ([]string, error) {
+	s.mu.RLock()
+	targetIndex := -1
+	ids := make([]string, 0, len(s.tabs))
+	for i, tab := range s.tabs {
+		if tab == nil {
+			continue
+		}
+		if tab.id == targetID {
+			targetIndex = i
+		}
+	}
+	if targetIndex >= 0 {
+		for i := targetIndex + 1; i < len(s.tabs); i++ {
+			tab := s.tabs[i]
+			if tab != nil {
+				ids = append(ids, tab.id)
+			}
+		}
+	}
+	s.mu.RUnlock()
+	if targetIndex < 0 {
+		return nil, fmt.Errorf("unknown tab id %q", targetID)
+	}
+	if err := s.closeTabsByID(ctx, ids, targetID); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (s *session) closeTabsByID(ctx context.Context, ids []string, preferredActiveID string) error {
+	closedSet := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		closedSet[id] = struct{}{}
+	}
+	if len(closedSet) == 0 {
+		if strings.TrimSpace(preferredActiveID) != "" {
+			s.setActiveTab(preferredActiveID)
+		}
+		return nil
+	}
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if err := s.closeTab(ctx, id); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(preferredActiveID) != "" {
+		if _, ok := closedSet[preferredActiveID]; !ok {
+			s.setActiveTab(preferredActiveID)
+		}
+	}
 	return nil
 }
 

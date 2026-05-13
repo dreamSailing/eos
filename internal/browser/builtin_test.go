@@ -331,4 +331,57 @@ func TestBuiltinSessionTabs(t *testing.T) {
 	if tabs[0].ID != "tab-1" || !tabs[0].Active {
 		t.Fatalf("unexpected primary remaining tab state: %#v", tabs[0])
 	}
+
+	reopenLeftRes, err := sess.Tabs(ctx, TabsRequest{Action: "new", URL: srv.URL + "/two?a=1"})
+	if err != nil {
+		t.Fatalf("reopen second tab failed: %v", err)
+	}
+	leftID, _ := reopenLeftRes.Data["opened_tab"].(string)
+	reopenRightRes, err := sess.Tabs(ctx, TabsRequest{Action: "new", URL: srv.URL + "/two?a=2", Activate: false, HasActivate: true})
+	if err != nil {
+		t.Fatalf("reopen third tab failed: %v", err)
+	}
+	rightID, _ := reopenRightRes.Data["opened_tab"].(string)
+	rightRes, err := sess.Tabs(ctx, TabsRequest{Action: "close_right", Index: 0, HasIndex: true})
+	if err != nil {
+		t.Fatalf("close_right failed: %v", err)
+	}
+	if active, _ := rightRes.Data["active_tab"].(string); active != "tab-1" {
+		t.Fatalf("active_tab after close_right = %q, want tab-1", active)
+	}
+	if closedTabs, ok := rightRes.Data["closed_tabs"].([]string); !ok || len(closedTabs) != 2 || closedTabs[0] != leftID || closedTabs[1] != rightID {
+		t.Fatalf("closed_tabs after close_right = %#v", rightRes.Data["closed_tabs"])
+	}
+	tabs, ok = rightRes.Data["tabs"].([]TabInfo)
+	if !ok || len(tabs) != 1 || tabs[0].ID != "tab-1" || !tabs[0].Active {
+		t.Fatalf("unexpected tabs after close_right: %#v", rightRes.Data["tabs"])
+	}
+
+	keepRes, err := sess.Tabs(ctx, TabsRequest{Action: "new", URL: srv.URL + "/two?keep=1"})
+	if err != nil {
+		t.Fatalf("open keep tab failed: %v", err)
+	}
+	keepID, _ := keepRes.Data["opened_tab"].(string)
+	dropRes, err := sess.Tabs(ctx, TabsRequest{Action: "new", URL: srv.URL + "/two?drop=1", Activate: false, HasActivate: true})
+	if err != nil {
+		t.Fatalf("open drop tab failed: %v", err)
+	}
+	dropID, _ := dropRes.Data["opened_tab"].(string)
+	othersRes, err := sess.Tabs(ctx, TabsRequest{Action: "close_others", Query: "keep=1"})
+	if err != nil {
+		t.Fatalf("close_others failed: %v", err)
+	}
+	if active, _ := othersRes.Data["active_tab"].(string); active != keepID {
+		t.Fatalf("active_tab after close_others = %q, want %s", active, keepID)
+	}
+	if target, _ := othersRes.Data["target_tab"].(string); target != keepID {
+		t.Fatalf("target_tab after close_others = %q, want %s", target, keepID)
+	}
+	if closedTabs, ok := othersRes.Data["closed_tabs"].([]string); !ok || len(closedTabs) != 2 || closedTabs[0] != "tab-1" || closedTabs[1] != dropID {
+		t.Fatalf("closed_tabs after close_others = %#v", othersRes.Data["closed_tabs"])
+	}
+	tabs, ok = othersRes.Data["tabs"].([]TabInfo)
+	if !ok || len(tabs) != 1 || tabs[0].ID != keepID || !tabs[0].Active {
+		t.Fatalf("unexpected tabs after close_others: %#v", othersRes.Data["tabs"])
+	}
 }

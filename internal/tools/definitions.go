@@ -239,9 +239,9 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolBrowserTabs,
-			Description: "管理当前浏览器会话的标签页。支持 list、current、new、switch、activate_last、close 六种 action，切换或关闭时可用 id、index 或 match 定位目标标签页。",
+			Description: "管理当前浏览器会话的标签页。支持 list、current、new、switch、activate_last、close、close_others、close_right 八种 action，切换或关闭时可用 id、index 或 match 定位目标标签页。",
 			Params: map[string]*schema.ParameterInfo{
-				"action":   {Type: schema.String, Required: true, Desc: "操作类型：list、new、switch 或 close"},
+				"action":   {Type: schema.String, Required: true, Desc: "操作类型：list、current、new、switch、activate_last、close、close_others 或 close_right"},
 				"id":       {Type: schema.String, Required: false, Desc: "可选：目标标签页 ID"},
 				"index":    {Type: schema.Integer, Required: false, Desc: "可选：目标标签页索引（从 0 开始）"},
 				"match":    {Type: schema.String, Required: false, Desc: "可选：按标签页标题、URL 或 ID 做模糊匹配"},
@@ -257,6 +257,8 @@ func GetAllToolDefinitions() []ToolDefinition {
 				{Description: "切换到第二个标签页", Input: map[string]any{"action": "switch", "index": 1}},
 				{Description: "按标题或 URL 匹配切换标签页", Input: map[string]any{"action": "switch", "match": "docs"}},
 				{Description: "切回最近活跃的标签页", Input: map[string]any{"action": "activate_last"}},
+				{Description: "关闭其他标签页，仅保留当前匹配页", Input: map[string]any{"action": "close_others", "match": "docs"}},
+				{Description: "关闭目标标签页右侧的所有标签页", Input: map[string]any{"action": "close_right", "index": 0}},
 				{Description: "关闭指定标签页", Input: map[string]any{"action": "close", "id": "tab-2"}},
 			},
 		},
