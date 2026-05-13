@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/browser"
 	"github.com/dreamSailing/eos/internal/config"
 	codectx "github.com/dreamSailing/eos/internal/context"
 	"github.com/dreamSailing/eos/internal/mcp"
@@ -94,6 +95,7 @@ type Event struct {
 type RuntimeCore struct {
 	cm           *session.ContextManager
 	tm           *tools.Manager
+	browserRT    *browser.BuiltinRuntime
 	mcpMgr       *mcp.Manager
 	skillsLoader *skills.Loader
 	ctxEngine    *codectx.Engine
@@ -507,6 +509,7 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	rc := &RuntimeCore{
 		cm:                       cm,
 		tm:                       tm,
+		browserRT:                browser.NewBuiltinRuntime(),
 		mcpMgr:                   mcp.NewManager(),
 		skillsLoader:             skillsLoader,
 		gitMgr:                   git.NewManager(tm, cm),
@@ -531,6 +534,7 @@ func NewRuntimeCore(cm *session.ContextManager, tm *tools.Manager, ui CoreUI) *R
 	skillManager := tools.NewSkillManager(skillsLoader, tm)
 	tm.SetSkillManager(skillManager)
 	tm.SetMCPManager(rc.mcpMgr)
+	tm.SetBrowserRuntime(rc.browserRT)
 
 	hooks := einoruntime.SafetyGate{
 		Classify: func(call tools.ToolCall) (string, string, string, bool) {

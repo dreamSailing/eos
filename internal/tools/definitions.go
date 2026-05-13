@@ -55,6 +55,22 @@ const (
 	ToolTodoWrite               = "todo_write"
 	ToolMCPStatus               = "mcp_status"
 	ToolBrowserStatus           = "browser_status"
+	ToolBrowserNavigate         = "browser_navigate"
+	ToolBrowserSnapshot         = "browser_snapshot"
+	ToolBrowserInspect          = "browser_inspect"
+	ToolBrowserTabs             = "browser_tabs"
+	ToolBrowserBack             = "browser_back"
+	ToolBrowserForward          = "browser_forward"
+	ToolBrowserClick            = "browser_click"
+	ToolBrowserHover            = "browser_hover"
+	ToolBrowserType             = "browser_type"
+	ToolBrowserPressKey         = "browser_press_key"
+	ToolBrowserSelect           = "browser_select"
+	ToolBrowserWait             = "browser_wait"
+	ToolBrowserScroll           = "browser_scroll"
+	ToolBrowserScreenshot       = "browser_screenshot"
+	ToolBrowserConsole          = "browser_console"
+	ToolBrowserNetwork          = "browser_network"
 	ToolGitStatus               = "git_status"
 	ToolGitAdd                  = "git_add"
 	ToolGitCommit               = "git_commit"
@@ -200,6 +216,210 @@ func GetAllToolDefinitions() []ToolDefinition {
 			RiskLevel:   RiskLevelLow,
 			Examples: []ToolExample{
 				{Description: "检查浏览器能力是否可用", Input: map[string]any{}},
+			},
+		},
+		{
+			Name:        ToolBrowserNavigate,
+			Description: "使用内置浏览器后端导航到目标 URL，并在当前会话中记录页面内容与网络请求。",
+			Params: map[string]*schema.ParameterInfo{
+				"url": {Type: schema.String, Required: true, Desc: "完整目标 URL"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "打开一个网页", Input: map[string]any{"url": "https://example.com"}},
+			},
+		},
+		{
+			Name:        ToolBrowserSnapshot,
+			Description: "读取当前浏览器会话中的页面快照摘要，并返回当前 active tab 元信息、稳定元素 ref 列表以及轻量层级 outline。",
+			Params:      map[string]*schema.ParameterInfo{},
+			RiskLevel:   RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "获取当前页面快照", Input: map[string]any{}},
+			},
+		},
+		{
+			Name:        ToolBrowserInspect,
+			Description: "读取某个页面元素的细粒度详情。优先推荐使用 browser_snapshot 返回的 ref，也兼容 selector。",
+			Params: map[string]*schema.ParameterInfo{
+				"ref":      {Type: schema.String, Required: false, Desc: "来自 browser_snapshot 的稳定元素引用"},
+				"selector": {Type: schema.String, Required: false, Desc: "兼容模式：目标元素选择器"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "查看快照元素详情", Input: map[string]any{"ref": "e1"}},
+				{Description: "查看按钮详情", Input: map[string]any{"selector": "button[type=submit]"}},
+			},
+		},
+		{
+			Name:        ToolBrowserTabs,
+			Description: "管理当前浏览器会话的标签页。支持 list、current、new、switch、activate_last、close、close_others、close_right 八种 action，切换或关闭时可用 id、index 或 match 定位目标标签页。",
+			Params: map[string]*schema.ParameterInfo{
+				"action":   {Type: schema.String, Required: true, Desc: "操作类型：list、current、new、switch、activate_last、close、close_others 或 close_right"},
+				"id":       {Type: schema.String, Required: false, Desc: "可选：目标标签页 ID"},
+				"index":    {Type: schema.Integer, Required: false, Desc: "可选：目标标签页索引（从 0 开始）"},
+				"match":    {Type: schema.String, Required: false, Desc: "可选：按标签页标题、URL 或 ID 做模糊匹配"},
+				"url":      {Type: schema.String, Required: false, Desc: "action=new 时可选：新标签页打开的 URL"},
+				"activate": {Type: schema.Boolean, Required: false, Desc: "action=new 时可选：是否立即切换到新标签页，默认 true"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "列出当前标签页", Input: map[string]any{"action": "list"}},
+				{Description: "读取当前 active 标签页", Input: map[string]any{"action": "current"}},
+				{Description: "打开新标签页", Input: map[string]any{"action": "new", "url": "https://example.com"}},
+				{Description: "后台打开新标签页", Input: map[string]any{"action": "new", "url": "https://example.com/docs", "activate": false}},
+				{Description: "切换到第二个标签页", Input: map[string]any{"action": "switch", "index": 1}},
+				{Description: "按标题或 URL 匹配切换标签页", Input: map[string]any{"action": "switch", "match": "docs"}},
+				{Description: "切回最近活跃的标签页", Input: map[string]any{"action": "activate_last"}},
+				{Description: "关闭其他标签页，仅保留当前匹配页", Input: map[string]any{"action": "close_others", "match": "docs"}},
+				{Description: "关闭目标标签页右侧的所有标签页", Input: map[string]any{"action": "close_right", "index": 0}},
+				{Description: "关闭指定标签页", Input: map[string]any{"action": "close", "id": "tab-2"}},
+			},
+		},
+		{
+			Name:        ToolBrowserBack,
+			Description: "让当前浏览器会话回退到上一页。",
+			Params:      map[string]*schema.ParameterInfo{},
+			RiskLevel:   RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "回到上一页", Input: map[string]any{}},
+			},
+		},
+		{
+			Name:        ToolBrowserForward,
+			Description: "让当前浏览器会话前进到下一页。",
+			Params:      map[string]*schema.ParameterInfo{},
+			RiskLevel:   RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "前进到下一页", Input: map[string]any{}},
+			},
+		},
+		{
+			Name:        ToolBrowserClick,
+			Description: "在当前页面点击目标元素，优先推荐使用 browser_snapshot 返回的 ref，也兼容 selector。",
+			Params: map[string]*schema.ParameterInfo{
+				"ref":      {Type: schema.String, Required: false, Desc: "来自 browser_snapshot 的稳定元素引用"},
+				"selector": {Type: schema.String, Required: false, Desc: "兼容模式：目标元素选择器"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "点击快照元素", Input: map[string]any{"ref": "e1"}},
+				{Description: "点击登录按钮", Input: map[string]any{"selector": "button[type=submit]"}},
+			},
+		},
+		{
+			Name:        ToolBrowserHover,
+			Description: "在当前页面悬停到指定元素上，优先推荐使用 ref，也兼容 selector。",
+			Params: map[string]*schema.ParameterInfo{
+				"ref":      {Type: schema.String, Required: false, Desc: "来自 browser_snapshot 的稳定元素引用"},
+				"selector": {Type: schema.String, Required: false, Desc: "兼容模式：目标元素选择器"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "悬停到快照元素", Input: map[string]any{"ref": "e2"}},
+				{Description: "悬停到菜单按钮", Input: map[string]any{"selector": ".menu-trigger"}},
+			},
+		},
+		{
+			Name:        ToolBrowserType,
+			Description: "在当前页面向输入框填写文本，优先推荐使用 ref，也兼容 selector。",
+			Params: map[string]*schema.ParameterInfo{
+				"ref":      {Type: schema.String, Required: false, Desc: "来自 browser_snapshot 的稳定元素引用"},
+				"selector": {Type: schema.String, Required: false, Desc: "兼容模式：输入框选择器"},
+				"text":     {Type: schema.String, Required: true, Desc: "要输入的文本"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "向快照输入框填值", Input: map[string]any{"ref": "e3", "text": "admin@example.com"}},
+				{Description: "填写邮箱", Input: map[string]any{"selector": "input[type=email]", "text": "admin@example.com"}},
+			},
+		},
+		{
+			Name:        ToolBrowserPressKey,
+			Description: "向当前页面或指定元素发送键盘按键。",
+			Params: map[string]*schema.ParameterInfo{
+				"keys":     {Type: schema.String, Required: true, Desc: "要发送的键值，如 Enter、Tab 或普通文本"},
+				"ref":      {Type: schema.String, Required: false, Desc: "可选：来自 browser_snapshot 的稳定元素引用"},
+				"selector": {Type: schema.String, Required: false, Desc: "可选：先聚焦的目标元素"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "向输入框发送回车键", Input: map[string]any{"selector": "#search", "keys": "\n"}},
+			},
+		},
+		{
+			Name:        ToolBrowserSelect,
+			Description: "在当前页面选择下拉选项，优先推荐使用 ref，也兼容 selector。",
+			Params: map[string]*schema.ParameterInfo{
+				"ref":      {Type: schema.String, Required: false, Desc: "来自 browser_snapshot 的稳定元素引用"},
+				"selector": {Type: schema.String, Required: false, Desc: "兼容模式：下拉框选择器"},
+				"values":   {Type: schema.Array, Required: true, Desc: "要选择的值列表"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "选择快照下拉框中的值", Input: map[string]any{"ref": "e4", "values": []string{"cn"}}},
+				{Description: "选择一个地区", Input: map[string]any{"selector": "select#region", "values": []string{"cn"}}},
+			},
+		},
+		{
+			Name:        ToolBrowserWait,
+			Description: "等待页面变化或超时。可选传入选择器和超时时间（毫秒）。",
+			Params: map[string]*schema.ParameterInfo{
+				"ref":      {Type: schema.String, Required: false, Desc: "可选：来自 browser_snapshot 的稳定元素引用"},
+				"selector": {Type: schema.String, Required: false, Desc: "可选：等待的选择器"},
+				"timeout":  {Type: schema.Integer, Required: false, Desc: "可选：等待毫秒数"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "等待 1 秒", Input: map[string]any{"timeout": 1000}},
+			},
+		},
+		{
+			Name:        ToolBrowserScroll,
+			Description: "滚动窗口或将指定元素滚动到视口内。",
+			Params: map[string]*schema.ParameterInfo{
+				"ref":      {Type: schema.String, Required: false, Desc: "可选：来自 browser_snapshot 的稳定元素引用"},
+				"selector": {Type: schema.String, Required: false, Desc: "可选：要滚动到视口内的元素"},
+				"x":        {Type: schema.Integer, Required: false, Desc: "可选：窗口横向滚动偏移"},
+				"y":        {Type: schema.Integer, Required: false, Desc: "可选：窗口纵向滚动偏移"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "窗口向下滚动", Input: map[string]any{"y": 600}},
+				{Description: "将元素滚动到视口内", Input: map[string]any{"selector": "#footer"}},
+			},
+		},
+		{
+			Name:        ToolBrowserScreenshot,
+			Description: "将当前页面保存为截图到指定路径。",
+			Params: map[string]*schema.ParameterInfo{
+				"path": {Type: schema.String, Required: true, Desc: "输出文件路径"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "保存页面快照", Input: map[string]any{"path": "artifacts/page.html"}},
+			},
+		},
+		{
+			Name:        ToolBrowserConsole,
+			Description: "读取当前浏览器会话的控制台信息。",
+			Params: map[string]*schema.ParameterInfo{
+				"limit": {Type: schema.Integer, Required: false, Desc: "可选：返回条数限制"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "读取最近控制台消息", Input: map[string]any{"limit": 20}},
+			},
+		},
+		{
+			Name:        ToolBrowserNetwork,
+			Description: "读取当前浏览器会话记录到的网络请求。",
+			Params: map[string]*schema.ParameterInfo{
+				"limit": {Type: schema.Integer, Required: false, Desc: "可选：返回条数限制"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "读取最近网络请求", Input: map[string]any{"limit": 20}},
 			},
 		},
 		{

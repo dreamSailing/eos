@@ -86,6 +86,9 @@ func (rc *RuntimeCore) GraphInvokePlanWithImages(ctx context.Context, query, exe
 		ctx = tools.WithTraceID(ctx, traceID)
 	}
 	ctx = rc.withWorkspaceRoot(ctx)
+	if rc.browserRT != nil {
+		rc.browserRT.StartTrace(traceID)
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	rc.setForegroundRequest(traceID, cancel)
 	defer func() {
@@ -177,6 +180,9 @@ func (rc *RuntimeCore) FinalizeTask(traceID string, userText string, assistantTe
 	ch := make(chan struct{}, 1)
 	rc.reqCh <- finalizeTaskReq{traceID: traceID, userText: userText, assistantText: assistantText, success: success, errorMsg: errorMsg, resCh: ch}
 	<-ch
+	if rc.browserRT != nil {
+		rc.browserRT.ReleaseTrace(traceID)
+	}
 }
 
 // WithOnMeta 设置元数据回调
