@@ -39,6 +39,7 @@ type TabsRequest struct {
 	ID          string
 	Index       int
 	HasIndex    bool
+	Query       string
 	URL         string
 	Activate    bool
 	HasActivate bool
@@ -126,6 +127,14 @@ type RuntimeStatus struct {
 	Ready        bool
 	LastError    string
 	Capabilities []string
+}
+
+type SessionSnapshot struct {
+	TraceID   string    `json:"trace_id"`
+	UpdatedAt time.Time `json:"updated_at"`
+	ActiveTab string    `json:"active_tab"`
+	TabCount  int       `json:"tab_count"`
+	Tabs      []TabInfo `json:"tabs"`
 }
 
 type BuiltinRuntime struct {
@@ -261,6 +270,22 @@ func (r *BuiltinRuntime) SessionCount() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.sessions)
+}
+
+func (r *BuiltinRuntime) SessionSnapshots() []SessionSnapshot {
+	r.mu.RLock()
+	sessions := make([]*session, 0, len(r.sessions))
+	for _, sess := range r.sessions {
+		if sess != nil {
+			sessions = append(sessions, sess)
+		}
+	}
+	r.mu.RUnlock()
+	out := make([]SessionSnapshot, 0, len(sessions))
+	for _, sess := range sessions {
+		out = append(out, sess.snapshot())
+	}
+	return out
 }
 
 func (r *BuiltinRuntime) Close() {
@@ -862,11 +887,70 @@ func (s *session) resolveTab(req TabsRequest) (*tab, error) {
 		}
 		return s.tabs[req.Index], nil
 	}
+	if query := strings.ToLower(strings.TrimSpace(req.Query)); query != "" {
+		if tab, err := s.findTabByQueryLocked(query); err == nil {
+			return tab, nil
+		} else {
+			return nil, err
+		}
+	}
 	tab := s.activeTabLocked()
 	if tab == nil {
 		return nil, ErrNoLoadedPage
 	}
 	return tab, nil
+}
+
+func (s *session) findTabByQueryLocked(query string) (*tab, error) {
+	matches := make([]*tab, 0, len(s.tabs))
+	exact := make([]*tab, 0, len(s.tabs))
+	for _, tab := range s.tabs {
+		if tab == nil {
+			continue
+		}
+		tab.mu.RLock()
+		id := strings.ToLower(strings.TrimSpace(tab.id))
+		title := strings.ToLower(strings.TrimSpace(tab.lastTitle))
+		url := strings.ToLower(strings.TrimSpace(tab.lastURL))
+		tab.mu.RUnlock()
+		if id == query || title == query || url == query {
+			exact = append(exact, tab)
+			continue
+		}
+		if strings.Contains(id, query) || strings.Contains(title, query) || strings.Contains(url, query) {
+			matches = append(matches, tab)
+		}
+	}
+	if len(exact) == 1 {
+		return exact[0], nil
+	}
+	if len(exact) > 1 {
+		return s.chooseMatchedTabLocked(exact, query)
+	}
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("no tab matched %q", query)
+	}
+	return s.chooseMatchedTabLocked(matches, query)
+}
+
+func (s *session) chooseMatchedTabLocked(candidates []*tab, query string) (*tab, error) {
+	if len(candidates) == 1 {
+		return candidates[0], nil
+	}
+	if s.activeTabID != "" {
+		for _, tab := range candidates {
+			if tab != nil && tab.id == s.activeTabID {
+				return tab, nil
+			}
+		}
+	}
+	ids := make([]string, 0, len(candidates))
+	for _, tab := range candidates {
+		if tab != nil {
+			ids = append(ids, tab.id)
+		}
+	}
+	return nil, fmt.Errorf("multiple tabs matched %q: %s", query, strings.Join(ids, ", "))
 }
 
 func (s *session) createTab(ctx context.Context, targetURL string, activate bool) (*tab, error) {
@@ -995,6 +1079,22 @@ func (s *session) tabInfos() []TabInfo {
 		out = append(out, info)
 	}
 	return out
+}
+
+func (s *session) snapshot() SessionSnapshot {
+	s.mu.RLock()
+	traceID := s.traceID
+	updatedAt := s.updatedAt
+	activeTab := s.activeTabID
+	s.mu.RUnlock()
+	tabs := s.tabInfos()
+	return SessionSnapshot{
+		TraceID:   traceID,
+		UpdatedAt: updatedAt,
+		ActiveTab: activeTab,
+		TabCount:  len(tabs),
+		Tabs:      tabs,
+	}
 }
 
 func (s *session) preferredActiveTabIDLocked(excludeID string) string {

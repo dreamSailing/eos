@@ -26,6 +26,7 @@ func (m *Manager) browserSnapshotStructured(ctx context.Context, params map[stri
 func (m *Manager) browserTabsStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	action, _ := params["action"].(string)
 	id, _ := params["id"].(string)
+	query, _ := params["match"].(string)
 	url, _ := params["url"].(string)
 	index, hasIndex := intParamWithPresence(params["index"])
 	activate, hasActivate := boolParamWithPresence(params["activate"])
@@ -35,6 +36,7 @@ func (m *Manager) browserTabsStructured(ctx context.Context, params map[string]i
 			ID:          strings.TrimSpace(id),
 			Index:       index,
 			HasIndex:    hasIndex,
+			Query:       strings.TrimSpace(query),
 			URL:         strings.TrimSpace(url),
 			Activate:    activate,
 			HasActivate: hasActivate,

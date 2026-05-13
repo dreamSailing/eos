@@ -205,6 +205,13 @@ func TestBrowserToolsTabs(t *testing.T) {
 	if active, _ := bgRes.Data["active_tab"].(string); active != "tab-2" {
 		t.Fatalf("active_tab after background open = %q, want tab-2", active)
 	}
+	matchRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "switch", "match": "two?bg=1"})
+	if matchRes.Status != "success" {
+		t.Fatalf("tabs match switch failed: %+v", matchRes)
+	}
+	if active, _ := matchRes.Data["active_tab"].(string); active != "tab-3" {
+		t.Fatalf("active_tab after match switch = %q, want tab-3", active)
+	}
 
 	switchRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "switch", "index": 0})
 	if switchRes.Status != "success" {
@@ -213,6 +220,13 @@ func TestBrowserToolsTabs(t *testing.T) {
 	snap := mgr.browserSnapshotStructured(ctx, map[string]interface{}{})
 	if snap.Status != "success" || !strings.Contains(snap.Display, "One") {
 		t.Fatalf("snapshot after switch failed: %+v", snap)
+	}
+	closeMatchRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "close", "match": "bg=1"})
+	if closeMatchRes.Status != "success" {
+		t.Fatalf("tabs close by match failed: %+v", closeMatchRes)
+	}
+	if closed, _ := closeMatchRes.Data["closed_tab"].(string); closed != "tab-3" {
+		t.Fatalf("closed_tab by match = %q, want tab-3", closed)
 	}
 
 	closeRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "close", "id": "tab-2"})
@@ -228,5 +242,49 @@ func TestBrowserToolsTabs(t *testing.T) {
 	}
 	if closed, _ := closeRes.Data["closed_tab"].(string); closed != "tab-2" {
 		t.Fatalf("closed_tab = %q, want tab-2", closed)
+	}
+}
+
+func TestBrowserStatusIncludesBuiltinSession(t *testing.T) {
+	mgr := NewManager()
+	rt := browser.NewBuiltinRuntime()
+	if !rt.Status().Ready {
+		t.Skipf("builtin browser unavailable: %s", rt.Status().LastError)
+	}
+	mgr.SetBrowserRuntime(rt)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<!doctype html><html><head><title>Status Demo</title></head><body><h1>Status Demo</h1></body></html>`))
+	}))
+	defer srv.Close()
+
+	ctx := WithWorkspaceRoot(WithTraceID(context.Background(), "rid-browser-status"), t.TempDir())
+	if nav := mgr.browserNavigateStructured(ctx, map[string]interface{}{"url": srv.URL}); nav.Status != "success" {
+		t.Fatalf("navigate failed: %+v", nav)
+	}
+	if newRes := mgr.browserTabsStructured(ctx, map[string]interface{}{"action": "new", "url": srv.URL + "/two", "activate": false}); newRes.Status != "success" {
+		t.Fatalf("tabs new failed: %+v", newRes)
+	}
+
+	status := mgr.browserStatusStructured(ctx, map[string]interface{}{})
+	if status.Status != "success" {
+		t.Fatalf("browser status failed: %+v", status)
+	}
+	if !strings.Contains(status.Display, "builtin_ready=true") {
+		t.Fatalf("status missing builtin readiness: %q", status.Display)
+	}
+	if !strings.Contains(status.Display, "trace_id=rid-browser-status") {
+		t.Fatalf("status missing trace id: %q", status.Display)
+	}
+	if !strings.Contains(status.Display, "active_tab=tab-1") {
+		t.Fatalf("status missing active tab: %q", status.Display)
+	}
+	current, ok := status.Data["current_session"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("current_session missing: %#v", status.Data["current_session"])
+	}
+	if got, _ := current["tab_count"].(int); got != 2 {
+		t.Fatalf("tab_count = %v, want 2", current["tab_count"])
 	}
 }

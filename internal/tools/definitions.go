@@ -239,11 +239,12 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolBrowserTabs,
-			Description: "管理当前浏览器会话的标签页。支持 list、new、switch、close 四种 action，new 时可选择是否立即切换到新标签页。",
+			Description: "管理当前浏览器会话的标签页。支持 list、new、switch、close 四种 action，切换或关闭时可用 id、index 或 match 定位目标标签页。",
 			Params: map[string]*schema.ParameterInfo{
 				"action":   {Type: schema.String, Required: true, Desc: "操作类型：list、new、switch 或 close"},
 				"id":       {Type: schema.String, Required: false, Desc: "可选：目标标签页 ID"},
 				"index":    {Type: schema.Integer, Required: false, Desc: "可选：目标标签页索引（从 0 开始）"},
+				"match":    {Type: schema.String, Required: false, Desc: "可选：按标签页标题、URL 或 ID 做模糊匹配"},
 				"url":      {Type: schema.String, Required: false, Desc: "action=new 时可选：新标签页打开的 URL"},
 				"activate": {Type: schema.Boolean, Required: false, Desc: "action=new 时可选：是否立即切换到新标签页，默认 true"},
 			},
@@ -253,6 +254,7 @@ func GetAllToolDefinitions() []ToolDefinition {
 				{Description: "打开新标签页", Input: map[string]any{"action": "new", "url": "https://example.com"}},
 				{Description: "后台打开新标签页", Input: map[string]any{"action": "new", "url": "https://example.com/docs", "activate": false}},
 				{Description: "切换到第二个标签页", Input: map[string]any{"action": "switch", "index": 1}},
+				{Description: "按标题或 URL 匹配切换标签页", Input: map[string]any{"action": "switch", "match": "docs"}},
 				{Description: "关闭指定标签页", Input: map[string]any{"action": "close", "id": "tab-2"}},
 			},
 		},

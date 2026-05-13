@@ -253,6 +253,13 @@ func TestBuiltinSessionTabs(t *testing.T) {
 	if active, _ := bgRes.Data["active_tab"].(string); active != "tab-2" {
 		t.Fatalf("active_tab after background open = %q, want tab-2", active)
 	}
+	matchRes, err := sess.Tabs(ctx, TabsRequest{Action: "switch", Query: "two?bg=1"})
+	if err != nil {
+		t.Fatalf("switch by query failed: %v", err)
+	}
+	if active, _ := matchRes.Data["active_tab"].(string); active != "tab-3" {
+		t.Fatalf("active_tab after query switch = %q, want tab-3", active)
+	}
 
 	switchRes, err := sess.Tabs(ctx, TabsRequest{Action: "switch", Index: 0, HasIndex: true})
 	if err != nil {
@@ -267,6 +274,17 @@ func TestBuiltinSessionTabs(t *testing.T) {
 	}
 	if !strings.Contains(snap.Message, "One") {
 		t.Fatalf("snapshot missing first tab content: %q", snap.Message)
+	}
+	closeByMatchRes, err := sess.Tabs(ctx, TabsRequest{Action: "close", Query: "bg=1"})
+	if err != nil {
+		t.Fatalf("close by query failed: %v", err)
+	}
+	if closed, _ := closeByMatchRes.Data["closed_tab"].(string); closed != "tab-3" {
+		t.Fatalf("closed_tab by query = %q, want tab-3", closed)
+	}
+	tabs, ok = closeByMatchRes.Data["tabs"].([]TabInfo)
+	if !ok || len(tabs) != 2 {
+		t.Fatalf("expected 2 tabs after query close, got %#v", closeByMatchRes.Data["tabs"])
 	}
 	switchRes, err = sess.Tabs(ctx, TabsRequest{Action: "switch", ID: "tab-2"})
 	if err != nil {
