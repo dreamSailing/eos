@@ -55,6 +55,15 @@ const (
 	ToolTodoWrite               = "todo_write"
 	ToolMCPStatus               = "mcp_status"
 	ToolBrowserStatus           = "browser_status"
+	ToolBrowserNavigate         = "browser_navigate"
+	ToolBrowserSnapshot         = "browser_snapshot"
+	ToolBrowserClick            = "browser_click"
+	ToolBrowserType             = "browser_type"
+	ToolBrowserSelect           = "browser_select"
+	ToolBrowserWait             = "browser_wait"
+	ToolBrowserScreenshot       = "browser_screenshot"
+	ToolBrowserConsole          = "browser_console"
+	ToolBrowserNetwork          = "browser_network"
 	ToolGitStatus               = "git_status"
 	ToolGitAdd                  = "git_add"
 	ToolGitCommit               = "git_commit"
@@ -200,6 +209,106 @@ func GetAllToolDefinitions() []ToolDefinition {
 			RiskLevel:   RiskLevelLow,
 			Examples: []ToolExample{
 				{Description: "检查浏览器能力是否可用", Input: map[string]any{}},
+			},
+		},
+		{
+			Name:        ToolBrowserNavigate,
+			Description: "使用内置浏览器后端导航到目标 URL，并在当前会话中记录页面内容与网络请求。",
+			Params: map[string]*schema.ParameterInfo{
+				"url": {Type: schema.String, Required: true, Desc: "完整目标 URL"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "打开一个网页", Input: map[string]any{"url": "https://example.com"}},
+			},
+		},
+		{
+			Name:        ToolBrowserSnapshot,
+			Description: "读取当前浏览器会话中的页面快照摘要。",
+			Params:      map[string]*schema.ParameterInfo{},
+			RiskLevel:   RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "获取当前页面快照", Input: map[string]any{}},
+			},
+		},
+		{
+			Name:        ToolBrowserClick,
+			Description: "在当前页面点击指定选择器。当前内置浏览器仅在后端支持 DOM 操作时生效。",
+			Params: map[string]*schema.ParameterInfo{
+				"selector": {Type: schema.String, Required: true, Desc: "目标元素选择器"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "点击登录按钮", Input: map[string]any{"selector": "button[type=submit]"}},
+			},
+		},
+		{
+			Name:        ToolBrowserType,
+			Description: "在当前页面向输入框填写文本。当前内置浏览器仅在后端支持 DOM 操作时生效。",
+			Params: map[string]*schema.ParameterInfo{
+				"selector": {Type: schema.String, Required: true, Desc: "输入框选择器"},
+				"text":     {Type: schema.String, Required: true, Desc: "要输入的文本"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "填写邮箱", Input: map[string]any{"selector": "input[type=email]", "text": "admin@example.com"}},
+			},
+		},
+		{
+			Name:        ToolBrowserSelect,
+			Description: "在当前页面选择下拉选项。当前内置浏览器仅在后端支持 DOM 操作时生效。",
+			Params: map[string]*schema.ParameterInfo{
+				"selector": {Type: schema.String, Required: true, Desc: "下拉框选择器"},
+				"values":   {Type: schema.Array, Required: true, Desc: "要选择的值列表"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "选择一个地区", Input: map[string]any{"selector": "select#region", "values": []string{"cn"}}},
+			},
+		},
+		{
+			Name:        ToolBrowserWait,
+			Description: "等待页面变化或超时。可选传入选择器和超时时间（毫秒）。",
+			Params: map[string]*schema.ParameterInfo{
+				"selector": {Type: schema.String, Required: false, Desc: "可选：等待的选择器"},
+				"timeout":  {Type: schema.Integer, Required: false, Desc: "可选：等待毫秒数"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "等待 1 秒", Input: map[string]any{"timeout": 1000}},
+			},
+		},
+		{
+			Name:        ToolBrowserScreenshot,
+			Description: "将当前页面保存到指定路径。当前内置浏览器会写出 HTML 快照以便调试。",
+			Params: map[string]*schema.ParameterInfo{
+				"path": {Type: schema.String, Required: true, Desc: "输出文件路径"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "保存页面快照", Input: map[string]any{"path": "artifacts/page.html"}},
+			},
+		},
+		{
+			Name:        ToolBrowserConsole,
+			Description: "读取当前浏览器会话的控制台信息。当前内置浏览器仅在后端支持脚本执行时生效。",
+			Params: map[string]*schema.ParameterInfo{
+				"limit": {Type: schema.Integer, Required: false, Desc: "可选：返回条数限制"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "读取最近控制台消息", Input: map[string]any{"limit": 20}},
+			},
+		},
+		{
+			Name:        ToolBrowserNetwork,
+			Description: "读取当前浏览器会话记录到的网络请求。",
+			Params: map[string]*schema.ParameterInfo{
+				"limit": {Type: schema.Integer, Required: false, Desc: "可选：返回条数限制"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{Description: "读取最近网络请求", Input: map[string]any{"limit": 20}},
 			},
 		},
 		{

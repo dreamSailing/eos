@@ -8,6 +8,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/browser"
 	"github.com/dreamSailing/eos/internal/mcp"
 	"github.com/dreamSailing/eos/internal/pkg/plugins"
 	"github.com/dreamSailing/eos/internal/pkg/utils"
@@ -40,6 +41,7 @@ type Manager struct {
 	skillManager *SkillManager
 	cache        *ToolCache // 工具输出缓存
 	mcpManager   *mcp.Manager
+	browserRT    *browser.BuiltinRuntime
 	hookRunner   HookRunner // Hook integration for tool execution
 
 	// OnReactiveCompact is called when a tool result exceeds the reactive compaction threshold
@@ -104,6 +106,15 @@ func NewManager() *Manager {
 		ToolProjectStructure:        m.projectStructureStructured,
 		ToolMCPStatus:               m.mcpStatusStructured,
 		ToolBrowserStatus:           m.browserStatusStructured,
+		ToolBrowserNavigate:         m.browserNavigateStructured,
+		ToolBrowserSnapshot:         m.browserSnapshotStructured,
+		ToolBrowserClick:            m.browserClickStructured,
+		ToolBrowserType:             m.browserTypeStructured,
+		ToolBrowserSelect:           m.browserSelectStructured,
+		ToolBrowserWait:             m.browserWaitStructured,
+		ToolBrowserScreenshot:       m.browserScreenshotStructured,
+		ToolBrowserConsole:          m.browserConsoleStructured,
+		ToolBrowserNetwork:          m.browserNetworkStructured,
 		ToolSkillsList:              m.skillsListStructured,
 		ToolAskUserQuestion:         m.askUserQuestionStructured,
 		ToolEnterPlanMode:           m.enterPlanModeStructured,

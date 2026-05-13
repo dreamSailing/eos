@@ -234,6 +234,10 @@ func ClassifyToolDanger(call ToolCall) (category string, level string, summary s
 		return "git:worktree", "medium", "create git worktree", false
 	case ToolMCPListResources, ToolMCPReadResource, ToolStructuredOutput, ToolSnip, ToolBrowserStatus:
 		return "", "low", call.Tool, false
+	case ToolBrowserNavigate, ToolBrowserSnapshot, ToolBrowserWait, ToolBrowserConsole, ToolBrowserNetwork:
+		return "browser", "medium", call.Tool, false
+	case ToolBrowserClick, ToolBrowserType, ToolBrowserSelect, ToolBrowserScreenshot:
+		return "browser", "medium", call.Tool, false
 	case ToolPowerShell:
 		return "shell:powershell", "high", "powershell", true
 	case ToolTeamCreate, ToolTeamDelete:
@@ -300,6 +304,10 @@ func workspaceWriteBoundaryViolation(ctx context.Context, call ToolCall) string 
 	case strings.ToLower(ToolPowerShell):
 		command, _ := call.Parameters["command"].(string)
 		return shellCommandBoundaryViolation(workspaceRoot, command)
+	case strings.ToLower(ToolBrowserScreenshot):
+		if reason := boundaryViolationForParam(workspaceRoot, "path", call.Parameters); reason != "" {
+			return reason
+		}
 	}
 	return ""
 }

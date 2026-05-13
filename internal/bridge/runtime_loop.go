@@ -941,6 +941,10 @@ func (rc *RuntimeCore) Shutdown() {
 	// 关闭 LSP 管理器
 	rc.ShutdownLSPManager(rc.lspManager)
 
+	if rc.browserRT != nil {
+		rc.browserRT.Close()
+	}
+
 	// 关闭 done 通道，通知 loop 退出
 	select {
 	case <-rc.done:
