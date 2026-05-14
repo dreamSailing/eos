@@ -204,12 +204,30 @@ type PluginInfo struct {
 }
 
 type CostItem struct {
-	Time      time.Time
-	Model     string
-	Input     *int
-	Reply     *int
-	Token     *int
-	CostCents *int
+	Time              time.Time
+	Model             string
+	Input             *int
+	Reply             *int
+	Token             *int
+	CostCents         *int
+	InputTokens       *int
+	ReplyTokens       *int
+	CachedInputTokens *int
+	TotalTokens       *int
+	CostUSD           *float64
+	UsageKnown        bool
+	CostKnown         bool
+}
+
+type UsageSummary struct {
+	Rounds             int
+	InputTokens        *int
+	ReplyTokens        *int
+	CachedInputTokens  *int
+	TotalTokens        *int
+	CostUSD            *float64
+	UnknownUsageRounds int
+	UnknownCostRounds  int
 }
 
 func NewRuntime() *Runtime {
@@ -2022,21 +2040,46 @@ func (r *Runtime) ExportContext(path string) error {
 }
 
 func (r *Runtime) CostSummary() string {
+	s := r.UsageSummary()
+	if s.Rounds == 0 {
+		return "暂无模型调用"
+	}
+	parts := []string{fmt.Sprintf("%d 轮", s.Rounds)}
+	if s.InputTokens != nil {
+		parts = append(parts, fmt.Sprintf("输入 %d", *s.InputTokens))
+	}
+	if s.ReplyTokens != nil {
+		parts = append(parts, fmt.Sprintf("回复 %d", *s.ReplyTokens))
+	}
+	if s.TotalTokens != nil {
+		parts = append(parts, fmt.Sprintf("总计 %d", *s.TotalTokens))
+	}
+	if s.UnknownUsageRounds > 0 {
+		parts = append(parts, fmt.Sprintf("usage 未知 %d 轮", s.UnknownUsageRounds))
+	}
+	if s.CostUSD != nil {
+		parts = append(parts, "费用估算 "+formatCostUSD(*s.CostUSD))
+	}
+	if s.UnknownCostRounds > 0 {
+		parts = append(parts, fmt.Sprintf("费用未知 %d 轮", s.UnknownCostRounds))
+	} else if s.CostUSD == nil {
+		parts = append(parts, "费用未知")
+	}
+	return strings.Join(parts, " · ")
+}
+
+func (r *Runtime) UsageSummary() UsageSummary {
 	s := r.core.GetTokenStats()
-	parts := []string{fmt.Sprintf("rounds=%d", s.Rounds)}
-	if s.Input != nil {
-		parts = append(parts, fmt.Sprintf("input=%d", *s.Input))
+	return UsageSummary{
+		Rounds:             s.Rounds,
+		InputTokens:        s.Input,
+		ReplyTokens:        s.Reply,
+		CachedInputTokens:  s.CachedInput,
+		TotalTokens:        s.Total,
+		CostUSD:            s.TotalCostUSD,
+		UnknownUsageRounds: s.UnknownUsageRounds,
+		UnknownCostRounds:  s.UnknownCostRounds,
 	}
-	if s.Reply != nil {
-		parts = append(parts, fmt.Sprintf("reply=%d", *s.Reply))
-	}
-	if s.Total != nil {
-		parts = append(parts, fmt.Sprintf("total=%d", *s.Total))
-	}
-	if len(parts) == 1 {
-		parts = append(parts, "usage=unknown")
-	}
-	return strings.Join(parts, " ")
 }
 
 func (r *Runtime) CostItems() []CostItem {
@@ -2044,12 +2087,19 @@ func (r *Runtime) CostItems() []CostItem {
 	items := make([]CostItem, 0, len(raw))
 	for _, it := range raw {
 		items = append(items, CostItem{
-			Time:      it.Timestamp,
-			Model:     it.Model,
-			Input:     it.Input,
-			Reply:     it.Reply,
-			Token:     it.Total,
-			CostCents: nil,
+			Time:              it.Timestamp,
+			Model:             it.Model,
+			Input:             it.Input,
+			Reply:             it.Reply,
+			Token:             it.Total,
+			CostCents:         nil,
+			InputTokens:       it.Input,
+			ReplyTokens:       it.Reply,
+			CachedInputTokens: it.CachedInput,
+			TotalTokens:       it.Total,
+			CostUSD:           it.CostUSD,
+			UsageKnown:        it.Total != nil,
+			CostKnown:         it.CostUSD != nil,
 		})
 	}
 	slices.SortFunc(items, func(a, b CostItem) int {
@@ -2062,6 +2112,17 @@ func (r *Runtime) CostItems() []CostItem {
 		return strings.Compare(a.Model, b.Model)
 	})
 	return items
+}
+
+func formatCostUSD(value float64) string {
+	switch {
+	case value >= 1:
+		return fmt.Sprintf("$%.2f", value)
+	case value >= 0.01:
+		return fmt.Sprintf("$%.4f", value)
+	default:
+		return fmt.Sprintf("$%.6f", value)
+	}
 }
 
 func (r *Runtime) projectRulesPath() string {

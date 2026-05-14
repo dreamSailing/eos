@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloudwego/eino/schema"
 	"github.com/dreamSailing/eos/internal/bridge"
 	"github.com/dreamSailing/eos/internal/config"
 	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
@@ -81,6 +82,88 @@ func TestRuntimeStateChangesNotifySubscribers(t *testing.T) {
 	unsubscribe()
 	if _, ok := <-events; ok {
 		t.Fatal("expected subscription channel to close after unsubscribe")
+	}
+}
+
+func TestRuntimeUsageSummaryEmpty(t *testing.T) {
+	configureCoreWorkspaceTestEnv(t)
+	rt := NewRuntime()
+	defer rt.Close()
+
+	summary := rt.UsageSummary()
+	if summary.Rounds != 0 {
+		t.Fatalf("summary.Rounds=%d, want 0", summary.Rounds)
+	}
+	if summary.InputTokens != nil || summary.ReplyTokens != nil || summary.TotalTokens != nil || summary.CostUSD != nil {
+		t.Fatalf("expected empty optional usage fields, got %#v", summary)
+	}
+	if got := rt.CostSummary(); got != "暂无模型调用" {
+		t.Fatalf("CostSummary()=%q, want 暂无模型调用", got)
+	}
+}
+
+func TestRuntimeUsageSummaryTracksProviderUsageAndUnknownRounds(t *testing.T) {
+	configureCoreWorkspaceTestEnv(t)
+	rt := NewRuntime()
+	defer rt.Close()
+
+	rt.core.AddTokenRecordWithModel(&schema.TokenUsage{
+		PromptTokens:     1000,
+		CompletionTokens: 200,
+		TotalTokens:      1200,
+		PromptTokenDetails: schema.PromptTokenDetails{
+			CachedTokens: 250,
+		},
+	}, "deepseek-v4-pro")
+	rt.core.AddTokenRecordWithModel(nil, "custom-no-usage")
+
+	summary := rt.UsageSummary()
+	if summary.Rounds != 2 {
+		t.Fatalf("summary.Rounds=%d, want 2", summary.Rounds)
+	}
+	if summary.InputTokens == nil || *summary.InputTokens != 1000 {
+		t.Fatalf("summary.InputTokens=%v, want 1000", summary.InputTokens)
+	}
+	if summary.ReplyTokens == nil || *summary.ReplyTokens != 200 {
+		t.Fatalf("summary.ReplyTokens=%v, want 200", summary.ReplyTokens)
+	}
+	if summary.TotalTokens == nil || *summary.TotalTokens != 1200 {
+		t.Fatalf("summary.TotalTokens=%v, want 1200", summary.TotalTokens)
+	}
+	if summary.CachedInputTokens == nil || *summary.CachedInputTokens != 250 {
+		t.Fatalf("summary.CachedInputTokens=%v, want 250", summary.CachedInputTokens)
+	}
+	if summary.CostUSD == nil || *summary.CostUSD <= 0 {
+		t.Fatalf("summary.CostUSD=%v, want > 0", summary.CostUSD)
+	}
+	if summary.UnknownUsageRounds != 1 || summary.UnknownCostRounds != 1 {
+		t.Fatalf("unknown rounds got usage=%d cost=%d, want 1/1", summary.UnknownUsageRounds, summary.UnknownCostRounds)
+	}
+
+	items := rt.CostItems()
+	if len(items) != 2 {
+		t.Fatalf("len(CostItems())=%d, want 2", len(items))
+	}
+	var known, unknown *CostItem
+	for i := range items {
+		switch items[i].Model {
+		case "deepseek-v4-pro":
+			known = &items[i]
+		case "custom-no-usage":
+			unknown = &items[i]
+		}
+	}
+	if known == nil || !known.UsageKnown || !known.CostKnown {
+		t.Fatalf("known item missing usage/cost: %#v", known)
+	}
+	if known.InputTokens == nil || *known.InputTokens != 1000 || known.CachedInputTokens == nil || *known.CachedInputTokens != 250 {
+		t.Fatalf("known item token fields not preserved: %#v", known)
+	}
+	if unknown == nil || unknown.UsageKnown || unknown.CostKnown || unknown.TotalTokens != nil || unknown.CostUSD != nil {
+		t.Fatalf("unknown item should preserve nil usage/cost: %#v", unknown)
+	}
+	if got := rt.CostSummary(); !strings.Contains(got, "2 轮") || !strings.Contains(got, "usage 未知 1 轮") || !strings.Contains(got, "费用估算 $") || !strings.Contains(got, "费用未知 1 轮") {
+		t.Fatalf("CostSummary()=%q, want readable token/cost summary", got)
 	}
 }
 

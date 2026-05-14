@@ -5,7 +5,6 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"time"
 
@@ -70,7 +69,14 @@ func (rc *RuntimeCore) GetTokenStats() TokenStats {
 		stats.Input = addOptionalInt(stats.Input, r.Input)
 		stats.Reply = addOptionalInt(stats.Reply, r.Reply)
 		stats.Total = addOptionalInt(stats.Total, r.Total)
+		stats.CachedInput = addOptionalInt(stats.CachedInput, r.CachedInput)
 		stats.TotalCostUSD = addOptionalFloat(stats.TotalCostUSD, r.CostUSD)
+		if r.Total == nil {
+			stats.UnknownUsageRounds++
+		}
+		if r.CostUSD == nil {
+			stats.UnknownCostRounds++
+		}
 	}
 	return stats
 }
@@ -105,7 +111,14 @@ func (rc *RuntimeCore) GetModelTokenStats() []ModelTokenStats {
 		stats.Input = addOptionalInt(stats.Input, r.Input)
 		stats.Reply = addOptionalInt(stats.Reply, r.Reply)
 		stats.Total = addOptionalInt(stats.Total, r.Total)
+		stats.CachedInput = addOptionalInt(stats.CachedInput, r.CachedInput)
 		stats.TotalCostUSD = addOptionalFloat(stats.TotalCostUSD, r.CostUSD)
+		if r.Total == nil {
+			stats.UnknownUsageRounds++
+		}
+		if r.CostUSD == nil {
+			stats.UnknownCostRounds++
+		}
 	}
 
 	result := make([]ModelTokenStats, 0, len(modelMap))

@@ -396,21 +396,27 @@ type TokenRecord struct {
 
 // TokenStats Token 累计统计
 type TokenStats struct {
-	Rounds       int
-	Input        *int
-	Reply        *int
-	Total        *int
-	TotalCostUSD *float64
+	Rounds             int
+	Input              *int
+	Reply              *int
+	Total              *int
+	CachedInput        *int
+	TotalCostUSD       *float64
+	UnknownUsageRounds int
+	UnknownCostRounds  int
 }
 
 // ModelTokenStats 单个模型的 Token 统计
 type ModelTokenStats struct {
-	Model        string
-	Rounds       int
-	Input        *int
-	Reply        *int
-	Total        *int
-	TotalCostUSD *float64
+	Model              string
+	Rounds             int
+	Input              *int
+	Reply              *int
+	Total              *int
+	CachedInput        *int
+	TotalCostUSD       *float64
+	UnknownUsageRounds int
+	UnknownCostRounds  int
 }
 
 type graphInvokeReq struct {
