@@ -264,6 +264,7 @@ func (dt *DispatchTools) startManagedAgentRun(parentCtx context.Context, subCtx 
 	if allowed := buildAllowedToolsMap(allowedTools); allowed != nil {
 		runCtx = tools.WithAllowedTools(runCtx, allowed)
 	}
+	runCtx = withCurrentAgentContext(runCtx, subCtx.id, subCtx.agentType.String())
 
 	if err := dt.subAgentMgr.MarkRunning(subCtx.id, task, cancel); err != nil {
 		cancel()
@@ -1168,6 +1169,13 @@ func (dt *DispatchTools) emitAgentEvent(eventType string, subCtx *SubAgentContex
 		"agent_name":       subCtx.agentType.String(),
 		"context_strategy": subCtx.strategy.String(),
 		"task":             strings.TrimSpace(task),
+	}
+	source := sourceAgentContext(subCtx.parentCtx)
+	if source.ID != "" {
+		payload["source_agent_id"] = source.ID
+	}
+	if source.Name != "" {
+		payload["source_agent_name"] = source.Name
 	}
 	if msg := strings.TrimSpace(message); msg != "" {
 		payload["message"] = msg

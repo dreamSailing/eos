@@ -103,3 +103,54 @@ func TestConvertEventRequestCompletedUsesInvokeDone(t *testing.T) {
 		t.Fatalf("Content=%q, want empty so UI can finalize from accumulated stream", done.Content)
 	}
 }
+
+func TestConvertEventAgentStartedIncludesSourceRoute(t *testing.T) {
+	msg := ConvertEvent(bridge.Event{
+		Type: string(protocol.EventTypeAgentStarted),
+		RID:  "subagent_verification_3",
+		Data: map[string]any{
+			"agent_id":          "subagent_verification_3",
+			"agent_name":        "verification",
+			"source_agent_name": "assistant",
+			"task":              "验证题目输出",
+		},
+	})
+
+	task, ok := msg.(AgentTaskMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want AgentTaskMsg", msg)
+	}
+	if task.Event != "dispatch" {
+		t.Fatalf("Event=%q, want dispatch", task.Event)
+	}
+	if task.SourceAgentName != "assistant" {
+		t.Fatalf("SourceAgentName=%q, want assistant", task.SourceAgentName)
+	}
+	if task.AgentID != "subagent_verification_3" {
+		t.Fatalf("AgentID=%q, want subagent_verification_3", task.AgentID)
+	}
+}
+
+func TestConvertEventAgentFailedMapsToAgentFinal(t *testing.T) {
+	msg := ConvertEvent(bridge.Event{
+		Type: string(protocol.EventTypeAgentFailed),
+		RID:  "subagent_verification_3",
+		Data: map[string]any{
+			"agent_id":          "subagent_verification_3",
+			"agent_name":        "verification",
+			"source_agent_name": "assistant",
+			"error":             "校验失败",
+		},
+	})
+
+	final, ok := msg.(AgentFinalMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want AgentFinalMsg", msg)
+	}
+	if final.Event != "failed" {
+		t.Fatalf("Event=%q, want failed", final.Event)
+	}
+	if final.Content != "校验失败" {
+		t.Fatalf("Content=%q, want 校验失败", final.Content)
+	}
+}

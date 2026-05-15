@@ -106,15 +106,16 @@ func (r *Renderer) RenderUserInput(content string) string {
 
 func (r *Renderer) RenderAIResponseAt(content string, tokens int, duration time.Duration, done bool, ts time.Time) string {
 	msg := &AgentBubbleMessage{
-		Name:      r.mainAgent,
-		Label:     r.mainLabel,
-		IsMain:    true,
-		PreStyled: done && r.mdEnabled,
-		Content:   r.maybeRenderMarkdown(content, done),
-		Timestamp: ts,
-		Tokens:    tokens,
-		Duration:  duration,
-		Done:      done,
+		Name:       r.mainAgent,
+		Label:      r.mainLabel,
+		Event:      "result",
+		IsMain:     true,
+		PreStyled:  done && r.mdEnabled,
+		Content:    r.maybeRenderMarkdown(content, done),
+		Timestamp:  ts,
+		Tokens:     tokens,
+		Duration:   duration,
+		Done:       done,
 	}
 	return msg.Render(r.styles, r.width)
 }
@@ -125,16 +126,17 @@ func (r *Renderer) RenderAIResponseAtWithCopy(content string, tokens int, durati
 
 func (r *Renderer) RenderAIResponseAtWithActions(content string, tokens int, duration time.Duration, done bool, ts time.Time, actions []BubbleAction) string {
 	msg := &AgentBubbleMessage{
-		Name:      r.mainAgent,
-		Label:     r.mainLabel,
-		IsMain:    true,
-		PreStyled: done && r.mdEnabled,
-		Content:   r.maybeRenderMarkdown(content, done),
-		Timestamp: ts,
-		Tokens:    tokens,
-		Duration:  duration,
-		Done:      done,
-		Actions:   actions,
+		Name:       r.mainAgent,
+		Label:      r.mainLabel,
+		Event:      "result",
+		IsMain:     true,
+		PreStyled:  done && r.mdEnabled,
+		Content:    r.maybeRenderMarkdown(content, done),
+		Timestamp:  ts,
+		Tokens:     tokens,
+		Duration:   duration,
+		Done:       done,
+		Actions:    actions,
 	}
 	return msg.Render(r.styles, r.width)
 }
@@ -183,50 +185,62 @@ func (r *Renderer) RenderToolResult(name string, result string, success bool, du
 
 // RenderAgentTask 渲染子Agent任务（蓝色圆点 - 调度）
 func (r *Renderer) RenderAgentTask(name, task, goal string, progress, step, totalSteps int, status string, duration time.Duration, results []string) string {
-	return r.RenderAgentTaskAt(name, task, time.Now())
+	return r.RenderAgentTaskAt(name, "", "assistant", "", "dispatch", task, time.Now())
 }
 
-func (r *Renderer) RenderAgentTaskAt(name, task string, ts time.Time) string {
+func (r *Renderer) RenderAgentTaskAt(name, agentID, sourceName, sourceID, event, task string, ts time.Time) string {
 	msg := &AgentDispatchMessage{
-		AgentName: r.displayAgentName(name),
-		Task:      task,
-		Timestamp: ts,
+		AgentName:  r.displayAgentName(name),
+		AgentID:    strings.TrimSpace(agentID),
+		SourceName: r.displayAgentName(sourceName),
+		SourceID:   strings.TrimSpace(sourceID),
+		Event:      strings.TrimSpace(event),
+		Task:       task,
+		Timestamp:  ts,
 	}
 	return msg.Render(r.styles, r.width)
 }
 
 // RenderAgentFinal 渲染子Agent最终结果（绿色圆点）
 func (r *Renderer) RenderAgentFinal(agentName, content string) string {
-	return r.RenderAgentFinalAt(agentName, content, time.Now())
+	return r.RenderAgentFinalAt(agentName, "", "assistant", "", "result", content, time.Now())
 }
 
-func (r *Renderer) RenderAgentFinalAt(agentName, content string, ts time.Time) string {
+func (r *Renderer) RenderAgentFinalAt(agentName, agentID, sourceName, sourceID, event, content string, ts time.Time) string {
 	msg := &AgentBubbleMessage{
-		Name:      r.displayAgentName(agentName),
-		Label:     r.subLabel,
-		IsMain:    false,
-		PreStyled: r.mdEnabled,
-		Content:   r.maybeRenderMarkdown(content, true),
-		Timestamp: ts,
-		Done:      true,
+		Name:       r.displayAgentName(agentName),
+		Label:      r.subLabel,
+		Event:      firstNonEmptyString(strings.TrimSpace(event), "result"),
+		AgentID:    strings.TrimSpace(agentID),
+		SourceName: r.displayAgentName(sourceName),
+		SourceID:   strings.TrimSpace(sourceID),
+		IsMain:     false,
+		PreStyled:  r.mdEnabled,
+		Content:    r.maybeRenderMarkdown(content, true),
+		Timestamp:  ts,
+		Done:       true,
 	}
 	return msg.Render(r.styles, r.width)
 }
 
 func (r *Renderer) RenderAgentFinalAtWithCopy(agentName, content string, ts time.Time, copyLabel string) string {
-	return r.RenderAgentFinalAtWithActions(agentName, content, ts, []BubbleAction{{Kind: "copy", Label: copyLabel}})
+	return r.RenderAgentFinalAtWithActions(agentName, "", "assistant", "", "result", content, ts, []BubbleAction{{Kind: "copy", Label: copyLabel}})
 }
 
-func (r *Renderer) RenderAgentFinalAtWithActions(agentName, content string, ts time.Time, actions []BubbleAction) string {
+func (r *Renderer) RenderAgentFinalAtWithActions(agentName, agentID, sourceName, sourceID, event, content string, ts time.Time, actions []BubbleAction) string {
 	msg := &AgentBubbleMessage{
-		Name:      r.displayAgentName(agentName),
-		Label:     r.subLabel,
-		IsMain:    false,
-		PreStyled: r.mdEnabled,
-		Content:   r.maybeRenderMarkdown(content, true),
-		Timestamp: ts,
-		Done:      true,
-		Actions:   actions,
+		Name:       r.displayAgentName(agentName),
+		Label:      r.subLabel,
+		Event:      firstNonEmptyString(strings.TrimSpace(event), "result"),
+		AgentID:    strings.TrimSpace(agentID),
+		SourceName: r.displayAgentName(sourceName),
+		SourceID:   strings.TrimSpace(sourceID),
+		IsMain:     false,
+		PreStyled:  r.mdEnabled,
+		Content:    r.maybeRenderMarkdown(content, true),
+		Timestamp:  ts,
+		Done:       true,
+		Actions:    actions,
 	}
 	return msg.Render(r.styles, r.width)
 }

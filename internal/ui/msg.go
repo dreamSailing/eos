@@ -49,24 +49,53 @@ func ConvertEvent(e bridge.Event) Msg {
 		}
 	case "agent.task":
 		// 调度agent给子agent分配任务
-		return AgentTaskMsg{AgentName: e.RID, Task: e.Content, Goal: ""}
-	case string(protocol.EventTypeAgentStarted), string(protocol.EventTypeAgentProgress):
+		sourceName, sourceID := eventAgentSource(e.Data)
 		return AgentTaskMsg{
-			AgentName: firstNonEmpty(strings.TrimSpace(e.RID), eventString(e.Data, "agent_name")),
-			Task:      eventText(e, "task", "message", "text"),
-			Goal:      eventString(e.Data, "goal"),
+			AgentName:       firstNonEmpty(strings.TrimSpace(e.RID), eventString(e.Data, "agent_name")),
+			AgentID:         eventString(e.Data, "agent_id"),
+			SourceAgentName: sourceName,
+			SourceAgentID:   sourceID,
+			Event:           "dispatch",
+			Task:            eventText(e, "task", "message", "text"),
+			Goal:            eventString(e.Data, "goal"),
+		}
+	case string(protocol.EventTypeAgentStarted), string(protocol.EventTypeAgentProgress):
+		sourceName, sourceID := eventAgentSource(e.Data)
+		return AgentTaskMsg{
+			AgentName:       firstNonEmpty(strings.TrimSpace(e.RID), eventString(e.Data, "agent_name")),
+			AgentID:         eventString(e.Data, "agent_id"),
+			SourceAgentName: sourceName,
+			SourceAgentID:   sourceID,
+			Event:           agentEventKind(e.Type),
+			Task:            eventText(e, "task", "message", "text"),
+			Goal:            eventString(e.Data, "goal"),
 		}
 	case "agent.final", string(protocol.EventTypeAgentDone):
 		// 子agent的最终输出
+		sourceName, sourceID := eventAgentSource(e.Data)
 		return AgentFinalMsg{
-			AgentName: firstNonEmpty(strings.TrimSpace(e.RID), eventString(e.Data, "agent_name")),
-			Content:   eventText(e, "text", "message"),
+			AgentName:       firstNonEmpty(strings.TrimSpace(e.RID), eventString(e.Data, "agent_name")),
+			AgentID:         eventString(e.Data, "agent_id"),
+			SourceAgentName: sourceName,
+			SourceAgentID:   sourceID,
+			Event:           "result",
+			Content:         eventText(e, "text", "message"),
 		}
 	case "prompt.request", string(protocol.EventTypeApprovalReq), string(protocol.EventTypeInquiryReq):
 		return convertPromptEvent(e)
 	case string(protocol.EventTypeModeChanged):
 		return ModeChangedMsg{Mode: eventString(e.Data, "new_mode"), PreviousMode: eventString(e.Data, "old_mode")}
-	case "error", string(protocol.EventTypeRequestFailed), string(protocol.EventTypeAgentFailed), string(protocol.EventTypeTaskFailed):
+	case string(protocol.EventTypeAgentFailed), string(protocol.EventTypeAgentCancelled):
+		sourceName, sourceID := eventAgentSource(e.Data)
+		return AgentFinalMsg{
+			AgentName:       firstNonEmpty(strings.TrimSpace(e.RID), eventString(e.Data, "agent_name")),
+			AgentID:         eventString(e.Data, "agent_id"),
+			SourceAgentName: sourceName,
+			SourceAgentID:   sourceID,
+			Event:           agentEventKind(e.Type),
+			Content:         eventText(e, "error", "reason", "message", "text"),
+		}
+	case "error", string(protocol.EventTypeRequestFailed), string(protocol.EventTypeTaskFailed):
 		return AIResponseMsg{Type: "error", Content: eventText(e, "error", "message", "text"), RID: e.RID}
 	default:
 		return nil
@@ -204,6 +233,40 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func agentEventKind(eventType string) string {
+	switch strings.TrimSpace(eventType) {
+	case "agent.task", string(protocol.EventTypeAgentStarted):
+		return "dispatch"
+	case string(protocol.EventTypeAgentProgress):
+		return "update"
+	case "agent.final", string(protocol.EventTypeAgentDone):
+		return "result"
+	case string(protocol.EventTypeAgentFailed):
+		return "failed"
+	case string(protocol.EventTypeAgentCancelled):
+		return "cancelled"
+	default:
+		return ""
+	}
+}
+
+func eventAgentSource(data map[string]any) (string, string) {
+	name := firstNonEmpty(
+		eventString(data, "source_agent_name"),
+		eventString(data, "caller_agent_name"),
+		eventString(data, "parent_agent_name"),
+	)
+	id := firstNonEmpty(
+		eventString(data, "source_agent_id"),
+		eventString(data, "caller_agent_id"),
+		eventString(data, "parent_agent_id"),
+	)
+	if name == "" {
+		name = "assistant"
+	}
+	return name, id
+}
+
 // 系统消息
 type WindowSizeMsg struct {
 	Width, Height int
@@ -267,14 +330,22 @@ type ToolResultMsg struct {
 
 // Agent 消息
 type AgentTaskMsg struct {
-	AgentName string
-	Task      string
-	Goal      string
+	AgentName       string
+	AgentID         string
+	SourceAgentName string
+	SourceAgentID   string
+	Event           string
+	Task            string
+	Goal            string
 }
 
 type AgentFinalMsg struct {
-	AgentName string
-	Content   string
+	AgentName       string
+	AgentID         string
+	SourceAgentName string
+	SourceAgentID   string
+	Event           string
+	Content         string
 }
 
 type ModeChangedMsg struct {
