@@ -341,6 +341,10 @@ type historyEntry struct {
 	toolSuccess   bool
 	toolStatus    string
 	agentName     string
+	agentID       string
+	agentEvent    string
+	sourceAgent   string
+	sourceAgentID string
 	task          string
 	executionMode string
 	rawMarkdown   string
@@ -876,7 +880,16 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.shell.ClearLive()
 		m.aiLive.Reset()
 		m.clearCurrentThinking()
-		m.appendHistory(historyEntry{kind: "agent.task", agentName: msg.AgentName, task: msg.Task, timestamp: time.Now()})
+		m.appendHistory(historyEntry{
+			kind:          "agent.task",
+			agentName:     msg.AgentName,
+			agentID:       msg.AgentID,
+			agentEvent:    msg.Event,
+			sourceAgent:   msg.SourceAgentName,
+			sourceAgentID: msg.SourceAgentID,
+			task:          msg.Task,
+			timestamp:     time.Now(),
+		})
 
 	case AgentFinalMsg:
 		m.delegatedThisRound = true
@@ -887,6 +900,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.appendHistory(historyEntry{
 			kind:          "agent.final",
 			agentName:     msg.AgentName,
+			agentID:       msg.AgentID,
+			agentEvent:    msg.Event,
+			sourceAgent:   msg.SourceAgentName,
+			sourceAgentID: msg.SourceAgentID,
 			content:       msg.Content,
 			rawMarkdown:   msg.Content,
 			executionMode: m.state.ExecutionMode,
@@ -2273,7 +2290,7 @@ func (m *AppModel) renderHistoryEntry(e historyEntry) string {
 	case "ai":
 		return m.msgRenderer.RenderAIResponseAtWithActions(e.content, e.tokens, e.duration, true, e.timestamp, m.bubbleActionsForEntry(e))
 	case "agent.task":
-		return m.msgRenderer.RenderAgentTaskAt(e.agentName, e.task, e.timestamp)
+		return m.msgRenderer.RenderAgentTaskAt(e.agentName, e.agentID, e.sourceAgent, e.sourceAgentID, e.agentEvent, e.task, e.timestamp)
 	case "tool":
 		status := e.toolStatus
 		if status == "" {
@@ -2287,7 +2304,7 @@ func (m *AppModel) renderHistoryEntry(e historyEntry) string {
 		}
 		return m.msgRenderer.RenderToolEvent(e.toolName, e.toolParams, status, e.toolOutput, e.duration)
 	case "agent.final":
-		return m.msgRenderer.RenderAgentFinalAtWithActions(e.agentName, e.content, e.timestamp, m.bubbleActionsForEntry(e))
+		return m.msgRenderer.RenderAgentFinalAtWithActions(e.agentName, e.agentID, e.sourceAgent, e.sourceAgentID, e.agentEvent, e.content, e.timestamp, m.bubbleActionsForEntry(e))
 	case "system":
 		return m.msgRenderer.RenderSystem(e.content, e.level)
 	default:

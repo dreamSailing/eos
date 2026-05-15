@@ -126,16 +126,20 @@ func (m *AIMessage) Render(s *styles.Styles, width int) string {
 }
 
 type AgentBubbleMessage struct {
-	Name      string
-	Label     string
-	IsMain    bool
-	PreStyled bool
-	Content   string
-	Timestamp time.Time
-	Tokens    int
-	Duration  time.Duration
-	Done      bool
-	Actions   []BubbleAction
+	Name       string
+	Label      string
+	Event      string
+	AgentID    string
+	SourceName string
+	SourceID   string
+	IsMain     bool
+	PreStyled  bool
+	Content    string
+	Timestamp  time.Time
+	Tokens     int
+	Duration   time.Duration
+	Done       bool
+	Actions    []BubbleAction
 }
 
 func (m *AgentBubbleMessage) Type() MessageType { return MsgTypeAgent }
@@ -144,15 +148,10 @@ func (m *AgentBubbleMessage) Render(s *styles.Styles, width int) string {
 	var result strings.Builder
 	bw := bubbleWidth(width)
 
-	dot := s.TextSuccess.Render("●")
-	if m.IsMain {
-		if m.Done {
-			dot = s.TextSuccess.Render("●")
-		} else {
-			dot = s.TextInfo.Render("●")
-		}
-	}
-	name := s.MsgAgentHeader.Render(m.Name)
+	dot := renderAgentEventDot(s, m.Event, m.IsMain, m.Done)
+	eventLabel := renderAgentEventLabel(s, m.Event)
+	route := renderAgentRoute(s, m.SourceName, m.Name)
+	agentID := renderAgentID(s, m.AgentID)
 	label := ""
 	if m.Label != "" {
 		label = s.TextMuted.Render(m.Label)
@@ -162,7 +161,10 @@ func (m *AgentBubbleMessage) Render(s *styles.Styles, width int) string {
 		ts = s.TextMuted.Render(m.Timestamp.Format("15:04:05"))
 	}
 
-	headerParts := []string{dot, name}
+	headerParts := []string{dot, eventLabel, route}
+	if agentID != "" {
+		headerParts = append(headerParts, agentID)
+	}
 	if label != "" {
 		headerParts = append(headerParts, label)
 	}
@@ -244,9 +246,13 @@ func splitAndWrapANSI(text string, maxWidth int) []string {
 }
 
 type AgentDispatchMessage struct {
-	AgentName string
-	Task      string
-	Timestamp time.Time
+	AgentName  string
+	AgentID    string
+	SourceName string
+	SourceID   string
+	Event      string
+	Task       string
+	Timestamp  time.Time
 }
 
 func (m *AgentDispatchMessage) Type() MessageType { return MsgTypeAgent }
@@ -255,14 +261,19 @@ func (m *AgentDispatchMessage) Render(s *styles.Styles, width int) string {
 	var result strings.Builder
 	bw := bubbleWidth(width)
 
-	dot := s.TextInfo.Render("●")
-	name := s.MsgAgentHeader.Render(m.AgentName)
+	dot := renderAgentEventDot(s, m.Event, false, false)
+	eventLabel := renderAgentEventLabel(s, firstNonEmptyString(strings.TrimSpace(m.Event), "dispatch"))
+	route := renderAgentRoute(s, m.SourceName, m.AgentName)
+	agentID := renderAgentID(s, m.AgentID)
 	ts := ""
 	if !m.Timestamp.IsZero() {
 		ts = s.TextMuted.Render(m.Timestamp.Format("15:04:05"))
 	}
 
-	headerParts := []string{dot, name, s.TextMuted.Render("已分配")}
+	headerParts := []string{dot, eventLabel, route}
+	if agentID != "" {
+		headerParts = append(headerParts, agentID)
+	}
 	if ts != "" {
 		headerParts = append(headerParts, ts)
 	}
@@ -529,9 +540,7 @@ func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
 			if i := strings.IndexByte(summaryLine, '\n'); i >= 0 {
 				summaryLine = summaryLine[:i]
 			}
-			if len(summaryLine) > 64 {
-				summaryLine = summaryLine[:64] + "..."
-			}
+			summaryLine = truncateInline(summaryLine, 64)
 			result.WriteString(s.TextMuted.Render(summaryLine))
 			result.WriteString("\n")
 		}
@@ -555,9 +564,7 @@ func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
 				if b.kind == "command" && !strings.Contains(val, "\n") && val != "" {
 					val = "$ " + val
 				}
-				if len(val) > 800 {
-					val = val[:800] + "..."
-				}
+				val = truncateBlockValue(val, 800)
 				for _, line := range wrapText(val, contentW-2) {
 					result.WriteString(blockStyle.Render(line))
 					result.WriteString("\n")
@@ -583,9 +590,7 @@ func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
 		for _, k := range keys {
 			v := m.Params[k]
 			paramLine := fmt.Sprintf("  %s: %v", k, v)
-			if len(paramLine) > 240 {
-				paramLine = paramLine[:240] + "..."
-			}
+			paramLine = truncateInline(paramLine, 240)
 			wrapped := wrapText(paramLine, contentW)
 			for _, line := range wrapped {
 				result.WriteString(line)
@@ -610,9 +615,7 @@ func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
 		if toolLower == "bash" {
 			limit = 200000
 		}
-		if len(out) > limit {
-			out = out[:limit] + "\n…trimmed"
-		}
+		out = truncateBlockValue(out, limit)
 		for _, line := range wrapText(out, contentW-2) {
 			result.WriteString(resultStyle.Render(line))
 			result.WriteString("\n")
@@ -668,9 +671,10 @@ func displayToolName(raw string) string {
 		case "fs", "mcp", "lsp", "ui", "url", "http", "https", "json", "yaml", "xml", "sql":
 			b.WriteString(strings.ToUpper(pl))
 		default:
-			b.WriteString(strings.ToUpper(pl[:1]))
-			if len(pl) > 1 {
-				b.WriteString(pl[1:])
+			runes := []rune(pl)
+			b.WriteString(strings.ToUpper(string(runes[:1])))
+			if len(runes) > 1 {
+				b.WriteString(string(runes[1:]))
 			}
 		}
 	}
@@ -884,9 +888,7 @@ func (m *ThinkingMessage) Render(s *styles.Styles, width int) string {
 		summary := lastNonEmptyLine(m.Content)
 		if summary != "" {
 			result.WriteString("\n")
-			if len(summary) > 160 {
-				summary = summary[:160] + "..."
-			}
+			summary = truncateInline(summary, 160)
 			for _, line := range wrapText(summary, width-6) {
 				result.WriteString("  " + s.TextMuted.Render(line))
 				result.WriteString("\n")
@@ -975,10 +977,19 @@ func bubbleWidth(width int) int {
 	if width < 24 {
 		return width
 	}
-	if width > 96 {
-		return 96
+	if width <= 100 {
+		return width
 	}
-	return width
+	if width <= 140 {
+		if width-2 < 120 {
+			return width - 2
+		}
+		return 120
+	}
+	if width-2 < 144 {
+		return width - 2
+	}
+	return 144
 }
 
 func wrapLine(s string, maxWidth int) []string {
@@ -1098,6 +1109,99 @@ func wrapLine(s string, maxWidth int) []string {
 		out = append(out, strings.TrimRight(b.String(), " "))
 	}
 	return out
+}
+
+func renderAgentEventDot(s *styles.Styles, event string, isMain bool, done bool) string {
+	switch strings.ToLower(strings.TrimSpace(event)) {
+	case "failed":
+		return s.TextError.Render("●")
+	case "cancelled":
+		return s.TextWarning.Render("●")
+	case "dispatch", "started", "progress", "update":
+		return s.TextInfo.Render("●")
+	default:
+		if isMain && !done {
+			return s.TextInfo.Render("●")
+		}
+		return s.TextSuccess.Render("●")
+	}
+}
+
+func renderAgentEventLabel(s *styles.Styles, event string) string {
+	event = strings.ToLower(strings.TrimSpace(event))
+	if event == "" {
+		event = "result"
+	}
+	return s.TextMuted.Render("[" + event + "]")
+}
+
+func renderAgentRoute(s *styles.Styles, sourceName string, agentName string) string {
+	sourceName = strings.TrimSpace(sourceName)
+	agentName = strings.TrimSpace(agentName)
+	switch {
+	case sourceName != "" && agentName != "":
+		return s.MsgAgentHeader.Render(sourceName + " -> " + agentName)
+	case agentName != "":
+		return s.MsgAgentHeader.Render(agentName)
+	default:
+		return s.MsgAgentHeader.Render(sourceName)
+	}
+}
+
+func renderAgentID(s *styles.Styles, agentID string) string {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return ""
+	}
+	return s.TextMuted.Render(shortID(agentID))
+}
+
+func shortID(value string) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) <= 28 {
+		return string(runes)
+	}
+	return string(runes[:12]) + "..." + string(runes[len(runes)-8:])
+}
+
+func truncateInline(text string, limit int) string {
+	clipped, truncated, total := truncateRunes(text, limit)
+	if !truncated {
+		return text
+	}
+	remaining := total - len([]rune(clipped))
+	if remaining < 0 {
+		remaining = 0
+	}
+	return clipped + fmt.Sprintf("...(+%d chars)", remaining)
+}
+
+func truncateBlockValue(text string, limit int) string {
+	clipped, truncated, total := truncateRunes(text, limit)
+	if !truncated {
+		return text
+	}
+	shown := len([]rune(clipped))
+	return clipped + fmt.Sprintf("\n[truncated: showing first %d of %d chars]", shown, total)
+}
+
+func truncateRunes(text string, limit int) (string, bool, int) {
+	runes := []rune(text)
+	total := len(runes)
+	if limit <= 0 || total <= limit {
+		return text, false, total
+	}
+	return string(runes[:limit]), true, total
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func formatDuration(d time.Duration) string {
