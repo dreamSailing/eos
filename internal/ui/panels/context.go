@@ -134,8 +134,9 @@ func (p *ContextPanel) updateTable() {
 	} else {
 		for _, msg := range p.messages {
 			preview := msg.Content
-			if len(preview) > 37 {
-				preview = preview[:37] + "..."
+			runes := []rune(preview)
+			if len(runes) > 37 {
+				preview = string(runes[:37]) + "..."
 			}
 			preview = strings.ReplaceAll(preview, "\n", " ")
 			rows = append(rows, table.Row{msg.Role, preview, fmt.Sprintf("%d", msg.Tokens)})

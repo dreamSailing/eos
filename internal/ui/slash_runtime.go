@@ -916,12 +916,15 @@ func (m *AppModel) executionModeLabel(mode string) string {
 func truncateBlock(text string, maxLines int, maxBytes int) string {
 	text = strings.TrimSpace(strings.ReplaceAll(text, "\r\n", "\n"))
 	text = strings.ReplaceAll(text, "\r", "\n")
-	if maxBytes > 0 && len(text) > maxBytes {
-		text = text[:maxBytes]
+	if maxBytes > 0 {
+		runes := []rune(text)
+		if len(runes) > maxBytes {
+			text = string(runes[:maxBytes]) + "\n[truncated]"
+		}
 	}
 	lines := strings.Split(text, "\n")
 	if maxLines > 0 && len(lines) > maxLines {
-		lines = append(lines[:maxLines], "...")
+		lines = append(lines[:maxLines], "[truncated]")
 	}
 	return strings.Join(lines, "\n")
 }
