@@ -24,6 +24,9 @@ func (m *Manager) documentGenerateStructured(ctx context.Context, params map[str
 	if !res.IsValid {
 		return ToolResult{Type: "tool_result", Tool: ToolDocumentGenerate, Status: "error", Error: res.ErrMsg, Display: "错误：输出路径超出工作区范围"}
 	}
+	if err := sandboxWriteError(ctx, res.AbsPath); err != nil {
+		return ToolResult{Type: "tool_result", Tool: ToolDocumentGenerate, Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
+	}
 
 	title := asString(params["title"])
 	content := asString(params["content"])
@@ -91,6 +94,13 @@ func (m *Manager) documentConvertStructured(ctx context.Context, params map[stri
 			return ToolResult{Type: "tool_result", Tool: ToolDocumentConvert, Status: "error", Error: dstRes.ErrMsg, Display: "错误：目标文件路径超出工作区范围"}
 		}
 		destination = dstRes.AbsPath
+	}
+	destinationForPolicy := destination
+	if strings.TrimSpace(destinationForPolicy) == "" {
+		destinationForPolicy = strings.TrimSuffix(srcRes.AbsPath, filepath.Ext(srcRes.AbsPath)) + "." + target
+	}
+	if err := sandboxWriteError(ctx, destinationForPolicy); err != nil {
+		return ToolResult{Type: "tool_result", Tool: ToolDocumentConvert, Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
 	}
 	result, err := doccap.Convert(srcRes.AbsPath, doccap.ConversionOptions{DestinationPath: destination, TargetFormat: target, Fidelity: fidelity})
 	if err != nil {

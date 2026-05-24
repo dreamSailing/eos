@@ -36,7 +36,7 @@ func TestTasksListIncludesTodoAndAgent(t *testing.T) {
 	}
 	mgr.Complete(subCtx.ID(), "Plan task center", true, "")
 
-	items, err := newTasks().List(context.Background())
+	items, err := newTasks(newLegacyTaskSource()).List(context.Background())
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -74,7 +74,7 @@ func TestTasksKillCancelsAgentTask(t *testing.T) {
 		t.Fatalf("MarkRunning() error = %v", err)
 	}
 
-	if err := newTasks().Kill(context.Background(), subCtx.ID()); err != nil {
+	if err := newTasks(newLegacyTaskSource()).Kill(context.Background(), subCtx.ID()); err != nil {
 		t.Fatalf("Kill() error = %v", err)
 	}
 	if !called {
@@ -109,7 +109,7 @@ func TestTasksResumeAndCloseDelegateToAgentRegistryController(t *testing.T) {
 		runtime.DefaultAgentRegistry().UnregisterManager(registryID)
 	})
 
-	taskSvc := newTasks()
+	taskSvc := newTasks(newLegacyTaskSource())
 	if err := taskSvc.Resume(context.Background(), subCtx.ID()); err != nil {
 		t.Fatalf("Resume() error = %v", err)
 	}

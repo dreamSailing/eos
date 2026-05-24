@@ -5,17 +5,15 @@ package panels
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
-	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/toolapi"
-	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
-	"github.com/dreamSailing/eos/internal/tools/bg"
-	"github.com/dreamSailing/eos/internal/ui/styles"
 	"strings"
 	"time"
+
+	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/dreamSailing/eos/pkg/coreapi"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -23,24 +21,29 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+type TaskProvider interface {
+	Tasks(context.Context) ([]coreapi.TaskSnapshot, error)
+	TailTask(context.Context, string) ([]string, error)
+	CleanupTasks(context.Context) (int, error)
+}
+
 type TasksPanel struct {
 	BasePanel
 	styles   *styles.Styles
 	language string
+	provider TaskProvider
 
 	table   table.Model
-	tasks   []toolapi.TaskInfo
+	tasks   []coreapi.TaskSnapshot
 	viewing bool
 
 	viewID    string
-	viewSeq   int64
-	viewTask  toolapi.TaskInfo
-	viewInfo  bg.TaskInfo
+	viewTask  coreapi.TaskSnapshot
 	viewLines []string
 	vp        viewport.Model
 }
 
-func NewTasksPanel(styles *styles.Styles, lang string) *TasksPanel {
+func NewTasksPanel(styles *styles.Styles, lang string, provider TaskProvider) *TasksPanel {
 	s := table.DefaultStyles()
 	s.Header = s.Header.
 		BorderStyle(lipgloss.NormalBorder()).
@@ -66,6 +69,7 @@ func NewTasksPanel(styles *styles.Styles, lang string) *TasksPanel {
 		BasePanel: NewBasePanel("tasks"),
 		styles:    styles,
 		language:  lang,
+		provider:  provider,
 		table:     t,
 		vp:        vp,
 	}
@@ -116,7 +120,10 @@ func (p *TasksPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 			}
 			return p, nil
 		case "c":
-			n := bg.Default().CleanupFinished()
+			n := 0
+			if p.provider != nil {
+				n, _ = p.provider.CleanupTasks(context.Background())
+			}
 			p.refresh()
 			if n > 0 {
 				return p, func() tea.Msg { return TaskToastMsg{Text: fmt.Sprintf(i18n.T("tasks.cleaned", p.language), n)} }
@@ -178,8 +185,7 @@ func (p *TasksPanel) IsViewing() bool { return p.viewing }
 func (p *TasksPanel) ResetView() {
 	p.viewing = false
 	p.viewID = ""
-	p.viewSeq = 0
-	p.viewTask = toolapi.TaskInfo{}
+	p.viewTask = coreapi.TaskSnapshot{}
 	p.viewLines = nil
 	p.vp.SetContent("")
 }
@@ -196,7 +202,11 @@ func (p *TasksPanel) selectedID() string {
 }
 
 func (p *TasksPanel) refresh() {
-	items, err := toolapiimpl.NewServices().Tasks().List(context.Background())
+	var items []coreapi.TaskSnapshot
+	var err error
+	if p.provider != nil {
+		items, err = p.provider.Tasks(context.Background())
+	}
 	if err != nil {
 		p.tasks = nil
 	} else {
@@ -242,19 +252,18 @@ func (p *TasksPanel) refresh() {
 	p.table.SetRows(rows)
 }
 
-func (p *TasksPanel) findTask(id string) (toolapi.TaskInfo, bool) {
+func (p *TasksPanel) findTask(id string) (coreapi.TaskSnapshot, bool) {
 	for _, task := range p.tasks {
 		if task.ID == id {
 			return task, true
 		}
 	}
-	return toolapi.TaskInfo{}, false
+	return coreapi.TaskSnapshot{}, false
 }
 
 func (p *TasksPanel) openView(id string) {
 	p.viewing = true
 	p.viewID = id
-	p.viewSeq = 0
 	p.viewLines = nil
 	if task, ok := p.findTask(id); ok {
 		p.viewTask = task
@@ -289,20 +298,23 @@ func (p *TasksPanel) refreshView() {
 		p.vp.GotoTop()
 		return
 	}
-	res, err := bg.Default().Tail(p.viewID, &bg.TailOptions{FromSeq: p.viewSeq, Limit: 400})
+	if p.provider == nil {
+		p.viewLines = []string{"(no task provider)"}
+		p.vp.SetContent(strings.Join(p.viewLines, "\n"))
+		return
+	}
+	lines, err := p.provider.TailTask(context.Background(), p.viewID)
 	if err != nil {
 		p.viewLines = []string{"Error: " + err.Error()}
 		p.vp.SetContent(strings.Join(p.viewLines, "\n"))
 		return
 	}
-	p.viewInfo = res.Info
-	p.viewSeq = res.NextSeq
-	for _, e := range res.Entries {
-		line := e.Line
+	p.viewLines = p.viewLines[:0]
+	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			line = " "
 		}
-		p.viewLines = append(p.viewLines, fmt.Sprintf("[%s] %s", e.Stream, line))
+		p.viewLines = append(p.viewLines, line)
 	}
 	if len(p.viewLines) > 5000 {
 		p.viewLines = append([]string(nil), p.viewLines[len(p.viewLines)-5000:]...)
@@ -315,12 +327,9 @@ func (p *TasksPanel) viewDetail() string {
 	title := fmt.Sprintf("%s %s", i18n.T("tasks.detail", p.language), p.viewID)
 	meta := ""
 	if p.viewTask.Kind == "shell_task" {
-		info := p.viewInfo
-		status := string(info.Status)
-		meta = fmt.Sprintf("%s: %s  PID: %d  %s: %s",
-			i18n.T("tasks.meta.status", p.language), status,
-			info.PID,
-			i18n.T("tasks.meta.started", p.language), info.StartedAt.Format("2006-01-02 15:04:05"))
+		meta = fmt.Sprintf("%s: %s  %s: %s",
+			i18n.T("tasks.meta.status", p.language), p.viewTask.Status,
+			i18n.T("tasks.meta.started", p.language), p.viewTask.StartedAt.Format("2006-01-02 15:04:05"))
 	} else {
 		started := p.viewTask.StartedAt.Format("2006-01-02 15:04:05")
 		meta = fmt.Sprintf("%s: %s  Kind: %s  %s: %s",

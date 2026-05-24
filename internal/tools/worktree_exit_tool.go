@@ -5,12 +5,15 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
-	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	gitops "github.com/dreamSailing/eos/internal/tools/git"
 )
 
 // exitWorktreeStructured handles the exit_worktree tool
@@ -30,6 +33,25 @@ func (m *Manager) exitWorktreeStructured(ctx context.Context, params map[string]
 	if v, ok := params["remove"].(bool); ok {
 		remove = v
 	}
+	path = normalizePathPlaceholder(path)
+	if !filepath.IsAbs(path) {
+		res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), path)
+		if !res.IsValid {
+			return ToolResult{Type: "tool_result", Tool: ToolExitWorktree, Status: "error", Error: res.ErrMsg, Display: "错误：路径超出工作目录"}
+		}
+		path = res.AbsPath
+	}
+	root := WorkspaceRootFromContext(ctx)
+	if strings.TrimSpace(root) == "" {
+		root, _ = os.Getwd()
+	}
+	ops := gitops.NewOpsWithRoot(root)
+	if r, blocked := gitMutationSandboxResult(ctx, ToolExitWorktree, ops.Root); blocked {
+		return r
+	}
+	if err := sandboxWriteError(ctx, path); err != nil {
+		return ToolResult{Type: "tool_result", Tool: ToolExitWorktree, Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
+	}
 
 	// Verify the path exists as a worktree
 	if _, err := os.Stat(path); err != nil {
@@ -44,7 +66,8 @@ func (m *Manager) exitWorktreeStructured(ctx context.Context, params map[string]
 
 	if remove {
 		// Remove git worktree
-		cmd := utils.Command("git", "worktree", "remove", "--force", path)
+		cmd := utils.CommandContext(ctx, "git", "worktree", "remove", "--force", path)
+		cmd.Dir = ops.Root
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			return ToolResult{
@@ -65,7 +88,7 @@ func (m *Manager) exitWorktreeStructured(ctx context.Context, params map[string]
 			Tool:   ToolExitWorktree,
 			Status: "success",
 			Data: map[string]interface{}{
-				"path":   path,
+				"path":    path,
 				"removed": true,
 			},
 			Display: fmt.Sprintf("已移除 worktree：%s", path),
@@ -73,7 +96,8 @@ func (m *Manager) exitWorktreeStructured(ctx context.Context, params map[string]
 	}
 
 	// Just detach (prune) without removing
-	cmd := utils.Command("git", "worktree", "prune")
+	cmd := utils.CommandContext(ctx, "git", "worktree", "prune")
+	cmd.Dir = ops.Root
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return ToolResult{

@@ -162,6 +162,7 @@ func NewManager() *Manager {
 		ToolRemoteRepoCreatePR:      m.remoteRepoCreatePRStructured,
 		ToolRemoteRepoCreateMR:      m.remoteRepoCreateMRStructured,
 		ToolRemoteRepoDisconnect:    m.remoteRepoDisconnectStructured,
+		ToolPatch:                   m.patchStructured,
 	}
 	m.LoadPluginsFromRegistry(plugins.DefaultRegistry())
 	return m

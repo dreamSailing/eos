@@ -5,15 +5,14 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/tools/bg"
 	"log/slog"
 	"strconv"
 	"strings"
-	"github.com/dreamSailing/eos/internal/pkg/utils"
-	"github.com/dreamSailing/eos/internal/tools/bg"
 )
 
 func (m *Manager) bgTaskStructured(ctx context.Context, params map[string]interface{}) ToolResult {
@@ -42,7 +41,15 @@ func (m *Manager) bgTaskStructured(ctx context.Context, params map[string]interf
 		if v, ok := params["log_cap"].(float64); ok && int(v) > 0 {
 			logCap = int(v)
 		}
-		info, err := bg.Default().Start(command, &bg.StartOptions{WorkingDir: wd, Env: env, LogCap: logCap})
+		var info bg.TaskInfo
+		_, err := m.runSandboxedCommand(ctx, []string{"bash", "-lc", command}, func() (string, error) {
+			started, err := bg.Default().Start(command, &bg.StartOptions{WorkingDir: wd, Env: env, LogCap: logCap})
+			if err != nil {
+				return "", err
+			}
+			info = started
+			return started.ID, nil
+		})
 		if err != nil {
 			slog.Error("bg_task.start.error", "component", utils.ComponentTool, "cmd", command, "err", err.Error())
 			return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
@@ -103,4 +110,3 @@ func (m *Manager) bgTaskStructured(ctx context.Context, params map[string]interf
 		return ToolResult{Type: "tool_result", Tool: ToolBGTask, Status: "error", Error: fmt.Sprintf("unknown action: %s", action), Display: "错误：未知操作 " + action}
 	}
 }
-

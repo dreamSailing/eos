@@ -20,7 +20,10 @@ type ToolDefinition struct {
 	Params          map[string]*schema.ParameterInfo // 参数定义
 	RiskLevel       ToolRiskLevel                    // 风险等级：low/medium/high
 	Examples        []ToolExample                    // 使用示例（提升模型理解复杂参数的准确率）
-	ConcurrencySafe bool                             // 标记工具是否可安全并行执行
+	ConcurrencySafe    bool                             // 标记工具是否可安全并行执行
+	Category           string                           // 工具分类（如 "Office 文档"、"Git 版本控制"）
+	ReadOnly           bool                             // 是否为只读操作
+	NeedsSandboxRunner bool                             // 是否需要 sandbox runner 执行
 }
 
 // ToolRiskLevel 工具风险等级
@@ -132,6 +135,7 @@ const (
 	ToolRemoteRepoCreatePR      = "remote_repo_create_pr"
 	ToolRemoteRepoCreateMR      = "remote_repo_create_mr"
 	ToolRemoteRepoDisconnect    = "remote_repo_disconnect"
+	ToolPatch                   = "patch"
 )
 
 // GetAllToolDefinitions 返回所有工具的定义
@@ -637,7 +641,10 @@ func GetAllToolDefinitions() []ToolDefinition {
 				"content":            {Type: schema.String, Required: false, Desc: "纯文本正文"},
 				"structured_content": {Type: schema.Object, Required: false, Desc: "结构化内容，可传入文档块/工作表 JSON"},
 			},
-			RiskLevel: RiskLevelMedium,
+			RiskLevel:          RiskLevelMedium,
+			Category:           "Office 文档",
+			ReadOnly:           false,
+			NeedsSandboxRunner: true,
 			Examples: []ToolExample{
 				{Description: "生成 DOCX", Input: map[string]any{"format": "docx", "path": "out/report.docx", "title": "周报", "content": "第一段\n\n第二段"}},
 				{Description: "生成 XLSX", Input: map[string]any{"format": "xlsx", "path": "out/table.xlsx", "structured_content": map[string]any{"sheets": []map[string]any{{"name": "Sheet1", "rows": [][]string{{"A", "B"}, {"1", "2"}}}}}}},
@@ -652,7 +659,10 @@ func GetAllToolDefinitions() []ToolDefinition {
 				"destination_path": {Type: schema.String, Required: false, Desc: "输出文件路径；为空时自动推导"},
 				"fidelity":         {Type: schema.String, Required: false, Desc: "转换保真度：high（默认）或 content"},
 			},
-			RiskLevel: RiskLevelMedium,
+			RiskLevel:          RiskLevelMedium,
+			Category:           "Office 文档",
+			ReadOnly:           false,
+			NeedsSandboxRunner: true,
 			Examples: []ToolExample{
 				{Description: "高保真转换为 PDF", Input: map[string]any{"source_path": "report.docx", "target_format": "pdf", "fidelity": "high"}},
 				{Description: "内容级转换为 XLSX", Input: map[string]any{"source_path": "notes.pdf", "target_format": "xlsx", "fidelity": "content"}},
@@ -1468,6 +1478,36 @@ func GetAllToolDefinitions() []ToolDefinition {
 			},
 			RiskLevel: RiskLevelLow,
 		},
+		{
+			Name:        ToolPatch,
+			Description: "[实验性] 结构化 patch 工具。支持两种格式：edits（结构化编辑列表）和 unified（unified diff）。支持 dry_run 预览和 apply 实际写入。",
+			Params: map[string]*schema.ParameterInfo{
+				"mode":   {Type: schema.String, Required: false, Desc: "执行模式: apply（默认，实际写入）, dry_run（仅预览不落盘）"},
+				"format": {Type: schema.String, Required: false, Desc: "patch 格式: edits（默认，结构化编辑）, unified（unified diff 文本）"},
+				"patches": {Type: schema.Array, Required: false, Desc: "edits 格式的 patch 列表，每项含 path 和 edits 数组"},
+				"diff":   {Type: schema.String, Required: false, Desc: "unified 格式的 diff 文本"},
+			},
+			RiskLevel: RiskLevelMedium,
+			Examples: []ToolExample{
+				{
+					Description: "结构化编辑（dry_run 预览）",
+					Input: map[string]any{
+						"mode":   "dry_run",
+						"format": "edits",
+						"patches": []map[string]any{
+							{"path": "main.go", "edits": []map[string]any{{"find": "oldFunc", "replace": "newFunc"}}},
+						},
+					},
+				},
+				{
+					Description: "应用 unified diff",
+					Input: map[string]any{
+						"format": "unified",
+						"diff":   "--- a/main.go\n+++ b/main.go\n@@ -1,3 +1,3 @@\n package main\n-func old()\n+func new()\n func main() {}",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -1487,4 +1527,36 @@ func GetToolRiskLevel(name string) ToolRiskLevel {
 		return def.RiskLevel
 	}
 	return RiskLevelHigh // 默认为高风险
+}
+
+// GetToolsByCategory 按分类获取工具定义列表
+func GetToolsByCategory(category string) []ToolDefinition {
+	var result []ToolDefinition
+	for _, def := range GetAllToolDefinitions() {
+		if def.Category == category {
+			result = append(result, def)
+		}
+	}
+	return result
+}
+
+// IsReadOnlyTool 检查工具是否为只读操作
+func IsReadOnlyTool(name string) bool {
+	if def, ok := GetToolDefinition(name); ok {
+		return def.ReadOnly
+	}
+	return false
+}
+
+// NeedsSandbox 检查工具是否需要 sandbox runner
+func NeedsSandbox(name string) bool {
+	if def, ok := GetToolDefinition(name); ok {
+		return def.NeedsSandboxRunner
+	}
+	return false
+}
+
+// GetOfficeTools 返回所有 Office 文档相关工具定义
+func GetOfficeTools() []ToolDefinition {
+	return GetToolsByCategory("Office 文档")
 }

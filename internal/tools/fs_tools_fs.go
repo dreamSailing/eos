@@ -5,16 +5,15 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
-	"path/filepath"
 	"github.com/dreamSailing/eos/internal/i18n"
 	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"github.com/dreamSailing/eos/internal/tools/fileops"
+	"log/slog"
+	"os"
+	"path/filepath"
 )
 
 func (m *Manager) fsStructured(ctx context.Context, params map[string]any) ToolResult {
@@ -73,6 +72,9 @@ func (m *Manager) fsWrite(ctx context.Context, params map[string]any) ToolResult
 	ap := res.AbsPath
 	rel := res.RelPath
 
+	if err := sandboxWriteError(ctx, ap); err != nil {
+		return ToolResult{Type: "tool_result", Tool: "fs", Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
+	}
 	slog.Debug("fs.write.start", "component", utils.ComponentTool, "path", ap, "rel", filepath.ToSlash(rel))
 	if m.fileOps.IsTextFile(ap) {
 		if old, err := m.fileOps.ReadFile(ap); err == nil {
@@ -110,6 +112,9 @@ func (m *Manager) fsCreate(ctx context.Context, params map[string]any) ToolResul
 	ap := res.AbsPath
 	rel := res.RelPath
 
+	if err := sandboxWriteError(ctx, ap); err != nil {
+		return ToolResult{Type: "tool_result", Tool: "fs", Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
+	}
 	if fileType == "dir" {
 		if err := m.fileOps.CreateDirectory(ap); err != nil {
 			slog.Error("fs.create.error", "component", utils.ComponentTool, "path", ap, "err", err.Error())
@@ -152,6 +157,9 @@ func (m *Manager) fsDelete(ctx context.Context, params map[string]any) ToolResul
 	ap := res.AbsPath
 	rel := res.RelPath
 
+	if err := sandboxWriteError(ctx, ap); err != nil {
+		return ToolResult{Type: "tool_result", Tool: "fs", Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
+	}
 	exists, isDir, _ := m.fileOps.PathExists(ap)
 	if !exists {
 		return ToolResult{Type: "tool_result", Tool: "fs", Status: "error", Error: i18n.T("tool.error.file_not_found", lang)}

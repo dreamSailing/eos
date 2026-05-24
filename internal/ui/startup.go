@@ -5,37 +5,30 @@ package ui
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/ai"
-	"github.com/dreamSailing/eos/internal/bridge"
-	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/memory"
-	"github.com/dreamSailing/eos/internal/session"
-	"github.com/dreamSailing/eos/internal/tools"
+	sharedcore "github.com/dreamSailing/eos/pkg/core"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 // TUIOptions holds CLI-provided overrides for the interactive TUI
 type TUIOptions struct {
-	SessionID        string   // --continue ("latest") or --resume ("session-id")
-	ModelOverride    string   // --model
-	MaxTurns         int      // --max-turns
-	AllowedTools     []string // --allowed-tools
-	DisallowedTools  []string // --disallowed-tools
-	AccessMode       string   // --access-mode
-	ApprovalMode     string   // --approval-mode
-	SandboxMode      string   // --sandbox-mode legacy alias
-	SkipPermissions  bool     // --dangerously-skip-permissions
+	SessionID       string   // --continue ("latest") or --resume ("session-id")
+	ModelOverride   string   // --model
+	MaxTurns        int      // --max-turns
+	AllowedTools    []string // --allowed-tools
+	DisallowedTools []string // --disallowed-tools
+	AccessMode      string   // --access-mode
+	ApprovalMode    string   // --approval-mode
+	SandboxMode     string   // --sandbox-mode legacy alias
+	SkipPermissions bool     // --dangerously-skip-permissions
 }
 
 // T 是 i18n.T 的别名，用于简化调用
@@ -48,84 +41,21 @@ func StartInteractiveTUI() {
 }
 
 func StartInteractiveTUIWithOptions(opts TUIOptions) {
-	cm := session.NewContextManager()
-	tm := tools.NewManager()
-	if p, _ := os.Getwd(); p != "" {
-		rememberKnownWorkspace(p, true)
-		core := bridge.NewRuntimeCore(cm, tm, nil)
-		applyTUIOptions(core, cm, opts)
-		base, key, model, _ := core.ResolveAPIConfig()
-		if model != "" {
-			ai.PrimeContextWindowFromProvider(context.Background(), base, key, model)
-			cm.SetModel(model)
-			window := ai.ContextWindowTokens(model)
-			switch {
-			case window >= 128000:
-				cm.SetCompressionStrategy(session.CompressionConservative)
-			case window >= 32000:
-				cm.SetCompressionStrategy(session.CompressionBalanced)
-			default:
-				cm.SetCompressionStrategy(session.CompressionAggressive)
-			}
-		}
-		injectProjectConventions(cm, p)
-		_ = memory.EnsureWorkspaceMemory(p)
-		if raw, err := os.ReadFile(filepath.Join(p, "EOS.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-			cm.SetPinnedDoc("EOS.md", string(raw), 20000)
-		}
-		if raw, err := os.ReadFile(filepath.Join(p, ".eos", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-			cm.SetPinnedDoc(".eos/Rules.md", string(raw), 20000)
-		}
-		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-			if raw, err := os.ReadFile(filepath.Join(home, ".eos", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-				cm.SetPinnedDoc("~/.eos/Rules.md", string(raw), 20000)
-			}
-		}
-		injectMemoryDocs(cm, p)
-		m := NewAppModel(core)
-		slog.Info("ui.startup.app.run")
-		if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
-			slog.Error("ui.startup.app.run.error", "error", err)
-			fmt.Fprintf(os.Stderr, "\nError: Application failed to start: %v\n", err)
-			fmt.Fprintf(os.Stderr, "Please check the logs for more details.\n")
-			os.Exit(1)
-		}
-		slog.Info("ui.startup.app.stopped")
-		fmt.Println(T("goodbye.emoji", "zh") + " " + T("goodbye.message", "zh"))
-		fmt.Println(T("goodbye.ended", "zh"))
-		return
+	runtime := sharedcore.NewRuntime()
+	defer runtime.Close()
+
+	root, _ := os.Getwd()
+	if strings.TrimSpace(root) == "" {
+		root = "."
+	}
+	rememberKnownWorkspace(root, true)
+	applyTUIOptions(runtime, opts)
+	runtime.PrepareStartupContext(context.Background(), root)
+	if strings.TrimSpace(opts.SessionID) != "" {
+		slog.Info("ui.startup.session", "session_id", opts.SessionID)
 	}
 
-	core := bridge.NewRuntimeCore(cm, tm, nil)
-	applyTUIOptions(core, cm, opts)
-	base, key, model, _ := core.ResolveAPIConfig()
-	if model != "" {
-		ai.PrimeContextWindowFromProvider(context.Background(), base, key, model)
-		cm.SetModel(model)
-		window := ai.ContextWindowTokens(model)
-		switch {
-		case window >= 128000:
-			cm.SetCompressionStrategy(session.CompressionConservative)
-		case window >= 32000:
-			cm.SetCompressionStrategy(session.CompressionBalanced)
-		default:
-			cm.SetCompressionStrategy(session.CompressionAggressive)
-		}
-	}
-	if raw, err := os.ReadFile(filepath.Join(".", "EOS.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-		cm.SetPinnedDoc("EOS.md", string(raw), 20000)
-	}
-	if raw, err := os.ReadFile(filepath.Join(".", ".eos", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-		cm.SetPinnedDoc(".eos/Rules.md", string(raw), 20000)
-	}
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		if raw, err := os.ReadFile(filepath.Join(home, ".eos", "Rules.md")); err == nil && strings.TrimSpace(string(raw)) != "" {
-			cm.SetPinnedDoc("~/.eos/Rules.md", string(raw), 20000)
-		}
-	}
-	_ = memory.EnsureWorkspaceMemory(".")
-	injectMemoryDocs(cm, ".")
-	m := NewAppModel(core)
+	m := NewAppModelFromRuntime(runtime)
 	slog.Info("ui.startup.app.run")
 	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		slog.Error("ui.startup.app.run.error", "error", err)
@@ -139,52 +69,18 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 }
 
 // applyTUIOptions applies CLI-provided overrides to the runtime core
-func applyTUIOptions(core *bridge.RuntimeCore, cm *session.ContextManager, opts TUIOptions) {
-	if opts.ModelOverride != "" {
-		// Try to find the model in config and activate it
-		cfg, _ := config.Load()
-		for _, m := range cfg.Models {
-			if m.Name == opts.ModelOverride || m.Model == opts.ModelOverride {
-				core.SetModelOverride(m.Model, m.APIBase)
-				break
-			}
-		}
-	}
-	if opts.MaxTurns > 0 {
-		core.SetMaxTurns(opts.MaxTurns)
-	}
-	if len(opts.AllowedTools) > 0 || len(opts.DisallowedTools) > 0 {
-		core.SetToolPermissions(opts.AllowedTools, opts.DisallowedTools)
-	}
-	if opts.SkipPermissions {
-		core.SetSkipPermissions(true)
-	} else {
-		if strings.TrimSpace(opts.AccessMode) != "" {
-			core.SetAccessMode(opts.AccessMode)
-		} else if strings.TrimSpace(opts.SandboxMode) != "" {
-			core.SetSandboxMode(opts.SandboxMode)
-		}
-		if strings.TrimSpace(opts.ApprovalMode) != "" {
-			core.SetApprovalMode(opts.ApprovalMode)
-		}
-	}
-	if opts.SessionID != "" {
-		slog.Info("ui.startup.session", "session_id", opts.SessionID)
-	}
-}
-
-func injectMemoryDocs(cm *session.ContextManager, root string) {
-	if cm == nil {
+func applyTUIOptions(runtime *sharedcore.Runtime, opts TUIOptions) {
+	if runtime == nil {
 		return
 	}
-	snap := memory.LoadSnapshot(root)
-	if snap.GlobalExists && strings.TrimSpace(snap.GlobalContent) != "" {
-		cm.SetPinnedDoc(memory.GlobalMemoryDocID, snap.GlobalContent, 12000)
-	}
-	if snap.ProjectExists && strings.TrimSpace(snap.ProjectContent) != "" {
-		cm.SetPinnedDoc(memory.ProjectMemoryDocID, snap.ProjectContent, 12000)
-	}
-	if snap.IndexExists && strings.TrimSpace(snap.IndexContent) != "" {
-		cm.SetPinnedDoc(memory.ProjectIndexDocID, snap.IndexContent, 8000)
-	}
+	runtime.ApplyStartupOptions(sharedcore.StartupOptions{
+		ModelOverride:   opts.ModelOverride,
+		MaxTurns:        opts.MaxTurns,
+		AllowedTools:    append([]string(nil), opts.AllowedTools...),
+		DisallowedTools: append([]string(nil), opts.DisallowedTools...),
+		AccessMode:      opts.AccessMode,
+		ApprovalMode:    opts.ApprovalMode,
+		SandboxMode:     opts.SandboxMode,
+		SkipPermissions: opts.SkipPermissions,
+	})
 }

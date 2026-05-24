@@ -324,6 +324,9 @@ func saveGeneratedMediaSet(ctx context.Context, requestedPath string, items []ai
 	}
 	paths := make([]string, 0, len(outputs))
 	for i, out := range outputs {
+		if err := sandboxWriteError(ctx, out.AbsPath); err != nil {
+			return nil, err
+		}
 		if err := os.MkdirAll(filepath.Dir(out.AbsPath), 0o755); err != nil {
 			return nil, err
 		}

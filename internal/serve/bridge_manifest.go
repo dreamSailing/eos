@@ -14,8 +14,8 @@ import (
 	"strings"
 
 	"github.com/dreamSailing/eos/internal/toolapi"
-	"github.com/dreamSailing/eos/internal/tools"
 	"github.com/dreamSailing/eos/internal/version"
+	"github.com/dreamSailing/eos/pkg/coreapi"
 )
 
 const (
@@ -75,6 +75,7 @@ type BridgeManifestOptions struct {
 	LaunchCommand       string
 	WorkingDirectory    string
 	Services            toolapi.Services
+	ToolCatalogService  coreapi.ToolCatalogService
 	IncludeTools        bool
 	IncludeCapabilities bool
 }
@@ -166,14 +167,29 @@ func BuildBridgeManifest(opts Options, manifestOpts BridgeManifestOptions) (Brid
 		Methods:            supportedRPCMethods(),
 	}
 
-	if manifestOpts.Services == nil || (!manifestOpts.IncludeTools && !manifestOpts.IncludeCapabilities) {
+	if !manifestOpts.IncludeTools && !manifestOpts.IncludeCapabilities {
+		return manifest, nil
+	}
+	if manifestOpts.ToolCatalogService == nil && manifestOpts.Services == nil {
 		return manifest, nil
 	}
 
-	ctx := tools.WithWorkspaceRoot(context.Background(), workspaceAbs)
-	defs, err := manifestOpts.Services.Catalog().List(ctx)
-	if err != nil {
-		return manifest, nil
+	var defs []toolapi.ToolDefinition
+	if manifestOpts.ToolCatalogService != nil {
+		coreDefs, listErr := manifestOpts.ToolCatalogService.List(context.Background(), coreapi.ListToolCatalogRequest{
+			WorkspaceRoot: workspaceAbs,
+		})
+		if listErr != nil {
+			return manifest, nil
+		}
+		defs = coreapiDefsToToolAPIDefs(coreDefs)
+	} else {
+		ctx := contextWithWorkspaceRoot(context.Background(), workspaceAbs)
+		var listErr error
+		defs, listErr = manifestOpts.Services.Catalog().List(ctx)
+		if listErr != nil {
+			return manifest, nil
+		}
 	}
 
 	sess := toolapi.ExecSession{
@@ -291,6 +307,43 @@ func allowedToolsMap(values []string) map[string]bool {
 			continue
 		}
 		out[value] = true
+	}
+	return out
+}
+
+func coreapiDefsToToolAPIDefs(coreDefs []coreapi.ToolDefinition) []toolapi.ToolDefinition {
+	out := make([]toolapi.ToolDefinition, 0, len(coreDefs))
+	for _, d := range coreDefs {
+		params := make(map[string]toolapi.ParameterInfo, len(d.Params))
+		for k, v := range d.Params {
+			params[k] = toolapi.ParameterInfo{
+				Type:     v.Type,
+				Required: v.Required,
+				Desc:     v.Desc,
+			}
+		}
+		examples := make([]toolapi.ToolExample, 0, len(d.Examples))
+		for _, ex := range d.Examples {
+			examples = append(examples, toolapi.ToolExample{
+				Description: ex.Description,
+				Input:       ex.Input,
+			})
+		}
+		out = append(out, toolapi.ToolDefinition{
+			Name:               d.Name,
+			Description:        d.Description,
+			RiskLevel:          toolapi.RiskLevel(d.RiskLevel),
+			Params:             params,
+			Examples:           examples,
+			Source:             toolapi.CapabilitySource(d.Source),
+			Category:           d.Category,
+			VisibleIn:          append([]string(nil), d.VisibleIn...),
+			ReadOnly:           d.ReadOnly,
+			Invocable:          d.Invocable,
+			RequiresFullAccess: d.RequiresFullAccess,
+			Tags:               append([]string(nil), d.Tags...),
+			Metadata:           d.Metadata,
+		})
 	}
 	return out
 }

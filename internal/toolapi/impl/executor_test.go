@@ -39,7 +39,7 @@ func TestExecutorInitializesSkillsAndMCPManagers(t *testing.T) {
 	}
 
 	workspace := t.TempDir()
-	exec := newExecutor(workspace)
+	exec := newExecutor(newLegacyToolExecutor(workspace))
 	results, err := exec.Execute(context.Background(), toolapi.ExecSession{
 		WorkspaceRoot: workspace,
 		AllowedTools: map[string]bool{
@@ -84,7 +84,7 @@ func containsString(values []string, needle string) bool {
 
 func TestExecutorHonorsReadOnlyAccessMode(t *testing.T) {
 	workspace := t.TempDir()
-	exec := newExecutor(workspace)
+	exec := newExecutor(newLegacyToolExecutor(workspace))
 	results, err := exec.Execute(context.Background(), toolapi.ExecSession{
 		WorkspaceRoot: workspace,
 		AllowedTools: map[string]bool{

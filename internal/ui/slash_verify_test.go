@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 )
 
 func TestBuildVerifyPromptIncludesVerifierGuidance(t *testing.T) {
+	setTestHome(t)
 	root := t.TempDir()
 	wd, err := os.Getwd()
 	if err != nil {
@@ -27,6 +29,9 @@ func TestBuildVerifyPromptIncludesVerifierGuidance(t *testing.T) {
 	}
 
 	app := newTestAppModel(t)
+	if err := app.adapter.UseWorkspace(context.Background(), root); err != nil {
+		t.Fatalf("UseWorkspace() error = %v", err)
+	}
 
 	got := buildVerifyPrompt(app, []string{"验证图片上传链路"})
 	for _, want := range []string{

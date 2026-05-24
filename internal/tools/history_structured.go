@@ -5,18 +5,17 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/tools/fileops"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
-	"github.com/dreamSailing/eos/internal/pkg/utils"
-	"github.com/dreamSailing/eos/internal/tools/fileops"
 )
 
 func (m *Manager) historyStructured(ctx context.Context, params map[string]any) ToolResult {
@@ -34,10 +33,10 @@ func (m *Manager) historyStructured(ctx context.Context, params map[string]any) 
 		out := make([]map[string]any, 0, len(files))
 		for _, f := range files {
 			out = append(out, map[string]any{
-				"path":           f.PathRel,
-				"version_count":  f.VersionCount,
-				"last_modified":  f.LastModified.Format(time.RFC3339),
-				"total_size":     f.TotalSize,
+				"path":               f.PathRel,
+				"version_count":      f.VersionCount,
+				"last_modified":      f.LastModified.Format(time.RFC3339),
+				"total_size":         f.TotalSize,
 				"last_modified_unix": f.LastModified.Unix(),
 			})
 		}
@@ -89,6 +88,9 @@ func (m *Manager) historyStructured(ctx context.Context, params map[string]any) 
 		content, err := m.fileOps.ReadVersion(ap, id)
 		if err != nil {
 			return ToolResult{Type: "tool_result", Tool: "history", Status: "error", Error: err.Error()}
+		}
+		if err := sandboxWriteError(ctx, ap); err != nil {
+			return ToolResult{Type: "tool_result", Tool: "history", Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
 		}
 		if m.fileOps.IsTextFile(ap) {
 			if cur, err := m.fileOps.ReadFile(ap); err == nil {
@@ -156,6 +158,10 @@ func (m *Manager) historyStructured(ctx context.Context, params map[string]any) 
 			}
 			content, err := m.fileOps.ReadVersion(ap, vid)
 			if err != nil {
+				errs = append(errs, rel+": "+err.Error())
+				continue
+			}
+			if err := sandboxWriteError(ctx, ap); err != nil {
 				errs = append(errs, rel+": "+err.Error())
 				continue
 			}

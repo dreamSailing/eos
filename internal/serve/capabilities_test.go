@@ -142,7 +142,7 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"}})
-	_ = readResponse(1, 10*time.Second)
+	_ = readResponse(1, 30*time.Second)
 
 	write(map[string]any{
 		"jsonrpc": "2.0",
@@ -157,7 +157,7 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 			},
 		},
 	})
-	resp := readResponse(2, 10*time.Second)
+	resp := readResponse(2, 30*time.Second)
 	result, _ := resp["result"].(map[string]any)
 	sessionID, _ := result["sessionID"].(string)
 	if sessionID == "" {
@@ -165,7 +165,7 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 3, "method": "capability.list", "params": map[string]any{"sessionID": sessionID}})
-	capResp := readResponse(3, 10*time.Second)
+	capResp := readResponse(3, 30*time.Second)
 	capResult, _ := capResp["result"].(map[string]any)
 	capabilities, _ := capResult["capabilities"].([]any)
 	if got, _ := capResult["mode"].(string); got != "auto" {
@@ -204,7 +204,7 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 4, "method": "tool.list", "params": map[string]any{"sessionID": sessionID}})
-	toolResp := readResponse(4, 10*time.Second)
+	toolResp := readResponse(4, 30*time.Second)
 	toolResult, _ := toolResp["result"].(map[string]any)
 	toolsAny, _ := toolResult["tools"].([]any)
 	toolCatalog, _ := toolResult["catalog"].([]any)

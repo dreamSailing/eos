@@ -5,7 +5,6 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
@@ -43,6 +42,9 @@ func (m *Manager) fsCopy(ctx context.Context, params map[string]any) ToolResult 
 	relSrc := resSrc.RelPath
 	relDst := resDst.RelPath
 
+	if err := sandboxWriteError(ctx, dstAp); err != nil {
+		return ToolResult{Type: "tool_result", Tool: "fs", Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
+	}
 	fileType, _ := params["type"].(string)
 	if fileType == "" {
 		if exists, isDir, _ := m.fileOps.PathExists(srcAp); exists && isDir {
@@ -75,6 +77,12 @@ func (m *Manager) fileOpStructured(ctx context.Context, toolName string, op func
 		}
 		slog.Error(toolName+".out_of_root", "component", utils.ComponentTool, "src", src, "dst", dst)
 		return ToolResult{Type: "tool_result", Tool: toolName, Status: "error", Error: i18n.T("tool.error.outside_root", lang)}
+	}
+	if err := sandboxWriteError(ctx, src); err != nil {
+		return ToolResult{Type: "tool_result", Tool: toolName, Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
+	}
+	if err := sandboxWriteError(ctx, dst); err != nil {
+		return ToolResult{Type: "tool_result", Tool: toolName, Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
 	}
 	if err := op(src, dst); err != nil {
 		slog.Error(toolName+".error", "component", utils.ComponentTool, "src", src, "dst", dst, "err", err.Error())

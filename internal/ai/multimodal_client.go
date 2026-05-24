@@ -254,11 +254,15 @@ func mediaFromPayload(payload map[string]any) (GeneratedMedia, bool, error) {
 	if len(payload) == 0 {
 		return GeneratedMedia{}, false, nil
 	}
+	requestID := firstStringValue(payload, "id", "task_id", "request_id", "job_id")
 	if data, ok := payload["data"].([]any); ok {
 		for _, item := range data {
 			if m, ok := item.(map[string]any); ok {
 				media, ok, err := mediaFromMap(m)
 				if ok || err != nil {
+					if ok && media.RequestID == "" {
+						media.RequestID = requestID
+					}
 					return media, true, err
 				}
 			}

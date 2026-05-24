@@ -63,6 +63,10 @@ func getToolCategories() []toolCategory {
 			Name:     "技能",
 			ToolKeys: []string{tools.ToolSkill},
 		},
+		{
+			Name:     "Office 文档",
+			ToolKeys: []string{tools.ToolDocumentGenerate, tools.ToolDocumentConvert},
+		},
 	}
 }
 

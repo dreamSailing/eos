@@ -7,24 +7,27 @@ package bridge
 
 
 import (
-	"github.com/dreamSailing/eos/internal/pkg/utils"
-	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/pkg/sandbox"
 )
 
-func buildGitContextHint(startRoot string) string {
+func (rc *RuntimeCore) buildGitContextHint(startRoot string) string {
 	root := findGitRoot(startRoot)
 	if strings.TrimSpace(root) == "" {
 		return ""
 	}
-	branch := runGit(root, "rev-parse", "--abbrev-ref", "HEAD")
-	head := runGit(root, "rev-parse", "--short", "HEAD")
-	subject := runGit(root, "log", "-1", "--pretty=%s")
-	status := runGit(root, "status", "--porcelain")
+	policy := rc.sandboxPolicy(context.Background())
+	branch := rc.runGitGuarded(policy, root, "rev-parse", "--abbrev-ref", "HEAD")
+	head := rc.runGitGuarded(policy, root, "rev-parse", "--short", "HEAD")
+	subject := rc.runGitGuarded(policy, root, "log", "-1", "--pretty=%s")
+	status := rc.runGitGuarded(policy, root, "status", "--porcelain")
 
 	branch = strings.TrimSpace(branch)
 	head = strings.TrimSpace(head)
@@ -86,14 +89,17 @@ func findGitRoot(startRoot string) string {
 	}
 }
 
-func runGit(dir string, args ...string) string {
+func (rc *RuntimeCore) runGitGuarded(policy sandbox.Policy, dir string, args ...string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer cancel()
-	cmd := utils.CommandContext(ctx, "git", args...)
-	cmd.Dir = dir
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	_ = cmd.Run()
-	return out.String()
+	result := rc.guardedGitCmd(ctx, policy, dir, args...)
+	if result.Err != nil {
+		slog.Warn("bridge.git_context.sandbox_blocked",
+			"component", utils.ComponentSystem,
+			"error", result.Err,
+			"args", args,
+		)
+		return ""
+	}
+	return result.Stdout
 }

@@ -140,6 +140,9 @@ func (m *Manager) browserScreenshotStructured(ctx context.Context, params map[st
 			return ToolResult{Type: "tool_result", Tool: ToolBrowserScreenshot, Status: "error", Error: errMsg}
 		}
 		resolvedPath = resolved.AbsPath
+		if err := sandboxWriteError(ctx, resolvedPath); err != nil {
+			return ToolResult{Type: "tool_result", Tool: ToolBrowserScreenshot, Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
+		}
 	}
 	return m.runBrowserAction(ctx, ToolBrowserScreenshot, params, func(sess browser.SessionBackend) (browser.ActionResult, error) {
 		return sess.Screenshot(ctx, browser.ScreenshotRequest{Path: resolvedPath, FullPage: fullPage})

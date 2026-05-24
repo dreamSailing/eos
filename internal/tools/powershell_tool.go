@@ -5,7 +5,6 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
@@ -20,7 +19,9 @@ func (m *Manager) powerShellStructured(ctx context.Context, params map[string]in
 		return ToolResult{Type: "tool_result", Tool: ToolPowerShell, Status: "error", Error: "command required"}
 	}
 
-	out, err := m.shell.ExecuteTypedWithWorkingDirCtx(ctx, shell.ShellTypePowerShell, cmd, WorkspaceRootFromContext(ctx))
+	out, err := m.runSandboxedCommand(ctx, []string{"powershell", "-Command", cmd}, func() (string, error) {
+		return m.shell.ExecuteTypedWithWorkingDirCtx(ctx, shell.ShellTypePowerShell, cmd, WorkspaceRootFromContext(ctx))
+	})
 	if err != nil {
 		return ToolResult{Type: "tool_result", Tool: ToolPowerShell, Status: "error", Error: fmt.Sprintf("%v", err), Data: map[string]interface{}{"stdout": out}}
 	}

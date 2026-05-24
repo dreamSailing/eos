@@ -17,16 +17,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/bridge"
 	"github.com/dreamSailing/eos/internal/config"
-	mcppkg "github.com/dreamSailing/eos/internal/mcp"
-	plugpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
-	"github.com/dreamSailing/eos/internal/runtime"
 	"github.com/dreamSailing/eos/internal/toolapi"
-	"github.com/dreamSailing/eos/internal/tools"
-	"github.com/dreamSailing/eos/internal/tools/bg"
-	gitops "github.com/dreamSailing/eos/internal/tools/git"
 	"github.com/dreamSailing/eos/internal/ui/panels"
+	"github.com/dreamSailing/eos/pkg/coreapi"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -39,8 +33,8 @@ func (m *AppModel) localize(zh, en string) string {
 }
 
 func (m *AppModel) currentWorkspaceRoot() string {
-	if m != nil && m.adapter != nil && m.adapter.GetCore() != nil {
-		if root := strings.TrimSpace(m.adapter.GetCore().GetActiveRoot()); root != "" {
+	if m != nil && m.adapter != nil {
+		if root := strings.TrimSpace(m.adapter.ActiveWorkspace(context.Background())); root != "" {
 			return root
 		}
 	}
@@ -97,19 +91,11 @@ func isSupportedApprovalModeInput(raw string) bool {
 	return false
 }
 
-func (m *AppModel) gitOps() *gitops.Ops {
-	return gitops.NewOpsWithRoot(m.currentWorkspaceRoot())
-}
-
 func (m *AppModel) openModelsPanel() {
 	m.activeView = "panel"
 	m.activePanel = "models"
 	m.shell.ClearInput()
-	if modelsPanel, ok := m.panels["models"].(*panels.ModelsPanel); ok && modelsPanel != nil {
-		modelsPanel.Refresh()
-		modelName, _ := m.adapter.GetModelInfo()
-		modelsPanel.SetCurrentModel(modelName)
-	}
+	m.refreshModelsPanel()
 }
 
 func (m *AppModel) openContextPanel() {
@@ -138,9 +124,7 @@ func (m *AppModel) openSettingsPanel() {
 	m.activeView = "panel"
 	m.activePanel = "settings"
 	m.shell.ClearInput()
-	if settingsPanel, ok := m.panels["settings"].(*panels.SettingsPanel); ok && settingsPanel != nil {
-		settingsPanel.LoadSettings()
-	}
+	m.refreshSettingsPanel()
 }
 
 func (m *AppModel) handleWorkspaceSlash(args []string) tea.Cmd {
@@ -172,13 +156,17 @@ func (m *AppModel) handleWorkspaceSlash(args []string) tea.Cmd {
 			m.appendSystem(m.localize("路径不是目录: ", "Path is not a directory: ")+path, "warning")
 			return nil
 		}
-		m.adapter.GetCore().AddWorkspaceRoot(path)
-		rememberKnownWorkspace(path, false)
+		if err := m.adapter.AddWorkspace(context.Background(), path); err != nil {
+			m.appendSystem(err.Error(), "error")
+			return nil
+		}
 		m.refreshWorkspacePanel()
 		m.appendSystem(m.localize("已添加工作区: ", "Added workspace: ")+path, "success")
 	case "remove":
-		m.adapter.GetCore().RemoveWorkspaceRoot(path)
-		forgetKnownWorkspace(path)
+		if err := m.adapter.RemoveWorkspace(context.Background(), path); err != nil {
+			m.appendSystem(err.Error(), "error")
+			return nil
+		}
 		m.refreshWorkspacePanel()
 		m.appendSystem(m.localize("已移除工作区: ", "Removed workspace: ")+path, "success")
 	case "use":
@@ -219,26 +207,21 @@ func (m *AppModel) handleModelSlash(args []string) tea.Cmd {
 		return nil
 	}
 
-	if m.adapter.SetActiveModel(name) {
-		_ = m.adapter.Reload()
-		if modelsPanel, ok := m.panels["models"].(*panels.ModelsPanel); ok && modelsPanel != nil {
-			modelsPanel.Refresh()
-			modelsPanel.SetCurrentModel(name)
-		}
-		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已切换模型", "Switched model"), name), "success")
+	if err := m.adapter.ActivateModel(context.Background(), name); err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("未找到模型", "Model not found"), name), "error")
 		return nil
 	}
 
-	m.appendSystem(fmt.Sprintf("%s: %s", m.localize("未找到模型", "Model not found"), name), "error")
+	m.refreshModelsPanel()
+	m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已切换模型", "Switched model"), name), "success")
 	return nil
 }
 
 func (m *AppModel) handleSessionSlash(args []string) tea.Cmd {
-	core := m.adapter.GetCore()
 	if len(args) > 0 {
 		switch strings.ToLower(strings.TrimSpace(args[0])) {
 		case "save":
-			id, err := core.SaveSessionMessages(context.Background(), "", m.sessionTranscript())
+			id, err := m.adapter.SaveSessionMessages(context.Background(), "", m.sessionTranscript())
 			if err != nil {
 				m.appendSystem(err.Error(), "error")
 				return nil
@@ -254,13 +237,13 @@ func (m *AppModel) handleSessionSlash(args []string) tea.Cmd {
 			if len(args) >= 3 {
 				path = strings.TrimSpace(args[2])
 			} else if id != "" {
-				path = filepath.Join(core.SessionsDir(), id+".md")
+				path = filepath.Join(m.adapter.SessionsDir(context.Background()), id+".md")
 			}
 			if strings.TrimSpace(path) == "" {
 				m.appendSystem(m.localize("用法: /session export <id> [outputPath]", "Usage: /session export <id> [outputPath]"), "warning")
 				return nil
 			}
-			if err := core.SaveSessionMarkdown(id, path); err != nil {
+			if err := m.adapter.ExportSessionMarkdown(context.Background(), id, path); err != nil {
 				m.appendSystem(err.Error(), "error")
 				return nil
 			}
@@ -269,12 +252,12 @@ func (m *AppModel) handleSessionSlash(args []string) tea.Cmd {
 		}
 	}
 
-	metas, err := core.ListSessions()
+	metas, err := m.adapter.ListSessions(context.Background())
 	if err != nil {
 		m.appendSystem(err.Error(), "error")
 		return nil
 	}
-	currentID, _ := core.CurrentSessionID()
+	currentID, _ := m.adapter.CurrentSessionID(context.Background())
 	if len(metas) == 0 {
 		m.appendSystem(m.localize("暂无已保存会话。使用 /session save 保存当前会话。", "No saved sessions. Use /session save to persist the current session."), "info")
 		return nil
@@ -314,17 +297,16 @@ func (m *AppModel) handleSessionSlash(args []string) tea.Cmd {
 }
 
 func (m *AppModel) handleResumeSlash(args []string) tea.Cmd {
-	core := m.adapter.GetCore()
 	id := ""
 	if len(args) > 0 {
 		id = strings.TrimSpace(args[0])
 	}
-	if err := core.ResumeSession(context.Background(), id); err != nil {
+	if err := m.adapter.ResumeSession(context.Background(), id); err != nil {
 		m.appendSystem(err.Error(), "error")
 		return nil
 	}
 
-	resolvedID, _ := core.CurrentSessionID()
+	resolvedID, _ := m.adapter.CurrentSessionID(context.Background())
 	m.restoreSessionHistory(resolvedID)
 	m.refreshContextPanel()
 	m.refreshCostPanel()
@@ -334,22 +316,30 @@ func (m *AppModel) handleResumeSlash(args []string) tea.Cmd {
 }
 
 func (m *AppModel) handlePermissionsSlash(args []string) tea.Cmd {
-	core := m.adapter.GetCore()
 	if len(args) > 0 {
 		switch {
 		case len(args) == 1 && isSupportedExecutionModeInput(args[0]):
 			mode := toolapi.NormalizeExecutionMode(args[0])
-			core.SetExecutionMode(mode)
+			if err := m.adapter.SetExecutionMode(context.Background(), mode); err != nil {
+				m.appendSystem(err.Error(), "error")
+				return nil
+			}
 			m.state.ExecutionMode = mode
 			m.shell.SetExecutionMode(mode)
 			m.appendSystem(fmt.Sprintf("%s %s", m.localize("执行模式已切换为", "Execution mode switched to"), m.executionModeLabel(mode)), "success")
 		case len(args) >= 2 && strings.EqualFold(strings.TrimSpace(args[0]), "access") && isSupportedAccessModeInput(args[1]):
 			mode := toolapi.NormalizeAccessMode(args[1])
-			core.SetAccessMode(mode)
+			if err := m.adapter.SetAccessMode(context.Background(), mode); err != nil {
+				m.appendSystem(err.Error(), "error")
+				return nil
+			}
 			m.appendSystem(fmt.Sprintf("%s %s", m.localize("访问模式已切换为", "Access mode switched to"), mode), "success")
 		case len(args) >= 2 && strings.EqualFold(strings.TrimSpace(args[0]), "approval") && isSupportedApprovalModeInput(args[1]):
 			mode := toolapi.NormalizeApprovalMode(args[1])
-			core.SetApprovalMode(mode)
+			if err := m.adapter.SetApprovalMode(context.Background(), mode); err != nil {
+				m.appendSystem(err.Error(), "error")
+				return nil
+			}
 			m.appendSystem(fmt.Sprintf("%s %s", m.localize("审批模式已切换为", "Approval mode switched to"), mode), "success")
 		default:
 			m.appendSystem(m.executionModeUsage(), "warning")
@@ -357,7 +347,11 @@ func (m *AppModel) handlePermissionsSlash(args []string) tea.Cmd {
 		}
 	}
 
-	snap := core.PermissionSnapshot()
+	snap, err := m.adapter.PermissionSnapshot(context.Background())
+	if err != nil {
+		m.appendSystem(err.Error(), "error")
+		return nil
+	}
 	lines := []string{
 		m.localize("权限与审批状态", "Permissions and approvals"),
 		fmt.Sprintf("%s: %s", m.localize("执行模式", "Execution mode"), m.executionModeLabel(snap.ExecutionMode)),
@@ -403,10 +397,14 @@ func (m *AppModel) handlePlanSlash(args []string) tea.Cmd {
 		return m.handlePermissionsSlash(args)
 	}
 
-	items := tools.DefaultTodoStore().List()
+	items, _ := m.adapter.Todos(context.Background())
+	modeSnapshot, _ := m.adapter.ModeSnapshot(context.Background())
+	if strings.TrimSpace(modeSnapshot.ExecutionMode) == "" {
+		modeSnapshot.ExecutionMode = m.state.ExecutionMode
+	}
 	lines := []string{
 		m.localize("当前计划与待办", "Current plan and todos"),
-		fmt.Sprintf("%s: %s", m.localize("执行模式", "Execution mode"), m.executionModeLabel(m.adapter.GetCore().ExecutionMode())),
+		fmt.Sprintf("%s: %s", m.localize("执行模式", "Execution mode"), m.executionModeLabel(modeSnapshot.ExecutionMode)),
 	}
 	if len(items) == 0 {
 		lines = append(lines, m.localize("暂无待办。", "No todo items."))
@@ -425,22 +423,19 @@ func (m *AppModel) handlePlanSlash(args []string) tea.Cmd {
 }
 
 func (m *AppModel) handleSkillsSlash(args []string) tea.Cmd {
-	sm := m.adapter.GetCore().GetSkillManager()
-	if sm == nil {
-		m.appendSystem(m.localize("Skills 管理器尚未初始化。", "Skill manager is not initialized."), "warning")
-		return nil
-	}
-
 	if len(args) > 0 && strings.EqualFold(args[0], "reload") {
-		if err := sm.ReloadPreserveActive(); err != nil {
+		if err := m.adapter.ReloadSkills(context.Background()); err != nil {
 			m.appendSystem(err.Error(), "error")
 			return nil
 		}
 		m.appendSystem(m.localize("已重载 skills。", "Reloaded skills."), "success")
 	}
 
-	skills := sm.List()
-	active := sm.GetActive()
+	skills, err := m.adapter.Skills(context.Background())
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("读取 skills 失败", "Failed to read skills"), err), "error")
+		return nil
+	}
 	sort.Slice(skills, func(i, j int) bool { return strings.ToLower(skills[i].Name) < strings.ToLower(skills[j].Name) })
 	lines := []string{fmt.Sprintf("%s: %d", m.localize("Skills", "Skills"), len(skills))}
 	if len(skills) == 0 {
@@ -448,7 +443,7 @@ func (m *AppModel) handleSkillsSlash(args []string) tea.Cmd {
 	} else {
 		for _, skill := range skills {
 			prefix := " "
-			if _, ok := active[skill.Name]; ok {
+			if skill.Active {
 				prefix = "*"
 			}
 			desc := strings.TrimSpace(skill.Description)
@@ -456,12 +451,11 @@ func (m *AppModel) handleSkillsSlash(args []string) tea.Cmd {
 				desc = m.localize("(无描述)", "(no description)")
 			}
 			origin := strings.TrimSpace(skill.Location)
-			if strings.TrimSpace(skill.PluginName) != "" {
-				if origin != "" {
-					origin = "plugin:" + strings.TrimSpace(skill.PluginName) + "/" + origin
-				} else {
-					origin = "plugin:" + strings.TrimSpace(skill.PluginName)
-				}
+			if origin == "" {
+				origin = strings.TrimSpace(skill.BaseDir)
+			}
+			if origin == "" {
+				origin = strings.TrimSpace(skill.Source)
 			}
 			lines = append(lines, fmt.Sprintf("%s %s [%s] - %s", prefix, skill.Name, blankFallback(origin, m.localize("unknown", "unknown")), desc))
 		}
@@ -472,71 +466,30 @@ func (m *AppModel) handleSkillsSlash(args []string) tea.Cmd {
 }
 
 func (m *AppModel) handlePluginSlash() tea.Cmd {
-	type pluginRow struct {
-		name        string
-		description string
-		source      string
-		enabled     bool
+	rows, err := m.adapter.Plugins(context.Background())
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("读取插件失败", "Failed to read plugins"), err), "error")
+		return nil
 	}
-	rows := make([]pluginRow, 0)
-	seen := map[string]struct{}{}
-	cfg, _ := config.Load()
-	for _, plugin := range plugpkg.DefaultRegistry().List() {
-		if plugin == nil {
-			continue
-		}
-		name := strings.TrimSpace(plugin.Name())
-		if name == "" {
-			continue
-		}
-		seen[strings.ToLower(name)] = struct{}{}
-		enabled := plugpkg.DefaultRegistry().IsEnabled(name)
-		if cfgEnabled, ok := config.PluginEnabled(&cfg, name); ok {
-			enabled = cfgEnabled
-		}
-		rows = append(rows, pluginRow{
-			name:        name,
-			description: strings.TrimSpace(plugin.Description()),
-			source:      strings.TrimSpace(plugpkg.MetadataOf(plugin).Source),
-			enabled:     enabled,
-		})
-	}
-	if discovered, err := plugpkg.Discover(m.currentWorkspaceRoot()); err == nil {
-		for _, item := range discovered {
-			name := strings.TrimSpace(item.Name)
-			if name == "" {
-				continue
-			}
-			if _, ok := seen[strings.ToLower(name)]; ok {
-				continue
-			}
-			enabled := true
-			if cfgEnabled, ok := config.PluginEnabled(&cfg, name); ok {
-				enabled = cfgEnabled
-			}
-			rows = append(rows, pluginRow{
-				name:        name,
-				description: strings.TrimSpace(item.Description),
-				source:      "directory:" + strings.TrimSpace(item.Location),
-				enabled:     enabled,
-			})
-		}
-	}
-	sort.Slice(rows, func(i, j int) bool { return strings.ToLower(rows[i].name) < strings.ToLower(rows[j].name) })
+	sort.Slice(rows, func(i, j int) bool { return strings.ToLower(rows[i].Name) < strings.ToLower(rows[j].Name) })
 	lines := []string{fmt.Sprintf("%s: %d", m.localize("插件", "Plugins"), len(rows))}
 	if len(rows) == 0 {
 		lines = append(lines, m.localize("暂无可用插件。", "No plugins available."))
 	} else {
 		for _, plugin := range rows {
 			status := m.localize("enabled", "enabled")
-			if !plugin.enabled {
+			if !plugin.Enabled {
 				status = m.localize("disabled", "disabled")
 			}
-			desc := strings.TrimSpace(plugin.description)
+			desc := strings.TrimSpace(plugin.Description)
 			if desc == "" {
 				desc = m.localize("(无描述)", "(no description)")
 			}
-			lines = append(lines, fmt.Sprintf("- %s [%s, %s]: %s", plugin.name, blankFallback(plugin.source, "plugin"), status, desc))
+			source := strings.TrimSpace(plugin.Source)
+			if source == "" {
+				source = strings.TrimSpace(plugin.Command)
+			}
+			lines = append(lines, fmt.Sprintf("- %s [%s, %s]: %s", plugin.Name, blankFallback(source, "plugin"), status, desc))
 		}
 	}
 	m.appendSystem(strings.Join(lines, "\n"), "info")
@@ -559,7 +512,6 @@ func (m *AppModel) handleReloadPluginsSlash() tea.Cmd {
 }
 
 func (m *AppModel) handleDoctorSlash() tea.Cmd {
-	core := m.adapter.GetCore()
 	modelName, modelBase := m.adapter.GetModelInfo()
 	if modelName == "" || modelBase == "" {
 		base, _, model, _ := m.adapter.ResolveAPIConfig()
@@ -570,35 +522,17 @@ func (m *AppModel) handleDoctorSlash() tea.Cmd {
 			modelBase = base
 		}
 	}
-	snap := core.PermissionSnapshot()
-	sessions, _ := core.ListSessions()
-	currentSessionID, _ := core.CurrentSessionID()
-	bgTasks := bg.Default().List()
-	agentTasks := runtime.DefaultAgentRegistry().ListSnapshots()
-	todos := tools.DefaultTodoStore().List()
-	traces := m.adapter.GetTools().GetToolTraces()
-	stats := m.adapter.GetTools().GetToolStats()
-	browser := core.BrowserStatus()
-	skillsCount := 0
-	if sm := core.GetSkillManager(); sm != nil {
-		skillsCount = len(sm.List())
-	}
-	pluginsCount := len(plugpkg.DefaultRegistry().List())
-	if discovered, err := plugpkg.Discover(m.currentWorkspaceRoot()); err == nil {
-		seen := map[string]struct{}{}
-		for _, item := range plugpkg.DefaultRegistry().List() {
-			if item == nil {
-				continue
-			}
-			seen[strings.ToLower(strings.TrimSpace(item.Name()))] = struct{}{}
-		}
-		for _, item := range discovered {
-			if _, ok := seen[strings.ToLower(strings.TrimSpace(item.Name))]; ok {
-				continue
-			}
-			pluginsCount++
-		}
-	}
+	snap, _ := m.adapter.PermissionSnapshot(context.Background())
+	sessions, _ := m.adapter.ListSessions(context.Background())
+	currentSessionID, _ := m.adapter.CurrentSessionID(context.Background())
+	bgTasks, _ := m.adapter.Tasks(context.Background())
+	agentTasks, _ := m.adapter.Agents(context.Background())
+	todos, _ := m.adapter.Todos(context.Background())
+	traces, _ := m.adapter.ToolTraces(context.Background())
+	stats, _ := m.adapter.ToolStats(context.Background())
+	browser, _ := m.adapter.BrowserStatus(context.Background())
+	skills, _ := m.adapter.Skills(context.Background())
+	plugins, _ := m.adapter.Plugins(context.Background())
 
 	lines := []string{
 		m.localize("Doctor 摘要", "Doctor summary"),
@@ -611,8 +545,8 @@ func (m *AppModel) handleDoctorSlash() tea.Cmd {
 		fmt.Sprintf("%s: %d", m.localize("后台任务", "Background tasks"), len(bgTasks)),
 		fmt.Sprintf("%s: %d", m.localize("代理任务", "Agent tasks"), len(agentTasks)),
 		fmt.Sprintf("%s: %d", m.localize("待办项", "Todo items"), len(todos)),
-		fmt.Sprintf("%s: %d", m.localize("可用 skills", "Available skills"), skillsCount),
-		fmt.Sprintf("%s: %d", m.localize("已注册插件", "Registered plugins"), pluginsCount),
+		fmt.Sprintf("%s: %d", m.localize("可用 skills", "Available skills"), len(skills)),
+		fmt.Sprintf("%s: %d", m.localize("已注册插件", "Registered plugins"), len(plugins)),
 		fmt.Sprintf("%s: %d", m.localize("工具追踪数", "Tool traces"), len(traces)),
 		fmt.Sprintf("%s: %s", m.localize("浏览器 MCP", "Browser MCP"), m.browserStatusLabel(browser)),
 	}
@@ -621,29 +555,17 @@ func (m *AppModel) handleDoctorSlash() tea.Cmd {
 	}
 	if len(stats) > 0 {
 		lines = append(lines, m.localize("工具统计:", "Tool stats:"))
-		type statLine struct {
-			name  string
-			calls int
-			avg   time.Duration
-		}
-		var items []statLine
-		for name, stat := range stats {
-			if stat == nil {
-				continue
+		sort.Slice(stats, func(i, j int) bool {
+			if stats[i].TotalCalls == stats[j].TotalCalls {
+				return stats[i].Tool < stats[j].Tool
 			}
-			items = append(items, statLine{name: name, calls: stat.TotalCalls, avg: stat.AvgDuration})
-		}
-		sort.Slice(items, func(i, j int) bool {
-			if items[i].calls == items[j].calls {
-				return items[i].name < items[j].name
-			}
-			return items[i].calls > items[j].calls
+			return stats[i].TotalCalls > stats[j].TotalCalls
 		})
-		if len(items) > 5 {
-			items = items[:5]
+		if len(stats) > 5 {
+			stats = stats[:5]
 		}
-		for _, item := range items {
-			lines = append(lines, fmt.Sprintf("- %s: calls=%d avg=%s", item.name, item.calls, item.avg.Round(time.Millisecond)))
+		for _, stat := range stats {
+			lines = append(lines, fmt.Sprintf("- %s: calls=%d avg=%s", stat.Tool, stat.TotalCalls, stat.AvgDuration.Round(time.Millisecond)))
 		}
 	}
 	if len(traces) > 0 {
@@ -663,7 +585,7 @@ func (m *AppModel) handleDoctorSlash() tea.Cmd {
 			lines = append(lines, fmt.Sprintf("- %s [%s] %s", trace.Tool, status, trace.Duration.Round(time.Millisecond)))
 		}
 	}
-	diag := strings.TrimSpace(core.ProblemsAndDiagnosticsMarkdown())
+	diag := strings.TrimSpace(m.adapter.LSPDiagnosticsMarkdown(context.Background()))
 	if diag != "" {
 		lines = append(lines, m.localize("LSP 诊断摘要:", "LSP diagnostics:"))
 		lines = append(lines, truncateBlock(diag, 12, 1200))
@@ -673,18 +595,17 @@ func (m *AppModel) handleDoctorSlash() tea.Cmd {
 }
 
 func (m *AppModel) handleDiffSlash(args []string) tea.Cmd {
-	core := m.adapter.GetCore()
 	if len(args) == 0 {
-		diff := strings.TrimSpace(core.GetPendingDiff())
-		if diff != "" {
-			target := strings.TrimSpace(core.GetPendingDiffPath())
+		review, _ := m.adapter.PendingReview(context.Background())
+		if strings.TrimSpace(review.Diff) != "" {
+			target := strings.TrimSpace(review.Path)
 			if target == "" {
 				target = m.localize("(当前待审批改动)", "(current pending edit)")
 			}
-			m.appendSystem(fmt.Sprintf("%s: %s\n%s", m.localize("待审批 diff", "Pending diff"), target, truncateBlock(diff, 40, 5000)), "info")
+			m.appendSystem(fmt.Sprintf("%s: %s\n%s", m.localize("待审批 diff", "Pending diff"), target, truncateBlock(review.Diff, 40, 5000)), "info")
 			return nil
 		}
-		changes, err := m.gitOps().Status()
+		changes, err := m.adapter.GitStatus(context.Background())
 		if err != nil {
 			m.appendSystem(err.Error(), "error")
 			return nil
@@ -703,7 +624,7 @@ func (m *AppModel) handleDiffSlash(args []string) tea.Cmd {
 	}
 
 	path := strings.TrimSpace(args[0])
-	diff, err := m.gitOps().Diff(path)
+	diff, err := m.adapter.GitDiff(context.Background(), path)
 	if err != nil {
 		m.appendSystem(err.Error(), "error")
 		return nil
@@ -720,18 +641,18 @@ func (m *AppModel) handleReviewSlash(args []string) tea.Cmd {
 	lines := []string{m.localize("审查摘要", "Review summary")}
 	if len(args) > 0 {
 		path := strings.TrimSpace(args[0])
-		if diff, err := m.gitOps().Diff(path); err == nil && strings.TrimSpace(diff) != "" {
+		if diff, err := m.adapter.GitDiff(context.Background(), path); err == nil && strings.TrimSpace(diff) != "" {
 			lines = append(lines, fmt.Sprintf("%s: %s", m.localize("目标文件", "Target file"), path))
 			lines = append(lines, truncateBlock(diff, 40, 5000))
 		} else if err != nil {
 			lines = append(lines, fmt.Sprintf("%s: %v", m.localize("读取 diff 失败", "Failed to read diff"), err))
 		}
-	} else if diff := strings.TrimSpace(m.adapter.GetCore().GetPendingDiff()); diff != "" {
-		target := blankFallback(m.adapter.GetCore().GetPendingDiffPath(), m.localize("(当前待审批改动)", "(current pending edit)"))
+	} else if review, _ := m.adapter.PendingReview(context.Background()); strings.TrimSpace(review.Diff) != "" {
+		target := blankFallback(review.Path, m.localize("(当前待审批改动)", "(current pending edit)"))
 		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("待审改动", "Pending change"), target))
-		lines = append(lines, truncateBlock(diff, 40, 5000))
+		lines = append(lines, truncateBlock(review.Diff, 40, 5000))
 	} else {
-		changes, err := m.gitOps().Status()
+		changes, err := m.adapter.GitStatus(context.Background())
 		if err == nil && len(changes) > 0 {
 			lines = append(lines, m.localize("当前 Git 改动:", "Current Git changes:"))
 			for _, change := range changes {
@@ -740,13 +661,13 @@ func (m *AppModel) handleReviewSlash(args []string) tea.Cmd {
 		}
 	}
 
-	diag := strings.TrimSpace(m.adapter.GetCore().ProblemsAndDiagnosticsMarkdown())
+	diag := strings.TrimSpace(m.adapter.LSPDiagnosticsMarkdown(context.Background()))
 	if diag != "" {
 		lines = append(lines, m.localize("诊断:", "Diagnostics:"))
 		lines = append(lines, truncateBlock(diag, 12, 1200))
 	}
 
-	traces := m.adapter.GetTools().GetToolTraces()
+	traces, _ := m.adapter.ToolTraces(context.Background())
 	if len(traces) > 0 {
 		lines = append(lines, m.localize("最近工具调用:", "Recent tool calls:"))
 		start := len(traces) - 5
@@ -768,14 +689,13 @@ func (m *AppModel) handleReviewSlash(args []string) tea.Cmd {
 }
 
 func (m *AppModel) handleGitSlash(args []string) tea.Cmd {
-	ops := m.gitOps()
 	if len(args) == 0 {
 		args = []string{"status"}
 	}
 
 	switch strings.ToLower(strings.TrimSpace(args[0])) {
 	case "status":
-		changes, err := ops.Status()
+		changes, err := m.adapter.GitStatus(context.Background())
 		if err != nil {
 			m.appendSystem(err.Error(), "error")
 			return nil
@@ -790,18 +710,18 @@ func (m *AppModel) handleGitSlash(args []string) tea.Cmd {
 		}
 		m.appendSystem(strings.Join(lines, "\n"), "info")
 	case "branches":
-		branches, current, err := ops.BranchList()
+		out, err := m.adapter.GitBranches(context.Background())
 		if err != nil {
 			m.appendSystem(err.Error(), "error")
 			return nil
 		}
-		lines := []string{fmt.Sprintf("%s: %s", m.localize("当前分支", "Current branch"), current)}
-		for _, branch := range branches {
+		lines := []string{fmt.Sprintf("%s: %s", m.localize("当前分支", "Current branch"), out.Current)}
+		for _, branch := range out.Branches {
 			lines = append(lines, "- "+branch)
 		}
 		m.appendSystem(strings.Join(lines, "\n"), "info")
 	case "log":
-		out, err := ops.Log(20, true, false, false, "")
+		out, err := m.adapter.GitLog(context.Background(), coreapi.GitLogRequest{Limit: 20, Oneline: true})
 		if err != nil {
 			m.appendSystem(err.Error(), "error")
 			return nil
@@ -816,7 +736,7 @@ func (m *AppModel) handleGitSlash(args []string) tea.Cmd {
 		if len(args) > 2 {
 			path = strings.TrimSpace(args[2])
 		}
-		out, err := ops.Show(revision, path)
+		out, err := m.adapter.GitShow(context.Background(), coreapi.GitShowRequest{Revision: revision, Path: path})
 		if err != nil {
 			m.appendSystem(err.Error(), "error")
 			return nil
@@ -833,16 +753,16 @@ func (m *AppModel) handleGitSlash(args []string) tea.Cmd {
 	return nil
 }
 
-func (m *AppModel) sessionTranscript() []bridge.SessionTranscriptMessage {
-	out := make([]bridge.SessionTranscriptMessage, 0, len(m.history))
+func (m *AppModel) sessionTranscript() []coreapi.SessionMessage {
+	out := make([]coreapi.SessionMessage, 0, len(m.history))
 	for _, item := range m.history {
 		content := strings.TrimSpace(item.content)
 		if content == "" {
 			continue
 		}
-		msg := bridge.SessionTranscriptMessage{
-			Content:   content,
-			Timestamp: item.timestamp.Unix(),
+		msg := coreapi.SessionMessage{
+			Content: content,
+			Time:    item.timestamp,
 		}
 		switch item.kind {
 		case "user":
@@ -873,7 +793,7 @@ func (m *AppModel) restoreSessionHistory(id string) {
 	m.shell.ClearContent()
 	m.shell.ClearLive()
 
-	messages, err := m.adapter.GetCore().LoadSessionMessages(id)
+	messages, err := m.adapter.LoadSessionMessages(context.Background(), id)
 	if err != nil {
 		m.appendSystem(err.Error(), "error")
 		return
@@ -911,6 +831,26 @@ func (m *AppModel) executionModeLabel(mode string) string {
 	default:
 		return "auto"
 	}
+}
+
+func normalizePlanPromptStyle(raw string) string {
+	style := strings.TrimSpace(raw)
+	if style == "" {
+		return "concise"
+	}
+	lower := strings.ToLower(style)
+	switch lower {
+	case "concise", "detailed":
+		return lower
+	}
+	if strings.HasPrefix(lower, "custom:") {
+		body := strings.TrimSpace(style[len("custom:"):])
+		if body == "" {
+			return "concise"
+		}
+		return "custom:" + body
+	}
+	return "custom:" + style
 }
 
 func truncateBlock(text string, maxLines int, maxBytes int) string {
@@ -952,7 +892,6 @@ func optionalFloatText(value *float64, fallback string) string {
 }
 
 func (m *AppModel) handleStatusSlash() tea.Cmd {
-	core := m.adapter.GetCore()
 	modelName, modelBase := m.adapter.GetModelInfo()
 	if modelName == "" {
 		base, _, model, _ := m.adapter.ResolveAPIConfig()
@@ -963,9 +902,9 @@ func (m *AppModel) handleStatusSlash() tea.Cmd {
 			modelBase = base
 		}
 	}
-	snap := core.PermissionSnapshot()
-	currentSessionID, _ := core.CurrentSessionID()
-	browser := core.BrowserStatus()
+	snap, _ := m.adapter.PermissionSnapshot(context.Background())
+	currentSessionID, _ := m.adapter.CurrentSessionID(context.Background())
+	browser, _ := m.adapter.BrowserStatus(context.Background())
 
 	lines := []string{
 		m.localize("当前状态", "Status"),
@@ -987,7 +926,7 @@ func (m *AppModel) handleStatusSlash() tea.Cmd {
 	if strings.TrimSpace(snap.LastAuthorizationNote) != "" {
 		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("最近授权说明", "Last authorization note"), snap.LastAuthorizationNote))
 	}
-	if remote, ok := core.CurrentRemoteRepo(); ok {
+	if remote, ok, _ := m.adapter.CurrentRemoteRepo(context.Background()); ok {
 		lines = append(lines,
 			fmt.Sprintf("%s: %s/%s", m.localize("远程仓库", "Remote repo"), remote.Owner, remote.Repo),
 			fmt.Sprintf("%s: %s", m.localize("远程分支", "Remote branch"), blankFallback(remote.WorkingBranch, remote.DefaultBranch)),
@@ -999,7 +938,7 @@ func (m *AppModel) handleStatusSlash() tea.Cmd {
 	}
 
 	// Context usage
-	ctxWindowTokens := core.GetContextWindowTokens()
+	ctxWindowTokens, _ := m.adapter.ContextWindowTokens(context.Background())
 	if ctxWindowTokens > 0 {
 		lines = append(lines, fmt.Sprintf("%s: %d tokens", m.localize("上下文窗口", "Context window"), ctxWindowTokens))
 	}
@@ -1010,8 +949,11 @@ func (m *AppModel) handleStatusSlash() tea.Cmd {
 
 func (m *AppModel) handleRemoteSlash(args []string) tea.Cmd {
 	_ = args
-	core := m.adapter.GetCore()
-	remote, ok := core.CurrentRemoteRepo()
+	remote, ok, err := m.adapter.CurrentRemoteRepo(context.Background())
+	if err != nil {
+		m.appendSystem(err.Error(), "error")
+		return nil
+	}
 	if !ok {
 		m.appendSystem(m.localize("当前没有活跃的远程仓库上下文。", "No active remote repository context."), "info")
 		return nil
@@ -1031,7 +973,7 @@ func (m *AppModel) handleRemoteSlash(args []string) tea.Cmd {
 	return nil
 }
 
-func (m *AppModel) browserStatusLabel(status mcppkg.BrowserStatus) string {
+func (m *AppModel) browserStatusLabel(status coreapi.BrowserStatus) string {
 	switch {
 	case status.Configured && status.Enabled && status.Loaded:
 		return m.localize("已可用", "ready")
@@ -1069,7 +1011,6 @@ func (m *AppModel) handleFastSlash() tea.Cmd {
 }
 
 func (m *AppModel) handleExportSlash(args []string) tea.Cmd {
-	core := m.adapter.GetCore()
 	format := "markdown"
 	path := ""
 
@@ -1086,7 +1027,7 @@ func (m *AppModel) handleExportSlash(args []string) tea.Cmd {
 		path = strings.TrimSpace(args[1])
 	}
 
-	currentID, _ := core.CurrentSessionID()
+	currentID, _ := m.adapter.CurrentSessionID(context.Background())
 	if currentID == "" {
 		m.appendSystem(m.localize("没有当前会话可导出。", "No current session to export."), "warning")
 		return nil
@@ -1097,7 +1038,7 @@ func (m *AppModel) handleExportSlash(args []string) tea.Cmd {
 		if format == "json" {
 			ext = ".json"
 		}
-		path = filepath.Join(core.SessionsDir(), currentID+ext)
+		path = filepath.Join(m.adapter.SessionsDir(context.Background()), currentID+ext)
 	}
 
 	if format == "json" {
@@ -1113,7 +1054,7 @@ func (m *AppModel) handleExportSlash(args []string) tea.Cmd {
 			return nil
 		}
 	} else {
-		if err := core.SaveSessionMarkdown(currentID, path); err != nil {
+		if err := m.adapter.ExportSessionMarkdown(context.Background(), currentID, path); err != nil {
 			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("导出失败", "Export failed"), err), "error")
 			return nil
 		}
@@ -1126,7 +1067,11 @@ func (m *AppModel) handleExportSlash(args []string) tea.Cmd {
 func (m *AppModel) handleThemeSlash(args []string) tea.Cmd {
 	if len(args) == 0 {
 		// Show current theme
-		s := m.adapter.GetCore().GetSettings()
+		s, err := m.adapter.Settings(context.Background())
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("读取主题失败", "Failed to read theme"), err), "error")
+			return nil
+		}
 		current := s.Theme
 		if current == "" {
 			current = "dark"
@@ -1136,19 +1081,30 @@ func (m *AppModel) handleThemeSlash(args []string) tea.Cmd {
 	}
 
 	theme := strings.ToLower(strings.TrimSpace(args[0]))
-	s := m.adapter.GetCore().GetSettings()
+	s, err := m.adapter.Settings(context.Background())
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("读取主题失败", "Failed to read theme"), err), "error")
+		return nil
+	}
 	s.Theme = theme
-	m.adapter.GetCore().SaveSettings("", &s)
+	if err := m.adapter.SaveSettings(context.Background(), s); err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("保存主题失败", "Failed to save theme"), err), "error")
+		return nil
+	}
 	m.state.Theme = theme
 	m.applyTheme(theme)
+	m.refreshSettingsPanel()
 	m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已切换主题", "Switched theme to"), theme), "success")
 	return nil
 }
 
 func (m *AppModel) handlePlanStyleSlash(args []string) tea.Cmd {
-	core := m.adapter.GetCore()
-	s := core.GetSettings()
-	current := runtime.NormalizePlanPromptStyle(s.PlanPromptStyle)
+	s, err := m.adapter.Settings(context.Background())
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("读取计划提示风格失败", "Failed to read plan prompt style"), err), "error")
+		return nil
+	}
+	current := normalizePlanPromptStyle(s.PlanPromptStyle)
 	if len(args) == 0 {
 		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("当前计划提示风格", "Current plan prompt style"), current), "info")
 		return nil
@@ -1162,7 +1118,7 @@ func (m *AppModel) handlePlanStyleSlash(args []string) tea.Cmd {
 		}
 		raw = "custom:" + strings.TrimSpace(strings.Join(args[1:], " "))
 	}
-	normalized := runtime.NormalizePlanPromptStyle(raw)
+	normalized := normalizePlanPromptStyle(raw)
 	s.PlanPromptStyle = normalized
 
 	root := m.currentWorkspaceRoot()
@@ -1170,9 +1126,7 @@ func (m *AppModel) handlePlanStyleSlash(args []string) tea.Cmd {
 		m.appendSystem(m.localize("没有可用工作区，无法保存计划提示风格。", "No workspace is available; cannot save plan prompt style."), "warning")
 		return nil
 	}
-	settingsPath := filepath.Join(normalizeWorkspacePath(root), ".eos", "settings.json")
-	m.adapter.GetSettings().SetPath(settingsPath)
-	if err := core.SaveSettings(settingsPath, &s); err != nil {
+	if err := m.adapter.SaveSettings(context.Background(), s); err != nil {
 		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("保存计划提示风格失败", "Failed to save plan prompt style"), err), "error")
 		return nil
 	}
@@ -1185,36 +1139,31 @@ func (m *AppModel) handlePlanStyleSlash(args []string) tea.Cmd {
 }
 
 func (m *AppModel) handleStatsSlash() tea.Cmd {
-	core := m.adapter.GetCore()
-	stats := core.GetTokenStats()
-	toolStats := m.adapter.GetTools().GetToolStats()
+	stats, err := m.adapter.UsageSummary(context.Background())
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("读取统计失败", "Failed to read statistics"), err), "error")
+		return nil
+	}
+	toolStats, err := m.adapter.ToolStats(context.Background())
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("读取工具统计失败", "Failed to read tool stats"), err), "error")
+		return nil
+	}
 
 	lines := []string{
 		m.localize("统计信息", "Statistics"),
 		fmt.Sprintf("%s: %d", m.localize("对话轮数", "Rounds"), stats.Rounds),
-		fmt.Sprintf("%s: %s", m.localize("输入 Tokens", "Input tokens"), optionalIntText(stats.Input, m.localize("未知", "unknown"))),
-		fmt.Sprintf("%s: %s", m.localize("输出 Tokens", "Reply tokens"), optionalIntText(stats.Reply, m.localize("未知", "unknown"))),
-		fmt.Sprintf("%s: %s", m.localize("总 Tokens", "Total tokens"), optionalIntText(stats.Total, m.localize("未知", "unknown"))),
-		fmt.Sprintf("%s: %s", m.localize("总成本", "Total cost"), optionalFloatText(stats.TotalCostUSD, m.localize("未知", "unknown"))),
+		fmt.Sprintf("%s: %s", m.localize("输入 Tokens", "Input tokens"), optionalIntText(stats.InputTokens, m.localize("未知", "unknown"))),
+		fmt.Sprintf("%s: %s", m.localize("输出 Tokens", "Reply tokens"), optionalIntText(stats.ReplyTokens, m.localize("未知", "unknown"))),
+		fmt.Sprintf("%s: %s", m.localize("总 Tokens", "Total tokens"), optionalIntText(stats.TotalTokens, m.localize("未知", "unknown"))),
+		fmt.Sprintf("%s: %s", m.localize("总成本", "Total cost"), optionalFloatText(stats.CostUSD, m.localize("未知", "unknown"))),
 	}
 
 	if len(toolStats) > 0 {
 		lines = append(lines, m.localize("工具调用统计:", "Tool call stats:"))
-		type statEntry struct {
-			name  string
-			calls int
-			avg   time.Duration
-		}
-		var entries []statEntry
-		for name, stat := range toolStats {
-			if stat == nil {
-				continue
-			}
-			entries = append(entries, statEntry{name: name, calls: stat.TotalCalls, avg: stat.AvgDuration})
-		}
-		sort.Slice(entries, func(i, j int) bool { return entries[i].calls > entries[j].calls })
-		for _, e := range entries {
-			lines = append(lines, fmt.Sprintf("  - %s: %d calls, avg %s", e.name, e.calls, e.avg.Round(time.Millisecond)))
+		sort.Slice(toolStats, func(i, j int) bool { return toolStats[i].TotalCalls > toolStats[j].TotalCalls })
+		for _, stat := range toolStats {
+			lines = append(lines, fmt.Sprintf("  - %s: %d calls, avg %s", stat.Tool, stat.TotalCalls, stat.AvgDuration.Round(time.Millisecond)))
 		}
 	}
 
@@ -1228,20 +1177,21 @@ func (m *AppModel) handleRenameSlash(args []string) tea.Cmd {
 		return nil
 	}
 	title := strings.TrimSpace(strings.Join(args, " "))
-	core := m.adapter.GetCore()
-	currentID, _ := core.CurrentSessionID()
+	currentID, _ := m.adapter.CurrentSessionID(context.Background())
 	if currentID == "" {
 		m.appendSystem(m.localize("没有当前会话。", "No current session."), "warning")
 		return nil
 	}
-	core.UpdateSessionTitle(currentID, title)
+	if err := m.adapter.RenameSession(context.Background(), currentID, title); err != nil {
+		m.appendSystem(err.Error(), "error")
+		return nil
+	}
 	m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已重命名会话", "Renamed session to"), title), "success")
 	return nil
 }
 
 func (m *AppModel) handleShareSlash() tea.Cmd {
-	core := m.adapter.GetCore()
-	currentID, _ := core.CurrentSessionID()
+	currentID, _ := m.adapter.CurrentSessionID(context.Background())
 	if currentID == "" {
 		m.appendSystem(m.localize("没有当前会话可分享。", "No current session to share."), "warning")
 		return nil
@@ -1265,7 +1215,8 @@ func (m *AppModel) handleShareSlash() tea.Cmd {
 	// Try to copy to clipboard
 	if err := copyToClipboard(content); err != nil {
 		// Fallback: save to file
-		path := filepath.Join(core.SessionsDir(), currentID+"_shared.md")
+		path := filepath.Join(m.adapter.SessionsDir(context.Background()), currentID+"_shared.md")
+		_ = os.MkdirAll(filepath.Dir(path), 0o755)
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("分享失败", "Share failed"), err), "error")
 			return nil

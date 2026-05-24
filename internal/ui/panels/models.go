@@ -5,7 +5,6 @@ package panels
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"fmt"
 	"strings"
@@ -66,8 +65,7 @@ func NewModelsPanel(styles *styles.Styles, lang string) *ModelsPanel {
 	}
 
 	panel.updateTableColumns()
-	// 加载模型列表
-	panel.loadModels()
+	panel.updateTable()
 
 	return panel
 }
@@ -82,11 +80,9 @@ func (p *ModelsPanel) updateTableColumns() {
 	p.table.SetColumns(columns)
 }
 
-// loadModels 从配置中加载所有模型
-func (p *ModelsPanel) loadModels() {
-	cfg, _ := config.Load()
-	p.models = cfg.Models
-	p.currentModel = cfg.Active
+func (p *ModelsPanel) SetModels(models []config.ModelEntry, current string) {
+	p.models = append([]config.ModelEntry(nil), models...)
+	p.currentModel = strings.TrimSpace(current)
 	p.updateTable()
 }
 
@@ -117,7 +113,7 @@ func (p *ModelsPanel) updateTable() {
 
 // Refresh 刷新模型列表
 func (p *ModelsPanel) Refresh() {
-	p.loadModels()
+	p.updateTable()
 }
 
 // GetCurrentAction 获取当前选中的操作
@@ -219,8 +215,9 @@ func (p *ModelsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 			}
 		case "r", "R":
 			// 刷新模型列表
-			p.Refresh()
-			return p, nil
+			return p, func() tea.Msg {
+				return ModelRefreshMsg{}
+			}
 		}
 	}
 
@@ -310,6 +307,9 @@ type ModelDeleteMsg struct {
 
 // ModelSyncMsg 同步模型消息
 type ModelSyncMsg struct{}
+
+// ModelRefreshMsg 刷新模型列表消息
+type ModelRefreshMsg struct{}
 
 // ModelFormMsg 添加/编辑模型表单消息
 type ModelFormMsg struct {

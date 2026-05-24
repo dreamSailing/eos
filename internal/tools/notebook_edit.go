@@ -5,7 +5,6 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"encoding/json"
@@ -14,25 +13,26 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"github.com/google/uuid"
 )
 
 // ipynbCell represents a single cell in a Jupyter notebook
 type ipynbCell struct {
-	ID         string   `json:"id,omitempty"`
-	CellType   string   `json:"cell_type"`
-	Source     []string `json:"source"`
-	Outputs    []any    `json:"outputs,omitempty"`
-	ExecutionCount *int `json:"execution_count,omitempty"`
-	Metadata   map[string]any `json:"metadata,omitempty"`
+	ID             string         `json:"id,omitempty"`
+	CellType       string         `json:"cell_type"`
+	Source         []string       `json:"source"`
+	Outputs        []any          `json:"outputs,omitempty"`
+	ExecutionCount *int           `json:"execution_count,omitempty"`
+	Metadata       map[string]any `json:"metadata,omitempty"`
 }
 
 // ipynbNotebook represents a Jupyter notebook
 type ipynbNotebook struct {
-	Cells                []ipynbCell    `json:"cells"`
-	Metadata             map[string]any `json:"metadata"`
-	NBFormat             int            `json:"nbformat"`
-	NBFormatMinor        int            `json:"nbformat_minor"`
+	Cells         []ipynbCell    `json:"cells"`
+	Metadata      map[string]any `json:"metadata"`
+	NBFormat      int            `json:"nbformat"`
+	NBFormatMinor int            `json:"nbformat_minor"`
 }
 
 // notebookEditStructured handles the notebook_edit tool
@@ -45,13 +45,15 @@ func (m *Manager) notebookEditStructured(ctx context.Context, params map[string]
 		}
 	}
 
-	// Validate path is within workspace
-	if !filepath.IsAbs(path) {
-		wsRoot := WorkspaceRootFromContext(ctx)
-		if wsRoot != "" {
-			path = filepath.Join(wsRoot, path)
+	path = normalizePathPlaceholder(path)
+	res := utils.ResolvePathUnder(WorkspaceRootFromContext(ctx), path)
+	if !res.IsValid {
+		return ToolResult{
+			Type: "tool_result", Tool: ToolNotebookEdit, Status: "error",
+			Error: res.ErrMsg, Display: "错误：路径超出工作目录",
 		}
 	}
+	path = res.AbsPath
 
 	editMode, _ := params["edit_mode"].(string)
 	if editMode == "" {
@@ -193,6 +195,12 @@ func (m *Manager) notebookEditStructured(ctx context.Context, params map[string]
 		return ToolResult{
 			Type: "tool_result", Tool: ToolNotebookEdit, Status: "error",
 			Error: fmt.Sprintf("failed to marshal notebook: %s", err),
+		}
+	}
+	if err := sandboxWriteError(ctx, path); err != nil {
+		return ToolResult{
+			Type: "tool_result", Tool: ToolNotebookEdit, Status: "error",
+			Error: err.Error(), Display: "错误：" + err.Error(),
 		}
 	}
 	if err := os.WriteFile(path, out, 0644); err != nil {

@@ -70,6 +70,7 @@ type MemoryDocument struct {
 	Scope     string
 	Path      string
 	Exists    bool
+	Content   string
 	Summary   string
 	UpdatedAt time.Time
 }
@@ -79,8 +80,12 @@ type MemorySnapshot struct {
 }
 
 func (r *Runtime) InvokeProtocolWithAttachments(ctx context.Context, input string, attachments []Attachment) (<-chan protocol.Envelope, error) {
+	return r.invokeProtocolWithAttachments(ctx, input, attachments, "")
+}
+
+func (r *Runtime) invokeProtocolWithAttachments(ctx context.Context, input string, attachments []Attachment, requestID string) (<-chan protocol.Envelope, error) {
 	effectiveInput, imagePaths := inputWithAttachments(input, attachments)
-	return r.InvokeProtocolWithImages(ctx, effectiveInput, imagePaths)
+	return r.invokeProtocolWithImages(ctx, effectiveInput, imagePaths, requestID)
 }
 
 func (r *Runtime) InvokeWithAttachments(ctx context.Context, input string, attachments []Attachment) (<-chan Event, error) {
@@ -172,10 +177,15 @@ func (r *Runtime) MemorySnapshot() MemorySnapshot {
 		return MemorySnapshot{}
 	}
 	root := r.workingRoot()
+	if strings.TrimSpace(root) != "" {
+		_ = memory.EnsureWorkspaceMemory(root)
+	}
+	snap := memory.LoadSnapshot(root)
 	docs := []MemoryDocument{
-		memoryDoc("global", memory.GlobalMemoryPath()),
-		memoryDoc("project", memory.ProjectMemoryPath(root)),
-		memoryDoc("project-index", memory.ProjectMemoryIndexPath(root)),
+		memoryDoc("global", snap.GlobalPath),
+		memoryDoc("project", snap.ProjectPath),
+		memoryDoc("session", snap.SessionPath),
+		memoryDoc("index", snap.IndexPath),
 	}
 	return MemorySnapshot{Documents: docs}
 }
@@ -192,7 +202,8 @@ func memoryDoc(scope, path string) MemoryDocument {
 	doc.Exists = true
 	doc.UpdatedAt = info.ModTime()
 	if b, err := os.ReadFile(path); err == nil {
-		doc.Summary = summarizeMemoryText(string(b))
+		doc.Content = string(b)
+		doc.Summary = summarizeMemoryText(doc.Content)
 	}
 	return doc
 }

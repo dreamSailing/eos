@@ -5,15 +5,16 @@ package bridge
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/dreamSailing/eos/internal/pkg/utils"
-	"log/slog"
+	gitops "github.com/dreamSailing/eos/internal/tools/git"
 )
 
 // EnterWorktree creates a new git worktree and optionally updates the working root
@@ -22,18 +23,29 @@ func (rc *RuntimeCore) EnterWorktree(ctx context.Context, name string) (string, 
 		name = fmt.Sprintf("wt-%d", os.Getpid())
 	}
 
-	worktreesDir := ".eos/worktrees"
+	root := rc.workingRoot()
+	if strings.TrimSpace(root) == "" {
+		root, _ = os.Getwd()
+	}
+	ops := gitops.NewOpsWithRoot(root)
+	if err := rc.ensureSandboxWrite(ctx, ops.Root); err != nil {
+		return "", err
+	}
+	worktreesDir := filepath.Join(root, ".eos", "worktrees")
 	targetPath := filepath.Join(worktreesDir, name)
+	if err := rc.ensureSandboxWrite(ctx, targetPath); err != nil {
+		return "", err
+	}
 
-	cmd := utils.CommandContext(ctx, "git", "worktree", "add", targetPath)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
+	policy := rc.sandboxPolicy(ctx)
+	result := rc.guardedGitCmd(ctx, policy, ops.Root, "worktree", "add", targetPath)
+	if result.Err != nil {
 		slog.Error("bridge.worktree.create_failed",
 			"component", utils.ComponentSystem,
-			"error", err,
-			"output", string(output),
+			"error", result.Err,
+			"output", result.Stderr,
 		)
-		return "", fmt.Errorf("git worktree add failed: %s", string(output))
+		return "", fmt.Errorf("git worktree add failed: %s", result.Stderr)
 	}
 
 	absPath, _ := filepath.Abs(targetPath)
@@ -54,18 +66,35 @@ func (rc *RuntimeCore) EnterWorktree(ctx context.Context, name string) (string, 
 
 // ExitWorktree removes a git worktree
 func (rc *RuntimeCore) ExitWorktree(ctx context.Context, path string, remove bool) error {
+	root := rc.workingRoot()
+	if strings.TrimSpace(root) == "" {
+		root, _ = os.Getwd()
+	}
+	path = strings.TrimSpace(path)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(root, filepath.FromSlash(path))
+	}
+	ops := gitops.NewOpsWithRoot(root)
+	if err := rc.ensureSandboxWrite(ctx, ops.Root); err != nil {
+		return err
+	}
+	if err := rc.ensureSandboxWrite(ctx, path); err != nil {
+		return err
+	}
+
+	policy := rc.sandboxPolicy(ctx)
 	if remove {
-		cmd := utils.CommandContext(ctx, "git", "worktree", "remove", path)
-		if output, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("git worktree remove failed: %s", string(output))
+		result := rc.guardedGitCmd(ctx, policy, ops.Root, "worktree", "remove", path)
+		if result.Err != nil {
+			return fmt.Errorf("git worktree remove failed: %s", result.Stderr)
 		}
 	} else {
-		cmd := utils.CommandContext(ctx, "git", "worktree", "remove", "--force", path)
-		if output, err := cmd.CombinedOutput(); err != nil {
+		result := rc.guardedGitCmd(ctx, policy, ops.Root, "worktree", "remove", "--force", path)
+		if result.Err != nil {
 			slog.Warn("bridge.worktree.force_remove",
 				"component", utils.ComponentSystem,
-				"error", err,
-				"output", string(output),
+				"error", result.Err,
+				"output", result.Stderr,
 			)
 		}
 	}
@@ -77,4 +106,16 @@ func (rc *RuntimeCore) ExitWorktree(ctx context.Context, path string, remove boo
 	}
 
 	return nil
+}
+
+func (rc *RuntimeCore) ensureSandboxWrite(ctx context.Context, target string) error {
+	policy := rc.sandboxPolicy(ctx)
+	ok, err := policy.AllowsWrite(target)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return nil
+	}
+	return fmt.Errorf("sandbox policy %s blocks writes outside workspace: %s", policy.Mode, filepath.ToSlash(target))
 }

@@ -10,14 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/bridge"
 	"github.com/dreamSailing/eos/internal/pkg/filedialog"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
-	"github.com/dreamSailing/eos/internal/session"
 	"github.com/dreamSailing/eos/internal/state"
-	"github.com/dreamSailing/eos/internal/tools"
 	"github.com/dreamSailing/eos/internal/ui/features/slash"
 	"github.com/dreamSailing/eos/internal/ui/views/setup"
+	sharedcore "github.com/dreamSailing/eos/pkg/core"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -43,9 +41,9 @@ func setTestHome(t *testing.T) string {
 
 func newTestAppModel(t *testing.T) *AppModel {
 	t.Helper()
-	core := bridge.NewRuntimeCore(session.NewContextManager(), tools.NewManager(), nil)
-	t.Cleanup(core.Shutdown)
-	return NewAppModel(core)
+	runtime := sharedcore.NewRuntime()
+	t.Cleanup(runtime.Close)
+	return NewAppModelFromRuntime(runtime)
 }
 
 func sendAppKey(t *testing.T, app *AppModel, msg tea.KeyMsg) *AppModel {

@@ -10,6 +10,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/dreamSailing/eos/internal/ai"
 	"github.com/dreamSailing/eos/internal/session"
+	"github.com/dreamSailing/eos/internal/tools"
 )
 
 func TestBuildHistoryMessages_MergesLeadingSystemMessages(t *testing.T) {
@@ -113,6 +114,50 @@ func TestBuildRoleSystemPromptUsesPlanPromptStyleOnlyForPlanner(t *testing.T) {
 	seniorPrompt := buildRoleSystemPrompt(ctx, "senior-dev", "")
 	if strings.Contains(seniorPrompt, "计划提示风格：详细") {
 		t.Fatalf("senior-dev prompt should not receive planner style:\n%s", seniorPrompt)
+	}
+}
+
+func TestBuildRoleSystemPromptUsesProjectRoleOverride(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".eos"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := `{"roles":[{"id":"reviewer","legacy_names":["review"],"system_prompt":"CUSTOM_REVIEWER_PROMPT","context_strategy":"independent","allowed_tools":["read"]}]}`
+	if err := os.WriteFile(filepath.Join(dir, ".eos", "roles.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := tools.WithWorkspaceRoot(context.Background(), dir)
+	prompt := buildRoleSystemPrompt(ctx, "review", "MCP_TOOLS_SHOULD_NOT_APPEAR")
+
+	if !strings.Contains(prompt, "CUSTOM_REVIEWER_PROMPT") {
+		t.Fatalf("prompt missing project role override:\n%s", prompt)
+	}
+	if strings.Contains(prompt, "MCP_TOOLS_SHOULD_NOT_APPEAR") {
+		t.Fatalf("reviewer prompt should not receive MCP tools info:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "- 工作目录: "+dir) {
+		t.Fatalf("prompt missing workspace env info:\n%s", prompt)
+	}
+}
+
+func TestRuntimeRoleConfigOverridesStrategyAndAllowedTools(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".eos"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := `{"roles":[{"id":"verification","legacy_aliases":["verify"],"system_prompt":"verify","context_strategy":"hybrid","allowed_tools":["read"]}]}`
+	if err := os.WriteFile(filepath.Join(dir, ".eos", "roles.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := tools.WithWorkspaceRoot(context.Background(), dir)
+	if got := runtimeRoleContextStrategy(ctx, "verify", ContextStrategyIndependent); got != ContextStrategyHybrid {
+		t.Fatalf("strategy = %s, want hybrid", got)
+	}
+	allowed := runtimeRoleAllowedTools(ctx, "verification", nil)
+	if len(allowed) != 1 || allowed[0] != "read" {
+		t.Fatalf("allowed tools = %#v, want [read]", allowed)
 	}
 }
 

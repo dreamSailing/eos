@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/bridge"
+	uiadapter "github.com/dreamSailing/eos/internal/ui/adapter"
 	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/pkg/protocol"
 )
@@ -19,8 +19,8 @@ type Msg interface {
 	msgType()
 }
 
-// ConvertEvent 将 bridge.Event 转换为 UI Msg
-func ConvertEvent(e bridge.Event) Msg {
+// ConvertEvent 将 runtime event 转换为 UI Msg
+func ConvertEvent(e uiadapter.RuntimeEvent) Msg {
 	switch e.Type {
 	case "meta", "delta", string(protocol.EventTypeTextDelta):
 		return AIResponseMsg{Type: "delta", Content: eventText(e, "text", "message"), RID: e.RID}
@@ -102,7 +102,7 @@ func ConvertEvent(e bridge.Event) Msg {
 	}
 }
 
-func convertPromptEvent(e bridge.Event) PromptRequestMsg {
+func convertPromptEvent(e uiadapter.RuntimeEvent) PromptRequestMsg {
 	msg := PromptRequestMsg{
 		ID: eventID(e, "approval_id", "inquiry_id"),
 	}
@@ -130,7 +130,7 @@ func convertPromptEvent(e bridge.Event) PromptRequestMsg {
 	return msg
 }
 
-func eventID(e bridge.Event, keys ...string) string {
+func eventID(e uiadapter.RuntimeEvent, keys ...string) string {
 	for _, key := range keys {
 		if v := eventString(e.Data, key); v != "" {
 			return v
@@ -139,14 +139,14 @@ func eventID(e bridge.Event, keys ...string) string {
 	return strings.TrimSpace(e.RID)
 }
 
-func eventText(e bridge.Event, keys ...string) string {
+func eventText(e uiadapter.RuntimeEvent, keys ...string) string {
 	if text := eventString(e.Data, keys...); text != "" {
 		return text
 	}
 	return strings.TrimSpace(e.Content)
 }
 
-func eventParams(e bridge.Event) map[string]any {
+func eventParams(e uiadapter.RuntimeEvent) map[string]any {
 	if e.Data == nil {
 		return nil
 	}

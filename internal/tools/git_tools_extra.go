@@ -5,13 +5,12 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"log/slog"
 	"strings"
-	"github.com/dreamSailing/eos/internal/pkg/utils"
 
 	gitops "github.com/dreamSailing/eos/internal/tools/git"
 )
@@ -127,6 +126,9 @@ func (m *Manager) gitStashStructured(ctx context.Context, params map[string]inte
 	}
 
 	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
+	if r, blocked := gitMutationSandboxResult(ctx, ToolGitStash, ops.Root); blocked {
+		return r
+	}
 	out, err := ops.Stash(action, message, index, includeUntracked)
 	if err != nil {
 		slog.Error("git_stash.error", "component", utils.ComponentTool, "action", action, "err", err.Error())
@@ -159,6 +161,9 @@ func (m *Manager) gitResetStructured(ctx context.Context, params map[string]inte
 	}
 
 	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
+	if r, blocked := gitMutationSandboxResult(ctx, ToolGitReset, ops.Root); blocked {
+		return r
+	}
 	out, err := ops.Reset(mode, target)
 	if err != nil {
 		slog.Error("git_reset.error", "component", utils.ComponentTool, "mode", mode, "target", target, "err", err.Error())
@@ -197,6 +202,9 @@ func (m *Manager) gitRevertStructured(ctx context.Context, params map[string]int
 	}
 
 	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
+	if r, blocked := gitMutationSandboxResult(ctx, ToolGitRevert, ops.Root); blocked {
+		return r
+	}
 	out, err := ops.Revert(commit, noEdit, mainline)
 	if err != nil {
 		slog.Error("git_revert.error", "component", utils.ComponentTool, "commit", commit, "err", err.Error())
@@ -232,6 +240,9 @@ func (m *Manager) gitMergeStructured(ctx context.Context, params map[string]inte
 	}
 
 	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
+	if r, blocked := gitMutationSandboxResult(ctx, ToolGitMerge, ops.Root); blocked {
+		return r
+	}
 	out, err := ops.Merge(branch, noEdit, noFF)
 	if err != nil {
 		slog.Error("git_merge.error", "component", utils.ComponentTool, "branch", branch, "err", err.Error())
@@ -265,6 +276,9 @@ func (m *Manager) gitRebaseStructured(ctx context.Context, params map[string]int
 	branch = strings.TrimSpace(branch)
 
 	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
+	if r, blocked := gitMutationSandboxResult(ctx, ToolGitRebase, ops.Root); blocked {
+		return r
+	}
 	out, err := ops.Rebase(action, upstream, onto, branch)
 	if err != nil {
 		slog.Error("git_rebase.error", "component", utils.ComponentTool, "action", action, "upstream", upstream, "err", err.Error())

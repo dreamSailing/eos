@@ -167,22 +167,8 @@ func AllowedTools(role string) map[string]bool {
 }
 
 func RoleInstruction(role string) string {
-	switch role {
-	case "architect":
-		return RoleArchitectPrompt
-	case "planner":
-		return BuildPlanPromptForStyle(defaultPlanPromptStyle)
-	case "senior-dev":
-		return RoleSeniorDevPrompt
-	case "reviewer":
-		return RoleReviewerPrompt
-	case "tester":
-		return RoleTesterPrompt
-	case "verification":
-		return RoleVerificationPrompt
-	default:
-		return RoleDefaultPrompt
-	}
+	prompt, _ := runtimeRoleBasePrompt(context.Background(), role)
+	return prompt
 }
 
 func converterNode(ctx context.Context, in []*schema.Message) (*schema.Message, error) {

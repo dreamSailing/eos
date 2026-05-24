@@ -90,7 +90,7 @@ func builtinToolDefinitions() []toolapi.ToolDefinition {
 			})
 		}
 		level := toRiskLevel(d.RiskLevel)
-		out = append(out, toolapi.ToolDefinition{
+		def := toolapi.ToolDefinition{
 			Name:               d.Name,
 			Description:        d.Description,
 			RiskLevel:          level,
@@ -103,9 +103,75 @@ func builtinToolDefinitions() []toolapi.ToolDefinition {
 			Invocable:          true,
 			RequiresFullAccess: requiresFullAccessByName(d.Name),
 			Tags:               inferTags(d.Name, level, true, level == toolapi.RiskLow),
-		})
+			Metadata:           enrichBuiltinToolMetadata(d.Name),
+		}
+		out = append(out, def)
 	}
 	return out
+}
+
+func enrichBuiltinToolMetadata(name string) map[string]any {
+	n := strings.ToLower(strings.TrimSpace(name))
+	switch n {
+	case tools.ToolDocumentGenerate:
+		return map[string]any{
+			"output_type":      "document",
+			"formats":          []string{"docx", "xlsx", "pdf"},
+			"file_extensions":  []string{".docx", ".xlsx", ".pdf"},
+			"sandbox_guarded":  true,
+			"write_path_param": "path",
+		}
+	case tools.ToolDocumentConvert:
+		return map[string]any{
+			"output_type":      "document",
+			"formats":          []string{"docx", "xlsx", "pdf"},
+			"file_extensions":  []string{".docx", ".xlsx", ".pdf"},
+			"sandbox_guarded":  true,
+			"write_path_param": "destination_path",
+		}
+	case tools.ToolNotebookEdit:
+		return map[string]any{
+			"output_type":      "notebook",
+			"formats":          []string{"ipynb"},
+			"file_extensions":  []string{".ipynb"},
+			"sandbox_guarded":  true,
+			"write_path_param": "path",
+		}
+	case tools.ToolImageGenerate:
+		return map[string]any{
+			"output_type":      "image",
+			"formats":          []string{"png", "jpg", "webp", "gif"},
+			"file_extensions":  []string{".png", ".jpg", ".webp", ".gif"},
+			"sandbox_guarded":  true,
+			"write_path_param": "output_path",
+		}
+	case tools.ToolVideoGenerate:
+		return map[string]any{
+			"output_type":      "video",
+			"formats":          []string{"mp4", "webm", "mov"},
+			"file_extensions":  []string{".mp4", ".webm", ".mov"},
+			"sandbox_guarded":  true,
+			"write_path_param": "output_path",
+		}
+	case tools.ToolSpeechSynthesize:
+		return map[string]any{
+			"output_type":      "audio",
+			"formats":          []string{"mp3", "wav", "flac", "aac", "ogg"},
+			"file_extensions":  []string{".mp3", ".wav", ".flac", ".aac", ".ogg"},
+			"sandbox_guarded":  true,
+			"write_path_param": "output_path",
+		}
+	case tools.ToolBrowserScreenshot:
+		return map[string]any{
+			"output_type":      "image",
+			"formats":          []string{"png"},
+			"file_extensions":  []string{".png"},
+			"sandbox_guarded":  true,
+			"write_path_param": "path",
+		}
+	default:
+		return nil
+	}
 }
 
 func runtimeCapabilityDefinitions() []toolapi.ToolDefinition {
@@ -595,6 +661,14 @@ func runtimeRiskLevel(name string) toolapi.RiskLevel {
 func inferCategory(name string) string {
 	n := strings.ToLower(strings.TrimSpace(name))
 	switch {
+	case n == tools.ToolDocumentGenerate || n == tools.ToolDocumentConvert:
+		return "document"
+	case n == tools.ToolNotebookEdit:
+		return "notebook"
+	case n == tools.ToolImageGenerate || n == tools.ToolVideoGenerate || n == tools.ToolSpeechSynthesize:
+		return "multimodal"
+	case strings.Contains(n, "browser"):
+		return "browser"
 	case strings.Contains(n, "git"):
 		return "git"
 	case strings.Contains(n, "bash") || n == tools.ToolBGTask:
@@ -646,7 +720,23 @@ func inferTags(name string, level toolapi.RiskLevel, invocable bool, readOnly bo
 	if invocable {
 		tags = append(tags, "invocable")
 	}
+	if isFileGeneratingTool(name) {
+		tags = append(tags, "file_generation")
+	}
 	return uniqueStrings(tags)
+}
+
+func isFileGeneratingTool(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	switch n {
+	case tools.ToolDocumentGenerate, tools.ToolDocumentConvert,
+		tools.ToolNotebookEdit,
+		tools.ToolImageGenerate, tools.ToolVideoGenerate, tools.ToolSpeechSynthesize,
+		tools.ToolBrowserScreenshot:
+		return true
+	default:
+		return false
+	}
 }
 
 func requiresFullAccessByName(name string) bool {

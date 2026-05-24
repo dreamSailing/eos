@@ -5,16 +5,15 @@ package ui
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"testing"
 
-	"github.com/dreamSailing/eos/internal/bridge"
+	uiadapter "github.com/dreamSailing/eos/internal/ui/adapter"
 	"github.com/dreamSailing/eos/pkg/protocol"
 )
 
 func TestConvertEventApprovalRequired(t *testing.T) {
-	msg := ConvertEvent(bridge.Event{
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
 		Type: "approval.required",
 		RID:  "req-1",
 		Data: map[string]any{
@@ -40,7 +39,7 @@ func TestConvertEventApprovalRequired(t *testing.T) {
 }
 
 func TestConvertEventToolResult(t *testing.T) {
-	msg := ConvertEvent(bridge.Event{
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
 		Type:    "tool.result",
 		RID:     "tool-1",
 		Content: "fallback output",
@@ -66,7 +65,7 @@ func TestConvertEventToolResult(t *testing.T) {
 }
 
 func TestConvertEventTextFinal(t *testing.T) {
-	msg := ConvertEvent(bridge.Event{
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
 		Type: "text.final",
 		RID:  "req-2",
 		Data: map[string]any{
@@ -87,7 +86,7 @@ func TestConvertEventTextFinal(t *testing.T) {
 }
 
 func TestConvertEventRequestCompletedUsesInvokeDone(t *testing.T) {
-	msg := ConvertEvent(bridge.Event{
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
 		Type: string(protocol.EventTypeRequestDone),
 		RID:  "req-3",
 		Data: map[string]any{
@@ -105,7 +104,7 @@ func TestConvertEventRequestCompletedUsesInvokeDone(t *testing.T) {
 }
 
 func TestConvertEventAgentStartedIncludesSourceRoute(t *testing.T) {
-	msg := ConvertEvent(bridge.Event{
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
 		Type: string(protocol.EventTypeAgentStarted),
 		RID:  "subagent_verification_3",
 		Data: map[string]any{
@@ -132,7 +131,7 @@ func TestConvertEventAgentStartedIncludesSourceRoute(t *testing.T) {
 }
 
 func TestConvertEventAgentFailedMapsToAgentFinal(t *testing.T) {
-	msg := ConvertEvent(bridge.Event{
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
 		Type: string(protocol.EventTypeAgentFailed),
 		RID:  "subagent_verification_3",
 		Data: map[string]any{

@@ -5,7 +5,6 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
@@ -98,5 +97,7 @@ func (m *Manager) GetToolIndexStats() map[string]any {
 
 // ExecuteBashDirect executes bash command bypassing tool call mechanism
 func (m *Manager) ExecuteBashDirect(ctx context.Context, cmd string) (string, error) {
-	return m.shell.ExecuteTypedWithWorkingDirCtx(ctx, shell.ShellTypeBash, cmd, WorkspaceRootFromContext(ctx))
+	return m.runSandboxedCommand(ctx, []string{"bash", "-lc", cmd}, func() (string, error) {
+		return m.shell.ExecuteTypedWithWorkingDirCtx(ctx, shell.ShellTypeBash, cmd, WorkspaceRootFromContext(ctx))
+	})
 }

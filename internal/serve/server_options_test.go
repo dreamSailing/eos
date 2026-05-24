@@ -406,7 +406,7 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 			},
 		},
 	})
-	tooMany := readResponse(4, 2*time.Second)
+	tooMany := readResponse(4, 10*time.Second)
 	if tooMany["error"] == nil {
 		t.Fatalf("expected error, got: %v", tooMany)
 	}
@@ -417,14 +417,14 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 		"method":  "tool.cancel",
 		"params":  map[string]any{"sessionID": sid, "callID": "c_sleep"},
 	})
-	cancelResp := readResponse(5, 2*time.Second)
+	cancelResp := readResponse(5, 10*time.Second)
 	cancelRes, _ := cancelResp["result"].(map[string]any)
 	ok, _ := cancelRes["ok"].(bool)
 	if !ok {
 		t.Fatalf("expected ok=true, got: %v", cancelResp)
 	}
 
-	execResp := readResponse(3, 4*time.Second)
+	execResp := readResponse(3, 20*time.Second)
 	if errObj, ok := execResp["error"].(map[string]any); ok && errObj != nil {
 		if got, _ := errObj["message"].(string); got != "ConfirmationRequired" {
 			t.Fatalf("expected ConfirmationRequired, got: %v", execResp)

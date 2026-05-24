@@ -5,11 +5,11 @@ package runtime
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"errors"
 	"strings"
+
 	"github.com/dreamSailing/eos/internal/ai"
 	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/tools"
@@ -33,6 +33,7 @@ func runSkillForkFromToolResult(ctx context.Context, dt *DispatchTools, r tools.
 	}
 	agentName, _ := r.Data["agent"].(string)
 	agentType, role, agent := resolveForkAgent(dt, agentName)
+	role = runtimeCanonicalRoleID(ctx, role, role)
 	if agent == nil {
 		return "", errors.New("fork agent not available: " + strings.TrimSpace(agentName))
 	}
@@ -53,19 +54,26 @@ func runSkillForkFromToolResult(ctx context.Context, dt *DispatchTools, r tools.
 		}
 	}
 
+	allowedTools := runtimeRoleAllowedTools(ctx, role, agentType.AllowedTools())
 	allowed := map[string]bool{}
 	if raw, ok := r.Data["allowed_tools"].([]string); ok && len(raw) > 0 {
-		for _, t := range normalizeAllowedTools(raw) {
+		if normalized := normalizeAllowedTools(raw); len(normalized) > 0 {
+			allowedTools = normalized
+		}
+		for _, t := range allowedTools {
 			allowed[t] = true
 		}
 	}
 	if len(allowed) > 0 {
 		ctx = tools.WithAllowedTools(ctx, allowed)
+	} else if roleAllowed := buildAllowedToolsMap(allowedTools); roleAllowed != nil {
+		ctx = tools.WithAllowedTools(ctx, roleAllowed)
 	}
 
 	initial := []*schema.Message{schema.UserMessage(prompt)}
-	subCtx := dt.subAgentMgr.CreateContextWithStrategy(agentType, ctx, initial, ContextStrategyIndependent, nil)
-	outMsgs, err := invokeRoleAgentWithSubContext(ctx, nil, role, agent, dt.onMeta, dt.onReasoning, dt.mcpToolsInfo, subCtx, dt.subAgentMgr, dt.hookMgr)
+	strategy := runtimeRoleContextStrategy(ctx, role, ContextStrategyIndependent)
+	subCtx := dt.subAgentMgr.CreateContextWithStrategy(agentType, ctx, initial, strategy, allowedTools)
+	outMsgs, _, err := dt.invokeSubAgentWithCoreRunner(ctx, nil, role, agent, dt.mcpToolsInfo, subCtx, prompt, nil)
 	if err != nil {
 		return "", err
 	}
@@ -95,8 +103,9 @@ func newRoleAgentWithModel(ctx context.Context, role string, dt *DispatchTools, 
 		maxStep = 12
 	}
 
+	canonicalRole := runtimeCanonicalRoleID(ctx, role, role)
 	var toolsList []tool.BaseTool
-	switch role {
+	switch canonicalRole {
 	case "planner", "reviewer":
 		toolsList = BuildRuntimeReadOnlyToolsWithMCP(ctx, dt.toolsManager, dt, dt.mcpTools)
 	case "tester", "verification":
@@ -146,7 +155,7 @@ func buildTesterToolsForModel(ctx context.Context, dt *DispatchTools) []tool.Bas
 }
 
 func resolveForkAgent(dt *DispatchTools, agentName string) (agentType SubAgentType, role string, agent *react.Agent) {
-	n := strings.ToLower(strings.TrimSpace(agentName))
+	n := runtimeCanonicalRoleID(context.Background(), agentName, agentName)
 	switch n {
 	case "plan", "planner":
 		return SubAgentTypePlanner, "planner", dt.plannerAgent
@@ -177,6 +186,8 @@ func normalizeAllowedTools(in []string) []string {
 			continue
 		case "glob", "grep":
 			tt = "search"
+		case "project_structure", "projectstructure":
+			tt = "projectstructure"
 		case "read":
 			tt = "read"
 		case "bash":

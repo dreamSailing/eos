@@ -5,7 +5,6 @@ package adapter
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"strings"
 
@@ -13,8 +12,26 @@ import (
 	"github.com/dreamSailing/eos/pkg/protocol"
 )
 
-func normalizeRuntimeEvent(ev bridge.Event) bridge.Event {
-	out := bridge.Event{
+// bridge 边界说明: 此文件中 bridge.Event 仅用于将 legacy 事件归一化为
+// protocol.EventType 常量。新增事件类型应直接使用 protocol.Envelope，
+// 不应再引入 bridge 事件类型。
+
+type RuntimeEvent struct {
+	Type    string
+	RID     string
+	Content string
+	Data    map[string]any
+}
+
+type PromptResponse struct {
+	Decision    string
+	Option      string
+	OptionIndex int
+	Text        string
+}
+
+func normalizeRuntimeEvent(ev bridge.Event) RuntimeEvent {
+	out := RuntimeEvent{
 		Type:    strings.TrimSpace(ev.Type),
 		RID:     strings.TrimSpace(ev.RID),
 		Content: strings.TrimSpace(ev.Content),

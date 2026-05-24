@@ -56,6 +56,34 @@ func TestFromRuntimeMode(t *testing.T) {
 	}
 }
 
+func TestRuntimePrepareStartupContextPinsWorkspaceDocs(t *testing.T) {
+	workspace := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := os.WriteFile(filepath.Join(workspace, "EOS.md"), []byte("workspace eos rules"), 0o644); err != nil {
+		t.Fatalf("WriteFile(EOS.md) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(workspace, ".eos"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.eos) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, ".eos", "Rules.md"), []byte("project rules"), 0o644); err != nil {
+		t.Fatalf("WriteFile(project rules) error = %v", err)
+	}
+
+	rt := NewRuntime()
+	defer rt.Close()
+	rt.PrepareStartupContext(context.Background(), workspace)
+
+	preview := strings.Join(rt.ContextPreview(), "\n")
+	if !strings.Contains(preview, "workspace eos rules") {
+		t.Fatalf("preview missing EOS.md content: %q", preview)
+	}
+	if !strings.Contains(preview, "project rules") {
+		t.Fatalf("preview missing Rules.md content: %q", preview)
+	}
+}
+
 func TestRuntimeStateChangesNotifySubscribers(t *testing.T) {
 	configureCoreWorkspaceTestEnv(t)
 	rt := NewRuntime()
@@ -99,6 +127,77 @@ func TestRuntimeUsageSummaryEmpty(t *testing.T) {
 	}
 	if got := rt.CostSummary(); got != "暂无模型调用" {
 		t.Fatalf("CostSummary()=%q, want 暂无模型调用", got)
+	}
+}
+
+func TestRuntimeRulesSnapshotAndScopedSave(t *testing.T) {
+	configureCoreWorkspaceTestEnv(t)
+	rt := NewRuntime()
+	defer rt.Close()
+	workspace := t.TempDir()
+	if err := rt.SetForegroundWorkspace(workspace); err != nil {
+		t.Fatalf("SetForegroundWorkspace() error = %v", err)
+	}
+
+	if err := rt.SaveRulesScoped("project", "project rules"); err != nil {
+		t.Fatalf("SaveRulesScoped(project) error = %v", err)
+	}
+	if err := rt.SaveRulesScoped("global", "global rules"); err != nil {
+		t.Fatalf("SaveRulesScoped(global) error = %v", err)
+	}
+	snapshot := rt.RulesSnapshot()
+	project, ok := findCoreRuleDocument(snapshot.Documents, "project")
+	if !ok || !project.Exists || !strings.Contains(project.Content, "project rules") ||
+		filepath.Clean(project.Path) != filepath.Join(workspace, ".eos", "Rules.md") {
+		t.Fatalf("project rules doc=%+v ok=%v, want workspace project rules", project, ok)
+	}
+	global, ok := findCoreRuleDocument(snapshot.Documents, "global")
+	home, _ := os.UserHomeDir()
+	if !ok || !global.Exists || !strings.Contains(global.Content, "global rules") ||
+		filepath.Clean(global.Path) != filepath.Join(home, ".eos", "Rules.md") {
+		t.Fatalf("global rules doc=%+v ok=%v, want home global rules", global, ok)
+	}
+}
+
+func TestRuntimeMemorySnapshotSaveAndRebuild(t *testing.T) {
+	configureCoreWorkspaceTestEnv(t)
+	rt := NewRuntime()
+	defer rt.Close()
+	workspace := t.TempDir()
+	if err := rt.SetForegroundWorkspace(workspace); err != nil {
+		t.Fatalf("SetForegroundWorkspace() error = %v", err)
+	}
+
+	if err := rt.SaveMemory("project", "# Project\n\n- project memory"); err != nil {
+		t.Fatalf("SaveMemory(project) error = %v", err)
+	}
+	if err := rt.SaveMemory("global", "# Global\n\n- global memory"); err != nil {
+		t.Fatalf("SaveMemory(global) error = %v", err)
+	}
+	if err := rt.SaveMemory("session", "session memory"); err != nil {
+		t.Fatalf("SaveMemory(session) error = %v", err)
+	}
+	if err := rt.RebuildMemoryIndex(); err != nil {
+		t.Fatalf("RebuildMemoryIndex() error = %v", err)
+	}
+
+	snapshot := rt.MemorySnapshot()
+	project, ok := findCoreMemoryDocument(snapshot.Documents, "project")
+	if !ok || !project.Exists || !strings.Contains(project.Content, "project memory") ||
+		filepath.Clean(project.Path) != filepath.Join(workspace, ".eos", "memory", "project.md") {
+		t.Fatalf("project memory doc=%+v ok=%v, want workspace project memory", project, ok)
+	}
+	global, ok := findCoreMemoryDocument(snapshot.Documents, "global")
+	if !ok || !global.Exists || !strings.Contains(global.Content, "global memory") {
+		t.Fatalf("global memory doc=%+v ok=%v, want global memory", global, ok)
+	}
+	sessionDoc, ok := findCoreMemoryDocument(snapshot.Documents, "session")
+	if !ok || !sessionDoc.Exists || !strings.Contains(sessionDoc.Content, "session memory") {
+		t.Fatalf("session memory doc=%+v ok=%v, want session memory", sessionDoc, ok)
+	}
+	index, ok := findCoreMemoryDocument(snapshot.Documents, "index")
+	if !ok || !index.Exists || !strings.Contains(index.Content, "project memory") {
+		t.Fatalf("index memory doc=%+v ok=%v, want rebuilt index", index, ok)
 	}
 }
 
@@ -423,26 +522,27 @@ func TestRuntimeListsSkills(t *testing.T) {
 	}
 
 	items := rt.ListSkills()
-	if len(items) != 1 {
-		t.Fatalf("len(ListSkills())=%d, want 1", len(items))
+	item, ok := findCoreSkillInfo(items, "review")
+	if !ok {
+		t.Fatalf("ListSkills()=%+v, want review skill", items)
 	}
-	if items[0].Name != "review" {
-		t.Fatalf("skill name=%q, want review", items[0].Name)
+	if item.Name != "review" {
+		t.Fatalf("skill name=%q, want review", item.Name)
 	}
-	if !items[0].Enabled {
+	if !item.Enabled {
 		t.Fatal("skill should be enabled by default")
 	}
-	if items[0].Source != "project" {
-		t.Fatalf("skill source=%q, want project", items[0].Source)
+	if item.Source != "project" {
+		t.Fatalf("skill source=%q, want project", item.Source)
 	}
-	if items[0].BaseDir != skillDir {
-		t.Fatalf("skill base dir=%q, want %q", items[0].BaseDir, skillDir)
+	if item.BaseDir != skillDir {
+		t.Fatalf("skill base dir=%q, want %q", item.BaseDir, skillDir)
 	}
-	if !items[0].UserInvocableDefined || !items[0].UserInvocable {
-		t.Fatalf("user-invocable flags=%+v, want defined true", items[0])
+	if !item.UserInvocableDefined || !item.UserInvocable {
+		t.Fatalf("user-invocable flags=%+v, want defined true", item)
 	}
-	if len(items[0].AllowedTools) != 2 || items[0].AllowedTools[0] != "read" || items[0].AllowedTools[1] != "grep" {
-		t.Fatalf("allowed tools=%v, want [read grep]", items[0].AllowedTools)
+	if len(item.AllowedTools) != 2 || item.AllowedTools[0] != "read" || item.AllowedTools[1] != "grep" {
+		t.Fatalf("allowed tools=%v, want [read grep]", item.AllowedTools)
 	}
 }
 
@@ -478,8 +578,9 @@ func TestRuntimeSetSkillEnabledPersistsState(t *testing.T) {
 		t.Fatalf("SetSkillEnabled(false) error = %v", err)
 	}
 	items := rt.ListSkills()
-	if len(items) != 1 || items[0].Enabled {
-		t.Fatalf("ListSkills()=%+v, want disabled skill", items)
+	item, ok := findCoreSkillInfo(items, "review")
+	if !ok || item.Enabled {
+		t.Fatalf("ListSkills()=%+v, want disabled review skill", items)
 	}
 
 	cfg, _ := config.Load()
@@ -491,13 +592,23 @@ func TestRuntimeSetSkillEnabledPersistsState(t *testing.T) {
 		t.Fatalf("SetSkillEnabled(true) error = %v", err)
 	}
 	items = rt.ListSkills()
-	if len(items) != 1 || !items[0].Enabled {
-		t.Fatalf("ListSkills()=%+v, want enabled skill", items)
+	item, ok = findCoreSkillInfo(items, "review")
+	if !ok || !item.Enabled {
+		t.Fatalf("ListSkills()=%+v, want enabled review skill", items)
 	}
 	cfg, _ = config.Load()
 	if config.IsSkillDisabled(&cfg, "review") {
 		t.Fatal("skill should be removed from disabled config after enabling")
 	}
+}
+
+func findCoreSkillInfo(items []SkillInfo, name string) (SkillInfo, bool) {
+	for _, item := range items {
+		if strings.EqualFold(strings.TrimSpace(item.Name), strings.TrimSpace(name)) {
+			return item, true
+		}
+	}
+	return SkillInfo{}, false
 }
 
 func TestRuntimeListWorkspaceSessionsSeparatesWorkspaces(t *testing.T) {
@@ -814,6 +925,24 @@ func configureCoreWorkspaceTestEnv(t *testing.T) {
 	}
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+}
+
+func findCoreRuleDocument(items []RuleDocument, scope string) (RuleDocument, bool) {
+	for _, item := range items {
+		if strings.EqualFold(strings.TrimSpace(item.Scope), scope) {
+			return item, true
+		}
+	}
+	return RuleDocument{}, false
+}
+
+func findCoreMemoryDocument(items []MemoryDocument, scope string) (MemoryDocument, bool) {
+	for _, item := range items {
+		if strings.EqualFold(strings.TrimSpace(item.Scope), scope) {
+			return item, true
+		}
+	}
+	return MemoryDocument{}, false
 }
 
 func TestRuntimeListsPluginSkills(t *testing.T) {

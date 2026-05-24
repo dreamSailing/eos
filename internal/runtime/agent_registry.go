@@ -5,10 +5,12 @@ package runtime
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
+	"context"
 	"fmt"
 	"sync"
+
+	"github.com/cloudwego/eino/schema"
 )
 
 type AgentRegistry struct {
@@ -82,6 +84,69 @@ func (r *AgentRegistry) ListSnapshots() []AgentSnapshot {
 		snaps = append(snaps, entry.manager.ListSnapshots()...)
 	}
 	return snaps
+}
+
+func (r *AgentRegistry) Snapshot(id string) (AgentSnapshot, bool) {
+	if r == nil {
+		return AgentSnapshot{}, false
+	}
+	r.mu.RLock()
+	entries := make([]agentRegistryEntry, 0, len(r.entries))
+	for _, entry := range r.entries {
+		entries = append(entries, entry)
+	}
+	r.mu.RUnlock()
+
+	for _, entry := range entries {
+		if ctx, ok := entry.manager.GetContext(id); ok {
+			return snapshotFromContext(ctx), true
+		}
+	}
+	return AgentSnapshot{}, false
+}
+
+func (r *AgentRegistry) SendInput(id string, input string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.RLock()
+	entries := make([]agentRegistryEntry, 0, len(r.entries))
+	for _, entry := range r.entries {
+		entries = append(entries, entry)
+	}
+	r.mu.RUnlock()
+
+	for _, entry := range entries {
+		if _, ok := entry.manager.GetContext(id); !ok {
+			continue
+		}
+		return entry.manager.AddMessage(id, schema.UserMessage(input)) == nil
+	}
+	return false
+}
+
+func (r *AgentRegistry) Wait(ctx context.Context, id string) (AgentSnapshot, bool, error) {
+	if r == nil {
+		return AgentSnapshot{}, false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	r.mu.RLock()
+	entries := make([]agentRegistryEntry, 0, len(r.entries))
+	for _, entry := range r.entries {
+		entries = append(entries, entry)
+	}
+	r.mu.RUnlock()
+
+	for _, entry := range entries {
+		if _, ok := entry.manager.GetContext(id); !ok {
+			continue
+		}
+		snap, err := entry.manager.Wait(ctx, id)
+		return snap, true, err
+	}
+	return AgentSnapshot{}, false, nil
 }
 
 func (r *AgentRegistry) RequestCancel(id string) bool {

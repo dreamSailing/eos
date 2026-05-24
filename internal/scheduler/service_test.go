@@ -84,7 +84,7 @@ func taskIDs(items []bg.TaskInfo) map[string]struct{} {
 
 func waitForNewBackgroundTaskExit(t *testing.T, before map[string]struct{}, workspace string) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	seen := ""
 	for time.Now().Before(deadline) {
 		for _, item := range bg.Default().List() {

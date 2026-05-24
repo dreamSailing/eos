@@ -1,0 +1,170 @@
+// 本文件守护进程执行边界，冻结所有 exec.Command / utils.Command / shell 执行调用点。
+//
+// TestProcessExecutionCallSitesAreClassified 扫描整个仓库的 .go 文件（不含 _test.go），
+// 找出所有 exec.Command、exec.CommandContext、utils.Command、utils.CommandContext、
+// ExecuteWithWorkingDirCtx、ExecuteTypedWithWorkingDirCtx、StartAsyncWithWorkingDir 调用点，
+// 并与 allowedProcessExecCalls 白名单比对。
+//
+// 规则：
+//   - 新增的进程执行调用点必须通过 sandbox.GuardedRunner 路由，或在此白名单中显式分类。
+//   - 不要扩大白名单，除非调用点属于内部系统执行（如 daemon 启动、LSP 检测、文件对话框）。
+//   - 工具/代理执行路径应优先使用 sandbox.GuardedRunner，而非直接调用 shell executor。
+//
+// 维护指南：
+//   - 如果测试因 "unclassified" 失败：新调用点需要通过 GuardedRunner 或加入白名单。
+//   - 如果测试因 "count changed" 失败：调用点数量变化，需要更新白名单中的计数。
+//   - 如果测试因 "missing/changed" 失败：白名单中的调用点已移除或重命名，需要清理白名单。
+//   - 当 bridge 包完成 GuardedRunner 迁移后，对应的 bridge/* 条目可从白名单中移除。
+package architecture
+
+import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+)
+
+// allowedProcessExecCalls 是已分类的进程执行调用点白名单。
+// 格式：文件路径:函数名:被调用函数 = 出现次数。
+// 新调用点必须通过 sandbox.GuardedRunner 或在此显式分类。
+var allowedProcessExecCalls = map[string]int{
+	"internal/bridge/guarded_cmd.go:guardedGitCmd:utils.CommandContext":                  1,
+	"internal/daemon/manager.go:StartBackground:exec.Command":                              1,
+	"internal/document/convert.go:convertWithSoffice:utils.Command":                        1,
+	"internal/lsp/client.go:Start:utils.CommandContext":                                    1,
+	"internal/lsp/detector.go:findPythonServer:utils.CommandContext":                       1,
+	"internal/pkg/filedialog/filedialog_darwin.go:ChooseDirectory:exec.Command":            1,
+	"internal/pkg/filedialog/filedialog_linux.go:ChooseDirectory:exec.Command":             1,
+	"internal/pkg/filedialog/filedialog_windows.go:ChooseDirectory:exec.Command":           1,
+	"internal/pkg/git/checkpoint.go:getCurrentBranch:utils.Command":                        1,
+	"internal/pkg/git/checkpoint.go:restoreTree:utils.Command":                             2,
+	"internal/pkg/git/checkpoint.go:writeTree:utils.Command":                               1,
+	"internal/pkg/plugins/external.go:Execute:utils.CommandContext":                        1,
+	"internal/pkg/utils/command.go:Command:exec.Command":                                   1,
+	"internal/pkg/utils/command.go:CommandContext:exec.CommandContext":                     1,
+	"internal/runtime/prompt_context.go:CollectRecentFiles:utils.Command":                  2,
+	"internal/tools/bg/manager.go:Start:utils.CommandContext":                              1,
+	"internal/tools/edit.go:shellExecuteFormat:ExecuteWithWorkingDirCtx":                   1,
+	"internal/tools/git/git.go:Status:utils.CommandContext":                                1,
+	"internal/tools/git/git.go:runGitWithTimeout:utils.CommandContext":                     1,
+	"internal/tools/manager_search.go:ExecuteBashDirect:ExecuteTypedWithWorkingDirCtx":     1,
+	"internal/tools/powershell_tool.go:powerShellStructured:ExecuteTypedWithWorkingDirCtx": 1,
+	"internal/tools/reader_pdf.go:extractWithPdftotext:utils.Command":                      1,
+	"internal/tools/reader_pdf.go:extractWithPython:utils.Command":                         1,
+	"internal/tools/shell/executor_native.go:ExecuteDirect:utils.CommandContext":           1,
+	"internal/tools/shell/executor_native.go:buildNativeShellCommand:utils.CommandContext": 1,
+	"internal/tools/shell/shell.go:ExecuteTypedCtx:ExecuteTypedWithWorkingDirCtx":          1,
+	"internal/tools/shell/shell.go:ExecuteWithWorkingDir:ExecuteWithWorkingDirCtx":         1,
+	"internal/tools/shell/shell.go:StartAsync:StartAsyncWithWorkingDir":                    1,
+	"internal/tools/shell_tools.go:bashSessionStart:StartAsyncWithWorkingDir":              1,
+	"internal/tools/worktree_exit_tool.go:exitWorktreeStructured:utils.CommandContext":     2,
+	"internal/tools/worktree_tool.go:IsGitRepo:utils.Command":                              1,
+	"internal/tools/worktree_tool.go:enterWorktreeStructured:utils.CommandContext":         1,
+	"internal/ui/slash_runtime.go:copyToClipboard:exec.Command":                            3,
+	"pkg/core/core.go:runGitCommand:utils.CommandContext":                                  1,
+}
+
+func TestProcessExecutionCallSitesAreClassified(t *testing.T) {
+	root := moduleRoot(t)
+	actual := map[string]int{}
+	fset := token.NewFileSet()
+
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "node_modules", "dist", "build", "vendor", "scripts":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+			ast.Inspect(fn.Body, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				callee := trackedProcessCallee(call)
+				if callee == "" {
+					return true
+				}
+				key := fmt.Sprintf("%s:%s:%s", rel, fn.Name.Name, callee)
+				actual[key]++
+				return true
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("scan process execution call sites: %v", err)
+	}
+
+	var problems []string
+	for key, count := range actual {
+		want, ok := allowedProcessExecCalls[key]
+		if !ok {
+			problems = append(problems, "unclassified "+key)
+			continue
+		}
+		if count != want {
+			problems = append(problems, fmt.Sprintf("count changed %s got=%d want=%d", key, count, want))
+		}
+	}
+	for key, want := range allowedProcessExecCalls {
+		if actual[key] != want {
+			problems = append(problems, fmt.Sprintf("missing/changed %s got=%d want=%d", key, actual[key], want))
+		}
+	}
+	sort.Strings(problems)
+	if len(problems) > 0 {
+		t.Fatalf("process execution boundary changed; classify new call sites or route them through sandbox runner:\n%s", strings.Join(problems, "\n"))
+	}
+}
+
+func trackedProcessCallee(call *ast.CallExpr) string {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return ""
+	}
+	if id, ok := sel.X.(*ast.Ident); ok {
+		switch id.Name {
+		case "exec":
+			if sel.Sel.Name == "Command" || sel.Sel.Name == "CommandContext" {
+				return "exec." + sel.Sel.Name
+			}
+		case "utils":
+			if sel.Sel.Name == "Command" || sel.Sel.Name == "CommandContext" {
+				return "utils." + sel.Sel.Name
+			}
+		}
+	}
+	switch sel.Sel.Name {
+	case "ExecuteWithWorkingDirCtx", "ExecuteTypedWithWorkingDirCtx", "StartAsyncWithWorkingDir":
+		return sel.Sel.Name
+	default:
+		return ""
+	}
+}

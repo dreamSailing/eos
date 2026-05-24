@@ -5,7 +5,6 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"fmt"
 	"log/slog"
@@ -13,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
 	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"github.com/dreamSailing/eos/internal/tools/fileops"
 
@@ -21,13 +21,16 @@ import (
 
 // resolveFilePath 解析文件路径，转换为绝对路径并验证安全性
 // 返回 (绝对路径, 相对路径, 错误信息)
-func resolveFilePath(params map[string]any, pathKey string) (string, string, string) {
+func resolveFilePath(root string, params map[string]any, pathKey string) (string, string, string) {
 	path, ok := params[pathKey].(string)
 	if !ok {
 		return "", "", "path required"
 	}
 
-	wd, _ := os.Getwd()
+	wd := strings.TrimSpace(root)
+	if wd == "" {
+		wd, _ = os.Getwd()
+	}
 	ap := path
 	if !filepath.IsAbs(ap) {
 		ap = filepath.Join(wd, filepath.FromSlash(path))
@@ -43,7 +46,7 @@ func resolveFilePath(params map[string]any, pathKey string) (string, string, str
 
 // DiffVersion 显示当前文件与指定版本的差异
 func (m *Manager) DiffVersion(params map[string]any) string {
-	ap, rel, errMsg := resolveFilePath(params, "path")
+	ap, rel, errMsg := resolveFilePath(m.fileOps.Root(), params, "path")
 	if errMsg != "" {
 		return fmt.Sprintf("Error: %s", errMsg)
 	}
@@ -77,7 +80,7 @@ func (m *Manager) DiffVersion(params map[string]any) string {
 
 // RollbackFile 回滚文件到指定版本
 func (m *Manager) RollbackFile(params map[string]any) string {
-	ap, _, errMsg := resolveFilePath(params, "path")
+	ap, _, errMsg := resolveFilePath(m.fileOps.Root(), params, "path")
 	if errMsg != "" {
 		return fmt.Sprintf("Error: %s", errMsg)
 	}
@@ -101,7 +104,7 @@ func (m *Manager) RollbackFile(params map[string]any) string {
 
 // DeleteVersion 删除指定文件的单个版本
 func (m *Manager) DeleteVersion(params map[string]any) string {
-	ap, _, errMsg := resolveFilePath(params, "path")
+	ap, _, errMsg := resolveFilePath(m.fileOps.Root(), params, "path")
 	if errMsg != "" {
 		return fmt.Sprintf("Error: %s", errMsg)
 	}
@@ -121,7 +124,7 @@ func (m *Manager) DeleteVersion(params map[string]any) string {
 
 // DeleteAllVersions 删除指定文件的所有版本
 func (m *Manager) DeleteAllVersions(params map[string]any) string {
-	ap, rel, errMsg := resolveFilePath(params, "path")
+	ap, rel, errMsg := resolveFilePath(m.fileOps.Root(), params, "path")
 	if errMsg != "" {
 		return fmt.Sprintf("Error: %s", errMsg)
 	}
@@ -136,7 +139,10 @@ func (m *Manager) DeleteAllVersions(params map[string]any) string {
 
 // DeleteAllFileVersions 批量删除所有文件的所有版本
 func (m *Manager) DeleteAllFileVersions(params map[string]any) string {
-	wd, _ := os.Getwd()
+	wd := strings.TrimSpace(m.fileOps.Root())
+	if wd == "" {
+		wd, _ = os.Getwd()
+	}
 	versionsDir := fileops.ExistingVersionWorkspaceRoot(wd)
 	if err := os.RemoveAll(versionsDir); err != nil {
 		if os.IsNotExist(err) {
@@ -212,7 +218,7 @@ func (m *Manager) ListHistoryFiles(params map[string]any) string {
 
 // GetVersionInfo 获取指定文件的版本信息
 func (m *Manager) GetVersionInfo(params map[string]any) string {
-	ap, rel, errMsg := resolveFilePath(params, "path")
+	ap, rel, errMsg := resolveFilePath(m.fileOps.Root(), params, "path")
 	if errMsg != "" {
 		return fmt.Sprintf("Error: %s", errMsg)
 	}

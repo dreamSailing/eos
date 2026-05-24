@@ -144,3 +144,124 @@ func TestManager_ExecuteStructured_ReadOnlyAccessModeBlocksMutatingTool(t *testi
 		t.Fatalf("expected read-only error, got %q", res[0].Error)
 	}
 }
+
+func TestManager_ExecuteStructuredBashUsesSandboxRunnerForRelativeOutsideWrite(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	base := filepath.Join(wd, ".sandbox-test-manager-bash")
+	dir := filepath.Join(base, "workspace")
+	outside := filepath.Join(base, "outside.txt")
+	t.Cleanup(func() { _ = os.RemoveAll(base) })
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(workspace) error = %v", err)
+	}
+	m := NewManager()
+	ctx := WithWorkspaceRoot(context.Background(), dir)
+	ctx = WithAccessMode(ctx, "workspace-write")
+
+	res := m.ExecuteStructured(ctx, []ToolCall{
+		{Tool: ToolBash, Parameters: map[string]interface{}{"command": "echo hi > ../outside.txt"}},
+	})
+	if len(res) != 1 {
+		t.Fatalf("unexpected result count: %d", len(res))
+	}
+	if res[0].Status != "error" {
+		t.Fatalf("expected sandbox error, got %+v", res[0])
+	}
+	if !strings.Contains(res[0].Error, "outside workspace") {
+		t.Fatalf("expected outside workspace error, got %q", res[0].Error)
+	}
+	if _, err := os.Stat(outside); !os.IsNotExist(err) {
+		t.Fatalf("outside write created %q, stat err = %v", outside, err)
+	}
+}
+
+func TestManager_DirectFSWriteHonorsSandboxWriteGuard(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "blocked.txt")
+	m := NewManager()
+	ctx := WithWorkspaceRoot(context.Background(), dir)
+	ctx = WithAccessMode(ctx, "read-only")
+
+	res := m.fsWrite(ctx, map[string]any{
+		"path":    "blocked.txt",
+		"content": "nope",
+	})
+	if res.Status != "error" {
+		t.Fatalf("expected read-only sandbox error, got %+v", res)
+	}
+	if !strings.Contains(res.Error, "read-only") {
+		t.Fatalf("expected read-only error, got %q", res.Error)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("direct fs write created %q, stat err = %v", target, err)
+	}
+}
+
+func TestManager_GitMutationBlocksRepoRootOutsideWorkspace(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.git) error = %v", err)
+	}
+	workspace := filepath.Join(repo, "subdir")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatalf("MkdirAll(workspace) error = %v", err)
+	}
+
+	m := NewManager()
+	ctx := WithWorkspaceRoot(context.Background(), workspace)
+	ctx = WithAccessMode(ctx, "workspace-write")
+	res := m.gitCommitStructured(ctx, map[string]interface{}{"message": "blocked"})
+	if res.Status != "error" {
+		t.Fatalf("expected git mutation sandbox error, got %+v", res)
+	}
+	if !strings.Contains(res.Error, "outside workspace") {
+		t.Fatalf("expected outside workspace error, got %q", res.Error)
+	}
+}
+
+func TestManager_GitPushSandboxBlocksRepoRootOutsideWorkspace(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.git) error = %v", err)
+	}
+	workspace := filepath.Join(repo, "subdir")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatalf("MkdirAll(workspace) error = %v", err)
+	}
+
+	m := NewManager()
+	ctx := WithWorkspaceRoot(context.Background(), workspace)
+	ctx = WithAccessMode(ctx, "workspace-write")
+	res := m.gitPushStructured(ctx, map[string]interface{}{"remote": "origin", "branch": "main"})
+	if res.Status != "error" {
+		t.Fatalf("expected git push sandbox error, got %+v", res)
+	}
+	if !strings.Contains(res.Error, "outside workspace") {
+		t.Fatalf("expected outside workspace error, got %q", res.Error)
+	}
+}
+
+func TestManager_EnterWorktreeBlocksRepoRootOutsideWorkspace(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.git) error = %v", err)
+	}
+	workspace := filepath.Join(repo, "subdir")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatalf("MkdirAll(workspace) error = %v", err)
+	}
+
+	m := NewManager()
+	ctx := WithWorkspaceRoot(context.Background(), workspace)
+	ctx = WithAccessMode(ctx, "workspace-write")
+	res := m.enterWorktreeStructured(ctx, map[string]interface{}{"name": "blocked"})
+	if res.Status != "error" {
+		t.Fatalf("expected worktree sandbox error, got %+v", res)
+	}
+	if !strings.Contains(res.Error, "outside workspace") {
+		t.Fatalf("expected outside workspace error, got %q", res.Error)
+	}
+}

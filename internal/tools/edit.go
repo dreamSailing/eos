@@ -5,7 +5,6 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
@@ -111,6 +110,9 @@ func (m *Manager) editSingle(ctx context.Context, params map[string]interface{})
 		}
 		return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": count, "diff": diff}, Display: fmt.Sprintf("预览：%d 处匹配", count)}
 	}
+	if err := sandboxWriteError(ctx, ap); err != nil {
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
+	}
 	if m.fileOps.IsTextFile(ap) {
 		_, _ = m.fileOps.SaveVersionWithExtra(ap, old, fileops.VersionExtra{
 			TraceID:   TraceIDFromContext(ctx),
@@ -206,6 +208,9 @@ func (m *Manager) editMulti(ctx context.Context, params map[string]interface{}) 
 			}
 		}
 		return ToolResult{Type: "tool_result", Tool: "edit", Status: "success", Data: map[string]interface{}{"path": filepath.ToSlash(rel), "changes": total, "diff": diff}, Display: fmt.Sprintf("预览：%d 处编辑", total)}
+	}
+	if err := sandboxWriteError(ctx, ap); err != nil {
+		return ToolResult{Type: "tool_result", Tool: "edit", Status: "error", Error: err.Error(), Display: "错误：" + err.Error()}
 	}
 	if m.fileOps.IsTextFile(ap) {
 		_, _ = m.fileOps.SaveVersionWithExtra(ap, old, fileops.VersionExtra{
@@ -317,6 +322,10 @@ func (m *Manager) editBatch(ctx context.Context, params map[string]interface{}) 
 		}
 		wrote := false
 		if !preview && applied > 0 {
+			if err := sandboxWriteError(ctx, ap); err != nil {
+				results = append(results, map[string]interface{}{"path": filepath.ToSlash(rel), "error": err.Error()})
+				continue
+			}
 			if m.fileOps.IsTextFile(ap) {
 				_, _ = m.fileOps.SaveVersionWithExtra(ap, old, fileops.VersionExtra{
 					TraceID:   TraceIDFromContext(ctx),
@@ -422,7 +431,10 @@ func applyReplace(s, find, replace string, limit int, ci, regex bool) (string, i
 func (m *Manager) shellExecuteFormat(ctx context.Context, path string) error {
 	// best-effort: go files use gofmt -w
 	if strings.HasSuffix(strings.ToLower(path), ".go") {
-		_, err := m.shell.ExecuteWithWorkingDirCtx(ctx, fmt.Sprintf("gofmt -w \"%s\"", path), WorkspaceRootFromContext(ctx))
+		command := fmt.Sprintf("gofmt -w \"%s\"", path)
+		_, err := m.runSandboxedCommand(ctx, []string{"bash", "-lc", command}, func() (string, error) {
+			return m.shell.ExecuteWithWorkingDirCtx(ctx, command, WorkspaceRootFromContext(ctx))
+		})
 		return err
 	}
 	return nil

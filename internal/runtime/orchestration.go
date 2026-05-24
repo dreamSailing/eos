@@ -5,7 +5,6 @@ package runtime
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"errors"
@@ -567,7 +566,7 @@ func extractLastAssistantText(msgs []*schema.Message) string {
 // buildDispatchSystemPrompt 构建调度 Agent 的系统提示词
 // 动态替换占位符：{model_name}, {available_tools}
 func buildDispatchSystemPrompt(ctx context.Context, rt *EinoRuntime, _ []tool.BaseTool, history []*schema.Message) string {
-	prompt := RoleArchitectPrompt
+	prompt, _ := runtimeRoleBasePrompt(ctx, "architect")
 
 	// 替换模型名称
 	modelName := "未知模型"
@@ -836,12 +835,12 @@ func (rt *EinoRuntime) RecordTokenMetrics(stage, component string, inputTokens, 
 		return
 	}
 	rt.tokenAnalyzer.Record(TokenMetrics{
-		InputTokens:   inputTokens,
-		OutputTokens:  outputTokens,
-		TotalTokens:   inputTokens + outputTokens,
-		Component:     component,
-		Stage:         stage,
-		Timestamp:     time.Now(),
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+		TotalTokens:  inputTokens + outputTokens,
+		Component:    component,
+		Stage:        stage,
+		Timestamp:    time.Now(),
 	})
 }
 

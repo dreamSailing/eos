@@ -26,6 +26,10 @@ import (
 	"github.com/google/uuid"
 )
 
+func contextWithWorkspaceRoot(ctx context.Context, root string) context.Context {
+	return tools.WithWorkspaceRoot(ctx, root)
+}
+
 type Server struct {
 	opts Options
 	in   io.Reader
@@ -104,6 +108,10 @@ func NewServer(opts Options, in io.Reader, out io.Writer, errw io.Writer, toolsS
 	}
 	if toolsSvc == nil {
 		return nil, fmt.Errorf("tools service required")
+	}
+
+	if opts.Engine != nil {
+		toolsSvc = newCoreAPIBridge(toolsSvc, opts.Engine)
 	}
 
 	s := &Server{

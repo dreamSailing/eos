@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"os"
 	"path/filepath"
 	"slices"
@@ -21,14 +20,16 @@ import (
 	"github.com/dreamSailing/eos/internal/ai"
 	"github.com/dreamSailing/eos/internal/bridge"
 	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/memory"
 	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	sharedruntime "github.com/dreamSailing/eos/internal/runtime"
 	"github.com/dreamSailing/eos/internal/session"
 	skillspkg "github.com/dreamSailing/eos/internal/skills"
 	"github.com/dreamSailing/eos/internal/state"
 	"github.com/dreamSailing/eos/internal/toolapi"
 	"github.com/dreamSailing/eos/internal/tools"
-	"github.com/dreamSailing/eos/internal/tools/bg"
+	"github.com/dreamSailing/eos/pkg/coreapi"
 	"github.com/dreamSailing/eos/pkg/protocol"
 )
 
@@ -40,11 +41,28 @@ type Event struct {
 }
 
 type Runtime struct {
-	core                   *bridge.RuntimeCore
-	workspaceMu            sync.Mutex
-	stateChangesMu         sync.RWMutex
-	stateChangeSubscribers map[int]chan StateChangeEvent
-	nextStateSubscriberID  int
+	core                          *bridge.RuntimeCore
+	workspaceMu                   sync.Mutex
+	stateChangesMu                sync.RWMutex
+	stateChangeSubscribers        map[int]chan StateChangeEvent
+	nextStateSubscriberID         int
+	protocolEventsMu              sync.RWMutex
+	protocolEventSubscribers      map[int]protocolEventSubscriber
+	nextProtocolEventSubscriberID int
+	activeTurnsMu                 sync.Mutex
+	activeTurns                   map[string]context.CancelFunc
+	tasks                         taskBackend
+}
+
+type StartupOptions struct {
+	ModelOverride   string
+	MaxTurns        int
+	AllowedTools    []string
+	DisallowedTools []string
+	AccessMode      string
+	ApprovalMode    string
+	SandboxMode     string
+	SkipPermissions bool
 }
 
 type Model struct {
@@ -55,15 +73,6 @@ type Model struct {
 	Source                  string
 	IsActive                bool
 	SupportsReasoningEffort bool
-}
-
-type BackgroundTask struct {
-	ID        string
-	Status    string
-	StartedAt time.Time
-	Label     string
-	CanKill   bool
-	Workspace string
 }
 
 type Workspace struct {
@@ -133,16 +142,41 @@ type RuntimeSnapshot struct {
 }
 
 type MCPServer struct {
-	Name    string
-	Type    string
-	Target  string
-	Enabled bool
+	Name                 string
+	Type                 string
+	Target               string
+	Command              string
+	Args                 []string
+	Envs                 map[string]string
+	BaseURL              string
+	Enabled              bool
+	Auth                 *MCPAuth
+	ApprovalMode         string
+	ToolApprovalOverride map[string]string
+}
+
+type MCPAuth struct {
+	Type       string
+	Token      string
+	Headers    map[string]string
+	HeadersEnv map[string]string
 }
 
 type Settings struct {
-	Language       string
-	Theme          string
-	MidRiskConfirm bool
+	PlanPromptStyle      string
+	PlanBubbleColor      string
+	AutoContext          *bool
+	DesktopNotifications *bool
+	MaxInjectKB          int
+	WatchMode            string
+	WatchDebounceMs      int
+	PollIntervalSec      int
+	Language             string
+	Theme                string
+	Trusted              *bool
+	MaxTurnTokens        int
+	MaxSessionTokens     int
+	MidRiskConfirm       bool
 }
 
 type VersionItem struct {
@@ -180,6 +214,19 @@ type PendingReview struct {
 	HasDiff bool
 }
 
+type RuleDocument struct {
+	Scope     string
+	Path      string
+	Content   string
+	Exists    bool
+	UpdatedAt time.Time
+}
+
+type RulesSnapshot struct {
+	ActiveRoot string
+	Documents  []RuleDocument
+}
+
 type SkillInfo struct {
 	Name                   string
 	Description            string
@@ -201,6 +248,17 @@ type PluginInfo struct {
 	Source      string
 	Command     string
 	Enabled     bool
+}
+
+type BrowserStatus struct {
+	ServerName  string
+	Configured  bool
+	Enabled     bool
+	Loaded      bool
+	Tools       int
+	LastError   string
+	Command     string
+	InstallHint string
 }
 
 type CostItem struct {
@@ -233,7 +291,131 @@ type UsageSummary struct {
 func NewRuntime() *Runtime {
 	cm := session.NewContextManager()
 	tm := tools.NewManager()
-	return &Runtime{core: bridge.NewRuntimeCore(cm, tm, nil)}
+	return NewRuntimeWithManagers(cm, tm)
+}
+
+func NewRuntimeWithManagers(cm *session.ContextManager, tm *tools.Manager) *Runtime {
+	if cm == nil {
+		cm = session.NewContextManager()
+	}
+	if tm == nil {
+		tm = tools.NewManager()
+	}
+	return &Runtime{core: bridge.NewRuntimeCore(cm, tm, nil), tasks: defaultTaskBackend{}}
+}
+
+func NewRuntimeFromLegacyCore(core *bridge.RuntimeCore) *Runtime {
+	return &Runtime{core: core, tasks: defaultTaskBackend{}}
+}
+
+func (r *Runtime) LegacyCore() *bridge.RuntimeCore {
+	if r == nil {
+		return nil
+	}
+	return r.core
+}
+
+func (r *Runtime) ApplyStartupOptions(opts StartupOptions) {
+	if r == nil || r.core == nil {
+		return
+	}
+	if strings.TrimSpace(opts.ModelOverride) != "" {
+		cfg, _ := config.Load()
+		for _, model := range cfg.Models {
+			if model.Name == opts.ModelOverride || model.Model == opts.ModelOverride {
+				r.core.SetModelOverride(model.Model, model.APIBase)
+				break
+			}
+		}
+	}
+	if opts.MaxTurns > 0 {
+		r.core.SetMaxTurns(opts.MaxTurns)
+	}
+	if len(opts.AllowedTools) > 0 || len(opts.DisallowedTools) > 0 {
+		r.core.SetToolPermissions(opts.AllowedTools, opts.DisallowedTools)
+	}
+	if opts.SkipPermissions {
+		r.core.SetSkipPermissions(true)
+		return
+	}
+	if strings.TrimSpace(opts.AccessMode) != "" {
+		r.core.SetAccessMode(opts.AccessMode)
+	} else if strings.TrimSpace(opts.SandboxMode) != "" {
+		r.core.SetSandboxMode(opts.SandboxMode)
+	}
+	if strings.TrimSpace(opts.ApprovalMode) != "" {
+		r.core.SetApprovalMode(opts.ApprovalMode)
+	}
+}
+
+func (r *Runtime) PrepareStartupContext(ctx context.Context, root string) {
+	if r == nil || r.core == nil {
+		return
+	}
+	root = strings.TrimSpace(root)
+	if root == "" {
+		root = "."
+	}
+	cm := r.core.GetContext()
+	if cm == nil {
+		return
+	}
+	base, key, model, _ := r.core.ResolveAPIConfig()
+	if strings.TrimSpace(model) != "" {
+		ai.PrimeContextWindowFromProvider(ctx, base, key, model)
+		cm.SetModel(model)
+		switch window := ai.ContextWindowTokens(model); {
+		case window >= 128000:
+			cm.SetCompressionStrategy(session.CompressionConservative)
+		case window >= 32000:
+			cm.SetCompressionStrategy(session.CompressionBalanced)
+		default:
+			cm.SetCompressionStrategy(session.CompressionAggressive)
+		}
+	}
+	if prompt := sharedruntime.BuildProjectPromptAdditions(root); strings.TrimSpace(prompt) != "" {
+		cm.AddPinned(ai.Message{Role: "system", Content: prompt})
+	}
+	_ = memory.EnsureWorkspaceMemory(root)
+	r.pinStartupFile("EOS.md", filepath.Join(root, "EOS.md"), 20000)
+	r.pinStartupFile(".eos/Rules.md", filepath.Join(root, ".eos", "Rules.md"), 20000)
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		r.pinStartupFile("~/.eos/Rules.md", filepath.Join(home, ".eos", "Rules.md"), 20000)
+	}
+	r.pinStartupMemoryDocs(root)
+}
+
+func (r *Runtime) pinStartupFile(id, path string, tokenBudget int) {
+	if r == nil || r.core == nil {
+		return
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil || strings.TrimSpace(string(raw)) == "" {
+		return
+	}
+	if cm := r.core.GetContext(); cm != nil {
+		cm.SetPinnedDoc(strings.TrimSpace(id), string(raw), tokenBudget)
+	}
+}
+
+func (r *Runtime) pinStartupMemoryDocs(root string) {
+	if r == nil || r.core == nil {
+		return
+	}
+	cm := r.core.GetContext()
+	if cm == nil {
+		return
+	}
+	snap := memory.LoadSnapshot(root)
+	if snap.GlobalExists && strings.TrimSpace(snap.GlobalContent) != "" {
+		cm.SetPinnedDoc(memory.GlobalMemoryDocID, snap.GlobalContent, 12000)
+	}
+	if snap.ProjectExists && strings.TrimSpace(snap.ProjectContent) != "" {
+		cm.SetPinnedDoc(memory.ProjectMemoryDocID, snap.ProjectContent, 12000)
+	}
+	if snap.IndexExists && strings.TrimSpace(snap.IndexContent) != "" {
+		cm.SetPinnedDoc(memory.ProjectIndexDocID, snap.IndexContent, 8000)
+	}
 }
 
 func (r *Runtime) Invoke(ctx context.Context, input string) (<-chan Event, error) {
@@ -301,21 +483,32 @@ func (r *Runtime) InvokeProtocol(ctx context.Context, input string) (<-chan prot
 }
 
 func (r *Runtime) InvokeProtocolWithImages(ctx context.Context, input string, imagePaths []string) (<-chan protocol.Envelope, error) {
+	return r.invokeProtocolWithImages(ctx, input, imagePaths, "")
+}
+
+func (r *Runtime) invokeProtocolWithImages(ctx context.Context, input string, imagePaths []string, requestID string) (<-chan protocol.Envelope, error) {
 	sessionID, _ := r.CurrentSessionID()
 	sessionID = strings.TrimSpace(sessionID)
 	threadID := sessionID
-	requestID := newCoreRequestID("req")
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		requestID = newCoreRequestID("req")
+	}
 	input = strings.TrimSpace(input)
 	imagePaths = compactCoreImagePaths(imagePaths)
 	out := make(chan protocol.Envelope, 64)
 	go func() {
 		defer close(out)
-		out <- newCoreRequestEvent(protocol.EventTypeRequestStarted, sessionID, threadID, requestID, map[string]any{
+		send := func(ev protocol.Envelope) {
+			r.publishProtocolEvent(ev)
+			out <- ev
+		}
+		send(newCoreRequestEvent(protocol.EventTypeRequestStarted, sessionID, threadID, requestID, map[string]any{
 			"input":       input,
 			"mode":        r.ExecutionMode(),
 			"input_kind":  "prompt",
 			"image_count": len(imagePaths),
-		})
+		}))
 		done := make(chan error, 1)
 		go func() {
 			_, err := r.core.GraphInvokePlanWithImages(ctx, input, r.core.ExecutionMode(), imagePaths)
@@ -324,18 +517,18 @@ func (r *Runtime) InvokeProtocolWithImages(ctx context.Context, input string, im
 		for {
 			select {
 			case <-ctx.Done():
-				out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
+				send(newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
 					"error":       ctx.Err().Error(),
 					"input":       input,
 					"mode":        r.ExecutionMode(),
 					"input_kind":  "prompt",
 					"image_count": len(imagePaths),
 					"summary":     ctx.Err().Error(),
-				})
+				}))
 				return
 			case ev := <-r.core.Events():
 				if mapped, ok := bridgeEventToProtocol(ev, sessionID, threadID, requestID, time.Now()); ok {
-					out <- mapped
+					send(mapped)
 				}
 			case err := <-done:
 			drain:
@@ -343,23 +536,23 @@ func (r *Runtime) InvokeProtocolWithImages(ctx context.Context, input string, im
 					select {
 					case ev := <-r.core.Events():
 						if mapped, ok := bridgeEventToProtocol(ev, sessionID, threadID, requestID, time.Now()); ok {
-							out <- mapped
+							send(mapped)
 						}
 					default:
 						break drain
 					}
 				}
 				if err != nil {
-					out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
+					send(newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
 						"error":       err.Error(),
 						"input":       input,
 						"mode":        r.ExecutionMode(),
 						"input_kind":  "prompt",
 						"image_count": len(imagePaths),
 						"summary":     err.Error(),
-					})
+					}))
 				} else {
-					out <- newCoreRequestEvent(protocol.EventTypeRequestDone, sessionID, threadID, requestID, map[string]any{
+					send(newCoreRequestEvent(protocol.EventTypeRequestDone, sessionID, threadID, requestID, map[string]any{
 						"input":       input,
 						"mode":        r.ExecutionMode(),
 						"input_kind":  "prompt",
@@ -367,7 +560,7 @@ func (r *Runtime) InvokeProtocolWithImages(ctx context.Context, input string, im
 						"message":     "request completed",
 						"status":      "success",
 						"summary":     "request completed",
-					})
+					}))
 				}
 				return
 			}
@@ -395,21 +588,32 @@ func compactCoreImagePaths(paths []string) []string {
 }
 
 func (r *Runtime) RunBashProtocol(ctx context.Context, input string) (<-chan protocol.Envelope, error) {
+	return r.runBashProtocol(ctx, input, "")
+}
+
+func (r *Runtime) runBashProtocol(ctx context.Context, input, requestID string) (<-chan protocol.Envelope, error) {
 	sessionID, _ := r.CurrentSessionID()
 	sessionID = strings.TrimSpace(sessionID)
 	threadID := sessionID
-	requestID := newCoreRequestID("bash")
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		requestID = newCoreRequestID("bash")
+	}
 	input = strings.TrimSpace(input)
 
 	out := make(chan protocol.Envelope, 8)
 	go func() {
 		defer close(out)
-		out <- newCoreRequestEvent(protocol.EventTypeRequestStarted, sessionID, threadID, requestID, map[string]any{
+		send := func(ev protocol.Envelope) {
+			r.publishProtocolEvent(ev)
+			out <- ev
+		}
+		send(newCoreRequestEvent(protocol.EventTypeRequestStarted, sessionID, threadID, requestID, map[string]any{
 			"input":      input,
 			"mode":       "bash",
 			"input_kind": "bash",
-		})
-		out <- protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
+		}))
+		send(protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
 			SessionID:     sessionID,
 			ThreadID:      threadID,
 			RequestID:     requestID,
@@ -417,21 +621,21 @@ func (r *Runtime) RunBashProtocol(ctx context.Context, input string) (<-chan pro
 			Timestamp:     time.Now(),
 			Source:        protocol.SourceCore,
 			Payload:       protocol.TextPayloadMap(protocol.TextPayload{Text: "执行命令: " + input}),
-		})
+		}))
 
 		result, err := r.core.ExecuteBash(ctx, input)
 		if err != nil {
-			out <- newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
+			send(newCoreRequestEvent(protocol.EventTypeRequestFailed, sessionID, threadID, requestID, map[string]any{
 				"error":      err.Error(),
 				"input":      input,
 				"mode":       "bash",
 				"input_kind": "bash",
 				"summary":    err.Error(),
-			})
+			}))
 			return
 		}
 
-		out <- protocol.NewEvent(protocol.EventTypeTextFinal, protocol.EventOptions{
+		send(protocol.NewEvent(protocol.EventTypeTextFinal, protocol.EventOptions{
 			SessionID:     sessionID,
 			ThreadID:      threadID,
 			RequestID:     requestID,
@@ -439,15 +643,15 @@ func (r *Runtime) RunBashProtocol(ctx context.Context, input string) (<-chan pro
 			Timestamp:     time.Now(),
 			Source:        protocol.SourceCore,
 			Payload:       protocol.TextPayloadMap(protocol.TextPayload{Text: result}),
-		})
-		out <- newCoreRequestEvent(protocol.EventTypeRequestDone, sessionID, threadID, requestID, map[string]any{
+		}))
+		send(newCoreRequestEvent(protocol.EventTypeRequestDone, sessionID, threadID, requestID, map[string]any{
 			"input":      input,
 			"mode":       "bash",
 			"input_kind": "bash",
 			"message":    "request completed",
 			"status":     "success",
 			"summary":    "request completed",
-		})
+		}))
 	}()
 	return out, nil
 }
@@ -462,7 +666,13 @@ func (r *Runtime) ExecutionMode() string {
 }
 
 func (r *Runtime) SetSandboxMode(mode string) {
-	r.core.SetSandboxMode(toolapi.NormalizeSandboxMode(mode))
+	normalized := toolapi.NormalizeSandboxMode(mode)
+	r.core.SetSandboxMode(normalized)
+	if normalized == "full_access" {
+		r.core.SetAccessMode("danger-full-access")
+	} else {
+		r.core.SetAccessMode("workspace-write")
+	}
 	r.notifyStateChanged(StateTopicSettings, "sandbox_mode")
 }
 
@@ -486,8 +696,21 @@ func (r *Runtime) ResolveInquiry(requestID string, option, text string) {
 	})
 }
 
+func (r *Runtime) ModelName() string {
+	if r == nil || r.core == nil {
+		return ""
+	}
+	return r.core.ModelName()
+}
+
 func (r *Runtime) Close() {
-	r.core.Shutdown()
+	if r == nil {
+		return
+	}
+	r.closeActiveTurns()
+	if r.core != nil {
+		r.core.Shutdown()
+	}
 	r.closeStateChangeSubscribers()
 }
 
@@ -521,6 +744,7 @@ func (r *Runtime) UpsertModel(name, base, key, model string) error {
 		APIBase:                 base,
 		APIKey:                  strings.TrimSpace(key),
 		Model:                   model,
+		Source:                  "user",
 		SupportsReasoningEffort: ai.SupportsReasoningEffort(model),
 	}
 	if !r.core.UpdateModel(entry) && !r.core.AddModel(entry) {
@@ -538,6 +762,17 @@ func (r *Runtime) ActivateModel(name string) error {
 		return err
 	}
 	r.notifyStateChanged(StateTopicModels, "model.activate")
+	return nil
+}
+
+func (r *Runtime) SyncEnvModel() error {
+	if !r.core.SyncEnvModel() {
+		return errors.New("EOS_API_BASE and EOS_API_KEY are required")
+	}
+	if err := r.core.Reload(); err != nil {
+		return err
+	}
+	r.notifyStateChanged(StateTopicModels, "model.sync_env")
 	return nil
 }
 
@@ -626,68 +861,6 @@ func (r *Runtime) DeleteModel(name string) error {
 	}
 	r.notifyStateChanged(StateTopicModels, "model.delete")
 	return nil
-}
-
-func (r *Runtime) ListTasks() []BackgroundTask {
-	items := bg.Default().List()
-	out := make([]BackgroundTask, 0, len(items))
-	for _, t := range items {
-		out = append(out, BackgroundTask{
-			ID:        t.ID,
-			Status:    string(t.Status),
-			StartedAt: t.StartedAt,
-			Label:     t.Command,
-			CanKill:   t.Status == bg.StatusRunning,
-			Workspace: normalizeWorkspacePath(t.WorkingDir),
-		})
-	}
-	slices.SortFunc(out, func(a, b BackgroundTask) int {
-		if a.StartedAt.After(b.StartedAt) {
-			return -1
-		}
-		if a.StartedAt.Before(b.StartedAt) {
-			return 1
-		}
-		return strings.Compare(a.ID, b.ID)
-	})
-	return out
-}
-
-func (r *Runtime) TailTask(taskID string) ([]string, error) {
-	taskID = strings.TrimSpace(taskID)
-	if taskID == "" {
-		return nil, errors.New("task id required")
-	}
-	res, err := bg.Default().Tail(taskID, &bg.TailOptions{FromSeq: 0, Limit: 200})
-	if err != nil {
-		return nil, err
-	}
-	lines := make([]string, 0, len(res.Entries))
-	for _, e := range res.Entries {
-		lines = append(lines, e.Stream+": "+e.Line)
-	}
-	return lines, nil
-}
-
-func (r *Runtime) KillTask(taskID string) error {
-	taskID = strings.TrimSpace(taskID)
-	if taskID == "" {
-		return errors.New("task id required")
-	}
-	_, err := bg.Default().Kill(taskID)
-	if err != nil {
-		return err
-	}
-	r.notifyStateChanged(StateTopicTasks, "task.kill")
-	return nil
-}
-
-func (r *Runtime) CleanupTasks() int {
-	n := bg.Default().CleanupFinished()
-	if n > 0 {
-		r.notifyStateChanged(StateTopicTasks, "task.cleanup")
-	}
-	return n
 }
 
 func (r *Runtime) ListWorkspaces() []Workspace {
@@ -1251,10 +1424,17 @@ func (r *Runtime) ListMCP() []MCPServer {
 			target = strings.TrimSpace(it.BaseURL)
 		}
 		out = append(out, MCPServer{
-			Name:    it.Name,
-			Type:    string(it.Type),
-			Target:  target,
-			Enabled: it.Enabled,
+			Name:                 it.Name,
+			Type:                 string(it.Type),
+			Target:               target,
+			Command:              it.Command,
+			Args:                 append([]string(nil), it.Args...),
+			Envs:                 cloneStringMap(it.Envs),
+			BaseURL:              it.BaseURL,
+			Enabled:              it.Enabled,
+			Auth:                 mcpAuthFromConfig(it.Auth),
+			ApprovalMode:         it.ApprovalMode,
+			ToolApprovalOverride: cloneStringMap(it.ToolApprovalOverride),
 		})
 	}
 	slices.SortFunc(out, func(a, b MCPServer) int { return strings.Compare(a.Name, b.Name) })
@@ -1288,6 +1468,88 @@ func (r *Runtime) UpsertMCP(name, kind, target string, enabled bool) error {
 	}
 	r.notifyStateChanged(StateTopicMCP, "mcp.update")
 	return nil
+}
+
+func (r *Runtime) UpsertMCPServer(server MCPServer) error {
+	name := strings.TrimSpace(server.Name)
+	kind := strings.ToLower(strings.TrimSpace(server.Type))
+	if kind == "" {
+		kind = "stdio"
+	}
+	entry := config.MCPEntry{
+		Name:                 name,
+		Type:                 config.MCPClientType(kind),
+		Command:              strings.TrimSpace(server.Command),
+		Args:                 append([]string(nil), server.Args...),
+		Envs:                 cloneStringMap(server.Envs),
+		BaseURL:              strings.TrimSpace(server.BaseURL),
+		Enabled:              server.Enabled,
+		Auth:                 configMCPAuth(server.Auth),
+		ApprovalMode:         strings.TrimSpace(server.ApprovalMode),
+		ToolApprovalOverride: cloneStringMap(server.ToolApprovalOverride),
+	}
+	target := strings.TrimSpace(server.Target)
+	switch entry.Type {
+	case config.MCPTypeSSE, config.MCPTypeStreamableHTTP:
+		if entry.BaseURL == "" {
+			entry.BaseURL = target
+		}
+	default:
+		entry.Type = config.MCPTypeStdio
+		if entry.Command == "" {
+			entry.Command = target
+		}
+	}
+	if name == "" {
+		return errors.New("name required")
+	}
+	if entry.Command == "" && entry.BaseURL == "" {
+		return errors.New("command or base_url required")
+	}
+	if !r.core.UpdateMCPServer(entry) {
+		if err := r.core.AddMCPServers([]config.MCPEntry{entry}); err != nil {
+			return err
+		}
+		r.notifyStateChanged(StateTopicMCP, "mcp.add")
+		return nil
+	}
+	r.notifyStateChanged(StateTopicMCP, "mcp.update")
+	return nil
+}
+
+func mcpAuthFromConfig(auth *config.MCPAuth) *MCPAuth {
+	if auth == nil {
+		return nil
+	}
+	return &MCPAuth{
+		Type:       strings.TrimSpace(auth.Type),
+		Token:      auth.Token,
+		Headers:    cloneStringMap(auth.Headers),
+		HeadersEnv: cloneStringMap(auth.HeadersEnv),
+	}
+}
+
+func configMCPAuth(auth *MCPAuth) *config.MCPAuth {
+	if auth == nil {
+		return nil
+	}
+	return &config.MCPAuth{
+		Type:       strings.TrimSpace(auth.Type),
+		Token:      auth.Token,
+		Headers:    cloneStringMap(auth.Headers),
+		HeadersEnv: cloneStringMap(auth.HeadersEnv),
+	}
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
 }
 
 func (r *Runtime) ImportMCPJSON(raw string) error {
@@ -1500,7 +1762,31 @@ func (r *Runtime) GetRules() string {
 }
 
 func (r *Runtime) SaveRules(v string) error {
+	return r.SaveRulesScoped("project", v)
+}
+
+func (r *Runtime) RulesSnapshot() RulesSnapshot {
+	root := r.workingRoot()
+	return RulesSnapshot{
+		ActiveRoot: root,
+		Documents: []RuleDocument{
+			rulesDoc("project", r.projectRulesPath()),
+			rulesDoc("global", globalRulesPath()),
+		},
+	}
+}
+
+func (r *Runtime) SaveRulesScoped(scope, v string) error {
+	scope = strings.ToLower(strings.TrimSpace(scope))
+	if scope == "" {
+		scope = "project"
+	}
 	path := r.projectRulesPath()
+	docID := ".eos/Rules.md"
+	if scope == "global" {
+		path = globalRulesPath()
+		docID = "~/.eos/Rules.md"
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -1511,12 +1797,85 @@ func (r *Runtime) SaveRules(v string) error {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return err
 	}
+	if r.core != nil {
+		if cm := r.core.GetContext(); cm != nil {
+			cm.SetPinnedDoc(docID, content, 20000)
+		}
+	}
 	r.notifyStateChanged(StateTopicRules, "rules.save")
 	return nil
 }
 
 func (r *Runtime) ResetRules() error {
 	return r.SaveRules(sharedruntime.RulesMdTemplate())
+}
+
+func (r *Runtime) SaveMemory(scope, content string) error {
+	if r == nil {
+		return errors.New("runtime is not available")
+	}
+	scope = strings.ToLower(strings.TrimSpace(scope))
+	if scope == "" {
+		scope = "project"
+	}
+	root := r.workingRoot()
+	path := ""
+	docID := ""
+	switch scope {
+	case "global":
+		path = memory.GlobalMemoryPath()
+		docID = memory.GlobalMemoryDocID
+	case "session":
+		if strings.TrimSpace(root) == "" {
+			return errors.New("workspace root required for session memory")
+		}
+		path = filepath.Join(root, ".eos", "session-memory", "session.md")
+	case "index", "project-index":
+		return errors.New("memory index is derived and read-only")
+	default:
+		scope = "project"
+		path = memory.ProjectMemoryPath(root)
+		docID = memory.ProjectMemoryDocID
+	}
+	if strings.TrimSpace(path) == "" {
+		return errors.New("memory path is empty")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return err
+	}
+	if scope == "global" || scope == "project" {
+		_ = memory.NewStore(root).RebuildIndex()
+	}
+	if r.core != nil && strings.TrimSpace(docID) != "" {
+		if cm := r.core.GetContext(); cm != nil {
+			cm.SetPinnedDoc(docID, content, 20000)
+		}
+	}
+	r.notifyStateChanged(StateTopicMemory, "memory.save")
+	return nil
+}
+
+func (r *Runtime) RebuildMemoryIndex() error {
+	if r == nil {
+		return errors.New("runtime is not available")
+	}
+	root := r.workingRoot()
+	if err := memory.NewStore(root).RebuildIndex(); err != nil {
+		return err
+	}
+	if r.core != nil {
+		if cm := r.core.GetContext(); cm != nil {
+			snap := memory.LoadSnapshot(root)
+			if snap.IndexExists && strings.TrimSpace(snap.IndexContent) != "" {
+				cm.SetPinnedDoc(memory.ProjectIndexDocID, snap.IndexContent, 8000)
+			}
+		}
+	}
+	r.notifyStateChanged(StateTopicMemory, "memory.rebuild_index")
+	return nil
 }
 
 func (r *Runtime) GetSettings() Settings {
@@ -1527,26 +1886,83 @@ func (r *Runtime) GetSettings() Settings {
 		cur = *s
 	}
 	return Settings{
-		Language:       cur.Language,
-		Theme:          cur.Theme,
-		MidRiskConfirm: false,
+		PlanPromptStyle:      cur.PlanPromptStyle,
+		PlanBubbleColor:      cur.PlanBubbleColor,
+		AutoContext:          settingsBoolPtr(cur.AutoContext),
+		DesktopNotifications: cloneBoolPtr(cur.DesktopNotifications),
+		MaxInjectKB:          cur.MaxInjectKB,
+		WatchMode:            cur.WatchMode,
+		WatchDebounceMs:      cur.WatchDebounceMs,
+		PollIntervalSec:      cur.PollIntervalSec,
+		Language:             cur.Language,
+		Theme:                cur.Theme,
+		Trusted:              settingsBoolPtr(cur.Trusted),
+		MaxTurnTokens:        cur.MaxTurnTokens,
+		MaxSessionTokens:     cur.MaxSessionTokens,
+		MidRiskConfirm:       false,
 	}
 }
 
 func (r *Runtime) SaveSettings(v Settings) error {
 	path := r.settingsPath()
 	cur := r.core.GetSettings()
+	if strings.TrimSpace(v.PlanPromptStyle) != "" {
+		cur.PlanPromptStyle = strings.TrimSpace(v.PlanPromptStyle)
+	}
+	if strings.TrimSpace(v.PlanBubbleColor) != "" {
+		cur.PlanBubbleColor = strings.TrimSpace(v.PlanBubbleColor)
+	}
+	if v.AutoContext != nil {
+		cur.AutoContext = *v.AutoContext
+	}
+	if v.DesktopNotifications != nil {
+		cur.DesktopNotifications = cloneBoolPtr(v.DesktopNotifications)
+	}
+	if v.MaxInjectKB > 0 {
+		cur.MaxInjectKB = v.MaxInjectKB
+	}
+	if strings.TrimSpace(v.WatchMode) != "" {
+		cur.WatchMode = strings.TrimSpace(v.WatchMode)
+	}
+	if v.WatchDebounceMs > 0 {
+		cur.WatchDebounceMs = v.WatchDebounceMs
+	}
+	if v.PollIntervalSec > 0 {
+		cur.PollIntervalSec = v.PollIntervalSec
+	}
 	if strings.TrimSpace(v.Language) != "" {
 		cur.Language = strings.TrimSpace(v.Language)
 	}
 	if strings.TrimSpace(v.Theme) != "" {
 		cur.Theme = strings.TrimSpace(v.Theme)
 	}
+	if v.Trusted != nil {
+		cur.Trusted = *v.Trusted
+	}
+	if v.MaxTurnTokens > 0 {
+		cur.MaxTurnTokens = v.MaxTurnTokens
+	}
+	if v.MaxSessionTokens > 0 {
+		cur.MaxSessionTokens = v.MaxSessionTokens
+	}
 	if err := r.core.SaveSettings(path, &cur); err != nil {
 		return err
 	}
 	r.notifyStateChanged(StateTopicSettings, "settings.save")
 	return nil
+}
+
+func settingsBoolPtr(v bool) *bool {
+	out := v
+	return &out
+}
+
+func cloneBoolPtr(v *bool) *bool {
+	if v == nil {
+		return nil
+	}
+	out := *v
+	return &out
 }
 
 func (r *Runtime) ListVersions() []VersionItem {
@@ -1745,6 +2161,10 @@ func (r *Runtime) LSPDiagnostics() []string {
 	return out
 }
 
+func (r *Runtime) LSPDiagnosticsSummary() coreapi.LSPDiagnosticsSummary {
+	return coreapi.ProjectDiagnosticsFromStrings(r.LSPDiagnostics())
+}
+
 func (r *Runtime) PermissionSnapshot() PermissionSnapshot {
 	snap := r.core.PermissionSnapshot()
 	return PermissionSnapshot{
@@ -1895,6 +2315,38 @@ func (r *Runtime) SetSkillEnabled(name string, enabled bool) error {
 	return nil
 }
 
+func (r *Runtime) InvokeSkill(name, arguments string) (bool, error) {
+	if r == nil || r.core == nil {
+		return false, errors.New("runtime core is not available")
+	}
+	sm := r.core.GetSkillManager()
+	if sm == nil {
+		return false, nil
+	}
+	name = strings.TrimSpace(name)
+	s, ok := sm.Get(name)
+	if !ok || s == nil {
+		return false, nil
+	}
+	if s.UserInvocable != nil && !*s.UserInvocable {
+		return false, nil
+	}
+	msgs, _, err := sm.InjectSkillWithArguments(context.Background(), name, strings.TrimSpace(arguments))
+	if err != nil {
+		return true, err
+	}
+	if cm := r.core.GetContext(); cm != nil {
+		for _, mp := range msgs {
+			if strings.TrimSpace(mp.Content) == "" {
+				continue
+			}
+			cm.AddEphemeral(mp.Content)
+		}
+	}
+	r.notifyStateChanged(StateTopicContext, "skill.invoke")
+	return true, nil
+}
+
 func (r *Runtime) ListPlugins() []PluginInfo {
 	items := pluginpkg.DefaultRegistry().List()
 	out := make([]PluginInfo, 0, len(items))
@@ -1988,6 +2440,23 @@ func (r *Runtime) SetPluginEnabled(name string, enabled bool) error {
 	return nil
 }
 
+func (r *Runtime) BrowserStatus() BrowserStatus {
+	if r == nil || r.core == nil {
+		return BrowserStatus{}
+	}
+	status := r.core.BrowserStatus()
+	return BrowserStatus{
+		ServerName:  strings.TrimSpace(status.ServerName),
+		Configured:  status.Configured,
+		Enabled:     status.Enabled,
+		Loaded:      status.Loaded,
+		Tools:       status.Tools,
+		LastError:   strings.TrimSpace(status.LastError),
+		Command:     strings.TrimSpace(status.Command),
+		InstallHint: strings.TrimSpace(status.InstallHint),
+	}
+}
+
 func (r *Runtime) ContextPreview() []string {
 	msgs := r.core.BuildPreview()
 	out := make([]string, 0, len(msgs))
@@ -2008,6 +2477,33 @@ func (r *Runtime) ContextStats() (int, int) {
 	}
 	_, tokens, _ := cm.GetConversationUsage()
 	return len(r.core.BuildPreview()), tokens
+}
+
+func (r *Runtime) ContextWindowTokens() int {
+	if r == nil || r.core == nil {
+		return 0
+	}
+	return r.core.GetContextWindowTokens()
+}
+
+func (r *Runtime) PinContextDocument(id, content string, tokenBudget int) error {
+	if r == nil || r.core == nil {
+		return errors.New("runtime core is not available")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("document id required")
+	}
+	if tokenBudget <= 0 {
+		tokenBudget = 20000
+	}
+	cm := r.core.GetContext()
+	if cm == nil {
+		return errors.New("context manager is not available")
+	}
+	cm.SetPinnedDoc(id, content, tokenBudget)
+	r.notifyStateChanged(StateTopicContext, "context.pin")
+	return nil
 }
 
 func (r *Runtime) CompactContext() string {
@@ -2133,6 +2629,33 @@ func (r *Runtime) projectRulesPath() string {
 	return filepath.Join(root, ".eos", "Rules.md")
 }
 
+func globalRulesPath() string {
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return filepath.Join(home, ".eos", "Rules.md")
+	}
+	return filepath.Join(".eos", "Rules.md")
+}
+
+func rulesDoc(scope, path string) RuleDocument {
+	doc := RuleDocument{
+		Scope: strings.TrimSpace(scope),
+		Path:  strings.TrimSpace(path),
+	}
+	if strings.TrimSpace(path) == "" {
+		return doc
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return doc
+	}
+	doc.Exists = true
+	doc.UpdatedAt = info.ModTime()
+	if raw, err := os.ReadFile(path); err == nil {
+		doc.Content = string(raw)
+	}
+	return doc
+}
+
 func (r *Runtime) workingRoot() string {
 	root := strings.TrimSpace(r.core.GetActiveRoot())
 	if root != "" {
@@ -2145,7 +2668,7 @@ func (r *Runtime) workingRoot() string {
 }
 
 func (r *Runtime) settingsPath() string {
-	root := strings.TrimSpace(r.core.GetActiveRoot())
+	root := r.workingRoot()
 	if root != "" {
 		return filepath.Join(root, ".eos", "settings.json")
 	}

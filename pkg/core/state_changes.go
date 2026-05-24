@@ -19,6 +19,7 @@ const (
 	StateTopicSessions  = "sessions"
 	StateTopicMCP       = "mcp"
 	StateTopicRules     = "rules"
+	StateTopicMemory    = "memory"
 	StateTopicSettings  = "settings"
 	StateTopicVersions  = "versions"
 	StateTopicLSP       = "lsp"
@@ -103,4 +104,5 @@ func (r *Runtime) closeStateChangeSubscribers() {
 		delete(r.stateChangeSubscribers, id)
 		close(ch)
 	}
+	r.closeProtocolEventSubscribers()
 }

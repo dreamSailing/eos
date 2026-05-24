@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dreamSailing/eos/internal/tools"
 	"log/slog"
 	"maps"
 	"strings"
@@ -18,6 +17,8 @@ import (
 	"time"
 
 	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/pkg/agentcore"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/flow/agent/react"
@@ -228,7 +229,9 @@ func dispatchResultFromSnapshot(snapshot AgentSnapshot, result string) DispatchR
 		Status:  string(snapshot.Status),
 		Result:  strings.TrimSpace(result),
 		Data: map[string]any{
+			"core_agent_id":    snapshot.CoreAgentID,
 			"agent_name":       snapshot.Name,
+			"role_id":          snapshot.RoleID,
 			"started_at":       snapshot.StartedAt,
 			"updated_at":       snapshot.UpdatedAt,
 			"completed_at":     snapshot.CompletedAt,
@@ -241,6 +244,116 @@ func dispatchResultFromSnapshot(snapshot AgentSnapshot, result string) DispatchR
 			"error":            snapshot.Error,
 		},
 	}
+}
+
+type legacySubAgentModelRunner struct {
+	role         string
+	agent        *react.Agent
+	onReasoning  func(string)
+	mcpToolsInfo string
+	baseMsgs     []*schema.Message
+	subCtx       *SubAgentContext
+	mgr          *SubAgentManager
+	hookMgr      *HookManager
+	outMsgs      []*schema.Message
+}
+
+func (r *legacySubAgentModelRunner) RunModel(ctx context.Context, req agentcore.ModelRequest) (agentcore.ModelResponse, error) {
+	role := strings.TrimSpace(r.role)
+	if role == "" {
+		role = strings.TrimSpace(req.Role.ID)
+	}
+	outMsgs, err := invokeRoleAgentWithSubContext(
+		ctx,
+		r.baseMsgs,
+		role,
+		r.agent,
+		nil,
+		r.onReasoning,
+		r.mcpToolsInfo,
+		r.subCtx,
+		r.mgr,
+		r.hookMgr,
+	)
+	r.outMsgs = outMsgs
+	if err != nil {
+		status := agentcore.AgentFailed
+		if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+			status = agentcore.AgentCancelled
+		}
+		return agentcore.ModelResponse{Text: extractLastAssistantText(outMsgs), Status: status}, err
+	}
+	return agentcore.ModelResponse{Text: extractLastAssistantText(outMsgs), Status: agentcore.AgentCompleted}, nil
+}
+
+func (dt *DispatchTools) prepareSubAgentRunContext(parentCtx context.Context, subCtx *SubAgentContext, role string) context.Context {
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	if subCtx == nil {
+		return parentCtx
+	}
+	role = strings.TrimSpace(role)
+	subCtx.mu.Lock()
+	if role != "" {
+		subCtx.roleID = role
+	}
+	agentID := subCtx.id
+	agentName := subCtx.agentType.String()
+	allowedTools := append([]string(nil), subCtx.allowedTools...)
+	subCtx.mu.Unlock()
+
+	runCtx := parentCtx
+	if role != "" {
+		runCtx = tools.WithRole(runCtx, role)
+	}
+	if allowed := buildAllowedToolsMap(allowedTools); allowed != nil {
+		runCtx = tools.WithAllowedTools(runCtx, allowed)
+	}
+	return withCurrentAgentContext(runCtx, agentID, agentName)
+}
+
+func (dt *DispatchTools) runSubAgentWithCoreRunner(
+	ctx context.Context,
+	msgs []*schema.Message,
+	role string,
+	agent *react.Agent,
+	toolInfo string,
+	subCtx *SubAgentContext,
+) ([]*schema.Message, agentcore.AgentRunResult, error) {
+	adapter := &legacySubAgentModelRunner{
+		role:         role,
+		agent:        agent,
+		onReasoning:  dt.onReasoning,
+		mcpToolsInfo: toolInfo,
+		baseMsgs:     msgs,
+		subCtx:       subCtx,
+		mgr:          dt.subAgentMgr,
+		hookMgr:      dt.hookMgr,
+	}
+	runner := dt.subAgentMgr.NewAgentCoreRunner(agentcore.WithModelRunner(adapter))
+	result, err := runner.RunOnce(ctx, subCtx.id, nil)
+	return adapter.outMsgs, result, err
+}
+
+func (dt *DispatchTools) invokeSubAgentWithCoreRunner(
+	ctx context.Context,
+	msgs []*schema.Message,
+	role string,
+	agent *react.Agent,
+	toolInfo string,
+	subCtx *SubAgentContext,
+	task string,
+	cancel context.CancelFunc,
+) ([]*schema.Message, SubAgentResult, error) {
+	runCtx := dt.prepareSubAgentRunContext(ctx, subCtx, role)
+	if err := dt.subAgentMgr.BeginAgentCoreRun(subCtx.id, task, cancel); err != nil {
+		return nil, SubAgentResult{}, err
+	}
+	dt.emitAgentEvent(EventAgentStarted, subCtx, task, task, nil)
+	outMsgs, runResult, err := dt.runSubAgentWithCoreRunner(runCtx, msgs, role, agent, toolInfo, subCtx)
+	subRes := dt.subAgentMgr.FinishAgentCoreRun(subCtx.id, task, runResult, err)
+	return outMsgs, subRes, err
 }
 
 func (dt *DispatchTools) startManagedAgentRun(parentCtx context.Context, subCtx *SubAgentContext, role string, agent *react.Agent, task string) error {
@@ -258,67 +371,47 @@ func (dt *DispatchTools) startManagedAgentRun(parentCtx context.Context, subCtx 
 	}
 
 	runCtx, cancel := context.WithCancel(parentCtx)
-	subCtx.mu.RLock()
-	allowedTools := append([]string(nil), subCtx.allowedTools...)
-	subCtx.mu.RUnlock()
-	if allowed := buildAllowedToolsMap(allowedTools); allowed != nil {
-		runCtx = tools.WithAllowedTools(runCtx, allowed)
-	}
-	runCtx = withCurrentAgentContext(runCtx, subCtx.id, subCtx.agentType.String())
+	role = strings.TrimSpace(role)
+	runCtx = dt.prepareSubAgentRunContext(runCtx, subCtx, role)
 
-	if err := dt.subAgentMgr.MarkRunning(subCtx.id, task, cancel); err != nil {
+	if err := dt.subAgentMgr.BeginAgentCoreRun(subCtx.id, task, cancel); err != nil {
 		cancel()
 		return err
 	}
 	dt.emitAgentEvent(EventAgentStarted, subCtx, task, task, nil)
 
 	go func(baseCtx context.Context) {
-		_, err := invokeRoleAgentWithSubContext(runCtx, nil, role, agent, dt.onMeta, dt.onReasoning, dt.mcpToolsInfo, subCtx, dt.subAgentMgr, dt.hookMgr)
+		_, runResult, err := dt.runSubAgentWithCoreRunner(runCtx, nil, role, agent, dt.mcpToolsInfo, subCtx)
+		subRes := dt.subAgentMgr.FinishAgentCoreRun(subCtx.id, task, runResult, err)
 
 		subCtx.mu.RLock()
-		cancelRequested := subCtx.cancelReq
-		currentTask := strings.TrimSpace(subCtx.task)
+		cancelRequested := subCtx.cancelReq || subCtx.status == AgentStatusCancelled
 		subCtx.mu.RUnlock()
 
-		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(runCtx.Err(), context.Canceled) || cancelRequested {
-				subRes, cancelErr := dt.subAgentMgr.Cancel(subCtx.id, "cancelled")
-				if cancelErr == nil {
-					dt.emitAgentEvent(EventAgentCancelled, subCtx, subRes.Task, "cancelled", map[string]any{
-						"duration_ms": subRes.Duration.Milliseconds(),
-					})
-					if dt.hookMgr != nil {
-						_, _ = dt.hookMgr.TeammateIdle(baseCtx, subRes.Type.String(), false, "cancelled", subRes.Duration.Milliseconds())
-					}
-				}
-				return
-			}
-
-			subRes := dt.subAgentMgr.Complete(subCtx.id, currentTask, false, err.Error())
-			dt.emitAgentEvent(EventAgentFailed, subCtx, subRes.Task, err.Error(), map[string]any{
-				"error":       err.Error(),
+		if subRes.Status == AgentStatusCancelled || errors.Is(err, context.Canceled) || errors.Is(runCtx.Err(), context.Canceled) || cancelRequested {
+			dt.emitAgentEvent(EventAgentCancelled, subCtx, subRes.Task, "cancelled", map[string]any{
 				"duration_ms": subRes.Duration.Milliseconds(),
 			})
 			if dt.hookMgr != nil {
-				_, _ = dt.hookMgr.TeammateIdle(baseCtx, subRes.Type.String(), false, err.Error(), subRes.Duration.Milliseconds())
+				_, _ = dt.hookMgr.TeammateIdle(baseCtx, subRes.Type.String(), false, "cancelled", subRes.Duration.Milliseconds())
+			}
+			return
+		}
+		if err != nil || subRes.Status == AgentStatusFailed {
+			errText := strings.TrimSpace(subRes.Error)
+			if errText == "" && err != nil {
+				errText = err.Error()
+			}
+			dt.emitAgentEvent(EventAgentFailed, subCtx, subRes.Task, errText, map[string]any{
+				"error":       errText,
+				"duration_ms": subRes.Duration.Milliseconds(),
+			})
+			if dt.hookMgr != nil {
+				_, _ = dt.hookMgr.TeammateIdle(baseCtx, subRes.Type.String(), false, errText, subRes.Duration.Milliseconds())
 			}
 			return
 		}
 
-		if errors.Is(runCtx.Err(), context.Canceled) || cancelRequested {
-			subRes, cancelErr := dt.subAgentMgr.Cancel(subCtx.id, "cancelled")
-			if cancelErr == nil {
-				dt.emitAgentEvent(EventAgentCancelled, subCtx, subRes.Task, "cancelled", map[string]any{
-					"duration_ms": subRes.Duration.Milliseconds(),
-				})
-				if dt.hookMgr != nil {
-					_, _ = dt.hookMgr.TeammateIdle(baseCtx, subRes.Type.String(), false, "cancelled", subRes.Duration.Milliseconds())
-				}
-			}
-			return
-		}
-
-		subRes := dt.subAgentMgr.Complete(subCtx.id, currentTask, true, "")
 		dt.emitAgentEvent(EventAgentCompleted, subCtx, subRes.Task, dt.agentOutput(subCtx, subRes.Result), map[string]any{
 			"duration_ms": subRes.Duration.Milliseconds(),
 		})
@@ -349,10 +442,11 @@ func (dt *DispatchTools) SpawnAgent(agentName string, task string, forkContext b
 	}
 	initialMsgs = append(initialMsgs, schema.UserMessage(task))
 
-	strategy := parseContextStrategy(strategyRaw, agentType.ContextStrategy())
+	role = runtimeCanonicalRoleID(parentCtx, role, role)
+	strategy := parseContextStrategy(strategyRaw, runtimeRoleContextStrategy(parentCtx, role, agentType.ContextStrategy()))
 	normalizedTools := normalizeAllowedTools(allowedTools)
 	if len(normalizedTools) == 0 {
-		normalizedTools = agentType.AllowedTools()
+		normalizedTools = runtimeRoleAllowedTools(parentCtx, role, agentType.AllowedTools())
 	}
 
 	subCtx := dt.subAgentMgr.CreateContextWithStrategy(agentType, parentCtx, initialMsgs, strategy, normalizedTools)
@@ -436,6 +530,7 @@ func (dt *DispatchTools) ResumeAgent(agentID string, task string) (DispatchResul
 	}
 
 	role, agent := dt.resolveAgentRuntime(agentType)
+	role = runtimeCanonicalRoleID(parentCtx, role, role)
 	if err := dt.startManagedAgentRun(parentCtx, subCtx, role, agent, currentTask); err != nil {
 		return DispatchResult{}, err
 	}
@@ -485,16 +580,16 @@ func (dt *DispatchTools) invokeStandardAgent(task DispatchTask, role string, sub
 		}
 	}
 
+	role = runtimeCanonicalRoleID(ctx, role, role)
+	strategy := runtimeRoleContextStrategy(ctx, role, subType.ContextStrategy())
+	allowedTools := runtimeRoleAllowedTools(ctx, role, subType.AllowedTools())
+
 	// 创建子代理隔离上下文
 	reqID := tools.TraceIDFromContext(ctx)
-	subCtx := dt.subAgentMgr.GetOrCreateRequestContext(reqID, subType, ctx, msgs)
-	_ = dt.subAgentMgr.MarkRunning(subCtx.id, task.Task, nil)
-	dt.emitAgentEvent(EventAgentStarted, subCtx, task.Task, task.Task, nil)
+	subCtx := dt.subAgentMgr.GetOrCreateRequestContextWithStrategy(reqID, subType, ctx, msgs, strategy, allowedTools)
 
-	roleCtx := tools.WithRole(ctx, role)
-	_, err := invokeRoleAgentWithSubContext(roleCtx, msgs, role, agent, dt.onMeta, dt.onReasoning, toolInfo, subCtx, dt.subAgentMgr, dt.hookMgr)
+	_, subRes, err := dt.invokeSubAgentWithCoreRunner(ctx, msgs, role, agent, toolInfo, subCtx, task.Task, nil)
 	if err != nil {
-		dt.subAgentMgr.Complete(subCtx.id, task.Task, false, err.Error())
 		dt.emitAgentEvent(EventAgentFailed, subCtx, task.Task, err.Error(), map[string]any{"error": err.Error()})
 		if dt.hookMgr != nil {
 			_, _ = dt.hookMgr.TeammateIdle(ctx, subCtx.agentType.String(), false, err.Error(), time.Since(subCtx.createdAt).Milliseconds())
@@ -505,7 +600,6 @@ func (dt *DispatchTools) invokeStandardAgent(task DispatchTask, role string, sub
 		}
 	}
 
-	subRes := dt.subAgentMgr.Complete(subCtx.id, task.Task, true, "")
 	dt.emitAgentEvent(EventAgentCompleted, subCtx, task.Task, dt.agentOutput(subCtx, subRes.Result), map[string]any{"duration_ms": subRes.Duration.Milliseconds()})
 	if dt.hookMgr != nil {
 		_, _ = dt.hookMgr.TeammateIdle(ctx, subRes.Type.String(), true, "", subRes.Duration.Milliseconds())
@@ -597,17 +691,17 @@ func (dt *DispatchTools) InvokeSeniorDevDirect(task string) ([]*schema.Message, 
 	}
 
 	reqID := tools.TraceIDFromContext(ctx)
-	subCtx := dt.subAgentMgr.GetOrCreateRequestContext(reqID, SubAgentTypeSeniorDev, ctx, msgs)
-	_ = dt.subAgentMgr.MarkRunning(subCtx.id, task, nil)
-	dt.emitAgentEvent(EventAgentStarted, subCtx, task, task, nil)
+	role := runtimeCanonicalRoleID(ctx, "senior-dev", "senior-dev")
+	strategy := runtimeRoleContextStrategy(ctx, role, SubAgentTypeSeniorDev.ContextStrategy())
+	allowedTools := runtimeRoleAllowedTools(ctx, role, SubAgentTypeSeniorDev.AllowedTools())
+	subCtx := dt.subAgentMgr.GetOrCreateRequestContextWithStrategy(reqID, SubAgentTypeSeniorDev, ctx, msgs, strategy, allowedTools)
 	if strings.TrimSpace(task) != "" {
 		_ = dt.subAgentMgr.AddMessage(subCtx.id, schema.UserMessage("任务补充: "+strings.TrimSpace(task)))
 	}
 
-	roleCtx := tools.WithRole(ctx, "senior-dev")
-	outMsgs, err := invokeRoleAgentWithSubContext(roleCtx, msgs, "senior-dev", dt.seniorDevAgent, dt.onMeta, dt.onReasoning, dt.mcpToolsInfo+dt.getProjectStructurePrompt(roleCtx), subCtx, dt.subAgentMgr, dt.hookMgr)
+	runCtx := dt.prepareSubAgentRunContext(ctx, subCtx, role)
+	outMsgs, subRes, err := dt.invokeSubAgentWithCoreRunner(ctx, msgs, role, dt.seniorDevAgent, dt.mcpToolsInfo+dt.getProjectStructurePrompt(runCtx), subCtx, task, nil)
 	if err != nil {
-		dt.subAgentMgr.Complete(subCtx.id, task, false, err.Error())
 		dt.emitAgentEvent(EventAgentFailed, subCtx, task, err.Error(), map[string]any{"error": err.Error()})
 		if dt.hookMgr != nil {
 			_, _ = dt.hookMgr.TeammateIdle(ctx, subCtx.agentType.String(), false, err.Error(), time.Since(subCtx.createdAt).Milliseconds())
@@ -615,7 +709,6 @@ func (dt *DispatchTools) InvokeSeniorDevDirect(task string) ([]*schema.Message, 
 		return nil, err
 	}
 
-	subRes := dt.subAgentMgr.Complete(subCtx.id, task, true, "")
 	dt.emitAgentEvent(EventAgentCompleted, subCtx, task, dt.agentOutput(subCtx, subRes.Result), map[string]any{"duration_ms": subRes.Duration.Milliseconds()})
 	if dt.hookMgr != nil {
 		_, _ = dt.hookMgr.TeammateIdle(ctx, subRes.Type.String(), true, "", subRes.Duration.Milliseconds())
@@ -636,17 +729,16 @@ func (dt *DispatchTools) InvokeVerificationDirect(task string, baseMsgs []*schem
 	}
 
 	reqID := tools.TraceIDFromContext(ctx)
-	subCtx := dt.subAgentMgr.GetOrCreateRequestContext(reqID, SubAgentTypeVerification, ctx, baseMsgs)
-	_ = dt.subAgentMgr.MarkRunning(subCtx.id, task, nil)
-	dt.emitAgentEvent(EventAgentStarted, subCtx, task, task, nil)
+	role := runtimeCanonicalRoleID(ctx, "verification", "verification")
+	strategy := runtimeRoleContextStrategy(ctx, role, SubAgentTypeVerification.ContextStrategy())
+	allowedTools := runtimeRoleAllowedTools(ctx, role, SubAgentTypeVerification.AllowedTools())
+	subCtx := dt.subAgentMgr.GetOrCreateRequestContextWithStrategy(reqID, SubAgentTypeVerification, ctx, baseMsgs, strategy, allowedTools)
 	if strings.TrimSpace(task) != "" {
 		_ = dt.subAgentMgr.AddMessage(subCtx.id, schema.UserMessage("验证目标: "+strings.TrimSpace(task)))
 	}
 
-	roleCtx := tools.WithRole(ctx, "verification")
-	outMsgs, err := invokeRoleAgentWithSubContext(roleCtx, baseMsgs, "verification", dt.verificationAgent, dt.onMeta, dt.onReasoning, dt.mcpToolsInfo, subCtx, dt.subAgentMgr, dt.hookMgr)
+	outMsgs, subRes, err := dt.invokeSubAgentWithCoreRunner(ctx, baseMsgs, role, dt.verificationAgent, dt.mcpToolsInfo, subCtx, task, nil)
 	if err != nil {
-		dt.subAgentMgr.Complete(subCtx.id, task, false, err.Error())
 		dt.emitAgentEvent(EventAgentFailed, subCtx, task, err.Error(), map[string]any{"error": err.Error()})
 		if dt.hookMgr != nil {
 			_, _ = dt.hookMgr.TeammateIdle(ctx, subCtx.agentType.String(), false, err.Error(), time.Since(subCtx.createdAt).Milliseconds())
@@ -654,7 +746,6 @@ func (dt *DispatchTools) InvokeVerificationDirect(task string, baseMsgs []*schem
 		return nil, err
 	}
 
-	subRes := dt.subAgentMgr.Complete(subCtx.id, task, true, "")
 	dt.emitAgentEvent(EventAgentCompleted, subCtx, task, dt.agentOutput(subCtx, subRes.Result), map[string]any{"duration_ms": subRes.Duration.Milliseconds()})
 	if dt.hookMgr != nil {
 		_, _ = dt.hookMgr.TeammateIdle(ctx, subRes.Type.String(), true, "", subRes.Duration.Milliseconds())
@@ -1166,7 +1257,9 @@ func (dt *DispatchTools) emitAgentEvent(eventType string, subCtx *SubAgentContex
 	}
 	payload := map[string]any{
 		"agent_id":         strings.TrimSpace(subCtx.id),
+		"core_agent_id":    strings.TrimSpace(subCtx.coreAgentID),
 		"agent_name":       subCtx.agentType.String(),
+		"role_id":          strings.TrimSpace(subCtx.roleID),
 		"context_strategy": subCtx.strategy.String(),
 		"task":             strings.TrimSpace(task),
 	}
@@ -1211,26 +1304,9 @@ func (dt *DispatchTools) agentOutput(subCtx *SubAgentContext, fallback string) s
 
 // buildRoleSystemPrompt 构建角色特定的系统提示词
 func buildRoleSystemPrompt(ctx context.Context, role, mcpToolsInfo string) string {
-	var prompt string
-	switch role {
-	case "planner":
-		prompt = BuildPlanPromptForStyle(planPromptStyleFromContext(ctx))
-		if mcpToolsInfo != "" {
-			prompt += "\n\n" + mcpToolsInfo
-		}
-	case "senior-dev":
-		prompt = RoleSeniorDevPrompt
-		if mcpToolsInfo != "" {
-			prompt += "\n\n" + mcpToolsInfo
-		}
-	case "tester":
-		prompt = RoleTesterPrompt
-	case "verification":
-		prompt = RoleVerificationPrompt
-	case "reviewer":
-		prompt = RoleReviewerPrompt
-	default:
-		prompt = RoleDefaultPrompt
+	prompt, roleID := runtimeRoleBasePrompt(ctx, role)
+	if strings.TrimSpace(mcpToolsInfo) != "" && runtimeRoleIncludesMCPToolsInfo(roleID) {
+		prompt += "\n\n" + mcpToolsInfo
 	}
 
 	// 注入环境信息

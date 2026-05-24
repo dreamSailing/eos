@@ -5,14 +5,13 @@ package tools
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"context"
 	"fmt"
+	"github.com/dreamSailing/eos/internal/pkg/utils"
 	"log/slog"
 	"path/filepath"
 	"strings"
-	"github.com/dreamSailing/eos/internal/pkg/utils"
 
 	gitops "github.com/dreamSailing/eos/internal/tools/git"
 )
@@ -50,6 +49,9 @@ func (m *Manager) gitAddStructured(ctx context.Context, params map[string]interf
 		}
 	}
 	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
+	if r, blocked := gitMutationSandboxResult(ctx, ToolGitAdd, ops.Root); blocked {
+		return r
+	}
 	n, err := ops.Add(paths)
 	if err != nil {
 		slog.Error("git_add.error", "component", utils.ComponentTool, "paths", len(paths), "err", err.Error())
@@ -63,6 +65,9 @@ func (m *Manager) gitCommitStructured(ctx context.Context, params map[string]int
 	name, _ := params["author_name"].(string)
 	email, _ := params["author_email"].(string)
 	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
+	if r, blocked := gitMutationSandboxResult(ctx, ToolGitCommit, ops.Root); blocked {
+		return r
+	}
 	out, err := ops.Commit(msg, name, email)
 	if err != nil {
 		slog.Error("git_commit.error", "component", utils.ComponentTool, "author_name", name, "author_email", email, "err", err.Error())
@@ -88,6 +93,9 @@ func (m *Manager) gitCheckoutStructured(ctx context.Context, params map[string]i
 		create = v
 	}
 	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
+	if r, blocked := gitMutationSandboxResult(ctx, ToolGitCheckout, ops.Root); blocked {
+		return r
+	}
 	br, err := ops.Checkout(name, create)
 	if err != nil {
 		slog.Error("git_checkout.error", "component", utils.ComponentTool, "name", name, "create", create, "err", err.Error())
@@ -98,6 +106,9 @@ func (m *Manager) gitCheckoutStructured(ctx context.Context, params map[string]i
 
 func (m *Manager) gitInitStructured(ctx context.Context, params map[string]interface{}) ToolResult {
 	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
+	if r, blocked := gitMutationSandboxResult(ctx, ToolGitInit, ops.Root); blocked {
+		return r
+	}
 	p, err := ops.Init()
 	if err != nil {
 		slog.Error("git_init.error", "component", utils.ComponentTool, "err", err.Error())
@@ -112,6 +123,9 @@ func (m *Manager) gitPullStructured(ctx context.Context, params map[string]inter
 	user, _ := params["username"].(string)
 	pass, _ := params["password"].(string)
 	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
+	if r, blocked := gitMutationSandboxResult(ctx, ToolGitPull, ops.Root); blocked {
+		return r
+	}
 	s, err := ops.Pull(remote, branch, user, pass)
 	if err != nil {
 		slog.Error("git_pull.error", "component", utils.ComponentTool, "remote", remote, "branch", branch, "user", user, "err", err.Error())
@@ -126,6 +140,9 @@ func (m *Manager) gitPushStructured(ctx context.Context, params map[string]inter
 	user, _ := params["username"].(string)
 	pass, _ := params["password"].(string)
 	ops := gitops.NewOpsWithRoot(WorkspaceRootFromContext(ctx))
+	if r, blocked := gitMutationSandboxResult(ctx, ToolGitPush, ops.Root); blocked {
+		return r
+	}
 	s, err := ops.Push(remote, branch, user, pass)
 	if err != nil {
 		slog.Error("git_push.error", "component", utils.ComponentTool, "remote", remote, "branch", branch, "user", user, "err", err.Error())

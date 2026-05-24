@@ -16,6 +16,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/pkg/agentcore"
 )
 
 // SubAgentType 子代理类型
@@ -57,6 +58,10 @@ func (t SubAgentType) String() string {
 
 // Description 返回子代理类型的描述
 func (t SubAgentType) Description() string {
+	return runtimeRoleDescription(t.String(), legacySubAgentDescription(t))
+}
+
+func legacySubAgentDescription(t SubAgentType) string {
 	switch t {
 	case SubAgentTypePlanner:
 		return "规划复杂任务的执行步骤"
@@ -81,6 +86,10 @@ func (t SubAgentType) Description() string {
 
 // ContextStrategy 返回子代理的上下文策略
 func (t SubAgentType) ContextStrategy() ContextStrategy {
+	return runtimeDefaultRoleContextStrategy(t.String(), legacySubAgentContextStrategy(t))
+}
+
+func legacySubAgentContextStrategy(t SubAgentType) ContextStrategy {
 	switch t {
 	case SubAgentTypeExplore:
 		return ContextStrategyIndependent // 只读探索，独立上下文
@@ -101,6 +110,10 @@ func (t SubAgentType) ContextStrategy() ContextStrategy {
 
 // AllowedTools 返回子代理允许的工具列表
 func (t SubAgentType) AllowedTools() []string {
+	return runtimeDefaultRoleAllowedTools(t.String(), legacySubAgentAllowedTools(t))
+}
+
+func legacySubAgentAllowedTools(t SubAgentType) []string {
 	switch t {
 	case SubAgentTypeExplore:
 		return []string{"glob", "grep", tools.ToolRead, tools.ToolSearch, tools.ToolTodoRead, tools.ToolProjectStructure}
@@ -165,7 +178,9 @@ func (s AgentStatus) terminal() bool {
 
 type AgentSnapshot struct {
 	ID           string
+	CoreAgentID  string
 	Name         string
+	RoleID       string
 	Task         string
 	Status       AgentStatus
 	Error        string
@@ -184,7 +199,9 @@ type AgentSnapshot struct {
 // SubAgentContext 子代理隔离上下文
 type SubAgentContext struct {
 	id           string            // 唯一 ID
+	coreAgentID  string            // agentcore.Registry 中的同步 ID
 	agentType    SubAgentType      // 代理类型
+	roleID       string            // 数据驱动角色 ID
 	parentCtx    context.Context   // 父上下文
 	messages     []*schema.Message // 独立消息历史
 	strategy     ContextStrategy   // 上下文策略
@@ -232,6 +249,9 @@ type SubAgentManager struct {
 	agents       map[string]*SubAgentContext
 	requestIndex map[string]string
 	history      []SubAgentResult
+	coreRegistry *agentcore.Registry
+	coreMailbox  *agentcore.Mailbox
+	coreRunner   *agentcore.Runner
 	mu           sync.RWMutex
 	nextID       int
 	maxHistory   int // 最大历史记录数
@@ -239,11 +259,165 @@ type SubAgentManager struct {
 
 // NewSubAgentManager 创建子代理管理器
 func NewSubAgentManager() *SubAgentManager {
+	registry := newSubAgentCoreRegistry()
+	mailbox := agentcore.NewMailbox()
 	return &SubAgentManager{
 		agents:       make(map[string]*SubAgentContext),
 		requestIndex: make(map[string]string),
 		history:      make([]SubAgentResult, 0, 100),
+		coreRegistry: registry,
+		coreMailbox:  mailbox,
+		coreRunner:   agentcore.NewRunner(registry, mailbox),
 		maxHistory:   100,
+	}
+}
+
+func newSubAgentCoreRegistry() *agentcore.Registry {
+	roles, err := agentcore.NewRoleRegistry(runtimeBuiltinRoles())
+	if err != nil {
+		slog.Warn("subagent.agentcore.roles_failed", "error", err)
+		roles = agentcore.NewDefaultRoleRegistry()
+	}
+	return agentcore.NewRegistry(roles)
+}
+
+func (m *SubAgentManager) AgentCoreRegistry() *agentcore.Registry {
+	if m == nil {
+		return nil
+	}
+	return m.coreRegistry
+}
+
+func (m *SubAgentManager) AgentCoreMailbox() *agentcore.Mailbox {
+	if m == nil {
+		return nil
+	}
+	return m.coreMailbox
+}
+
+func (m *SubAgentManager) AgentCoreRunner() *agentcore.Runner {
+	if m == nil {
+		return nil
+	}
+	return m.coreRunner
+}
+
+func (m *SubAgentManager) NewAgentCoreRunner(opts ...agentcore.RunnerOption) *agentcore.Runner {
+	if m == nil {
+		return agentcore.NewRunner(nil, nil, opts...)
+	}
+	return agentcore.NewRunner(m.coreRegistry, m.coreMailbox, opts...)
+}
+
+func (m *SubAgentManager) registerCoreAgent(id string, roleID string, task string) string {
+	id = strings.TrimSpace(id)
+	roleID = strings.TrimSpace(roleID)
+	if id == "" || roleID == "" || m == nil || m.coreRegistry == nil {
+		return ""
+	}
+	if _, err := m.coreRegistry.RegisterRootWithID(id, roleID, task); err != nil {
+		slog.Warn("subagent.agentcore.register_failed", "id", id, "role", roleID, "error", err)
+		return ""
+	}
+	return id
+}
+
+func (m *SubAgentManager) updateCoreAgentTask(id string, roleID string, task string) {
+	id = strings.TrimSpace(id)
+	if id == "" || m == nil || m.coreRegistry == nil {
+		return
+	}
+	if _, err := m.coreRegistry.UpdateRoleTask(id, roleID, task); err != nil {
+		slog.Warn("subagent.agentcore.update_task_failed", "id", id, "error", err)
+	}
+}
+
+func (m *SubAgentManager) updateCoreAgent(id string, roleID string, task string, status AgentStatus) {
+	id = strings.TrimSpace(id)
+	if id == "" || m == nil || m.coreRegistry == nil {
+		return
+	}
+	if _, err := m.coreRegistry.UpdateRoleTaskStatus(id, roleID, task, toAgentCoreStatus(status)); err != nil {
+		slog.Warn("subagent.agentcore.update_failed", "id", id, "status", status, "error", err)
+	}
+}
+
+func (m *SubAgentManager) removeCoreAgent(id string) {
+	if m == nil || m.coreRegistry == nil {
+		return
+	}
+	_ = m.coreRegistry.Remove(id)
+	if m.coreMailbox != nil {
+		m.coreMailbox.Clear(id)
+	}
+}
+
+func (m *SubAgentManager) mirrorCoreMailboxMessage(id string, msg *schema.Message) {
+	item, ok := subAgentMailboxMessage(id, msg)
+	if !ok || m == nil || m.coreMailbox == nil {
+		return
+	}
+	if err := m.coreMailbox.Send(item); err != nil {
+		slog.Warn("subagent.agentcore.mailbox_failed", "id", id, "error", err)
+	}
+}
+
+func subAgentMailboxMessage(id string, msg *schema.Message) (agentcore.MailboxMessage, bool) {
+	id = strings.TrimSpace(id)
+	if id == "" || msg == nil {
+		return agentcore.MailboxMessage{}, false
+	}
+	body := strings.TrimSpace(msg.Content)
+	if body == "" {
+		return agentcore.MailboxMessage{}, false
+	}
+	var from string
+	switch msg.Role {
+	case schema.User:
+		from = "user"
+	case schema.System:
+		from = "system"
+	default:
+		return agentcore.MailboxMessage{}, false
+	}
+	return agentcore.MailboxMessage{
+		FromAgentID: from,
+		ToAgentID:   id,
+		Body:        body,
+	}, true
+}
+
+func fromAgentCoreStatus(status agentcore.AgentStatus) AgentStatus {
+	switch status {
+	case agentcore.AgentPending:
+		return AgentStatusPending
+	case agentcore.AgentRunning:
+		return AgentStatusRunning
+	case agentcore.AgentCompleted:
+		return AgentStatusCompleted
+	case agentcore.AgentFailed:
+		return AgentStatusFailed
+	case agentcore.AgentCancelled:
+		return AgentStatusCancelled
+	default:
+		return AgentStatusPending
+	}
+}
+
+func toAgentCoreStatus(status AgentStatus) agentcore.AgentStatus {
+	switch status {
+	case AgentStatusPending:
+		return agentcore.AgentPending
+	case AgentStatusRunning:
+		return agentcore.AgentRunning
+	case AgentStatusCompleted:
+		return agentcore.AgentCompleted
+	case AgentStatusFailed:
+		return agentcore.AgentFailed
+	case AgentStatusCancelled:
+		return agentcore.AgentCancelled
+	default:
+		return agentcore.AgentPending
 	}
 }
 
@@ -253,8 +427,26 @@ func (m *SubAgentManager) GetOrCreateRequestContext(
 	parentCtx context.Context,
 	initialMsgs []*schema.Message,
 ) *SubAgentContext {
+	return m.GetOrCreateRequestContextWithStrategy(
+		requestID,
+		agentType,
+		parentCtx,
+		initialMsgs,
+		agentType.ContextStrategy(),
+		agentType.AllowedTools(),
+	)
+}
+
+func (m *SubAgentManager) GetOrCreateRequestContextWithStrategy(
+	requestID string,
+	agentType SubAgentType,
+	parentCtx context.Context,
+	initialMsgs []*schema.Message,
+	strategy ContextStrategy,
+	allowedTools []string,
+) *SubAgentContext {
 	if strings.TrimSpace(requestID) == "" {
-		return m.CreateContext(agentType, parentCtx, initialMsgs)
+		return m.CreateContextWithStrategy(agentType, parentCtx, initialMsgs, strategy, allowedTools)
 	}
 
 	key := strings.TrimSpace(requestID) + "|" + agentType.String()
@@ -271,17 +463,21 @@ func (m *SubAgentManager) GetOrCreateRequestContext(
 
 	m.nextID++
 	id := fmt.Sprintf("subagent_%s_%d", agentType.String(), m.nextID)
+	roleID := agentType.String()
+	coreAgentID := m.registerCoreAgent(id, roleID, "")
 
 	// 根据上下文策略过滤消息，避免子 Agent 上下文膨胀
-	msgs := filterMessagesForSubAgent(initialMsgs, agentType.ContextStrategy())
+	msgs := filterMessagesForSubAgent(initialMsgs, strategy)
 
 	ctx := &SubAgentContext{
 		id:           id,
+		coreAgentID:  coreAgentID,
 		agentType:    agentType,
+		roleID:       roleID,
 		parentCtx:    parentCtx,
 		messages:     msgs,
-		strategy:     agentType.ContextStrategy(),
-		allowedTools: agentType.AllowedTools(),
+		strategy:     strategy,
+		allowedTools: append([]string(nil), allowedTools...),
 		status:       AgentStatusPending,
 		createdAt:    time.Now(),
 		updatedAt:    time.Now(),
@@ -386,6 +582,7 @@ func (m *SubAgentManager) ClearRequest(requestID string) {
 	for _, item := range toRemove {
 		delete(m.agents, item.id)
 		delete(m.requestIndex, item.key)
+		m.removeCoreAgent(item.id)
 	}
 }
 
@@ -396,6 +593,8 @@ func (m *SubAgentManager) CreateContext(agentType SubAgentType, parentCtx contex
 
 	m.nextID++
 	id := fmt.Sprintf("subagent_%s_%d", agentType.String(), m.nextID)
+	roleID := agentType.String()
+	coreAgentID := m.registerCoreAgent(id, roleID, "")
 
 	// 复制初始消息，避免修改原始消息
 	msgs := make([]*schema.Message, len(initialMsgs))
@@ -403,7 +602,9 @@ func (m *SubAgentManager) CreateContext(agentType SubAgentType, parentCtx contex
 
 	ctx := &SubAgentContext{
 		id:           id,
+		coreAgentID:  coreAgentID,
 		agentType:    agentType,
+		roleID:       roleID,
 		parentCtx:    parentCtx,
 		messages:     msgs,
 		strategy:     agentType.ContextStrategy(),
@@ -438,6 +639,8 @@ func (m *SubAgentManager) CreateContextWithStrategy(
 
 	m.nextID++
 	id := fmt.Sprintf("subagent_%s_%d", agentType.String(), m.nextID)
+	roleID := agentType.String()
+	coreAgentID := m.registerCoreAgent(id, roleID, "")
 
 	// 根据策略处理初始消息
 	var msgs []*schema.Message
@@ -467,11 +670,13 @@ func (m *SubAgentManager) CreateContextWithStrategy(
 
 	ctx := &SubAgentContext{
 		id:           id,
+		coreAgentID:  coreAgentID,
 		agentType:    agentType,
+		roleID:       roleID,
 		parentCtx:    parentCtx,
 		messages:     msgs,
 		strategy:     strategy,
-		allowedTools: allowedTools,
+		allowedTools: append([]string(nil), allowedTools...),
 		status:       AgentStatusPending,
 		createdAt:    time.Now(),
 		updatedAt:    time.Now(),
@@ -500,19 +705,20 @@ func (m *SubAgentManager) GetContext(id string) (*SubAgentContext, bool) {
 
 // AddMessage 添加消息到子代理上下文
 func (m *SubAgentManager) AddMessage(id string, msg *schema.Message) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	m.mu.RLock()
 	ctx, ok := m.agents[id]
+	m.mu.RUnlock()
+
 	if !ok {
 		return fmt.Errorf("subagent context not found: %s", id)
 	}
 
 	ctx.mu.Lock()
-	defer ctx.mu.Unlock()
-
 	ctx.messages = append(ctx.messages, msg)
 	ctx.updatedAt = time.Now()
+	ctx.mu.Unlock()
+
+	m.mirrorCoreMailboxMessage(id, msg)
 	return nil
 }
 
@@ -554,7 +760,9 @@ func snapshotFromContext(ctx *SubAgentContext) AgentSnapshot {
 	defer ctx.mu.RUnlock()
 	return AgentSnapshot{
 		ID:           ctx.id,
+		CoreAgentID:  ctx.coreAgentID,
 		Name:         ctx.agentType.String(),
+		RoleID:       ctx.roleID,
 		Task:         ctx.task,
 		Status:       ctx.status,
 		Error:        ctx.errorMsg,
@@ -574,7 +782,9 @@ func snapshotFromContext(ctx *SubAgentContext) AgentSnapshot {
 func snapshotFromHistory(res SubAgentResult) AgentSnapshot {
 	return AgentSnapshot{
 		ID:           res.ID,
+		CoreAgentID:  res.ID,
 		Name:         res.Type.String(),
+		RoleID:       res.Type.String(),
 		Task:         res.Task,
 		Status:       res.Status,
 		Error:        res.Error,
@@ -600,6 +810,14 @@ func appendHistoryBounded(history []SubAgentResult, maxHistory int, res SubAgent
 }
 
 func (m *SubAgentManager) MarkRunning(id string, task string, cancel context.CancelFunc) error {
+	return m.markRunning(id, task, cancel, true)
+}
+
+func (m *SubAgentManager) BeginAgentCoreRun(id string, task string, cancel context.CancelFunc) error {
+	return m.markRunning(id, task, cancel, false)
+}
+
+func (m *SubAgentManager) markRunning(id string, task string, cancel context.CancelFunc, mirrorCoreStatus bool) error {
 	m.mu.RLock()
 	ctx, ok := m.agents[id]
 	m.mu.RUnlock()
@@ -608,8 +826,8 @@ func (m *SubAgentManager) MarkRunning(id string, task string, cancel context.Can
 	}
 
 	ctx.mu.Lock()
-	defer ctx.mu.Unlock()
 	if ctx.status == AgentStatusRunning {
+		ctx.mu.Unlock()
 		return fmt.Errorf("subagent already running: %s", id)
 	}
 	ctx.task = strings.TrimSpace(task)
@@ -622,6 +840,15 @@ func (m *SubAgentManager) MarkRunning(id string, task string, cancel context.Can
 	ctx.cancelReq = false
 	ctx.runCount++
 	ctx.doneCh = make(chan struct{})
+	status := ctx.status
+	currentTask := ctx.task
+	roleID := ctx.roleID
+	ctx.mu.Unlock()
+	if mirrorCoreStatus {
+		m.updateCoreAgent(id, roleID, currentTask, status)
+	} else {
+		m.updateCoreAgentTask(id, roleID, currentTask)
+	}
 	return nil
 }
 
@@ -687,6 +914,7 @@ func (m *SubAgentManager) Remove(id string) bool {
 			delete(m.requestIndex, key)
 		}
 	}
+	m.removeCoreAgent(id)
 	return true
 }
 
@@ -717,6 +945,52 @@ func (m *SubAgentManager) ListSnapshots() []AgentSnapshot {
 
 // Complete 标记子代理完成，并生成结果摘要
 func (m *SubAgentManager) Complete(id string, task string, success bool, errorMsg string) SubAgentResult {
+	return m.complete(id, task, success, errorMsg, true)
+}
+
+func (m *SubAgentManager) FinishAgentCoreRun(id string, task string, runResult agentcore.AgentRunResult, runErr error) SubAgentResult {
+	if strings.TrimSpace(task) == "" {
+		task = runResult.Agent.Task
+	}
+	status := fromAgentCoreStatus(runResult.Agent.Status)
+	switch {
+	case status == AgentStatusCancelled:
+		res, _ := m.cancel(id, "cancelled", false)
+		return res
+	case runErr != nil:
+		if strings.TrimSpace(runErr.Error()) == "" {
+			runErr = fmt.Errorf("agent run failed")
+		}
+		return m.complete(id, task, false, runErr.Error(), false)
+	case status == AgentStatusFailed:
+		return m.complete(id, task, false, "agent run failed", false)
+	default:
+		if output := strings.TrimSpace(runResult.Output); output != "" {
+			m.setResultIfEmpty(id, output)
+		}
+		return m.complete(id, task, true, "", false)
+	}
+}
+
+func (m *SubAgentManager) setResultIfEmpty(id string, output string) {
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return
+	}
+	m.mu.RLock()
+	ctx, ok := m.agents[id]
+	m.mu.RUnlock()
+	if !ok {
+		return
+	}
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	if strings.TrimSpace(ctx.result) == "" {
+		ctx.result = output
+	}
+}
+
+func (m *SubAgentManager) complete(id string, task string, success bool, errorMsg string, mirrorCoreStatus bool) SubAgentResult {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -734,6 +1008,9 @@ func (m *SubAgentManager) Complete(id string, task string, success bool, errorMs
 	defer ctx.mu.Unlock()
 
 	if ctx.status == AgentStatusCancelled {
+		if mirrorCoreStatus {
+			m.updateCoreAgent(id, ctx.roleID, ctx.task, ctx.status)
+		}
 		return SubAgentResult{
 			ID:        id,
 			Type:      ctx.agentType,
@@ -786,6 +1063,9 @@ func (m *SubAgentManager) Complete(id string, task string, success bool, errorMs
 	// 添加到历史记录
 	m.history = appendHistoryBounded(m.history, m.maxHistory, res)
 	closeDoneCh(ctx.doneCh)
+	if mirrorCoreStatus {
+		m.updateCoreAgent(id, ctx.roleID, ctx.task, ctx.status)
+	}
 
 	slog.Debug("subagent.complete",
 		"id", id,
@@ -799,6 +1079,10 @@ func (m *SubAgentManager) Complete(id string, task string, success bool, errorMs
 }
 
 func (m *SubAgentManager) Cancel(id string, reason string) (SubAgentResult, error) {
+	return m.cancel(id, reason, true)
+}
+
+func (m *SubAgentManager) cancel(id string, reason string, mirrorCoreStatus bool) (SubAgentResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -811,6 +1095,9 @@ func (m *SubAgentManager) Cancel(id string, reason string) (SubAgentResult, erro
 	defer ctx.mu.Unlock()
 
 	if ctx.status == AgentStatusCancelled {
+		if mirrorCoreStatus {
+			m.updateCoreAgent(id, ctx.roleID, ctx.task, ctx.status)
+		}
 		return SubAgentResult{
 			ID:        id,
 			Type:      ctx.agentType,
@@ -851,12 +1138,18 @@ func (m *SubAgentManager) Cancel(id string, reason string) (SubAgentResult, erro
 
 	m.history = appendHistoryBounded(m.history, m.maxHistory, res)
 	closeDoneCh(ctx.doneCh)
+	if mirrorCoreStatus {
+		m.updateCoreAgent(id, ctx.roleID, ctx.task, ctx.status)
+	}
 	return res, nil
 }
 
 // generateSummary 生成子代理执行摘要
 func (m *SubAgentManager) generateSummary(ctx *SubAgentContext) string {
 	if len(ctx.messages) == 0 {
+		if result := strings.TrimSpace(ctx.result); result != "" {
+			return result
+		}
 		return "无输出内容"
 	}
 
@@ -880,6 +1173,9 @@ func (m *SubAgentManager) generateSummary(ctx *SubAgentContext) string {
 				}
 			}
 		}
+	}
+	if strings.TrimSpace(finalResult) == "" {
+		finalResult = strings.TrimSpace(ctx.result)
 	}
 
 	// 生成结构化摘要
@@ -930,6 +1226,11 @@ func (m *SubAgentManager) Clear() {
 	defer m.mu.Unlock()
 
 	m.agents = make(map[string]*SubAgentContext)
+	if m.coreRegistry != nil {
+		for _, agent := range m.coreRegistry.List() {
+			m.coreRegistry.Remove(agent.ID)
+		}
+	}
 	slog.Debug("subagent.clear", "remaining_agents", len(m.agents))
 }
 
@@ -944,6 +1245,7 @@ func (m *SubAgentManager) Cleanup(olderThan time.Duration) int {
 		ctx.mu.RLock()
 		if ctx.completed && now.Sub(ctx.updatedAt) > olderThan {
 			delete(m.agents, id)
+			m.removeCoreAgent(id)
 			count++
 		}
 		ctx.mu.RUnlock()

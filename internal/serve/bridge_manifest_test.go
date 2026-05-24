@@ -6,6 +6,9 @@ package serve
 // 商业使用请联系版权人获得商业授权。
 
 import (
+	"context"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +17,7 @@ import (
 	"github.com/dreamSailing/eos/internal/config"
 	pluginpkg "github.com/dreamSailing/eos/internal/pkg/plugins"
 	toolapiimpl "github.com/dreamSailing/eos/internal/toolapi/impl"
+	"github.com/dreamSailing/eos/pkg/coreapi"
 )
 
 func TestBuildBridgeManifestIncludesLaunchAndCatalogs(t *testing.T) {
@@ -179,4 +183,193 @@ func slicesContain(items []string, target string) bool {
 		}
 	}
 	return false
+}
+
+type fakeToolCatalogService struct {
+	defs    []coreapi.ToolDefinition
+	calls   int
+	lastReq coreapi.ListToolCatalogRequest
+}
+
+func (f *fakeToolCatalogService) List(_ context.Context, req coreapi.ListToolCatalogRequest) ([]coreapi.ToolDefinition, error) {
+	f.calls++
+	f.lastReq = req
+	return f.defs, nil
+}
+
+func TestBuildBridgeManifestWithCoreAPICatalog(t *testing.T) {
+	workspace := t.TempDir()
+	fakeCatalog := &fakeToolCatalogService{
+		defs: []coreapi.ToolDefinition{
+			{
+				Name:        "fake_read",
+				Description: "fake read tool",
+				RiskLevel:   "low",
+				Source:      "builtin",
+				Invocable:   true,
+				ReadOnly:    true,
+			},
+			{
+				Name:        "fake_write",
+				Description: "fake write tool",
+				RiskLevel:   "medium",
+				Source:      "builtin",
+				Invocable:   true,
+			},
+			{
+				Name:        "fake_cap",
+				Description: "fake capability",
+				RiskLevel:   "low",
+				Source:      "skill",
+				Invocable:   false,
+			},
+		},
+	}
+
+	manifest, err := BuildBridgeManifest(Options{
+		Transport:            "stdio",
+		DefaultWorkspacePath: workspace,
+		DefaultAccessMode:    "danger-full-access",
+		DefaultApprovalMode:  "never",
+		DefaultSandboxMode:   "full_access",
+	}, BridgeManifestOptions{
+		LaunchCommand:       "eos",
+		ToolCatalogService:  fakeCatalog,
+		IncludeTools:        true,
+		IncludeCapabilities: true,
+	})
+	if err != nil {
+		t.Fatalf("BuildBridgeManifest() error = %v", err)
+	}
+
+	if manifest.SchemaVersion != bridgeSchemaVersion {
+		t.Fatalf("SchemaVersion=%q, want %q", manifest.SchemaVersion, bridgeSchemaVersion)
+	}
+	if manifest.ProtocolVersion != serveProtocolVersion {
+		t.Fatalf("ProtocolVersion=%q, want %q", manifest.ProtocolVersion, serveProtocolVersion)
+	}
+
+	if findToolDefinition(manifest.Tools, "fake_read") == nil {
+		t.Fatalf("manifest tools missing fake_read: %+v", manifest.Tools)
+	}
+	if findToolDefinition(manifest.Tools, "fake_write") == nil {
+		t.Fatalf("manifest tools missing fake_write: %+v", manifest.Tools)
+	}
+	if findToolDefinition(manifest.Tools, "fake_cap") != nil {
+		t.Fatalf("non-invocable fake_cap should not appear in tools: %+v", manifest.Tools)
+	}
+	if findToolDefinition(manifest.Capabilities, "fake_cap") == nil {
+		t.Fatalf("manifest capabilities missing fake_cap: %+v", manifest.Capabilities)
+	}
+	if entry := findToolDefinition(manifest.Tools, "fake_read"); entry != nil && entry.Access != nil && !entry.Access.Executable {
+		t.Fatalf("fake_read should be executable: %+v", entry)
+	}
+}
+
+func TestBuildBridgeManifestCoreAPICatalogPreferredOverLegacy(t *testing.T) {
+	workspace := t.TempDir()
+	fakeCatalog := &fakeToolCatalogService{
+		defs: []coreapi.ToolDefinition{
+			{
+				Name:      "coreapi_tool",
+				RiskLevel: "low",
+				Source:    "builtin",
+				Invocable: true,
+			},
+		},
+	}
+
+	manifest, err := BuildBridgeManifest(Options{
+		Transport:            "stdio",
+		DefaultWorkspacePath: workspace,
+		DefaultAccessMode:    "danger-full-access",
+		DefaultApprovalMode:  "never",
+		DefaultSandboxMode:   "full_access",
+	}, BridgeManifestOptions{
+		LaunchCommand:       "eos",
+		ToolCatalogService:  fakeCatalog,
+		Services:            toolapiimpl.NewServices(),
+		IncludeTools:        true,
+		IncludeCapabilities: true,
+	})
+	if err != nil {
+		t.Fatalf("BuildBridgeManifest() error = %v", err)
+	}
+
+	if findToolDefinition(manifest.Tools, "coreapi_tool") == nil {
+		t.Fatalf("coreapi_tool should be present when ToolCatalogService is set: %+v", manifest.Tools)
+	}
+}
+
+func TestBuildBridgeManifestLegacyFallback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	workspace := t.TempDir()
+	manifest, err := BuildBridgeManifest(Options{
+		Transport:            "stdio",
+		DefaultWorkspacePath: workspace,
+		DefaultAccessMode:    "danger-full-access",
+		DefaultApprovalMode:  "never",
+		DefaultSandboxMode:   "full_access",
+	}, BridgeManifestOptions{
+		LaunchCommand:       "eos",
+		Services:            toolapiimpl.NewServices(),
+		IncludeTools:        true,
+		IncludeCapabilities: true,
+	})
+	if err != nil {
+		t.Fatalf("BuildBridgeManifest() error = %v", err)
+	}
+
+	if len(manifest.Tools) == 0 {
+		t.Fatal("legacy fallback should produce non-empty tools list")
+	}
+	if len(manifest.Capabilities) == 0 {
+		t.Fatal("legacy fallback should produce non-empty capabilities list")
+	}
+}
+
+func TestBuildBridgeManifestSkipsCatalogWhenNotRequested(t *testing.T) {
+	workspace := t.TempDir()
+	fakeCatalog := &fakeToolCatalogService{
+		defs: []coreapi.ToolDefinition{
+			{Name: "should_not_load", RiskLevel: "low", Source: "builtin", Invocable: true},
+		},
+	}
+
+	manifest, err := BuildBridgeManifest(Options{
+		Transport:            "stdio",
+		DefaultWorkspacePath: workspace,
+		DefaultAccessMode:    "danger-full-access",
+		DefaultApprovalMode:  "never",
+		DefaultSandboxMode:   "full_access",
+	}, BridgeManifestOptions{
+		LaunchCommand:      "eos",
+		ToolCatalogService: fakeCatalog,
+	})
+	if err != nil {
+		t.Fatalf("BuildBridgeManifest() error = %v", err)
+	}
+	if fakeCatalog.calls != 0 {
+		t.Fatalf("catalog calls = %d, want 0 when tools/capabilities are not requested", fakeCatalog.calls)
+	}
+	if len(manifest.Tools) != 0 || len(manifest.Capabilities) != 0 {
+		t.Fatalf("manifest loaded catalog unexpectedly: tools=%+v capabilities=%+v", manifest.Tools, manifest.Capabilities)
+	}
+}
+
+func TestBridgeManifestNoToolsImport(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "bridge_manifest.go", nil, parser.ImportsOnly)
+	if err != nil {
+		t.Fatalf("parse bridge_manifest.go: %v", err)
+	}
+	for _, imp := range f.Imports {
+		path := strings.Trim(imp.Path.Value, `"`)
+		if path == "github.com/dreamSailing/eos/internal/tools" {
+			t.Fatal("bridge_manifest.go must not import internal/tools")
+		}
+	}
 }

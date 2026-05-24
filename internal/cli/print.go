@@ -15,9 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/bridge"
-	"github.com/dreamSailing/eos/internal/session"
-	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/pkg/core"
 )
 
 // PrintOptions holds options for headless print mode
@@ -47,27 +45,38 @@ func RunPrintMode(opts PrintOptions) error {
 		opts.OutputFormat = "text"
 	}
 
-	cm := session.NewContextManager()
-	tm := tools.NewManager()
-	rc := bridge.NewRuntimeCore(cm, tm, nil)
-	if opts.SkipPermissions {
-		rc.SetSkipPermissions(true)
-	} else {
-		if strings.TrimSpace(opts.AccessMode) != "" {
-			rc.SetAccessMode(opts.AccessMode)
-		} else if strings.TrimSpace(opts.SandboxMode) != "" {
-			rc.SetSandboxMode(opts.SandboxMode)
-		}
-		if strings.TrimSpace(opts.ApprovalMode) != "" {
-			rc.SetApprovalMode(opts.ApprovalMode)
-		}
-	}
+	rt := core.NewRuntime()
+	defer rt.Close()
+
+	rt.ApplyStartupOptions(core.StartupOptions{
+		AccessMode:      opts.AccessMode,
+		ApprovalMode:    opts.ApprovalMode,
+		SandboxMode:     opts.SandboxMode,
+		SkipPermissions: opts.SkipPermissions,
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	start := time.Now()
-	msg, resErr := rc.GraphInvoke(ctx, opts.Query)
+	events, invokeErr := rt.Invoke(ctx, opts.Query)
+
+	var content string
+	var resErr error
+	if invokeErr != nil {
+		resErr = invokeErr
+	} else {
+		for ev := range events {
+			switch ev.Type {
+			case "TextFinal":
+				content = ev.Message
+			case "Error":
+				if resErr == nil {
+					resErr = fmt.Errorf("%s", ev.Message)
+				}
+			}
+		}
+	}
 	elapsed := time.Since(start)
 
 	if resErr != nil {
@@ -78,97 +87,89 @@ func RunPrintMode(opts PrintOptions) error {
 		} else {
 			fmt.Fprintln(os.Stderr, "Error:", resErr.Error())
 		}
-		rc.Shutdown()
 		return resErr
 	}
 
-	content := ""
-	if msg != nil {
-		content = msg.Content
-	}
-
-	// Get token stats
-	stats := rc.GetTokenStats()
-	modelName := rc.ModelName()
+	usage := rt.UsageSummary()
+	modelName := rt.ModelName()
 
 	result := PrintResult{
 		Content:     content,
 		Model:       modelName,
-		InputTokens: stats.Input,
-		ReplyTokens: stats.Reply,
-		TotalTokens: stats.Total,
+		InputTokens: usage.InputTokens,
+		ReplyTokens: usage.ReplyTokens,
+		TotalTokens: usage.TotalTokens,
 		DurationMs:  int(elapsed.Milliseconds()),
-		CostUSD:     stats.TotalCostUSD,
+		CostUSD:     usage.CostUSD,
 	}
 
 	switch opts.OutputFormat {
 	case "json":
 		bs, jsonErr := json.Marshal(result)
 		if jsonErr != nil {
-			rc.Shutdown()
 			return jsonErr
 		}
 		fmt.Fprintln(os.Stdout, string(bs))
 
 	case "stream-json":
-		// Output as NDJSON events
 		events := []map[string]interface{}{
 			{"type": "start", "model": modelName, "timestamp": start.Unix()},
 			{"type": "content", "text": content},
-			buildDoneEvent(elapsed, stats),
+			buildDoneEvent(elapsed, usage),
 		}
 		for _, evt := range events {
 			bs, _ := json.Marshal(evt)
 			fmt.Fprintln(os.Stdout, string(bs))
 		}
 
-	default: // text
+	default:
 		fmt.Fprintln(os.Stdout, content)
-		// Print metadata to stderr
 		parts := []string{
 			fmt.Sprintf("Model: %s", modelName),
 			fmt.Sprintf("Duration: %v", elapsed.Round(time.Millisecond)),
 		}
-		if stats.Total != nil {
-			parts = append(parts, fmt.Sprintf("Tokens: %d", *stats.Total))
+		if usage.TotalTokens != nil {
+			parts = append(parts, fmt.Sprintf("Tokens: %d", *usage.TotalTokens))
 		}
-		if stats.TotalCostUSD != nil {
-			parts = append(parts, fmt.Sprintf("Cost: $%.6f", *stats.TotalCostUSD))
+		if usage.CostUSD != nil {
+			parts = append(parts, fmt.Sprintf("Cost: $%.6f", *usage.CostUSD))
 		}
 		fmt.Fprintf(os.Stderr, "\n---\n%s\n", strings.Join(parts, " | "))
 	}
 
-	rc.Shutdown()
 	return nil
 }
 
-func buildDoneEvent(elapsed time.Duration, stats bridge.TokenStats) map[string]interface{} {
+func buildDoneEvent(elapsed time.Duration, usage core.UsageSummary) map[string]interface{} {
 	event := map[string]interface{}{
 		"type":        "done",
 		"duration_ms": elapsed.Milliseconds(),
 	}
-	if stats.Total != nil {
-		event["tokens"] = *stats.Total
+	if usage.TotalTokens != nil {
+		event["tokens"] = *usage.TotalTokens
 	}
-	if stats.TotalCostUSD != nil {
-		event["cost_usd"] = *stats.TotalCostUSD
+	if usage.CostUSD != nil {
+		event["cost_usd"] = *usage.CostUSD
 	}
 	return event
 }
 
-// RunPrintModeStream writes streaming output to the given writer
 func RunPrintModeStream(ctx context.Context, query string, w io.Writer) error {
-	cm := session.NewContextManager()
-	tm := tools.NewManager()
-	rc := bridge.NewRuntimeCore(cm, tm, nil)
-	defer rc.Shutdown()
+	rt := core.NewRuntime()
+	defer rt.Close()
 
-	msg, err := rc.GraphInvoke(ctx, query)
+	events, err := rt.Invoke(ctx, query)
 	if err != nil {
 		return err
 	}
-	if msg != nil {
-		fmt.Fprintln(w, msg.Content)
+	for ev := range events {
+		if ev.Type == "TextFinal" {
+			fmt.Fprintln(w, ev.Message)
+			return nil
+		}
+		if ev.Type == "Error" {
+			return fmt.Errorf("%s", ev.Message)
+		}
 	}
 	return nil
 }

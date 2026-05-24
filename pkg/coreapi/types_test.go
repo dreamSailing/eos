@@ -1,0 +1,356 @@
+package coreapi
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/dreamSailing/eos/pkg/protocol"
+	"github.com/dreamSailing/eos/pkg/sandbox"
+)
+
+type compileTimeEngine struct{}
+
+func (compileTimeEngine) State() StateService            { return nil }
+func (compileTimeEngine) Workspaces() WorkspaceService   { return nil }
+func (compileTimeEngine) Sessions() SessionService       { return nil }
+func (compileTimeEngine) MCP() MCPService                { return nil }
+func (compileTimeEngine) LSP() LSPService                { return nil }
+func (compileTimeEngine) Config() ConfigService          { return nil }
+func (compileTimeEngine) Permissions() PermissionService { return nil }
+func (compileTimeEngine) Extensions() ExtensionService   { return nil }
+func (compileTimeEngine) Context() ContextService        { return nil }
+func (compileTimeEngine) Usage() UsageService            { return nil }
+func (compileTimeEngine) Versions() VersionService       { return nil }
+func (compileTimeEngine) Tasks() TaskService             { return nil }
+func (compileTimeEngine) Modes() ModeService             { return nil }
+func (compileTimeEngine) Models() ModelService           { return nil }
+func (compileTimeEngine) RemoteWorkspaces() RemoteWorkspaceService {
+	return nil
+}
+func (compileTimeEngine) Git() GitService            { return nil }
+func (compileTimeEngine) Insights() InsightService   { return nil }
+func (compileTimeEngine) Memory() MemoryService      { return nil }
+func (compileTimeEngine) Roles() RoleService         { return nil }
+func (compileTimeEngine) Turns() TurnService         { return nil }
+func (compileTimeEngine) Approvals() ApprovalService { return nil }
+func (compileTimeEngine) Inquiries() InquiryService  { return nil }
+func (compileTimeEngine) Agents() AgentService       { return nil }
+func (compileTimeEngine) Tools() ToolExecutor        { return nil }
+func (compileTimeEngine) ToolCatalog() ToolCatalogService { return nil }
+func (compileTimeEngine) ToolTelemetry() ToolTelemetryService {
+	return nil
+}
+func (compileTimeEngine) Events() EventBus        { return nil }
+func (compileTimeEngine) Sandbox() SandboxService { return nil }
+
+type compileTimeSandbox struct{}
+
+func (compileTimeSandbox) Policy(context.Context, SessionRef) (sandbox.Policy, error) {
+	return sandbox.Policy{}, nil
+}
+func (compileTimeSandbox) SetPolicy(context.Context, SessionRef, sandbox.Policy) error { return nil }
+func (compileTimeSandbox) BackendStatus(context.Context) sandbox.BackendStatus {
+	return sandbox.BackendStatus{}
+}
+
+type compileTimeEvents struct{}
+
+func (compileTimeEvents) Subscribe(context.Context, EventFilter) (<-chan protocol.Envelope, error) {
+	return nil, nil
+}
+func (compileTimeEvents) Publish(context.Context, protocol.Envelope) error { return nil }
+
+type compileTimeToolTelemetry struct{}
+
+func (compileTimeToolTelemetry) Traces(context.Context) ([]ToolTrace, error) { return nil, nil }
+func (compileTimeToolTelemetry) Stats(context.Context) ([]ToolStat, error)   { return nil, nil }
+
+type compileTimeToolCatalog struct{}
+
+func (compileTimeToolCatalog) List(context.Context, ListToolCatalogRequest) ([]ToolDefinition, error) {
+	return nil, nil
+}
+
+type compileTimeState struct{}
+
+func (compileTimeState) Snapshot(context.Context) (StateSnapshot, error) {
+	return StateSnapshot{}, nil
+}
+
+type compileTimeWorkspaces struct{}
+
+func (compileTimeWorkspaces) List(context.Context) ([]Workspace, error) { return nil, nil }
+func (compileTimeWorkspaces) Default(context.Context) (string, error)   { return "", nil }
+func (compileTimeWorkspaces) Last(context.Context) (string, error)      { return "", nil }
+func (compileTimeWorkspaces) ResolveForeground(context.Context, ResolveForegroundWorkspaceRequest) (string, error) {
+	return "", nil
+}
+func (compileTimeWorkspaces) Remember(context.Context, RememberWorkspaceRequest) error  { return nil }
+func (compileTimeWorkspaces) Forget(context.Context, WorkspacePathRequest) error        { return nil }
+func (compileTimeWorkspaces) Add(context.Context, WorkspacePathRequest) error           { return nil }
+func (compileTimeWorkspaces) Remove(context.Context, WorkspacePathRequest) error        { return nil }
+func (compileTimeWorkspaces) Use(context.Context, WorkspacePathRequest) error           { return nil }
+func (compileTimeWorkspaces) SetForeground(context.Context, WorkspacePathRequest) error { return nil }
+func (compileTimeWorkspaces) Trust(context.Context, WorkspacePathRequest) error         { return nil }
+func (compileTimeWorkspaces) ListWorktrees(context.Context) ([]Worktree, error)         { return nil, nil }
+func (compileTimeWorkspaces) CreateWorktree(context.Context, CreateWorktreeRequest) (Worktree, error) {
+	return Worktree{}, nil
+}
+func (compileTimeWorkspaces) RemoveWorktree(context.Context, RemoveWorktreeRequest) error { return nil }
+
+type compileTimeSessions struct{}
+
+func (compileTimeSessions) Create(context.Context, CreateSessionRequest) (Session, error) {
+	return Session{}, nil
+}
+func (compileTimeSessions) Resume(context.Context, ResumeSessionRequest) (Session, error) {
+	return Session{}, nil
+}
+func (compileTimeSessions) List(context.Context, ListSessionsRequest) ([]Session, error) {
+	return nil, nil
+}
+func (compileTimeSessions) Current(context.Context, CurrentSessionRequest) (Session, error) {
+	return Session{}, nil
+}
+func (compileTimeSessions) SetCurrent(context.Context, SetCurrentSessionRequest) error { return nil }
+func (compileTimeSessions) Delete(context.Context, DeleteSessionRequest) error         { return nil }
+func (compileTimeSessions) Rename(context.Context, RenameSessionRequest) (Session, error) {
+	return Session{}, nil
+}
+func (compileTimeSessions) LoadMessages(context.Context, LoadSessionMessagesRequest) ([]SessionMessage, error) {
+	return nil, nil
+}
+func (compileTimeSessions) SaveMessages(context.Context, SaveSessionMessagesRequest) (Session, error) {
+	return Session{}, nil
+}
+
+type compileTimeMCP struct{}
+
+func (compileTimeMCP) List(context.Context) ([]MCPServer, error)              { return nil, nil }
+func (compileTimeMCP) Upsert(context.Context, UpsertMCPRequest) error         { return nil }
+func (compileTimeMCP) ImportJSON(context.Context, ImportMCPJSONRequest) error { return nil }
+func (compileTimeMCP) Delete(context.Context, MCPNameRequest) error           { return nil }
+func (compileTimeMCP) SetEnabled(context.Context, SetMCPEnabledRequest) error { return nil }
+
+type compileTimeLSP struct{}
+
+func (compileTimeLSP) List(context.Context) ([]LSPServer, error) { return nil, nil }
+func (compileTimeLSP) Detect(context.Context, LSPLanguageRequest) (string, error) {
+	return "", nil
+}
+func (compileTimeLSP) Start(context.Context, LSPLanguageRequest) (string, error) {
+	return "", nil
+}
+func (compileTimeLSP) Diagnostics(context.Context) ([]string, error) { return nil, nil }
+func (compileTimeLSP) DiagnosticsSummary(context.Context) (LSPDiagnosticsSummary, error) {
+	return LSPDiagnosticsSummary{}, nil
+}
+
+type compileTimeConfig struct{}
+
+func (compileTimeConfig) GetRules(context.Context) (string, error) { return "", nil }
+func (compileTimeConfig) RulesSnapshot(context.Context) (RulesSnapshot, error) {
+	return RulesSnapshot{}, nil
+}
+func (compileTimeConfig) SaveRules(context.Context, SaveRulesRequest) error { return nil }
+func (compileTimeConfig) ResetRules(context.Context) error                  { return nil }
+func (compileTimeConfig) GetSettings(context.Context) (Settings, error)     { return Settings{}, nil }
+func (compileTimeConfig) SaveSettings(context.Context, Settings) error      { return nil }
+
+type compileTimePermissions struct{}
+
+func (compileTimePermissions) Snapshot(context.Context) (PermissionSnapshot, error) {
+	return PermissionSnapshot{}, nil
+}
+func (compileTimePermissions) PendingReview(context.Context) (PendingReview, error) {
+	return PendingReview{}, nil
+}
+func (compileTimePermissions) ClearPendingReview(context.Context) error { return nil }
+
+type compileTimeExtensions struct{}
+
+func (compileTimeExtensions) ListSkills(context.Context) ([]SkillInfo, error) { return nil, nil }
+func (compileTimeExtensions) ReloadSkills(context.Context) error              { return nil }
+func (compileTimeExtensions) SetSkillEnabled(context.Context, SetExtensionEnabledRequest) error {
+	return nil
+}
+func (compileTimeExtensions) InvokeSkill(context.Context, InvokeSkillRequest) (InvokeSkillResult, error) {
+	return InvokeSkillResult{}, nil
+}
+func (compileTimeExtensions) ListPlugins(context.Context) ([]PluginInfo, error) { return nil, nil }
+func (compileTimeExtensions) SetPluginEnabled(context.Context, SetExtensionEnabledRequest) error {
+	return nil
+}
+func (compileTimeExtensions) BrowserStatus(context.Context) (BrowserStatus, error) {
+	return BrowserStatus{}, nil
+}
+
+type compileTimeContext struct{}
+
+func (compileTimeContext) Preview(context.Context) ([]string, error)   { return nil, nil }
+func (compileTimeContext) Stats(context.Context) (ContextStats, error) { return ContextStats{}, nil }
+func (compileTimeContext) WindowTokens(context.Context) (int, error)   { return 0, nil }
+func (compileTimeContext) PinDocument(context.Context, PinDocumentRequest) error {
+	return nil
+}
+func (compileTimeContext) Compact(context.Context) (string, error)            { return "", nil }
+func (compileTimeContext) Clear(context.Context) error                        { return nil }
+func (compileTimeContext) Export(context.Context, ExportContextRequest) error { return nil }
+
+type compileTimeUsage struct{}
+
+func (compileTimeUsage) Summary(context.Context) (UsageSummary, error) { return UsageSummary{}, nil }
+func (compileTimeUsage) CostSummary(context.Context) (string, error)   { return "", nil }
+func (compileTimeUsage) CostItems(context.Context) ([]CostItem, error) { return nil, nil }
+
+type compileTimeVersions struct{}
+
+func (compileTimeVersions) List(context.Context) ([]VersionItem, error) { return nil, nil }
+func (compileTimeVersions) Rollback(context.Context, VersionIDRequest) error {
+	return nil
+}
+func (compileTimeVersions) Delete(context.Context, VersionIDRequest) error { return nil }
+func (compileTimeVersions) DeleteFile(context.Context, VersionFileRequest) (int, error) {
+	return 0, nil
+}
+func (compileTimeVersions) Clear(context.Context) (int, error) { return 0, nil }
+
+type compileTimeTasks struct{}
+
+func (compileTimeTasks) List(context.Context) ([]TaskSnapshot, error) { return nil, nil }
+func (compileTimeTasks) Todos(context.Context) ([]TodoItem, error)    { return nil, nil }
+func (compileTimeTasks) Tail(context.Context, TaskIDRequest) ([]string, error) {
+	return nil, nil
+}
+func (compileTimeTasks) Kill(context.Context, TaskIDRequest) error { return nil }
+func (compileTimeTasks) Cleanup(context.Context) (int, error)      { return 0, nil }
+
+type compileTimeModes struct{}
+
+func (compileTimeModes) Snapshot(context.Context) (ModeSnapshot, error) { return ModeSnapshot{}, nil }
+func (compileTimeModes) SetExecutionMode(context.Context, SetModeRequest) error {
+	return nil
+}
+func (compileTimeModes) SetSandboxMode(context.Context, SetModeRequest) error { return nil }
+func (compileTimeModes) SetReasoningLevel(context.Context, SetModeRequest) error {
+	return nil
+}
+
+type compileTimeModels struct{}
+
+func (compileTimeModels) List(context.Context) ([]ModelConfig, error) { return nil, nil }
+func (compileTimeModels) Catalog(context.Context) (ModelCatalogState, error) {
+	return ModelCatalogState{}, nil
+}
+func (compileTimeModels) Upsert(context.Context, UpsertModelRequest) error { return nil }
+func (compileTimeModels) Save(context.Context, ModelSaveRequest) error     { return nil }
+func (compileTimeModels) Delete(context.Context, ModelNameRequest) error   { return nil }
+func (compileTimeModels) Activate(context.Context, ModelNameRequest) error { return nil }
+func (compileTimeModels) SyncEnv(context.Context) error                    { return nil }
+
+type compileTimeRemoteWorkspaces struct{}
+
+func (compileTimeRemoteWorkspaces) List(context.Context) ([]RemoteWorkspace, error) {
+	return nil, nil
+}
+func (compileTimeRemoteWorkspaces) Open(context.Context, RemoteWorkspaceRef) (RemoteWorkspace, error) {
+	return RemoteWorkspace{}, nil
+}
+func (compileTimeRemoteWorkspaces) Forget(context.Context, RemoteWorkspaceRef) error {
+	return nil
+}
+func (compileTimeRemoteWorkspaces) ClearCache(context.Context, RemoteWorkspaceRef) error {
+	return nil
+}
+func (compileTimeRemoteWorkspaces) CurrentRepo(context.Context) (RemoteRepoState, bool, error) {
+	return RemoteRepoState{}, false, nil
+}
+
+type compileTimeGit struct{}
+
+func (compileTimeGit) Status(context.Context, GitStatusRequest) ([]GitChange, error) {
+	return nil, nil
+}
+func (compileTimeGit) Diff(context.Context, GitDiffRequest) (GitTextResult, error) {
+	return GitTextResult{}, nil
+}
+func (compileTimeGit) Branches(context.Context, GitBranchesRequest) (GitBranchesResult, error) {
+	return GitBranchesResult{}, nil
+}
+func (compileTimeGit) Log(context.Context, GitLogRequest) (GitLogResult, error) {
+	return GitLogResult{}, nil
+}
+func (compileTimeGit) Show(context.Context, GitShowRequest) (GitShowResult, error) {
+	return GitShowResult{}, nil
+}
+
+type compileTimeInsights struct{}
+
+func (compileTimeInsights) PredictNextUserMessage(context.Context, PredictNextUserMessageRequest) (string, error) {
+	return "", nil
+}
+func (compileTimeInsights) PlanSnapshot(context.Context) (PlanSnapshot, error) {
+	return PlanSnapshot{}, nil
+}
+func (compileTimeInsights) MemorySnapshot(context.Context) (MemorySnapshot, error) {
+	return MemorySnapshot{}, nil
+}
+
+type compileTimeMemory struct{}
+
+func (compileTimeMemory) Snapshot(context.Context) (MemorySnapshot, error) {
+	return MemorySnapshot{}, nil
+}
+func (compileTimeMemory) Save(context.Context, SaveMemoryRequest) error { return nil }
+func (compileTimeMemory) RebuildIndex(context.Context) error            { return nil }
+func (compileTimeMemory) RecordAdd(context.Context, AddMemoryRecordRequest) (MemoryRecord, error) {
+	return MemoryRecord{}, nil
+}
+func (compileTimeMemory) RecordList(context.Context, ListMemoryRecordsRequest) ([]MemoryRecord, error) {
+	return nil, nil
+}
+func (compileTimeMemory) RecordSearch(context.Context, SearchMemoryRecordsRequest) ([]MemoryRecord, error) {
+	return nil, nil
+}
+func (compileTimeMemory) RecordDelete(context.Context, DeleteMemoryRecordRequest) error { return nil }
+
+type compileTimeRoles struct{}
+
+func (compileTimeRoles) List(context.Context) ([]RoleConfig, error) { return nil, nil }
+func (compileTimeRoles) Resolve(context.Context, RoleRef) (RoleConfig, error) {
+	return RoleConfig{}, nil
+}
+
+func TestInterfacesAreSatisfiable(t *testing.T) {
+	var _ Engine = compileTimeEngine{}
+	var _ StateService = compileTimeState{}
+	var _ WorkspaceService = compileTimeWorkspaces{}
+	var _ SessionService = compileTimeSessions{}
+	var _ MCPService = compileTimeMCP{}
+	var _ LSPService = compileTimeLSP{}
+	var _ ConfigService = compileTimeConfig{}
+	var _ PermissionService = compileTimePermissions{}
+	var _ ExtensionService = compileTimeExtensions{}
+	var _ ContextService = compileTimeContext{}
+	var _ UsageService = compileTimeUsage{}
+	var _ VersionService = compileTimeVersions{}
+	var _ TaskService = compileTimeTasks{}
+	var _ ModeService = compileTimeModes{}
+	var _ ModelService = compileTimeModels{}
+	var _ RemoteWorkspaceService = compileTimeRemoteWorkspaces{}
+	var _ GitService = compileTimeGit{}
+	var _ InsightService = compileTimeInsights{}
+	var _ MemoryService = compileTimeMemory{}
+	var _ RoleService = compileTimeRoles{}
+	var _ ToolTelemetryService = compileTimeToolTelemetry{}
+	var _ ToolCatalogService = compileTimeToolCatalog{}
+	var _ SandboxService = compileTimeSandbox{}
+	var _ EventBus = compileTimeEvents{}
+}
+
+func TestErrUnsupportedSupportsErrorsIs(t *testing.T) {
+	if !errors.Is(ErrUnsupported, ErrUnsupported) {
+		t.Fatal("ErrUnsupported should support errors.Is")
+	}
+}

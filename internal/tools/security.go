@@ -99,6 +99,12 @@ func ClassifyToolDanger(call ToolCall) (category string, level string, summary s
 			return "overwrite_file", "medium", "edit " + mode, true
 		}
 		return "overwrite_file", "medium", "edit", true
+	case ToolPatch:
+		mode, _ := call.Parameters["mode"].(string)
+		if strings.EqualFold(strings.TrimSpace(mode), "dry_run") {
+			return "", "low", "patch dry_run", false
+		}
+		return "overwrite_file", "medium", "patch", true
 	case ToolHistory:
 		mode, _ := call.Parameters["mode"].(string)
 		mode = strings.ToLower(strings.TrimSpace(mode))
@@ -246,6 +252,10 @@ func ClassifyToolDanger(call ToolCall) (category string, level string, summary s
 		return "browser", "medium", call.Tool, false
 	case ToolPowerShell:
 		return "shell:powershell", "high", "powershell", true
+	case ToolDocumentGenerate:
+		return "office:generate", "medium", "document generate", true
+	case ToolDocumentConvert:
+		return "office:convert", "medium", "document convert", true
 	case ToolTeamCreate, ToolTeamDelete:
 		return "team", "medium", call.Tool, true
 	case ToolTeamSendMsg:
@@ -284,6 +294,21 @@ func workspaceWriteBoundaryViolation(ctx context.Context, call ToolCall) string 
 		for _, key := range []string{"path", "file", "source", "destination"} {
 			if reason := boundaryViolationForParam(workspaceRoot, key, call.Parameters); reason != "" {
 				return reason
+			}
+		}
+	case strings.ToLower(ToolPatch):
+		if patchesRaw, ok := call.Parameters["patches"].([]interface{}); ok {
+			for _, pRaw := range patchesRaw {
+				pm, ok := pRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if p, ok := pm["path"].(string); ok {
+					abs := resolveBoundaryPath(workspaceRoot, p)
+					if abs != "" && !isPathAllowedInWorkspaceWrite(workspaceRoot, abs) {
+						return fmt.Sprintf("access mode workspace-write blocks writes outside workspace or temporary directories: %s", filepath.ToSlash(abs))
+					}
+				}
 			}
 		}
 	case strings.ToLower(ToolBGTask):
@@ -514,6 +539,9 @@ func isReadOnlyToolCall(call ToolCall) bool {
 		default:
 			return false
 		}
+	case strings.ToLower(ToolPatch):
+		mode, _ := call.Parameters["mode"].(string)
+		return strings.EqualFold(strings.TrimSpace(mode), "dry_run")
 	case strings.ToLower(ToolGitAdd),
 		strings.ToLower(ToolEdit),
 		strings.ToLower(ToolBash),

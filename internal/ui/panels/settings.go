@@ -105,19 +105,10 @@ func (p *SettingsPanel) LoadSettings() {
 		if s, err := p.manager.Load(); err == nil && s != nil {
 			p.settings = s
 		} else {
-			tn := true
-			// 使用默认设置
-			p.settings = &settings.Settings{
-				AutoContext:          true,
-				DesktopNotifications: &tn,
-				MaxInjectKB:          48,
-				WatchDebounceMs:      500,
-				PollIntervalSec:      5,
-				Language:             "zh",
-				Theme:                "dark",
-				PlanPromptStyle:      "concise",
-			}
+			p.settings = defaultPanelSettings()
 		}
+	} else if p.settings == nil {
+		p.settings = defaultPanelSettings()
 	}
 	cfg, _ := config.Load()
 	p.globalPredictionEnabled = config.NextMessagePredictionEnabled(&cfg)
@@ -130,6 +121,25 @@ func (p *SettingsPanel) SetSettings(s *settings.Settings) {
 		p.settings = s
 	}
 	p.updateTable()
+}
+
+func (p *SettingsPanel) SetGlobalPredictionEnabled(enabled bool) {
+	p.globalPredictionEnabled = enabled
+	p.updateTable()
+}
+
+func defaultPanelSettings() *settings.Settings {
+	tn := true
+	return &settings.Settings{
+		AutoContext:          true,
+		DesktopNotifications: &tn,
+		MaxInjectKB:          48,
+		WatchDebounceMs:      500,
+		PollIntervalSec:      5,
+		Language:             "zh",
+		Theme:                "dark",
+		PlanPromptStyle:      "concise",
+	}
 }
 
 // updateTable 更新表格内容

@@ -12,6 +12,7 @@ import (
 	"github.com/dreamSailing/eos/internal/pkg/workspace"
 	"github.com/dreamSailing/eos/internal/session"
 	"github.com/dreamSailing/eos/internal/tools"
+	"github.com/dreamSailing/eos/pkg/sandbox"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -243,6 +244,11 @@ func (rc *RuntimeCore) ModelBase() string {
 // ExecuteBash 执行 Bash 命令
 func (rc *RuntimeCore) ExecuteBash(ctx context.Context, cmd string) (string, error) {
 	ctx = rc.withWorkspaceRoot(ctx)
+	policy := rc.sandboxPolicy(ctx)
+	preflight := sandbox.NewGuardedRunner(nil).Run([]string{"bash", "-lc", cmd}, policy)
+	if preflight.Err != nil {
+		return "", preflight.Err
+	}
 	cat, _, sum, dang := tools.ClassifyBashDanger(cmd)
 	if dang && (rc.hooks.SessionAllowed == nil || !rc.hooks.SessionAllowed(cat)) {
 		dec := rc.hooks.Prompt(ctx, cat, sum)
@@ -254,7 +260,38 @@ func (rc *RuntimeCore) ExecuteBash(ctx context.Context, cmd string) (string, err
 		}
 	}
 
-	return rc.tm.ExecuteBashDirect(ctx, cmd)
+	result := sandbox.NewGuardedRunner(func([]string, sandbox.Policy) sandbox.Result {
+		out, err := rc.tm.ExecuteBashDirect(ctx, cmd)
+		if err != nil {
+			return sandbox.Result{Stderr: err.Error(), ExitCode: 1, Err: err}
+		}
+		return sandbox.Result{Stdout: out}
+	}).Run([]string{"bash", "-lc", cmd}, policy)
+	if result.Err != nil {
+		return "", result.Err
+	}
+	return result.Stdout, nil
+}
+
+func (rc *RuntimeCore) sandboxPolicy(ctx context.Context) sandbox.Policy {
+	root := strings.TrimSpace(tools.WorkspaceRootFromContext(ctx))
+	if root == "" {
+		root = strings.TrimSpace(rc.workingRoot())
+	}
+	mode := sandbox.ModeWorkspaceWrite
+	if rc != nil && rc.securityMgr != nil {
+		switch rc.securityMgr.AccessMode() {
+		case "read-only":
+			mode = sandbox.ModeReadOnly
+		case "danger-full-access":
+			mode = sandbox.ModeDangerFullAccess
+		}
+	}
+	return sandbox.Policy{
+		Mode:          mode,
+		WorkspaceRoot: root,
+		Network:       sandbox.NetworkDeny,
+	}.Normalized()
 }
 
 // DemoteFullWithAISummary 使用 AI 摘要降级完整消息
@@ -416,7 +453,7 @@ func (rc *RuntimeCore) ProcessContextHints(text string, autoContext bool, maxInj
 	// 注入文件内容
 	rc.injectContextFiles(text, candidates, hardLimitBytes)
 
-	if git := buildGitContextHint(rc.workingRoot()); strings.TrimSpace(git) != "" {
+	if git := rc.buildGitContextHint(rc.workingRoot()); strings.TrimSpace(git) != "" {
 		rc.cm.AddEphemeral(git)
 	}
 }

@@ -12,16 +12,13 @@ import (
 	"time"
 
 	"github.com/dreamSailing/eos/internal/ai"
-	"github.com/dreamSailing/eos/internal/bridge"
 	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/i18n"
 	mcppkg "github.com/dreamSailing/eos/internal/mcp"
-	"github.com/dreamSailing/eos/internal/memory"
 	"github.com/dreamSailing/eos/internal/pkg/clip"
 	"github.com/dreamSailing/eos/internal/pkg/filedialog"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/state"
-	"github.com/dreamSailing/eos/internal/tools/bg"
 	"github.com/dreamSailing/eos/internal/ui/adapter"
 	"github.com/dreamSailing/eos/internal/ui/components/messages"
 	"github.com/dreamSailing/eos/internal/ui/features/slash"
@@ -33,6 +30,8 @@ import (
 	"github.com/dreamSailing/eos/internal/ui/views/shell"
 	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/version"
+	sharedcore "github.com/dreamSailing/eos/pkg/core"
+	"github.com/dreamSailing/eos/pkg/coreapi"
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
@@ -67,10 +66,10 @@ type AppModel struct {
 	activePanel string
 
 	// 其他视图
-	helpView    *help.HelpView
-	setupView   any // 可以是 *setup.SetupView 或 *setup.ModelSetupView
-	confirmView *confirm.Model
-	prevView    string
+	helpView                 *help.HelpView
+	setupView                any // 可以是 *setup.SetupView 或 *setup.ModelSetupView
+	confirmView              *confirm.Model
+	prevView                 string
 	inlinePermissionReq      *confirm.Request
 	inlinePermissionSelected int
 
@@ -143,19 +142,22 @@ func (m *AppModel) updateContextUsageUI() {
 	if len(m.history) > 0 || m.state.Processing {
 		m.shell.SetContextVisible(true)
 	}
-	cm := m.adapter.GetContext()
-	if cm == nil {
+	tokens, ratio, err := m.adapter.CurrentContextUsage(context.Background())
+	if err != nil {
 		return
 	}
-	_, tokens, ratio := cm.GetCurrentUsage()
 	m.shell.SetContextUsage(tokens, ratio)
 }
 
 func (m *AppModel) updateBGTaskCountUI() {
-	if m == nil || m.shell == nil {
+	if m == nil || m.shell == nil || m.adapter == nil {
 		return
 	}
-	m.shell.SetBGTaskCount(len(bg.Default().List()))
+	tasks, err := m.adapter.Tasks(context.Background())
+	if err != nil {
+		return
+	}
+	m.shell.SetBGTaskCount(len(tasks))
 }
 
 func (m *AppModel) clearPrediction() {
@@ -212,7 +214,7 @@ func (m *AppModel) requestPrediction(draft string) tea.Cmd {
 	m.predictionSeq++
 	seq := m.predictionSeq
 	return func() tea.Msg {
-		text, err := m.adapter.GetCore().PredictNextUserMessage(context.Background(), draft)
+		text, err := m.adapter.PredictNextUserMessage(context.Background(), draft)
 		if err != nil {
 			return PredictionUpdateMsg{Seq: seq, Draft: draft}
 		}
@@ -371,9 +373,11 @@ func resolveShellWelcomeInfo(adapter *adapter.RuntimeAdapter) (string, string) {
 	return modelName, modelBase
 }
 
-// NewAppModel 创建新的应用模型
-func NewAppModel(core *bridge.RuntimeCore) *AppModel {
-	adapter := adapter.NewRuntimeAdapter(core)
+func NewAppModelFromRuntime(runtime *sharedcore.Runtime) *AppModel {
+	return newAppModel(adapter.NewRuntimeAdapterFromRuntime(runtime))
+}
+
+func newAppModel(adapter *adapter.RuntimeAdapter) *AppModel {
 	theme := styles.GetTheme("dark")
 	styles := styles.NewStyles(theme)
 
@@ -391,7 +395,7 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 	shellModel.SetWelcomeInfo(modelName, modelBase, "")
 	shellModel.SetExecutionMode("auto")
 	shellModel.SetThinkingExpanded(false)
-	adapter.GetCore().SetExecutionMode("auto")
+	_ = adapter.SetExecutionMode(context.Background(), "auto")
 
 	// 创建面板
 	panelMap := make(map[string]panels.Panel)
@@ -405,11 +409,11 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 	// 创建模型面板（内部会自动从配置文件加载当前模型）
 	panelMap["models"] = panels.NewModelsPanel(styles, lang)
 
-	panelMap["settings"] = panels.NewSettingsPanel(styles, adapter.GetSettings(), lang)
+	panelMap["settings"] = panels.NewSettingsPanel(styles, nil, lang)
 	mcpPanel := panels.NewMCPPanel(styles, lang)
 	// 加载 MCP 服务器配置
 	var mcpServers []panels.MCPServer
-	configServers := adapter.GetCore().ListMCPServers()
+	configServers, _ := adapter.MCPServers(context.Background())
 	for _, s := range configServers {
 		mcpServers = append(mcpServers, panels.MCPServer{
 			Name:    s.Name,
@@ -422,7 +426,7 @@ func NewAppModel(core *bridge.RuntimeCore) *AppModel {
 
 	panelMap["cost"] = panels.NewCostPanel(styles, lang)
 	panelMap["versions"] = panels.NewVersionsPanel(styles)
-	panelMap["tasks"] = panels.NewTasksPanel(styles, lang)
+	panelMap["tasks"] = panels.NewTasksPanel(styles, lang, adapter)
 
 	setupView := any(setup.NewSetupView(styles))
 	activeView := "shell"
@@ -472,10 +476,8 @@ func (m *AppModel) Init() tea.Cmd {
 		abs := normalizeWorkspacePath(p)
 		rememberKnownWorkspace(abs, true)
 		if m.isWorkspaceTrusted(abs) {
-			m.adapter.GetCore().StartContextEngine(abs)
-			settingsPath := filepath.Join(abs, ".eos", "settings.json")
-			m.adapter.GetSettings().SetPath(settingsPath)
-			_, _ = m.adapter.GetCore().LoadSettings(settingsPath)
+			_ = m.adapter.StartContextEngine(context.Background(), abs)
+			_, _ = m.adapter.Settings(context.Background())
 		} else {
 			m.trustPendingPath = abs
 			m.trustPendingAction = "init"
@@ -769,8 +771,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	case bridge.Event:
-		return m.handleBridgeEvent(msg)
+	case adapter.RuntimeEvent:
+		return m.handleRuntimeEvent(msg)
 
 	case predictionDebounceMsg:
 		if msg.Seq != m.predictionDebounceSeq {
@@ -954,7 +956,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Kind == "permission" {
 			m.clearInlinePermission()
 			if msg.ID != "" {
-				m.adapter.GetCore().SubmitPromptResponse(msg.ID, bridge.PromptResponse{
+				_ = m.adapter.RespondPrompt(context.Background(), msg.ID, msg.Kind, adapter.PromptResponse{
 					Decision:    msg.Decision,
 					Option:      msg.Option,
 					OptionIndex: msg.OptionIndex,
@@ -970,8 +972,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			id, _ := strings.CutPrefix(msg.Kind, "bg_kill:")
 			id = strings.TrimSpace(id)
 			if msg.Decision == "confirm" && id != "" {
-				_, err := bg.Default().Kill(id)
-				if err != nil {
+				if err := m.adapter.KillTask(context.Background(), id); err != nil {
 					m.appendSystem(fmt.Sprintf("终止后台任务失败: %v", err), "error")
 				} else {
 					m.appendSystem(fmt.Sprintf("已终止后台任务: %s", id), "warning")
@@ -996,7 +997,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.OptionIndex != 0 {
 				return m, tea.Quit
 			}
-			m.addTrustedWorkspace(path)
+			if err := m.adapter.TrustWorkspace(context.Background(), path); err != nil {
+				m.appendSystem(fmt.Sprintf("信任工作区失败: %v", err), "error")
+				return m, nil
+			}
 			m.trustPendingPath = ""
 			m.trustPendingAction = ""
 			m.confirmView = nil
@@ -1009,10 +1013,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch action {
 			case "init":
 				rememberKnownWorkspace(path, true)
-				m.adapter.GetCore().StartContextEngine(path)
-				settingsPath := filepath.Join(path, ".eos", "settings.json")
-				m.adapter.GetSettings().SetPath(settingsPath)
-				_, _ = m.adapter.GetCore().LoadSettings(settingsPath)
+				_ = m.adapter.StartContextEngine(context.Background(), path)
+				_, _ = m.adapter.Settings(context.Background())
 				m.refreshWorkspacePanel()
 				m.refreshRulesPanel()
 				m.refreshLSPPanel()
@@ -1053,8 +1055,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.appendSystem("路径不是目录: "+p, "warning")
 				return m, nil
 			}
-			m.adapter.GetCore().AddWorkspaceRoot(p)
-			rememberKnownWorkspace(p, false)
+			if err := m.adapter.AddWorkspace(context.Background(), p); err != nil {
+				m.appendSystem(err.Error(), "error")
+				return m, nil
+			}
 			m.refreshWorkspacePanel()
 			m.appendSystem("已添加工作区: "+p, "success")
 			m.confirmView = nil
@@ -1105,7 +1109,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.ID != "" {
-			m.adapter.GetCore().SubmitPromptResponse(msg.ID, bridge.PromptResponse{
+			_ = m.adapter.RespondPrompt(context.Background(), msg.ID, msg.Kind, adapter.PromptResponse{
 				Decision:    msg.Decision,
 				Option:      msg.Option,
 				OptionIndex: msg.OptionIndex,
@@ -1182,6 +1186,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// 同步环境变量
 		m.handleModelSyncEnv()
 
+	case panels.ModelRefreshMsg:
+		m.refreshModelsPanel()
+
 	case panels.LanguageChangeMsg:
 		// 广播语言切换消息给所有面板
 		for name, panel := range m.panels {
@@ -1256,19 +1263,31 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Context 消息处理
 	case panels.ContextCompactMsg:
-		m.adapter.GetCore().CompactContext()
-		m.appendSystem(i18n.T("context.compacted", m.state.Language), "success")
+		if message, err := m.adapter.CompactContext(context.Background()); err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("上下文压缩失败", "Context compact failed"), err), "error")
+		} else if strings.TrimSpace(message) != "" {
+			m.appendSystem(message, "success")
+		} else {
+			m.appendSystem(i18n.T("context.compacted", m.state.Language), "success")
+		}
 		m.refreshContextPanel()
 	case panels.ContextClearMsg:
-		m.adapter.GetCore().ClearContext()
-		m.shell.ClearContent()
-		m.history = m.history[:0]
-		m.actionHits = nil
-		m.appendSystem(i18n.T("context.cleared", m.state.Language), "success")
+		if err := m.adapter.ClearContext(context.Background()); err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("清空上下文失败", "Context clear failed"), err), "error")
+		} else {
+			m.shell.ClearContent()
+			m.history = m.history[:0]
+			m.actionHits = nil
+			m.appendSystem(i18n.T("context.cleared", m.state.Language), "success")
+		}
 		m.refreshContextPanel()
 	case panels.ContextExportMsg:
-		// TODO: 实现上下文导出
-		m.appendSystem("Export context: Not implemented yet", "info")
+		exportPath := filepath.Join(m.currentWorkspaceRoot(), ".eos", fmt.Sprintf("context-%s.md", time.Now().Format("20060102-150405")))
+		if err := m.adapter.ExportContext(context.Background(), exportPath); err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("上下文导出失败", "Context export failed"), err), "error")
+		} else {
+			m.appendSystem(fmt.Sprintf("%s: %s", m.localize("上下文已导出", "Context exported"), exportPath), "success")
+		}
 
 	case panels.MemoryRefreshMsg:
 		m.refreshMemoryPanel()
@@ -1279,7 +1298,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Cost 消息处理
 	case panels.CostClearMsg:
-		m.adapter.GetCore().ClearTokenHistory()
+		m.adapter.ClearTokenHistory()
 		m.refreshCostPanel()
 		m.appendSystem(i18n.T("cost.cleared", m.state.Language), "success")
 	case panels.CostExportMsg:
@@ -1498,8 +1517,14 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 			}
 		}
 	case "/compact":
-		m.adapter.GetCore().CompactContext()
-		m.appendSystem(i18n.T("context.compacted", m.state.Language), "success")
+		if message, err := m.adapter.CompactContext(context.Background()); err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("上下文压缩失败", "Context compact failed"), err), "error")
+		} else if strings.TrimSpace(message) != "" {
+			m.appendSystem(message, "success")
+		} else {
+			m.appendSystem(i18n.T("context.compacted", m.state.Language), "success")
+		}
+		m.refreshContextPanel()
 	case "/session":
 		return m.handleSessionSlash(args)
 	case "/resume":
@@ -1552,8 +1577,8 @@ func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
 
 func (m *AppModel) initEOSMD() tea.Cmd {
 	root := ""
-	if m != nil && m.adapter != nil && m.adapter.GetCore() != nil {
-		root = strings.TrimSpace(m.adapter.GetCore().GetActiveRoot())
+	if m != nil && m.adapter != nil {
+		root = strings.TrimSpace(m.adapter.ActiveWorkspace(context.Background()))
 	}
 	if root == "" {
 		wd, err := os.Getwd()
@@ -1645,9 +1670,7 @@ go build -o eos
 		m.appendSystem(fmt.Sprintf("EOS.md 写入失败: %v", err), "error")
 		return nil
 	}
-	if cm := m.adapter.GetCore().GetContext(); cm != nil {
-		cm.SetPinnedDoc("EOS.md", content, 20000)
-	}
+	_ = m.adapter.PinContextDocument(context.Background(), "EOS.md", content, 20000)
 	if existed {
 		m.appendSystem("已更新 EOS.md", "success")
 	} else {
@@ -1657,34 +1680,14 @@ go build -o eos
 }
 
 func (m *AppModel) tryInvokeSkillSlash(skillName string, args []string) bool {
-	core := m.adapter.GetCore()
-	if core == nil {
-		return false
-	}
-	sm := core.GetSkillManager()
-	if sm == nil {
-		return false
-	}
-	s, ok := sm.Get(skillName)
-	if !ok || s == nil {
-		return false
-	}
-	if s.UserInvocable != nil && !*s.UserInvocable {
-		return false
-	}
 	arguments := strings.TrimSpace(strings.Join(args, " "))
-	msgs, _, err := sm.InjectSkillWithArguments(context.Background(), skillName, arguments)
+	invoked, err := m.adapter.InvokeSkill(context.Background(), skillName, arguments)
 	if err != nil {
 		m.appendSystem(fmt.Sprintf("Skill 启用失败: %v", err), "error")
 		return true
 	}
-	if cm := core.GetContext(); cm != nil {
-		for _, mp := range msgs {
-			if strings.TrimSpace(mp.Content) == "" {
-				continue
-			}
-			cm.AddEphemeral(mp.Content)
-		}
+	if !invoked {
+		return false
 	}
 	m.appendSystem("Skill 已启用: "+skillName, "success")
 	return true
@@ -1708,16 +1711,31 @@ func (m *AppModel) refreshWorkspacePanel() {
 		return
 	}
 
-	roots := m.adapter.GetCore().GetWorkspaceRoots()
-	active := m.adapter.GetCore().GetActiveRoot()
-	sort.Strings(roots)
+	items, err := m.adapter.Workspaces(context.Background())
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("Failed to load workspaces: %v", err), "error")
+		panel.SetWorkspaces(nil, "")
+		return
+	}
+	sort.Slice(items, func(i, j int) bool { return strings.ToLower(items[i].Path) < strings.ToLower(items[j].Path) })
 
-	workspaces := make([]panels.Workspace, 0, len(roots))
-	for _, p := range roots {
+	active := ""
+	workspaces := make([]panels.Workspace, 0, len(items))
+	for _, item := range items {
+		p := strings.TrimSpace(item.Path)
+		if p == "" {
+			continue
+		}
+		if item.Active {
+			active = p
+		}
 		workspaces = append(workspaces, panels.Workspace{
 			Name: filepath.Base(p),
 			Path: p,
 		})
+	}
+	if strings.TrimSpace(active) == "" {
+		active = m.currentWorkspaceRoot()
 	}
 
 	panel.SetWorkspaces(workspaces, active)
@@ -1731,20 +1749,36 @@ func (m *AppModel) refreshVersionsPanel() {
 	panel.SetLanguage(m.state.Language)
 	panel.Reset()
 
-	files, err := m.adapter.GetCore().ListVersionFiles()
+	versions, err := m.adapter.Versions(context.Background())
 	if err != nil {
 		m.appendSystem(fmt.Sprintf("Failed to load versions: %v", err), "error")
 		panel.SetFiles(nil)
 		return
 	}
-	items := make([]panels.FileItem, 0, len(files))
-	for _, f := range files {
-		items = append(items, panels.FileItem{
-			Path:  f.PathRel,
-			Count: f.VersionCount,
-			Last:  f.LastModified,
-		})
+	byFile := map[string]panels.FileItem{}
+	for _, version := range versions {
+		file := filepath.ToSlash(strings.TrimSpace(version.File))
+		if file == "" {
+			continue
+		}
+		item := byFile[file]
+		item.Path = file
+		item.Count++
+		if version.CreatedAt.After(item.Last) {
+			item.Last = version.CreatedAt
+		}
+		byFile[file] = item
 	}
+	items := make([]panels.FileItem, 0, len(byFile))
+	for _, item := range byFile {
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if !items[i].Last.Equal(items[j].Last) {
+			return items[i].Last.After(items[j].Last)
+		}
+		return strings.ToLower(items[i].Path) < strings.ToLower(items[j].Path)
+	})
 	panel.SetFiles(items)
 }
 
@@ -1752,8 +1786,10 @@ func (m *AppModel) handleWorkspaceRemove(path string) {
 	if path == "" {
 		return
 	}
-	m.adapter.GetCore().RemoveWorkspaceRoot(path)
-	forgetKnownWorkspace(path)
+	if err := m.adapter.RemoveWorkspace(context.Background(), path); err != nil {
+		m.appendSystem(err.Error(), "error")
+		return
+	}
 	m.refreshWorkspacePanel()
 	m.appendSystem("已移除工作区: "+path, "success")
 }
@@ -1782,16 +1818,12 @@ func (m *AppModel) handleWorkspaceUse(rawPath string) tea.Cmd {
 }
 
 func (m *AppModel) switchWorkspaceTrusted(path string) tea.Cmd {
-	e := m.adapter.GetCore().SetActiveWorkspaceRoot(path)
-	if e == nil {
-		m.appendSystem("工作区不存在: "+path, "warning")
+	if err := m.adapter.UseWorkspace(context.Background(), path); err != nil {
+		m.appendSystem(fmt.Sprintf("工作区切换失败: %v", err), "error")
 		return nil
 	}
-	rememberKnownWorkspace(path, true)
 	_ = os.Chdir(path)
-	settingsPath := filepath.Join(path, ".eos", "settings.json")
-	m.adapter.GetSettings().SetPath(settingsPath)
-	_, _ = m.adapter.GetCore().LoadSettings(settingsPath)
+	_, _ = m.adapter.Settings(context.Background())
 	m.refreshWorkspacePanel()
 	m.appendSystem("已切换工作区: "+path, "success")
 	return func() tea.Msg {
@@ -1983,8 +2015,8 @@ func (m *AppModel) sendMessage() tea.Cmd {
 	expanded := value
 	if strings.Contains(strings.ToLower(expanded), "#problems_and_diagnostics") {
 		md := ""
-		if m.adapter != nil && m.adapter.GetCore() != nil {
-			md = m.adapter.GetCore().ProblemsAndDiagnosticsMarkdown()
+		if m.adapter != nil {
+			md = m.adapter.LSPDiagnosticsMarkdown(context.Background())
 		}
 		if strings.TrimSpace(md) != "" {
 			re := regexp.MustCompile(`(?i)#problems_and_diagnostics`)
@@ -2066,7 +2098,7 @@ func (m *AppModel) sendBashCommand() tea.Cmd {
 
 	return func() tea.Msg {
 		defer cancel()
-		out, err := m.adapter.GetCore().ExecuteBash(ctx, value)
+		out, err := m.adapter.ExecuteBash(ctx, value)
 		if err != nil {
 			if strings.Contains(strings.ToLower(err.Error()), "context canceled") {
 				return ToolResultMsg{ID: id, Status: "canceled"}
@@ -2089,63 +2121,90 @@ func (m *AppModel) refreshContextPanel() {
 	if !ok || panel == nil {
 		return
 	}
-	cm := m.adapter.GetContext()
-	if cm == nil {
+
+	ctx := context.Background()
+	preview, err := m.adapter.ContextPreview(ctx)
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("刷新上下文失败", "Failed to refresh context"), err), "error")
 		return
 	}
-	st := cm.ExportState()
-
-	pinnedTokens := 0
-	if len(st.Pinned) > 0 {
-		pinnedTokens = cm.EstimateMessageTokens(st.Pinned)
+	stats, err := m.adapter.ContextStats(ctx)
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("刷新上下文统计失败", "Failed to refresh context stats"), err), "error")
+		return
 	}
-	_, convTokens, _ := cm.GetConversationUsage()
 
-	model := strings.TrimSpace(st.ModelName)
+	model, _ := m.adapter.GetModelInfo()
 	if model == "" {
 		_, _, mdl, _ := m.adapter.ResolveAPIConfig()
 		model = strings.TrimSpace(mdl)
 	}
-	panel.SetStats(model, st.MaxPromptTokens, pinnedTokens, convTokens)
+	panel.SetStats(model, ai.ContextWindowTokens(model), 0, stats.Estimated)
 
-	msgs := make([]panels.ContextMessage, 0, len(st.Pinned)+len(st.Ephem)+len(st.Recent)+len(st.CurrentFull)+len(st.ToolObs)+len(st.Tools))
-
-	addMsg := func(role string, msg ai.Message) {
-		toks := cm.EstimateMessageTokens([]ai.Message{msg})
-		msgs = append(msgs, panels.ContextMessage{Role: role, Content: msg.Content, Tokens: toks})
-	}
-	for _, msg := range st.Pinned {
-		addMsg("pinned", msg)
-	}
-	for _, e := range st.Ephem {
-		s := strings.TrimSpace(e)
-		if s == "" {
+	msgs := make([]panels.ContextMessage, 0, len(preview))
+	for _, line := range preview {
+		role, content := parseContextPreviewLine(line)
+		if strings.TrimSpace(content) == "" {
 			continue
 		}
-		addMsg("ephem", ai.Message{Role: "system", Content: s})
+		msgs = append(msgs, panels.ContextMessage{
+			Role:    role,
+			Content: content,
+			Tokens:  estimateDisplayTokens(content),
+		})
 	}
-	for _, msg := range st.Recent {
-		addMsg(msg.Role, msg)
-	}
-	for _, msg := range st.CurrentFull {
-		addMsg("full", msg)
-	}
-	for _, t := range st.ToolObs {
-		s := strings.TrimSpace(t)
-		if s == "" {
-			continue
-		}
-		addMsg("toolObs", ai.Message{Role: "system", Content: s})
-	}
-	for _, t := range st.Tools {
-		s := strings.TrimSpace(t)
-		if s == "" {
-			continue
-		}
-		addMsg("tool", ai.Message{Role: "system", Content: s})
-	}
-
 	panel.SetMessages(msgs)
+}
+
+func parseContextPreviewLine(line string) (string, string) {
+	line = strings.TrimSpace(line)
+	role, content, ok := strings.Cut(line, ":")
+	if !ok {
+		return "message", line
+	}
+	role = strings.TrimSpace(role)
+	if role == "" {
+		role = "message"
+	}
+	return role, strings.TrimSpace(content)
+}
+
+func estimateDisplayTokens(content string) int {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return 0
+	}
+	runes := len([]rune(content))
+	tokens := (runes + 3) / 4
+	if tokens < 1 {
+		return 1
+	}
+	return tokens
+}
+
+func rulesSnapshotDocument(snapshot coreapi.RulesSnapshot, scope string) coreapi.RuleDocument {
+	scope = strings.ToLower(strings.TrimSpace(scope))
+	for _, doc := range snapshot.Documents {
+		if strings.EqualFold(strings.TrimSpace(doc.Scope), scope) {
+			return doc
+		}
+	}
+	return coreapi.RuleDocument{Scope: scope}
+}
+
+func memorySnapshotDocument(snapshot coreapi.MemorySnapshot, scopes ...string) coreapi.MemoryDocument {
+	for _, scope := range scopes {
+		scope = strings.ToLower(strings.TrimSpace(scope))
+		for _, doc := range snapshot.Documents {
+			if strings.EqualFold(strings.TrimSpace(doc.Scope), scope) {
+				return doc
+			}
+		}
+	}
+	if len(scopes) > 0 {
+		return coreapi.MemoryDocument{Scope: strings.ToLower(strings.TrimSpace(scopes[0]))}
+	}
+	return coreapi.MemoryDocument{}
 }
 
 func (m *AppModel) refreshMemoryPanel() {
@@ -2156,21 +2215,21 @@ func (m *AppModel) refreshMemoryPanel() {
 	if !ok || panel == nil {
 		return
 	}
-	root := strings.TrimSpace(m.adapter.GetCore().GetActiveRoot())
-	if root == "" {
-		if wd, err := os.Getwd(); err == nil {
-			root = wd
-		}
+	root := strings.TrimSpace(m.currentWorkspaceRoot())
+	snap, err := m.adapter.MemorySnapshot(context.Background())
+	if err != nil {
+		panel.SetData(root, "", "", false, "", "", false, "", "", false, "", "", false)
+		return
 	}
-	if strings.TrimSpace(root) != "" {
-		_ = memory.EnsureWorkspaceMemory(root)
-	}
-	snap := memory.LoadSnapshot(root)
-	panel.SetData(root, snap.GlobalPath, snap.GlobalContent, snap.GlobalExists, snap.ProjectPath, snap.ProjectContent, snap.ProjectExists, snap.SessionPath, snap.SessionContent, snap.SessionExists, snap.IndexPath, snap.IndexContent, snap.IndexExists)
+	global := memorySnapshotDocument(snap, "global")
+	project := memorySnapshotDocument(snap, "project")
+	sessionDoc := memorySnapshotDocument(snap, "session")
+	index := memorySnapshotDocument(snap, "index", "project-index")
+	panel.SetData(root, global.Path, global.Content, global.Exists, project.Path, project.Content, project.Exists, sessionDoc.Path, sessionDoc.Content, sessionDoc.Exists, index.Path, index.Content, index.Exists)
 }
 
-// handleBridgeEvent 处理 bridge.Event 消息
-func (m *AppModel) handleBridgeEvent(e bridge.Event) (tea.Model, tea.Cmd) {
+// handleRuntimeEvent 处理 runtime event 消息
+func (m *AppModel) handleRuntimeEvent(e adapter.RuntimeEvent) (tea.Model, tea.Cmd) {
 	uiMsg := ConvertEvent(e)
 	if uiMsg != nil {
 		return m.Update(uiMsg)
@@ -2531,8 +2590,8 @@ func (m *AppModel) nextPlanDownloadFileName(ts time.Time) string {
 		stamp = planDownloadNow()
 	}
 	name := "plan"
-	if m != nil && m.adapter != nil && m.adapter.GetCore() != nil {
-		if sessionID, err := m.adapter.GetCore().CurrentSessionID(); err == nil {
+	if m != nil && m.adapter != nil {
+		if sessionID, err := m.adapter.CurrentSessionID(context.Background()); err == nil {
 			if cleaned := sanitizePlanFileNameSegment(sessionID); cleaned != "" {
 				name += "-" + cleaned
 			}
@@ -2882,49 +2941,50 @@ func (m *AppModel) handleToolResult(msg ToolResultMsg) tea.Cmd {
 	return nil
 }
 
+func (m *AppModel) refreshModelsPanel() {
+	panel, ok := m.panels["models"].(*panels.ModelsPanel)
+	if !ok || panel == nil || m.adapter == nil {
+		return
+	}
+	models, active, err := m.adapter.ModelEntries(context.Background())
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("刷新模型列表失败", "Failed to refresh models"), err), "error")
+		return
+	}
+	if strings.TrimSpace(active) == "" {
+		active, _ = m.adapter.GetModelInfo()
+	}
+	panel.SetModels(models, active)
+}
+
 // handleModelSelect 处理模型选择
 func (m *AppModel) handleModelSelect(msg panels.ModelSelectMsg) {
-	if m.adapter.SetActiveModel(msg.Name) {
-		// 重新加载运行时环境
-		_ = m.adapter.Reload()
-		// 更新面板中的当前模型
-		if modelsPanel, ok := m.panels["models"].(*panels.ModelsPanel); ok {
-			modelsPanel.SetCurrentModel(msg.Name)
-		}
-		m.appendSystem(fmt.Sprintf("Switched model: %s", msg.Name), "success")
-	} else {
+	if err := m.adapter.ActivateModel(context.Background(), msg.Name); err != nil {
 		m.appendSystem(fmt.Sprintf("Failed to switch model: %s", msg.Name), "error")
+		return
 	}
+	m.refreshModelsPanel()
+	m.appendSystem(fmt.Sprintf("Switched model: %s", msg.Name), "success")
 }
 
 // handleModelDelete 处理模型删除
 func (m *AppModel) handleModelDelete(msg panels.ModelDeleteMsg) {
-	if m.adapter.GetCore().DeleteModel(msg.Name) {
-		// 刷新模型列表面板
-		if modelsPanel, ok := m.panels["models"].(*panels.ModelsPanel); ok {
-			modelsPanel.Refresh()
-		}
-		m.appendSystem(fmt.Sprintf("Deleted model: %s", msg.Name), "success")
-	} else {
+	if err := m.adapter.DeleteModel(context.Background(), msg.Name); err != nil {
 		m.appendSystem(fmt.Sprintf("Failed to delete model: %s (may be env model or active model)", msg.Name), "error")
+		return
 	}
+	m.refreshModelsPanel()
+	m.appendSystem(fmt.Sprintf("Deleted model: %s", msg.Name), "success")
 }
 
 // handleModelSyncEnv 处理环境变量同步
 func (m *AppModel) handleModelSyncEnv() {
-	if m.adapter.GetCore().SyncEnvModel() {
-		// 重新加载运行时环境
-		_ = m.adapter.Reload()
-		// 刷新模型列表面板
-		if modelsPanel, ok := m.panels["models"].(*panels.ModelsPanel); ok {
-			modelsPanel.Refresh()
-			modelName, _ := m.adapter.GetModelInfo()
-			modelsPanel.SetCurrentModel(modelName)
-		}
-		m.appendSystem("Synced model from environment variables", "success")
-	} else {
+	if err := m.adapter.SyncEnvModel(context.Background()); err != nil {
 		m.appendSystem("Failed to sync model from environment (EOS_API_BASE and EOS_API_KEY required)", "error")
+		return
 	}
+	m.refreshModelsPanel()
+	m.appendSystem("Synced model from environment variables", "success")
 }
 
 // handleModelFormComplete 处理模型表单完成
@@ -2949,17 +3009,15 @@ func (m *AppModel) handleModelFormComplete(msg setup.ModelFormCompleteMsg) {
 
 	if msg.EditMode {
 		// 编辑模式：更新现有模型
-		if m.adapter.GetCore().UpdateModel(entry) {
-			m.appendSystem(fmt.Sprintf("Updated model: %s", name), "success")
-		} else {
+		if err := m.adapter.UpsertModelEntry(context.Background(), entry); err != nil {
 			m.appendSystem(fmt.Sprintf("Failed to update model: %s", name), "error")
+		} else {
+			m.appendSystem(fmt.Sprintf("Updated model: %s", name), "success")
 		}
 	} else {
 		// 添加模式：添加新模型并设置为活动
-		if m.adapter.GetCore().AddModel(entry) {
-			m.adapter.SetActiveModel(name)
-			// 重新加载运行时环境
-			_ = m.adapter.Reload()
+		if err := m.adapter.UpsertModelEntry(context.Background(), entry); err == nil {
+			_ = m.adapter.ActivateModel(context.Background(), name)
 			m.refreshShellWelcomeInfo()
 			if !suppressSuccessMessage {
 				m.appendSystem(fmt.Sprintf("Added and switched to model: %s", name), "success")
@@ -2971,38 +3029,36 @@ func (m *AppModel) handleModelFormComplete(msg setup.ModelFormCompleteMsg) {
 	m.initialSetupFlow = false
 
 	// 刷新模型列表面板
-	if modelsPanel, ok := m.panels["models"].(*panels.ModelsPanel); ok {
-		modelsPanel.Refresh()
-		modelsPanel.SetCurrentModel(name)
-	}
+	m.refreshModelsPanel()
 }
 
 // handleMCPToggle 处理 MCP 服务器切换
 func (m *AppModel) handleMCPToggle(msg panels.MCPToggleMsg) tea.Cmd {
-	if m.adapter.GetCore().ToggleMCPServer(msg.Name) {
-		var status string
-		configServers := m.adapter.GetCore().ListMCPServers()
-		for _, s := range configServers {
-			if s.Name == msg.Name {
-				if s.Enabled {
-					status = i18n.T("mcp.status.enabled", m.state.Language)
-				} else {
-					status = i18n.T("mcp.status.disabled", m.state.Language)
-				}
-				break
-			}
+	configServers, err := m.adapter.MCPServers(context.Background())
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("Failed to toggle MCP server: %s", msg.Name), "error")
+		return nil
+	}
+	for _, s := range configServers {
+		if s.Name != msg.Name {
+			continue
+		}
+		next := !s.Enabled
+		if err := m.adapter.SetMCPEnabled(context.Background(), msg.Name, next); err != nil {
+			m.appendSystem(fmt.Sprintf("Failed to toggle MCP server: %s", msg.Name), "error")
+			return nil
 		}
 		m.refreshMCPPanel()
-		if status == "" {
-			status = i18n.T("mcp.status.disabled", m.state.Language)
+		status := i18n.T("mcp.status.disabled", m.state.Language)
+		if next {
+			status = i18n.T("mcp.status.enabled", m.state.Language)
 		}
 		m.appendSystem(fmt.Sprintf(i18n.T("mcp.msg.toggled", m.state.Language), status, msg.Name), "success")
 		return func() tea.Msg {
 			return MCPReloadDoneMsg{Err: m.adapter.Reload()}
 		}
-	} else {
-		m.appendSystem(fmt.Sprintf("Failed to toggle MCP server: %s", msg.Name), "error")
 	}
+	m.appendSystem(fmt.Sprintf("Failed to toggle MCP server: %s", msg.Name), "error")
 	return nil
 }
 
@@ -3034,7 +3090,12 @@ func (m *AppModel) handleMCPAddBrowser() {
 // handleMCPEdit 处理编辑 MCP 服务器
 func (m *AppModel) handleMCPEdit(msg panels.MCPEditMsg) {
 	var entry *config.MCPEntry
-	for _, e := range m.adapter.GetCore().ListMCPServers() {
+	entries, err := m.adapter.MCPServers(context.Background())
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("加载 MCP 配置失败: %v", err), "error")
+		return
+	}
+	for _, e := range entries {
 		if e.Name == msg.Name {
 			e2 := e
 			entry = &e2
@@ -3058,16 +3119,15 @@ func (m *AppModel) handleMCPEdit(msg panels.MCPEditMsg) {
 
 // handleMCPDelete 处理删除 MCP 服务器
 func (m *AppModel) handleMCPDelete(msg panels.MCPDeleteMsg) tea.Cmd {
-	if m.adapter.GetCore().DeleteMCPServer(msg.Name) {
-		m.refreshMCPPanel()
-		m.appendSystem(fmt.Sprintf(i18n.T("mcp.msg.deleted", m.state.Language), msg.Name), "success")
-		return func() tea.Msg {
-			return MCPReloadDoneMsg{Err: m.adapter.Reload()}
-		}
-	} else {
+	if err := m.adapter.DeleteMCPServer(context.Background(), msg.Name); err != nil {
 		m.appendSystem(fmt.Sprintf("Failed to delete MCP server: %s", msg.Name), "error")
+		return nil
 	}
-	return nil
+	m.refreshMCPPanel()
+	m.appendSystem(fmt.Sprintf(i18n.T("mcp.msg.deleted", m.state.Language), msg.Name), "success")
+	return func() tea.Msg {
+		return MCPReloadDoneMsg{Err: m.adapter.Reload()}
+	}
 }
 
 // handleMCPSave 处理保存 MCP 配置
@@ -3083,7 +3143,12 @@ func (m *AppModel) refreshMCPPanel() {
 	if !ok {
 		return
 	}
-	cfgServers := m.adapter.GetCore().ListMCPServers()
+	cfgServers, err := m.adapter.MCPServers(context.Background())
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("Failed to load MCP servers: %v", err), "error")
+		mcpPanel.SetServers(nil)
+		return
+	}
 	out := make([]panels.MCPServer, 0, len(cfgServers))
 	for _, s := range cfgServers {
 		out = append(out, panels.MCPServer{
@@ -3093,7 +3158,10 @@ func (m *AppModel) refreshMCPPanel() {
 		})
 	}
 	mcpPanel.SetServers(out)
-	browser := m.adapter.GetCore().BrowserStatus()
+	browser, err := m.adapter.BrowserStatus(context.Background())
+	if err != nil {
+		browser = coreapi.BrowserStatus{}
+	}
 	mcpPanel.SetBrowserSummary(panels.BrowserSummary{
 		Configured: browser.Configured,
 		Enabled:    browser.Enabled,
@@ -3108,28 +3176,33 @@ func (m *AppModel) refreshLSPPanel() {
 	if !ok || p == nil {
 		return
 	}
-	if m.adapter == nil || m.adapter.GetCore() == nil {
+	if m.adapter == nil {
 		p.SetStatus(panels.LSPPanelSummary{Message: "no core"}, nil)
 		return
 	}
-	st := m.adapter.GetCore().LSPStatus()
-	sum := panels.LSPPanelSummary{
-		Enabled:          st.Enabled,
-		AutoDetect:       st.AutoDetect,
-		ConfigFile:       st.ConfigFile,
-		Workspace:        st.Workspace,
-		DetectedLanguage: st.DetectedLanguage,
-		ActiveLanguage:   st.ActiveLanguage,
-		ActiveServer:     st.ActiveServer,
-		ActiveRoot:       st.ActiveRoot,
-		Message:          st.Message,
+	servers, err := m.adapter.LSPServers(context.Background())
+	if err != nil {
+		p.SetStatus(panels.LSPPanelSummary{Message: err.Error()}, nil)
+		return
 	}
-	rows := make([]panels.LSPServerRow, 0, len(st.Servers))
-	for _, it := range st.Servers {
+	sum := panels.LSPPanelSummary{
+		Enabled:    true,
+		AutoDetect: true,
+		Workspace:  m.currentWorkspaceRoot(),
+		Message:    "via JSON-RPC",
+	}
+	rows := make([]panels.LSPServerRow, 0, len(servers))
+	for _, it := range servers {
+		found := !strings.EqualFold(strings.TrimSpace(it.Status), "not_found")
+		if strings.EqualFold(strings.TrimSpace(it.Status), "running") {
+			sum.ActiveLanguage = strings.TrimSpace(it.Language)
+			sum.ActiveServer = strings.TrimSpace(it.Command)
+			sum.ActiveRoot = sum.Workspace
+		}
 		rows = append(rows, panels.LSPServerRow{
 			Language: it.Language,
 			Command:  it.Command,
-			Found:    it.Found,
+			Found:    found,
 		})
 	}
 	p.SetStatus(sum, rows)
@@ -3140,89 +3213,47 @@ func (m *AppModel) refreshRulesPanel() {
 	if !ok || p == nil {
 		return
 	}
-	if m.adapter == nil || m.adapter.GetCore() == nil {
+	if m.adapter == nil {
 		p.SetData("", "", "", false, "", "", false)
 		return
 	}
-	root := strings.TrimSpace(m.adapter.GetCore().GetActiveRoot())
-	if root == "" {
-		if wd, err := os.Getwd(); err == nil {
-			root = wd
-		}
+	snapshot, err := m.adapter.RulesSnapshot(context.Background())
+	if err != nil {
+		p.SetData("", "", "", false, "", "", false)
+		return
 	}
+	project := rulesSnapshotDocument(snapshot, "project")
+	global := rulesSnapshotDocument(snapshot, "global")
+	p.SetData(snapshot.ActiveRoot, project.Path, project.Content, project.Exists, global.Path, global.Content, global.Exists)
+}
 
-	projectPath := ""
-	projectContent := ""
-	projectExists := false
-	if strings.TrimSpace(root) != "" {
-		projectPath = filepath.Join(root, ".eos", "Rules.md")
-		if _, err := os.Stat(projectPath); err == nil {
-			projectExists = true
-			if raw, err2 := os.ReadFile(projectPath); err2 == nil {
-				projectContent = string(raw)
-			}
-		}
+func (m *AppModel) refreshSettingsPanel() {
+	if m == nil || m.adapter == nil {
+		return
 	}
-
-	globalPath := ""
-	globalContent := ""
-	globalExists := false
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		globalPath = filepath.Join(home, ".eos", "Rules.md")
-		if _, err := os.Stat(globalPath); err == nil {
-			globalExists = true
-			if raw, err2 := os.ReadFile(globalPath); err2 == nil {
-				globalContent = string(raw)
-			}
-		}
+	p, ok := m.panels["settings"].(*panels.SettingsPanel)
+	if !ok || p == nil {
+		return
 	}
-
-	p.SetData(root, projectPath, projectContent, projectExists, globalPath, globalContent, globalExists)
+	settings, err := m.adapter.Settings(context.Background())
+	if err == nil {
+		p.SetSettings(&settings)
+	}
+	cfg, _ := config.Load()
+	p.SetGlobalPredictionEnabled(config.NextMessagePredictionEnabled(&cfg))
 }
 
 func (m *AppModel) handleRulesSave(msg panels.RulesSaveMsg) {
-	if m == nil || m.adapter == nil || m.adapter.GetCore() == nil {
+	if m == nil || m.adapter == nil {
 		return
 	}
 	scope := strings.ToLower(strings.TrimSpace(msg.Scope))
-	content := msg.Content
-
-	dst := ""
-	docID := ""
-	switch scope {
-	case "global":
-		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-			dst = filepath.Join(home, ".eos", "Rules.md")
-			docID = "~/.eos/Rules.md"
-		}
-	default:
-		root := strings.TrimSpace(m.adapter.GetCore().GetActiveRoot())
-		if root == "" {
-			if wd, err := os.Getwd(); err == nil {
-				root = wd
-			}
-		}
-		if strings.TrimSpace(root) != "" {
-			dst = filepath.Join(root, ".eos", "Rules.md")
-			docID = ".eos/Rules.md"
-		}
+	if scope == "" {
+		scope = "project"
 	}
-
-	if strings.TrimSpace(dst) == "" {
-		m.appendSystem("Rules.md 保存失败: 路径为空", "error")
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+	if err := m.adapter.SaveRules(context.Background(), scope, msg.Content); err != nil {
 		m.appendSystem(fmt.Sprintf("Rules.md 保存失败: %v", err), "error")
 		return
-	}
-	if err := os.WriteFile(dst, []byte(content), 0o644); err != nil {
-		m.appendSystem(fmt.Sprintf("Rules.md 保存失败: %v", err), "error")
-		return
-	}
-
-	if cm := m.adapter.GetCore().GetContext(); cm != nil && strings.TrimSpace(docID) != "" {
-		cm.SetPinnedDoc(docID, content, 20000)
 	}
 
 	if scope == "global" {
@@ -3234,74 +3265,28 @@ func (m *AppModel) handleRulesSave(msg panels.RulesSaveMsg) {
 }
 
 func (m *AppModel) handleMemorySave(msg panels.MemorySaveMsg) {
-	if m == nil || m.adapter == nil || m.adapter.GetCore() == nil {
+	if m == nil || m.adapter == nil {
 		return
 	}
 	scope := strings.ToLower(strings.TrimSpace(msg.Scope))
-	root := strings.TrimSpace(m.adapter.GetCore().GetActiveRoot())
-	if root == "" {
-		if wd, err := os.Getwd(); err == nil {
-			root = wd
-		}
-	}
-
-	dst := ""
-	docID := ""
-	switch scope {
-	case "global":
-		dst = memory.GlobalMemoryPath()
-		docID = memory.GlobalMemoryDocID
-	case "session":
-		dst = filepath.Join(root, ".eos", "session-memory", "session.md")
-	case "index":
-		dst = memory.ProjectMemoryIndexPath(root)
-		docID = memory.ProjectIndexDocID
-	default:
-		dst = memory.ProjectMemoryPath(root)
-		docID = memory.ProjectMemoryDocID
+	if scope == "" {
 		scope = "project"
 	}
-	if strings.TrimSpace(dst) == "" {
-		m.appendSystem("Memory 保存失败: 路径为空", "error")
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+	if err := m.adapter.SaveMemory(context.Background(), scope, msg.Content); err != nil {
 		m.appendSystem(fmt.Sprintf("Memory 保存失败: %v", err), "error")
 		return
-	}
-	if err := os.WriteFile(dst, []byte(msg.Content), 0o644); err != nil {
-		m.appendSystem(fmt.Sprintf("Memory 保存失败: %v", err), "error")
-		return
-	}
-	if scope == "global" || scope == "project" || scope == "index" {
-		_ = memory.NewStore(root).RebuildIndex()
-	}
-	if cm := m.adapter.GetCore().GetContext(); cm != nil && strings.TrimSpace(docID) != "" {
-		cm.SetPinnedDoc(docID, msg.Content, 20000)
 	}
 	m.appendSystem("已保存 "+scope+" memory", "success")
 	m.refreshMemoryPanel()
 }
 
 func (m *AppModel) handleMemoryRebuildIndex() {
-	if m == nil || m.adapter == nil || m.adapter.GetCore() == nil {
+	if m == nil || m.adapter == nil {
 		return
 	}
-	root := strings.TrimSpace(m.adapter.GetCore().GetActiveRoot())
-	if root == "" {
-		if wd, err := os.Getwd(); err == nil {
-			root = wd
-		}
-	}
-	if err := memory.NewStore(root).RebuildIndex(); err != nil {
+	if err := m.adapter.RebuildMemoryIndex(context.Background()); err != nil {
 		m.appendSystem(fmt.Sprintf("Memory 索引重建失败: %v", err), "error")
 		return
-	}
-	if cm := m.adapter.GetCore().GetContext(); cm != nil {
-		snap := memory.LoadSnapshot(root)
-		if snap.IndexExists && strings.TrimSpace(snap.IndexContent) != "" {
-			cm.SetPinnedDoc(memory.ProjectIndexDocID, snap.IndexContent, 8000)
-		}
 	}
 	m.appendSystem("已重建 memory 索引", "success")
 	m.refreshMemoryPanel()
@@ -3346,23 +3331,23 @@ func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 			return nil
 		}
 		if msg.OriginalName != "" && entry.Name != msg.OriginalName {
-			if err := m.adapter.GetCore().AddMCPServers([]config.MCPEntry{entry}); err != nil {
+			if err := m.adapter.AddMCPEntries(context.Background(), []config.MCPEntry{entry}); err != nil {
 				m.appendSystem(fmt.Sprintf("新增（用于重命名）失败: %v", err), "error")
 				return nil
 			}
-			if !m.adapter.GetCore().DeleteMCPServer(msg.OriginalName) {
-				_ = m.adapter.GetCore().DeleteMCPServer(entry.Name)
+			if err := m.adapter.DeleteMCPServer(context.Background(), msg.OriginalName); err != nil {
+				_ = m.adapter.DeleteMCPServer(context.Background(), entry.Name)
 				m.appendSystem("删除旧名称失败: "+msg.OriginalName, "error")
 				return nil
 			}
 		} else {
-			if !m.adapter.GetCore().UpdateMCPServer(entry) {
-				m.appendSystem("更新失败（name 不存在）: "+entry.Name, "error")
+			if err := m.adapter.UpsertMCPEntry(context.Background(), entry); err != nil {
+				m.appendSystem("更新失败: "+err.Error(), "error")
 				return nil
 			}
 		}
 	} else {
-		if err := m.adapter.GetCore().AddMCPServers(entries); err != nil {
+		if err := m.adapter.AddMCPEntries(context.Background(), entries); err != nil {
 			m.appendSystem(fmt.Sprintf("新增失败: %v", err), "error")
 			return nil
 		}
@@ -3381,8 +3366,19 @@ func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 // refreshCostPanel 刷新成本统计面板
 func (m *AppModel) refreshCostPanel() {
 	if costPanel, ok := m.panels["cost"].(*panels.CostPanel); ok {
-		// 获取模型统计
-		modelStats := m.adapter.GetCore().GetModelTokenStats()
+		ctx := context.Background()
+		items, err := m.adapter.CostItems(ctx)
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("刷新成本明细失败", "Failed to refresh cost items"), err), "error")
+			return
+		}
+		total, err := m.adapter.UsageSummary(ctx)
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("刷新成本统计失败", "Failed to refresh usage summary"), err), "error")
+			return
+		}
+
+		modelStats := aggregateCostItemsByModel(items)
 		stats := make([]panels.CostStats, 0, len(modelStats))
 		for _, s := range modelStats {
 			stats = append(stats, panels.CostStats{
@@ -3394,15 +3390,59 @@ func (m *AppModel) refreshCostPanel() {
 			})
 		}
 
-		// 获取总计统计
-		total := m.adapter.GetCore().GetTokenStats()
 		costPanel.SetStats(stats, panels.TotalStats{
 			TotalRounds: total.Rounds,
-			TotalInput:  m.optionalIntLabel(total.Input),
-			TotalReply:  m.optionalIntLabel(total.Reply),
-			TotalTokens: m.optionalIntLabel(total.Total),
+			TotalInput:  m.optionalIntLabel(total.InputTokens),
+			TotalReply:  m.optionalIntLabel(total.ReplyTokens),
+			TotalTokens: m.optionalIntLabel(total.TotalTokens),
 		})
 	}
+}
+
+type costModelAggregate struct {
+	Model  string
+	Rounds int
+	Input  *int
+	Reply  *int
+	Total  *int
+}
+
+func aggregateCostItemsByModel(items []coreapi.CostItem) []costModelAggregate {
+	byModel := map[string]*costModelAggregate{}
+	for _, item := range items {
+		model := strings.TrimSpace(item.Model)
+		if model == "" {
+			model = "unknown"
+		}
+		agg := byModel[model]
+		if agg == nil {
+			agg = &costModelAggregate{Model: model}
+			byModel[model] = agg
+		}
+		agg.Rounds++
+		agg.Input = addOptionalInt(agg.Input, item.InputTokens)
+		agg.Reply = addOptionalInt(agg.Reply, item.ReplyTokens)
+		agg.Total = addOptionalInt(agg.Total, item.TotalTokens)
+	}
+	out := make([]costModelAggregate, 0, len(byModel))
+	for _, item := range byModel {
+		out = append(out, *item)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i].Model) < strings.ToLower(out[j].Model)
+	})
+	return out
+}
+
+func addOptionalInt(total *int, value *int) *int {
+	if value == nil {
+		return total
+	}
+	next := *value
+	if total != nil {
+		next += *total
+	}
+	return &next
 }
 
 func (m *AppModel) optionalIntLabel(value *int) string {
@@ -3436,13 +3476,9 @@ func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredict
 		}
 	}
 
-	if wd, _ := os.Getwd(); wd != "" {
-		abs := normalizeWorkspacePath(wd)
-		settingsPath := filepath.Join(abs, ".eos", "settings.json")
-		if err := m.adapter.GetCore().SaveSettings(settingsPath, settings); err != nil {
-			m.appendSystem(fmt.Sprintf("Failed to save workspace settings: %v", err), "error")
-			return
-		}
+	if err := m.adapter.SaveSettings(context.Background(), *settings); err != nil {
+		m.appendSystem(fmt.Sprintf("Failed to save workspace settings: %v", err), "error")
+		return
 	}
 
 	// 如果语言改变了，发送语言切换消息
@@ -3470,18 +3506,19 @@ func (m *AppModel) handleVersionsLoad(pathRel string) {
 	if !ok {
 		return
 	}
-	wd, _ := os.Getwd()
-	abs := filepath.Join(wd, filepath.FromSlash(pathRel))
-	vs, err := m.adapter.GetCore().ListVersionsForPath(abs)
+	versions, err := m.adapter.Versions(context.Background())
 	if err != nil {
 		m.appendSystem(fmt.Sprintf("Failed to load versions: %v", err), "error")
 		return
 	}
-	items := make([]panels.VersionItem, 0, len(vs))
-	for _, v := range vs {
+	items := make([]panels.VersionItem, 0)
+	for _, v := range versions {
+		if !versionFileMatches(v.File, pathRel) {
+			continue
+		}
 		items = append(items, panels.VersionItem{
 			Timestamp: v.ID,
-			Size:      v.Size,
+			Size:      versionSummarySize(v.Summary),
 		})
 	}
 	panel.SetVersions(filepath.ToSlash(pathRel), items)
@@ -3493,8 +3530,11 @@ func (m *AppModel) handleVersionsRollback(pathRel string, versionID string) {
 	if pathRel == "" || versionID == "" {
 		return
 	}
-	out := m.adapter.GetCore().RollbackFile(pathRel, versionID)
-	m.appendSystem(out, "warning")
+	if err := m.adapter.RollbackVersion(context.Background(), versionID); err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("版本回滚失败", "Version rollback failed"), err), "error")
+		return
+	}
+	m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已回滚版本", "Rolled back version"), versionID), "warning")
 	m.handleVersionsLoad(pathRel)
 }
 
@@ -3504,8 +3544,11 @@ func (m *AppModel) handleVersionsDelete(pathRel string, versionID string) {
 	if pathRel == "" || versionID == "" {
 		return
 	}
-	out := m.adapter.GetCore().DeleteVersion(pathRel, versionID)
-	m.appendSystem(out, "warning")
+	if err := m.adapter.DeleteVersion(context.Background(), versionID); err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("删除版本失败", "Version delete failed"), err), "error")
+		return
+	}
+	m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已删除版本", "Deleted version"), versionID), "warning")
 	m.handleVersionsLoad(pathRel)
 }
 
@@ -3514,15 +3557,72 @@ func (m *AppModel) handleVersionsDeleteFile(pathRel string) {
 	if pathRel == "" {
 		return
 	}
-	out := m.adapter.GetCore().DeleteAllVersions(pathRel)
-	m.appendSystem(out, "warning")
+	count, err := m.adapter.DeleteFileVersions(context.Background(), pathRel)
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("删除文件版本失败", "Failed to delete file versions"), err), "error")
+		return
+	}
+	m.appendSystem(fmt.Sprintf("%s: %s (%d)", m.localize("已删除文件版本", "Deleted file versions"), pathRel, count), "warning")
 	m.refreshVersionsPanel()
 }
 
 func (m *AppModel) handleVersionsDeleteAll() {
-	out := m.adapter.GetCore().DeleteAllFileVersions()
-	m.appendSystem(out, "warning")
+	count, err := m.adapter.ClearVersions(context.Background())
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("清空版本历史失败", "Failed to clear version history"), err), "error")
+		return
+	}
+	m.appendSystem(fmt.Sprintf("%s: %d", m.localize("已清空版本历史", "Cleared version history"), count), "warning")
 	m.refreshVersionsPanel()
+}
+
+func versionFileMatches(file, target string) bool {
+	file = normalizeVersionPath(file)
+	target = normalizeVersionPath(target)
+	if file == "" || target == "" {
+		return false
+	}
+	if strings.EqualFold(file, target) {
+		return true
+	}
+	if isAbsVersionPath(file) && !isAbsVersionPath(target) {
+		return strings.HasSuffix(strings.ToLower(file), "/"+strings.ToLower(target))
+	}
+	if isAbsVersionPath(target) && !isAbsVersionPath(file) {
+		return strings.HasSuffix(strings.ToLower(target), "/"+strings.ToLower(file))
+	}
+	return false
+}
+
+func normalizeVersionPath(path string) string {
+	path = filepath.ToSlash(strings.TrimSpace(path))
+	if path == "" {
+		return ""
+	}
+	path = filepath.ToSlash(filepath.Clean(filepath.FromSlash(path)))
+	if path == "." {
+		return ""
+	}
+	path = strings.TrimPrefix(path, "./")
+	return path
+}
+
+func isAbsVersionPath(path string) bool {
+	return filepath.IsAbs(filepath.FromSlash(path))
+}
+
+func versionSummarySize(summary string) int {
+	summary = strings.TrimSpace(summary)
+	if summary == "" {
+		return 0
+	}
+	match := regexp.MustCompile(`(?:^|[,\s])size=(\d+)`).FindStringSubmatch(summary)
+	if len(match) != 2 {
+		return 0
+	}
+	var size int
+	_, _ = fmt.Sscanf(match[1], "%d", &size)
+	return size
 }
 
 func (m *AppModel) handleHiddenLegalSlash() tea.Cmd {
