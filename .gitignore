@@ -9,6 +9,9 @@ ai-cli.exe
 eos
 eos.exe
 
+# Vendored Rust sidecar release artifacts.
+!pkg/coreapi/sidecar/binaries/**/eos-core.exe
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -52,9 +55,7 @@ dist/
 output/
 build/
 release/
-
-# Installer
-installer.iss
+dev/
 
 # Runtime data
 .eos.json

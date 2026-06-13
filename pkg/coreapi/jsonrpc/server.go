@@ -137,6 +137,11 @@ func Register(router *protocoljsonrpc.Router, engine coreapi.Engine, opts Option
 				protocoljsonrpc.MethodModelDelete,
 				protocoljsonrpc.MethodModelActivate,
 				protocoljsonrpc.MethodModelSyncEnv,
+				protocoljsonrpc.MethodModelContext,
+				protocoljsonrpc.MethodModelWorkspaceSet,
+				protocoljsonrpc.MethodModelWorkspaceClear,
+				protocoljsonrpc.MethodModelSessionSet,
+				protocoljsonrpc.MethodModelSessionClear,
 				protocoljsonrpc.MethodRemoteWorkspaceList,
 				protocoljsonrpc.MethodRemoteWorkspaceOpen,
 				protocoljsonrpc.MethodRemoteWorkspaceForget,
@@ -179,6 +184,7 @@ func Register(router *protocoljsonrpc.Router, engine coreapi.Engine, opts Option
 				protocoljsonrpc.MethodSandboxPolicy,
 				protocoljsonrpc.MethodSandboxSetPolicy,
 				protocoljsonrpc.MethodSandboxBackend,
+				protocoljsonrpc.MethodDiagnosticsStartup,
 			},
 			Capabilities: cloneMap(opts.Capabilities),
 		}, nil
@@ -1305,6 +1311,87 @@ func Register(router *protocoljsonrpc.Router, engine coreapi.Engine, opts Option
 		return err
 	}
 
+	if err := router.Register(protocoljsonrpc.MethodModelContext, func(ctx context.Context, req protocoljsonrpc.Request) (any, *protocoljsonrpc.Error) {
+		var params coreapi.ModelContextRequest
+		if rpcErr := decodeParams(req.Params, &params); rpcErr != nil {
+			return nil, rpcErr
+		}
+		if models := engine.Models(); models != nil {
+			snapshot, err := models.Context(ctx, params)
+			if err != nil {
+				return nil, errorFromErr(err)
+			}
+			return snapshot, nil
+		}
+		return nil, errorFromErr(coreapi.ErrUnsupported)
+	}); err != nil {
+		return err
+	}
+
+	if err := router.Register(protocoljsonrpc.MethodModelWorkspaceSet, func(ctx context.Context, req protocoljsonrpc.Request) (any, *protocoljsonrpc.Error) {
+		var params coreapi.SetWorkspaceModelRequest
+		if rpcErr := decodeParams(req.Params, &params); rpcErr != nil {
+			return nil, rpcErr
+		}
+		if models := engine.Models(); models != nil {
+			if err := models.SetWorkspace(ctx, params); err != nil {
+				return nil, errorFromErr(err)
+			}
+			return map[string]any{"ok": true}, nil
+		}
+		return nil, errorFromErr(coreapi.ErrUnsupported)
+	}); err != nil {
+		return err
+	}
+
+	if err := router.Register(protocoljsonrpc.MethodModelWorkspaceClear, func(ctx context.Context, req protocoljsonrpc.Request) (any, *protocoljsonrpc.Error) {
+		var params coreapi.ClearWorkspaceModelRequest
+		if rpcErr := decodeParams(req.Params, &params); rpcErr != nil {
+			return nil, rpcErr
+		}
+		if models := engine.Models(); models != nil {
+			if err := models.ClearWorkspace(ctx, params); err != nil {
+				return nil, errorFromErr(err)
+			}
+			return map[string]any{"ok": true}, nil
+		}
+		return nil, errorFromErr(coreapi.ErrUnsupported)
+	}); err != nil {
+		return err
+	}
+
+	if err := router.Register(protocoljsonrpc.MethodModelSessionSet, func(ctx context.Context, req protocoljsonrpc.Request) (any, *protocoljsonrpc.Error) {
+		var params coreapi.SetSessionModelRequest
+		if rpcErr := decodeParams(req.Params, &params); rpcErr != nil {
+			return nil, rpcErr
+		}
+		if models := engine.Models(); models != nil {
+			if err := models.SetSession(ctx, params); err != nil {
+				return nil, errorFromErr(err)
+			}
+			return map[string]any{"ok": true}, nil
+		}
+		return nil, errorFromErr(coreapi.ErrUnsupported)
+	}); err != nil {
+		return err
+	}
+
+	if err := router.Register(protocoljsonrpc.MethodModelSessionClear, func(ctx context.Context, req protocoljsonrpc.Request) (any, *protocoljsonrpc.Error) {
+		var params coreapi.ClearSessionModelRequest
+		if rpcErr := decodeParams(req.Params, &params); rpcErr != nil {
+			return nil, rpcErr
+		}
+		if models := engine.Models(); models != nil {
+			if err := models.ClearSession(ctx, params); err != nil {
+				return nil, errorFromErr(err)
+			}
+			return map[string]any{"ok": true}, nil
+		}
+		return nil, errorFromErr(coreapi.ErrUnsupported)
+	}); err != nil {
+		return err
+	}
+
 	if err := router.Register(protocoljsonrpc.MethodRemoteWorkspaceList, func(ctx context.Context, req protocoljsonrpc.Request) (any, *protocoljsonrpc.Error) {
 		if remote := engine.RemoteWorkspaces(); remote != nil {
 			items, err := remote.List(ctx)
@@ -2041,6 +2128,19 @@ func Register(router *protocoljsonrpc.Router, engine coreapi.Engine, opts Option
 	if err := router.Register(protocoljsonrpc.MethodSandboxBackend, func(ctx context.Context, req protocoljsonrpc.Request) (any, *protocoljsonrpc.Error) {
 		if service := engine.Sandbox(); service != nil {
 			return service.BackendStatus(ctx), nil
+		}
+		return nil, errorFromErr(coreapi.ErrUnsupported)
+	}); err != nil {
+		return err
+	}
+
+	if err := router.Register(protocoljsonrpc.MethodDiagnosticsStartup, func(ctx context.Context, req protocoljsonrpc.Request) (any, *protocoljsonrpc.Error) {
+		if service := engine.Diagnostics(); service != nil {
+			result, err := service.Startup(ctx)
+			if err != nil {
+				return nil, errorFromErr(err)
+			}
+			return result, nil
 		}
 		return nil, errorFromErr(coreapi.ErrUnsupported)
 	}); err != nil {

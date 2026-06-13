@@ -2,9 +2,9 @@
 //
 // 本文件定义了三层导入边界守卫：
 //
-//  1. TestUIDirectRuntimeCouplingDoesNotSpread — 阻止 internal/ui 下除 adapter 外的所有包
-//     导入 internal/bridge、internal/runtime、internal/tools。adapter 是唯一的兼容性孤岛，
-//     仅允许导入 internal/bridge（用于 legacy 事件归一化和 session 类型）。
+//  1. TestUIDirectRuntimeCouplingDoesNotSpread — 阻止 internal/ui 下所有包（含 adapter）
+//     导入 internal/bridge、internal/runtime、internal/tools、pkg/core。
+//     adapter 不再是兼容性孤岛；唯一允许的 core 入口是 pkg/coreapi/sidecar/client facade。
 //
 //  2. TestNewCorePackagesDoNotImportLegacyRuntime — 阻止新核心包（pkg/agentcore、pkg/coreapi、
 //     pkg/protocol/jsonrpc、pkg/sandbox）导入 internal/* 或遗留的 pkg/core facade。
@@ -15,10 +15,10 @@
 //     所有遗留依赖集中在 legacy_bridge.go（legacy adapter）中，便于未来替换。
 //
 // 维护指南：
-//   - 不要扩大 knownUICoupling，除非有明确的迁移计划和文档说明。
+//   - 不要重新引入 knownUICoupling 白名单。
 //   - 添加新 UI 子包时，确保它不导入 forbiddenUIImports 中的任何包。
 //   - 添加新核心包时，确保它不导入 internal/* 或 pkg/core。
-//   - 当 adapter 完成 bridge/runtime/tools 解耦后，从 knownUICoupling 中移除它。
+//   - TUI 接入 core 只能通过 pkg/coreapi/sidecar/client + coreapi.Engine。
 //   - toolapi/impl 中只有 legacy_bridge.go 允许导入 internal/tools 和 internal/runtime。
 package architecture
 
@@ -34,16 +34,16 @@ import (
 
 const modulePath = "github.com/dreamSailing/eos"
 
-// knownUICoupling 是当前允许导入 forbiddenUIImports 的 UI 包白名单。
-// 仅 internal/ui/adapter 作为兼容性孤岛被允许，待其完成 bridge 解耦后应移除。
-var knownUICoupling = map[string]bool{
-	"github.com/dreamSailing/eos/internal/ui/adapter": true,
-}
+// knownUICoupling 是历史遗留白名单，目前为空。
+// 历史注释：曾允许 internal/ui/adapter 临时 import forbiddenUIImports，
+// 迁移完成后已清空，不应再被引用。
+var knownUICoupling = map[string]bool{}
 
 var forbiddenUIImports = []string{
 	"github.com/dreamSailing/eos/internal/bridge",
 	"github.com/dreamSailing/eos/internal/runtime",
 	"github.com/dreamSailing/eos/internal/tools",
+	"github.com/dreamSailing/eos/pkg/core",
 }
 
 func TestUIDirectRuntimeCouplingDoesNotSpread(t *testing.T) {
@@ -140,6 +140,24 @@ var forbiddenCLIImports = []string{
 	"github.com/dreamSailing/eos/internal/session",
 }
 
+// cliLegacyCoreExceptions 列出了 internal/cli 中允许 import pkg/core (sharedcore) 的文件。
+// 当前只有 app_server.go：在 parity mode (--core-engine=parity) 或 EOS_CORE_ALLOW_FALLBACK=1
+// 时 legacy 仅作 dev/test fixture。其它生产入口（print / exec / bridge / serve / daemon）一律
+// 不允许回退到 sharedcore.Runtime / bridge.RuntimeCore。
+var cliLegacyCoreExceptions = map[string]bool{
+	"app_server.go": true,
+}
+
+// cliForbiddenProductionImports 是 production CLI 命令（非 app_server）必须遵守的禁列。
+// 任何新 CLI 命令若想 import sharedcore / bridge.RuntimeCore / eino runtime，
+// 必须先把它加入 cliLegacyCoreExceptions 并在注释里说明理由。
+var cliForbiddenProductionImports = []string{
+	"github.com/dreamSailing/eos/pkg/core",
+	"github.com/dreamSailing/eos/internal/bridge",
+	"github.com/dreamSailing/eos/internal/runtime",
+	"github.com/dreamSailing/eos/internal/tools",
+}
+
 func TestCLIHeadlessNoBridgeImport(t *testing.T) {
 	root := moduleRoot(t)
 	cliRoot := filepath.Join(root, "internal", "cli")
@@ -184,6 +202,56 @@ func isForbiddenCLIImport(importPath string) bool {
 		}
 	}
 	return false
+}
+
+// TestCLIProductionPathsForbidLegacyGoCore 守护 production CLI 入口（除 app_server）不直接
+// import sharedcore（pkg/core）或 internal/bridge / internal/runtime / internal/tools。
+//
+// app_server 是 parity / dev-only 入口，其默认启动路径走 Rust sidecar；legacy 路径
+// 只在 parity 模式或 EOS_CORE_ALLOW_FALLBACK=1 时由 cliLegacyCoreExceptions 放行。
+//
+// 新 CLI 命令若需要用到 legacy fixture，必须先在 cliLegacyCoreExceptions 加白并写明理由，
+// 避免悄悄把 Go core/runtime 重新接回 production 路径。
+func TestCLIProductionPathsForbidLegacyGoCore(t *testing.T) {
+	root := moduleRoot(t)
+	cliRoot := filepath.Join(root, "internal", "cli")
+	violations := map[string][]string{}
+
+	err := filepath.WalkDir(cliRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		basename := filepath.Base(path)
+		if cliLegacyCoreExceptions[basename] {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		pkg, err := packagePath(root, filepath.Dir(path))
+		if err != nil {
+			return err
+		}
+		for _, imp := range file.Imports {
+			importPath := strings.Trim(imp.Path.Value, `"`)
+			for _, forbidden := range cliForbiddenProductionImports {
+				if importPath == forbidden || strings.HasPrefix(importPath, forbidden+"/") {
+					violations[pkg+"/"+basename] = append(violations[pkg+"/"+basename], importPath)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk cli imports: %v", err)
+	}
+	if len(violations) > 0 {
+		t.Fatalf("production CLI path imports legacy Go core (pkg/core / bridge / runtime / tools); use pkg/coreapi/sidecar + engineprovider instead:\n%#v", violations)
+	}
 }
 
 func isForbiddenNewCoreImport(importPath string) bool {

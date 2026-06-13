@@ -51,182 +51,18 @@ type ProviderConfig struct {
 	DefaultModels   []string     // 默认/推荐模型列表
 }
 
-// builtinProviders 内置服务商配置
-var builtinProviders = []*ProviderConfig{
-	// DeepSeek - OpenAI 兼容格式
-	{
-		ID:              "deepseek",
-		Name:            "DeepSeek",
-		Type:            ProviderDeepSeek,
-		DefaultAPIBase:  "https://api.deepseek.com",
-		CodePlanAPIBase: "",
-		APIKeyEnv:       "DEEPSEEK_API_KEY",
-		Website:         "https://platform.deepseek.com",
-		HasCodePlan:     false,
-		HasClaudeCode:   false,
-		EinoComponent:   "deepseek",
-		DefaultModels:   []string{"deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"},
-	},
-	// 阿里云通义千问 - OpenAI 兼容格式
-	{
-		ID:              "dashscope",
-		Name:            "阿里云通义",
-		Type:            ProviderDashScope,
-		DefaultAPIBase:  "https://dashscope.aliyuncs.com/compatible-mode/v1",
-		CodePlanAPIBase: "https://coding.dashscope.aliyuncs.com/v1",
-		APIKeyEnv:       "DASHSCOPE_API_KEY",
-		Website:         "https://tongyi.aliyun.com",
-		HasCodePlan:     true,
-		HasClaudeCode:   false,
-		EinoComponent:   "dashscope",
-		DefaultModels:   []string{"qwen3.6-plus", "qwen3.6-max-preview", "dashscope-coding-plan-qwen3.6-plus", "dashscope-coding-plan-glm-5", "dashscope-coding-plan-kimi-k2.5"},
-	},
-	// 字节豆包 - 独立 Code/Plan URL
-	{
-		ID:              "bytedance",
-		Name:            "字节豆包",
-		Type:            ProviderByteDance,
-		DefaultAPIBase:  "https://ark.cn-beijing.volces.com/api/v3",
-		CodePlanAPIBase: "https://ark.cn-beijing.volces.com/api/coding/v3",
-		ClaudeAPIBase:   "https://ark.cn-beijing.volces.com/api/coding",
-		APIKeyEnv:       "VOLCENGINE_API_KEY",
-		Website:         "https://www.volcengine.com",
-		HasCodePlan:     true,
-		HasClaudeCode:   true,
-		EinoComponent:   "volcengine",
-		DefaultModels:   []string{"doubao-seed-code", "doubao-seed-1.8", "ark-coding-plan-openai", "ark-coding-plan-claude"},
-	},
-	// 智谱 GLM - 独立 API 格式
-	{
-		ID:              "zhipu",
-		Name:            "智谱 GLM",
-		Type:            ProviderZhipu,
-		DefaultAPIBase:  "https://open.bigmodel.cn/api/paas/v4",
-		CodePlanAPIBase: "https://open.bigmodel.cn/api/coding/paas/v4",
-		ClaudeAPIBase:   "https://open.bigmodel.cn/api/anthropic",
-		APIKeyEnv:       "ZHIPU_API_KEY",
-		Website:         "https://www.zhipuai.cn",
-		HasCodePlan:     true,
-		HasClaudeCode:   true,
-		EinoComponent:   "zhipuai",
-		DefaultModels:   []string{"glm-5", "glm-5-turbo", "zhipu-coding-plan-openai", "zhipu-coding-plan-claude"},
-	},
-	// Moonshot Kimi - OpenAI 兼容格式
-	{
-		ID:              "moonshot",
-		Name:            "Moonshot",
-		Type:            ProviderMoonshot,
-		DefaultAPIBase:  "https://api.moonshot.cn/v1",
-		CodePlanAPIBase: "",
-		APIKeyEnv:       "MOONSHOT_API_KEY",
-		Website:         "https://www.moonshot.cn",
-		HasCodePlan:     false,
-		HasClaudeCode:   false,
-		EinoComponent:   "",
-		DefaultModels:   []string{"kimi-k2.6", "kimi-k2.5"},
-	},
-	// MiniMax - Token Plan / OpenAI / Anthropic 兼容格式
-	{
-		ID:              "minimax",
-		Name:            "MiniMax",
-		Type:            ProviderMiniMax,
-		DefaultAPIBase:  "https://api.minimaxi.com/v1",
-		CodePlanAPIBase: "https://api.minimaxi.com/v1",
-		ClaudeAPIBase:   "https://api.minimaxi.com/anthropic/v1",
-		APIKeyEnv:       "MINIMAX_API_KEY",
-		Website:         "https://platform.minimaxi.com",
-		HasCodePlan:     true,
-		HasClaudeCode:   true,
-		EinoComponent:   "",
-		DefaultModels:   []string{"minimax-token-plan-openai", "minimax-token-plan-claude"},
-	},
-	// Xiaomi MiMo - Token Plan / OpenAI / Anthropic 兼容格式
-	{
-		ID:              "mimo",
-		Name:            "小米 MiMo",
-		Type:            ProviderMiMo,
-		DefaultAPIBase:  "https://token-plan-cn.xiaomimimo.com/v1",
-		CodePlanAPIBase: "https://token-plan-cn.xiaomimimo.com/v1",
-		ClaudeAPIBase:   "https://token-plan-cn.xiaomimimo.com/anthropic",
-		APIKeyEnv:       "MIMO_API_KEY",
-		Website:         "https://platform.xiaomimimo.com",
-		HasCodePlan:     true,
-		HasClaudeCode:   true,
-		EinoComponent:   "",
-		DefaultModels:   []string{"mimo-token-plan-openai-pro", "mimo-token-plan-openai-omni", "mimo-token-plan-claude-pro", "mimo-token-plan-claude-omni"},
-	},
-	// Google Gemini - OpenAI 兼容格式
-	{
-		ID:              "gemini",
-		Name:            "Google Gemini",
-		Type:            ProviderGemini,
-		DefaultAPIBase:  "https://generativelanguage.googleapis.com/v1beta/openai",
-		CodePlanAPIBase: "",
-		APIKeyEnv:       "GEMINI_API_KEY",
-		Website:         "https://ai.google.dev",
-		HasCodePlan:     false,
-		HasClaudeCode:   false,
-		EinoComponent:   "",
-		DefaultModels:   []string{"gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"},
-	},
-	// OpenAI - 标准 OpenAI 格式
-	{
-		ID:              "openai",
-		Name:            "OpenAI",
-		Type:            ProviderOpenAI,
-		DefaultAPIBase:  "https://api.openai.com/v1",
-		CodePlanAPIBase: "",
-		APIKeyEnv:       "OPENAI_API_KEY",
-		Website:         "https://openai.com",
-		HasCodePlan:     false,
-		HasClaudeCode:   false,
-		EinoComponent:   "openai",
-		DefaultModels:   []string{"gpt-5.5", "gpt-5-codex", "gpt-4o", "o3-mini", "o3"},
-	},
-	// Anthropic Claude - 独立 API 格式
-	{
-		ID:              "anthropic",
-		Name:            "Anthropic",
-		Type:            ProviderAnthropic,
-		DefaultAPIBase:  "https://api.anthropic.com/v1",
-		CodePlanAPIBase: "",
-		APIKeyEnv:       "ANTHROPIC_API_KEY",
-		Website:         "https://www.anthropic.com",
-		HasCodePlan:     false,
-		HasClaudeCode:   false,
-		EinoComponent:   "anthropic",
-		DefaultModels:   []string{"claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-6"},
-	},
-	// 自定义 - 用户配置
-	{
-		ID:              "custom",
-		Name:            "自定义",
-		Type:            ProviderCustom,
-		DefaultAPIBase:  "",
-		CodePlanAPIBase: "",
-		APIKeyEnv:       "",
-		Website:         "",
-		HasCodePlan:     false,
-		HasClaudeCode:   false,
-		EinoComponent:   "",
-		DefaultModels:   []string{},
-	},
-}
-
 // ProviderRegistry 服务商注册表
 type ProviderRegistry struct {
 	providers map[ProviderType]*ProviderConfig
+	ordered   []*ProviderConfig
 }
 
 // NewProviderRegistry 创建服务商注册表
 func NewProviderRegistry() *ProviderRegistry {
-	pr := &ProviderRegistry{
+	return &ProviderRegistry{
 		providers: make(map[ProviderType]*ProviderConfig),
+		ordered:   make([]*ProviderConfig, 0),
 	}
-	for _, p := range builtinProviders {
-		pr.providers[p.Type] = p
-	}
-	return pr
 }
 
 // Get 获取服务商配置
@@ -247,12 +83,24 @@ func (pr *ProviderRegistry) GetByID(id string) *ProviderConfig {
 // GetAll 获取所有服务商配置
 func (pr *ProviderRegistry) GetAll() []*ProviderConfig {
 	var result []*ProviderConfig
-	for _, p := range builtinProviders {
+	for _, p := range pr.ordered {
 		if p.Type != ProviderCustom {
 			result = append(result, p)
 		}
 	}
 	return result
+}
+
+func (pr *ProviderRegistry) replaceAll(providers []*ProviderConfig) {
+	pr.providers = make(map[ProviderType]*ProviderConfig, len(providers))
+	pr.ordered = make([]*ProviderConfig, 0, len(providers))
+	for _, p := range providers {
+		if p == nil {
+			continue
+		}
+		pr.providers[p.Type] = p
+		pr.ordered = append(pr.ordered, p)
+	}
 }
 
 // DetectProvider 根据 API Base URL 自动检测服务商
@@ -262,9 +110,9 @@ func (pr *ProviderRegistry) DetectProvider(baseURL string) *ProviderConfig {
 	}
 	b := strings.ToLower(strings.TrimSpace(baseURL))
 
-	// 按特征字符串匹配
-	for _, p := range builtinProviders {
-		if p.Type == ProviderCustom {
+	// 按当前运行时目录快照匹配
+	for _, p := range pr.ordered {
+		if p == nil || p.Type == ProviderCustom {
 			continue
 		}
 		if p.Type == ProviderMiniMax && (strings.Contains(b, "api.minimaxi.com") || strings.Contains(b, "api.minimax.io")) {
@@ -358,34 +206,34 @@ func GetAPIBase(provider ProviderType, apiType APIType, customBase string) strin
 	}
 }
 
-// GetCodePlanModelNames 返回需要使用 Code Plan API 的模型列表
+// GetCodePlanModelNames 返回当前目录快照中需要使用 Code Plan API 的模型列表。
 func GetCodePlanModelNames() []string {
-	return []string{
-		"dashscope-coding-plan-qwen3.6-plus",
-		"dashscope-coding-plan-glm-5",
-		"dashscope-coding-plan-kimi-k2.5",
-		"dashscope-coding-plan-minimax-m2.5",
-		"ark-code-latest",
-		"zhipu-coding-plan-openai",
-		"zhipu-coding-plan-claude",
-		"minimax-token-plan-openai",
-		"minimax-token-plan-claude",
-		"mimo-token-plan-openai-pro",
-		"mimo-token-plan-openai-omni",
-		"mimo-token-plan-claude-pro",
-		"mimo-token-plan-claude-omni",
-	}
-}
-
-// IsCodePlanModel 检查模型是否需要使用 Code Plan API
-func IsCodePlanModel(modelName string) bool {
-	name := strings.ToLower(strings.TrimSpace(modelName))
-	for _, m := range GetCodePlanModelNames() {
-		if strings.ToLower(m) == name {
-			return true
+	result := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, entry := range globalCatalog.GetAll() {
+		if entry == nil || entry.APIType != APITypeCodePlan {
+			continue
+		}
+		for _, key := range []string{entry.ID, entry.ModelName} {
+			key = strings.TrimSpace(key)
+			if key == "" {
+				continue
+			}
+			normalized := strings.ToLower(key)
+			if _, ok := seen[normalized]; ok {
+				continue
+			}
+			seen[normalized] = struct{}{}
+			result = append(result, key)
 		}
 	}
-	return false
+	return result
+}
+
+// IsCodePlanModel 检查模型是否需要使用 Code Plan API。
+func IsCodePlanModel(modelName string) bool {
+	entry := findCatalogEntryByKey(strings.ToLower(strings.TrimSpace(modelName)))
+	return entry != nil && entry.APIType == APITypeCodePlan
 }
 
 // ParseProviderType 从字符串解析服务商类型

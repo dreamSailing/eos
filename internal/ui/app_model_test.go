@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -15,7 +16,7 @@ import (
 	"github.com/dreamSailing/eos/internal/state"
 	"github.com/dreamSailing/eos/internal/ui/features/slash"
 	"github.com/dreamSailing/eos/internal/ui/views/setup"
-	sharedcore "github.com/dreamSailing/eos/pkg/core"
+	"github.com/dreamSailing/eos/pkg/coreapi"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -41,9 +42,19 @@ func setTestHome(t *testing.T) string {
 
 func newTestAppModel(t *testing.T) *AppModel {
 	t.Helper()
-	runtime := sharedcore.NewRuntime()
-	t.Cleanup(runtime.Close)
-	return NewAppModelFromRuntime(runtime)
+	engine := newTestEngine()
+	engine.models = []coreapi.ModelConfig{{
+		Name:    "default-model",
+		APIBase: "https://example.com/v1",
+		Model:   "demo-model",
+	}}
+	engine.activeModel = "default-model"
+	return NewAppModelFromCoreEngine(engine)
+}
+
+func newEmptyTestAppModel(t *testing.T) *AppModel {
+	t.Helper()
+	return NewAppModelFromCoreEngine(newTestEngine())
 }
 
 func sendAppKey(t *testing.T, app *AppModel, msg tea.KeyMsg) *AppModel {
@@ -62,7 +73,7 @@ func TestInitialSetupKeepsWelcomeAfterFirstModelAdded(t *testing.T) {
 	t.Setenv("EOS_API_KEY", "")
 	t.Setenv("EOS_MODEL", "")
 
-	app := newTestAppModel(t)
+	app := newEmptyTestAppModel(t)
 	if app.activeView != "setup" {
 		t.Fatalf("expected setup view on first launch, got %q", app.activeView)
 	}
@@ -194,8 +205,11 @@ func TestHandlePlanStyleSlashShowsCurrentAndSavesWorkspaceSetting(t *testing.T) 
 	}
 
 	app.handlePlanStyleSlash([]string{"detailed"})
-	if got := app.adapter.GetCore().GetSettings().PlanPromptStyle; got != "detailed" {
-		t.Fatalf("runtime PlanPromptStyle=%q, want detailed", got)
+	ctx := context.Background()
+	if got, err := app.adapter.Settings(ctx); err != nil {
+		t.Fatalf("Settings() error = %v", err)
+	} else if got.PlanPromptStyle != "detailed" {
+		t.Fatalf("Settings.PlanPromptStyle=%q, want detailed", got.PlanPromptStyle)
 	}
 
 	raw, err := os.ReadFile(filepath.Join(workspace, ".eos", "settings.json"))
@@ -216,7 +230,10 @@ func TestHandlePermissionsSlashSupportsAccessAndApprovalModes(t *testing.T) {
 	app := newTestAppModel(t)
 
 	app.handlePermissionsSlash([]string{"access", "read-only"})
-	snap := app.adapter.GetCore().PermissionSnapshot()
+	snap, err := app.adapter.PermissionSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("PermissionSnapshot() error = %v", err)
+	}
 	if got := snap.AccessMode; got != "read-only" {
 		t.Fatalf("accessMode=%q, want read-only", got)
 	}
@@ -225,7 +242,10 @@ func TestHandlePermissionsSlashSupportsAccessAndApprovalModes(t *testing.T) {
 	}
 
 	app.handlePermissionsSlash([]string{"approval", "never"})
-	snap = app.adapter.GetCore().PermissionSnapshot()
+	snap, err = app.adapter.PermissionSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("PermissionSnapshot() error = %v", err)
+	}
 	if got := snap.ApprovalMode; got != "never" {
 		t.Fatalf("approvalMode=%q, want never", got)
 	}
@@ -297,9 +317,13 @@ func TestPromptRequestNonPermissionStillUsesConfirmView(t *testing.T) {
 func TestHandleStatusSlashShowsAccessAndApprovalModes(t *testing.T) {
 	setTestHome(t)
 	app := newTestAppModel(t)
-	core := app.adapter.GetCore()
-	core.SetAccessMode("danger-full-access")
-	core.SetApprovalMode("never")
+	ctx := context.Background()
+	if err := app.adapter.SetAccessMode(ctx, "danger-full-access"); err != nil {
+		t.Fatalf("SetAccessMode() error = %v", err)
+	}
+	if err := app.adapter.SetApprovalMode(ctx, "never"); err != nil {
+		t.Fatalf("SetApprovalMode() error = %v", err)
+	}
 
 	app.handleStatusSlash()
 	last := app.history[len(app.history)-1].content

@@ -14,11 +14,11 @@ import (
 
 type AgentTurnModelRunner struct {
 	Turns     TurnService
-	Events    EventBus
+	Events    EventSubscriber
 	SessionID string
 }
 
-func NewAgentTurnModelRunner(turns TurnService, events EventBus) AgentTurnModelRunner {
+func NewAgentTurnModelRunner(turns TurnService, events EventSubscriber) AgentTurnModelRunner {
 	return AgentTurnModelRunner{Turns: turns, Events: events}
 }
 
@@ -34,13 +34,17 @@ func (r AgentTurnModelRunner) RunModel(ctx context.Context, req agentcore.ModelR
 	if r.Turns == nil {
 		return agentcore.ModelResponse{}, fmt.Errorf("agent model runner: %w", ErrUnsupported)
 	}
+	sessionID := strings.TrimSpace(r.SessionID)
+	if sessionID == "" {
+		return agentcore.ModelResponse{}, errors.New("agent model runner: session_id is required")
+	}
 	turnID := defaultAgentTurnID(req.Agent.ID)
 	var (
 		events <-chan protocol.Envelope
 	)
 	if r.Events != nil {
 		ch, err := r.Events.Subscribe(ctx, EventFilter{
-			SessionID: strings.TrimSpace(r.SessionID),
+			SessionID: sessionID,
 			TurnID:    turnID,
 			AgentID:   strings.TrimSpace(req.Agent.ID),
 		})
@@ -50,7 +54,7 @@ func (r AgentTurnModelRunner) RunModel(ctx context.Context, req agentcore.ModelR
 		events = ch
 	}
 	turn, err := r.Turns.Start(ctx, StartTurnRequest{
-		SessionID: strings.TrimSpace(r.SessionID),
+		SessionID: sessionID,
 		TurnID:    turnID,
 		Input:     BuildAgentModelInput(req),
 		Options:   append(json.RawMessage(nil), req.Options...),

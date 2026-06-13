@@ -24,13 +24,13 @@ import (
 	"github.com/dreamSailing/eos/internal/ui/features/slash"
 	"github.com/dreamSailing/eos/internal/ui/panels"
 	"github.com/dreamSailing/eos/internal/ui/styles"
+	sidecarclient "github.com/dreamSailing/eos/pkg/coreapi/sidecar/client"
 	"github.com/dreamSailing/eos/internal/ui/views/confirm"
 	"github.com/dreamSailing/eos/internal/ui/views/help"
 	"github.com/dreamSailing/eos/internal/ui/views/setup"
 	"github.com/dreamSailing/eos/internal/ui/views/shell"
 	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/version"
-	sharedcore "github.com/dreamSailing/eos/pkg/core"
 	"github.com/dreamSailing/eos/pkg/coreapi"
 
 	"github.com/atotto/clipboard"
@@ -52,7 +52,7 @@ type AppModel struct {
 	width, height int
 	state         AppState
 
-	adapter *adapter.RuntimeAdapter
+	adapter *adapter.CoreClientAdapter
 	styles  *styles.Styles
 
 	// 消息渲染器
@@ -353,17 +353,8 @@ type historyEntry struct {
 	copiedAt      time.Time
 }
 
-func resolveShellWelcomeInfo(adapter *adapter.RuntimeAdapter) (string, string) {
+func resolveShellWelcomeInfo(adapter *adapter.CoreClientAdapter) (string, string) {
 	modelName, modelBase := adapter.GetModelInfo()
-	if modelName == "" || modelBase == "" {
-		base, _, mdl, _ := adapter.ResolveAPIConfig()
-		if modelName == "" {
-			modelName = mdl
-		}
-		if modelBase == "" {
-			modelBase = base
-		}
-	}
 	if modelName == "" {
 		modelName = "(none)"
 	}
@@ -373,11 +364,32 @@ func resolveShellWelcomeInfo(adapter *adapter.RuntimeAdapter) (string, string) {
 	return modelName, modelBase
 }
 
-func NewAppModelFromRuntime(runtime *sharedcore.Runtime) *AppModel {
-	return newAppModel(adapter.NewRuntimeAdapterFromRuntime(runtime))
+// NewAppModelFromCoreClient 用已 handshake 的 sidecar Client 构造 AppModel。
+// 这是生产路径：TUI 通过 pkg/coreapi/sidecar/client 启动 eos-core --app-server --stdio。
+func NewAppModelFromCoreClient(client *sidecarclient.Client) *AppModel {
+	return newAppModel(hydrateCatalogFromAdapter(adapter.NewCoreClientAdapter(client)))
 }
 
-func newAppModel(adapter *adapter.RuntimeAdapter) *AppModel {
+// NewAppModelFromCoreEngine 直接用 coreapi.Engine 构造 AppModel。
+// 供测试场景使用（不启动 sidecar 子进程）。
+func NewAppModelFromCoreEngine(engine coreapi.Engine) *AppModel {
+	return newAppModel(hydrateCatalogFromAdapter(adapter.NewCoreClientAdapterFromEngine(engine)))
+}
+
+func hydrateCatalogFromAdapter(coreAdapter *adapter.CoreClientAdapter) *adapter.CoreClientAdapter {
+	if coreAdapter == nil {
+		return nil
+	}
+	catalog, err := coreAdapter.ModelCatalog(context.Background())
+	if err != nil {
+		ai.ApplyCoreModelCatalog(coreapi.ModelCatalogState{})
+		return coreAdapter
+	}
+	ai.ApplyCoreModelCatalog(catalog)
+	return coreAdapter
+}
+
+func newAppModel(adapter *adapter.CoreClientAdapter) *AppModel {
 	theme := styles.GetTheme("dark")
 	styles := styles.NewStyles(theme)
 
@@ -431,16 +443,15 @@ func newAppModel(adapter *adapter.RuntimeAdapter) *AppModel {
 	setupView := any(setup.NewSetupView(styles))
 	activeView := "shell"
 	initialSetupFlow := false
-	if len(cfg.Models) == 0 {
-		base, key, model, _ := adapter.ResolveAPIConfig()
-		if strings.TrimSpace(base) == "" || strings.TrimSpace(key) == "" || strings.TrimSpace(model) == "" {
-			wizard := setup.NewModelSetupWizard(styles, lang)
-			wizard.SetSize(80, 24)
-			setupView = wizard
-			activeView = "setup"
-			initialSetupFlow = true
-			shellModel.BlurInput()
-		}
+	models, _, _ := adapter.ModelEntries(context.Background())
+	hasConfiguredModel := len(models) > 0
+	if !hasConfiguredModel {
+		wizard := setup.NewModelSetupWizard(styles, lang)
+		wizard.SetSize(80, 24)
+		setupView = wizard
+		activeView = "setup"
+		initialSetupFlow = true
+		shellModel.BlurInput()
 	}
 
 	return &AppModel{
@@ -473,7 +484,7 @@ func (m *AppModel) Init() tea.Cmd {
 	m.height = 24
 
 	if p, _ := os.Getwd(); p != "" {
-		abs := normalizeWorkspacePath(p)
+		abs := config.NormalizeWorkspacePath(p)
 		rememberKnownWorkspace(abs, true)
 		if m.isWorkspaceTrusted(abs) {
 			_ = m.adapter.StartContextEngine(context.Background(), abs)
@@ -1937,9 +1948,9 @@ func (m *AppModel) openConfirm(req confirm.Request) {
 
 func (m *AppModel) isWorkspaceTrusted(path string) bool {
 	cfg, _ := config.Load()
-	want := normalizeWorkspacePath(path)
+	want := config.NormalizeWorkspacePath(path)
 	for _, p := range cfg.TrustedWorkspaces {
-		if pathsEqual(normalizeWorkspacePath(p), want) {
+		if config.PathsEqual(config.NormalizeWorkspacePath(p), want) {
 			return true
 		}
 	}
@@ -1951,9 +1962,9 @@ func (m *AppModel) addTrustedWorkspace(path string) {
 	if strings.TrimSpace(cfgPath) == "" {
 		return
 	}
-	want := normalizeWorkspacePath(path)
+	want := config.NormalizeWorkspacePath(path)
 	for _, p := range cfg.TrustedWorkspaces {
-		if pathsEqual(normalizeWorkspacePath(p), want) {
+		if config.PathsEqual(config.NormalizeWorkspacePath(p), want) {
 			return
 		}
 	}
@@ -1980,33 +1991,7 @@ func resolveWorkspaceInputPath(raw string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("路径解析失败: %v", err)
 	}
-	return normalizeWorkspacePath(abs), nil
-}
-
-func normalizeWorkspacePath(p string) string {
-	p = strings.TrimSpace(p)
-	if p == "" {
-		return ""
-	}
-	p = filepath.Clean(p)
-	p = filepath.Clean(filepath.FromSlash(p))
-	if vol := filepath.VolumeName(p); vol != "" {
-		rest := strings.TrimPrefix(p, vol)
-		p = strings.ToUpper(vol) + rest
-	}
-	return p
-}
-
-func pathsEqual(a, b string) bool {
-	a = strings.TrimSpace(a)
-	b = strings.TrimSpace(b)
-	if a == "" || b == "" {
-		return false
-	}
-	if strings.EqualFold(filepath.VolumeName(a), filepath.VolumeName(b)) {
-		return strings.EqualFold(a, b)
-	}
-	return a == b
+	return config.NormalizeWorkspacePath(abs), nil
 }
 
 // sendMessage 发送消息
@@ -2135,10 +2120,6 @@ func (m *AppModel) refreshContextPanel() {
 	}
 
 	model, _ := m.adapter.GetModelInfo()
-	if model == "" {
-		_, _, mdl, _ := m.adapter.ResolveAPIConfig()
-		model = strings.TrimSpace(mdl)
-	}
 	panel.SetStats(model, ai.ContextWindowTokens(model), 0, stats.Estimated)
 
 	msgs := make([]panels.ContextMessage, 0, len(preview))
@@ -2679,10 +2660,6 @@ func (m *AppModel) pasteClipboardImage() tea.Cmd {
 	m.pendingImagePaths = append(m.pendingImagePaths, path)
 	m.appendSystem("已添加图片: "+filepath.Base(path), "success")
 	modelName, _ := m.adapter.GetModelInfo()
-	if strings.TrimSpace(modelName) == "" {
-		_, _, mdl, _ := m.adapter.ResolveAPIConfig()
-		modelName = mdl
-	}
 	if strings.TrimSpace(modelName) != "" && !ai.SupportsVisionFromCatalog(modelName) {
 		m.appendSystem("当前模型可能不具备视觉能力，图片可能无法解析", "warning")
 	}
@@ -2951,20 +2928,29 @@ func (m *AppModel) refreshModelsPanel() {
 		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("刷新模型列表失败", "Failed to refresh models"), err), "error")
 		return
 	}
-	if strings.TrimSpace(active) == "" {
-		active, _ = m.adapter.GetModelInfo()
+	if snapshot, snapErr := m.adapter.ModelContext(context.Background()); snapErr == nil && strings.TrimSpace(snapshot.ResolvedModelName) != "" {
+		active = strings.TrimSpace(snapshot.ResolvedModelName)
 	}
 	panel.SetModels(models, active)
 }
 
 // handleModelSelect 处理模型选择
 func (m *AppModel) handleModelSelect(msg panels.ModelSelectMsg) {
-	if err := m.adapter.ActivateModel(context.Background(), msg.Name); err != nil {
+	scope, err := m.adapter.SelectModelForCurrentContext(context.Background(), msg.Name)
+	if err != nil {
 		m.appendSystem(fmt.Sprintf("Failed to switch model: %s", msg.Name), "error")
 		return
 	}
 	m.refreshModelsPanel()
-	m.appendSystem(fmt.Sprintf("Switched model: %s", msg.Name), "success")
+	m.refreshShellWelcomeInfo()
+	switch scope {
+	case "session":
+		m.appendSystem(fmt.Sprintf("Switched current session model: %s", msg.Name), "success")
+	case "workspace":
+		m.appendSystem(fmt.Sprintf("Switched workspace model: %s", msg.Name), "success")
+	default:
+		m.appendSystem(fmt.Sprintf("Switched global default model: %s", msg.Name), "success")
+	}
 }
 
 // handleModelDelete 处理模型删除
@@ -3015,12 +3001,12 @@ func (m *AppModel) handleModelFormComplete(msg setup.ModelFormCompleteMsg) {
 			m.appendSystem(fmt.Sprintf("Updated model: %s", name), "success")
 		}
 	} else {
-		// 添加模式：添加新模型并设置为活动
+		// 添加模式：添加新模型并设置为当前上下文模型
 		if err := m.adapter.UpsertModelEntry(context.Background(), entry); err == nil {
-			_ = m.adapter.ActivateModel(context.Background(), name)
+			_, _ = m.adapter.SelectModelForCurrentContext(context.Background(), name)
 			m.refreshShellWelcomeInfo()
 			if !suppressSuccessMessage {
-				m.appendSystem(fmt.Sprintf("Added and switched to model: %s", name), "success")
+				m.appendSystem(fmt.Sprintf("Added and selected model: %s", name), "success")
 			}
 		} else {
 			m.appendSystem(fmt.Sprintf("Failed to add model: %s", name), "error")

@@ -8,13 +8,13 @@ package adapter
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/bridge"
 	"github.com/dreamSailing/eos/pkg/protocol"
 )
 
-// bridge 边界说明: 此文件中 bridge.Event 仅用于将 legacy 事件归一化为
-// protocol.EventType 常量。新增事件类型应直接使用 protocol.Envelope，
-// 不应再引入 bridge 事件类型。
+// bridge 边界说明: 本文件已脱离 bridge 依赖。
+// 旧版本的 normalizeRuntimeEvent(bridge.Event) 在 Go legacy 引擎废弃后被删除。
+// 事件归一化现在由 core_client.go 中的 runtimeEventFromEnvelope 负责。
+// 本文件保留 protocol.Envelope 字段归一化与文本/工具提示归一化 helper。
 
 type RuntimeEvent struct {
 	Type    string
@@ -28,90 +28,6 @@ type PromptResponse struct {
 	Option      string
 	OptionIndex int
 	Text        string
-}
-
-func normalizeRuntimeEvent(ev bridge.Event) RuntimeEvent {
-	out := RuntimeEvent{
-		Type:    strings.TrimSpace(ev.Type),
-		RID:     strings.TrimSpace(ev.RID),
-		Content: strings.TrimSpace(ev.Content),
-		Data:    cloneDataMap(ev.Data),
-	}
-	if out.Data == nil {
-		out.Data = map[string]any{}
-	}
-
-	switch out.Type {
-	case "meta", "delta":
-		out.Type = string(protocol.EventTypeTextDelta)
-		ensurePayloadText(out.Data, out.Content)
-	case "final":
-		out.Type = string(protocol.EventTypeTextFinal)
-		ensurePayloadText(out.Data, out.Content)
-	case "reasoning", "phase.note":
-		out.Type = string(protocol.EventTypeTextReasoning)
-		ensurePayloadText(out.Data, out.Content)
-	case "tool_call":
-		out.Type = string(protocol.EventTypeToolCall)
-		ensureToolName(out.Data, out.Content)
-	case "tool_result":
-		out.Type = string(protocol.EventTypeToolResult)
-		ensureToolResult(out.Data, out.Content)
-	case "prompt.request":
-		kind := strings.ToLower(strings.TrimSpace(stringValue(out.Data, "kind")))
-		if kind == "inquiry" {
-			out.Type = string(protocol.EventTypeInquiryReq)
-			ensureInquiryPayload(out.Data, out.RID, out.Content)
-		} else {
-			out.Type = string(protocol.EventTypeApprovalReq)
-			ensureApprovalPayload(out.Data, out.RID, out.Content)
-		}
-	case "agent.task":
-		out.Type = string(protocol.EventTypeAgentProgress)
-		if _, ok := out.Data["task"]; !ok && out.Content != "" {
-			out.Data["task"] = out.Content
-		}
-		if _, ok := out.Data["message"]; !ok && out.Content != "" {
-			out.Data["message"] = out.Content
-		}
-	case "agent.final":
-		out.Type = string(protocol.EventTypeAgentDone)
-		ensurePayloadText(out.Data, out.Content)
-	case "error":
-		out.Type = string(protocol.EventTypeRequestFailed)
-		if _, ok := out.Data["error"]; !ok && out.Content != "" {
-			out.Data["error"] = out.Content
-		}
-	case string(protocol.EventTypeTextDelta),
-		string(protocol.EventTypeTextFinal),
-		string(protocol.EventTypeTextReasoning):
-		ensurePayloadText(out.Data, out.Content)
-	case string(protocol.EventTypeToolCall):
-		ensureToolName(out.Data, out.Content)
-	case string(protocol.EventTypeToolResult):
-		ensureToolResult(out.Data, out.Content)
-	case string(protocol.EventTypeApprovalReq):
-		ensureApprovalPayload(out.Data, out.RID, out.Content)
-	case string(protocol.EventTypeInquiryReq):
-		ensureInquiryPayload(out.Data, out.RID, out.Content)
-	case string(protocol.EventTypeRequestFailed):
-		if _, ok := out.Data["error"]; !ok && out.Content != "" {
-			out.Data["error"] = out.Content
-		}
-	case string(protocol.EventTypeAgentStarted),
-		string(protocol.EventTypeAgentProgress),
-		string(protocol.EventTypeAgentDone),
-		string(protocol.EventTypeAgentFailed),
-		string(protocol.EventTypeTaskStarted),
-		string(protocol.EventTypeTaskUpdated),
-		string(protocol.EventTypeTaskDone),
-		string(protocol.EventTypeTaskFailed):
-		if _, ok := out.Data["message"]; !ok && out.Content != "" {
-			out.Data["message"] = out.Content
-		}
-	}
-
-	return out
 }
 
 func ensurePayloadText(payload map[string]any, content string) {
@@ -190,4 +106,25 @@ func stringValue(payload map[string]any, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// ensureProtocolPayload 是给 protocol.Envelope 用的归一化入口。
+func ensureProtocolPayload(payload map[string]any, content, eventType string) {
+	if payload == nil {
+		return
+	}
+	switch eventType {
+	case string(protocol.EventTypeTextDelta),
+		string(protocol.EventTypeTextFinal),
+		string(protocol.EventTypeTextReasoning):
+		ensurePayloadText(payload, content)
+	case string(protocol.EventTypeToolCall):
+		ensureToolName(payload, content)
+	case string(protocol.EventTypeToolResult):
+		ensureToolResult(payload, content)
+	case string(protocol.EventTypeApprovalReq):
+		ensureApprovalPayload(payload, "", content)
+	case string(protocol.EventTypeInquiryReq):
+		ensureInquiryPayload(payload, "", content)
+	}
 }

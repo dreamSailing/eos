@@ -34,13 +34,13 @@ func (s *fakeTurnServiceForAgent) Interrupt(_ context.Context, ref TurnRef) erro
 	return nil
 }
 
-type fakeEventBusForAgent struct {
+type fakeEventSubscriberForAgent struct {
 	filter EventFilter
 	ch     chan protocol.Envelope
 	err    error
 }
 
-func (b *fakeEventBusForAgent) Subscribe(_ context.Context, filter EventFilter) (<-chan protocol.Envelope, error) {
+func (b *fakeEventSubscriberForAgent) Subscribe(_ context.Context, filter EventFilter) (<-chan protocol.Envelope, error) {
 	b.filter = filter
 	if b.err != nil {
 		return nil, b.err
@@ -51,11 +51,9 @@ func (b *fakeEventBusForAgent) Subscribe(_ context.Context, filter EventFilter) 
 	return b.ch, nil
 }
 
-func (b *fakeEventBusForAgent) Publish(context.Context, protocol.Envelope) error { return nil }
-
 func TestAgentTurnModelRunnerBuildsRoleAwareTurnAndWaitsForCompletion(t *testing.T) {
 	turns := &fakeTurnServiceForAgent{}
-	events := &fakeEventBusForAgent{ch: make(chan protocol.Envelope, 4)}
+	events := &fakeEventSubscriberForAgent{ch: make(chan protocol.Envelope, 4)}
 	runner := NewAgentTurnModelRunner(turns, events).WithSession("sess-1")
 	req := agentcore.ModelRequest{
 		Agent:           agentcore.Agent{ID: "agent/1", RoleID: "reviewer", Task: "inspect changes"},
@@ -98,12 +96,12 @@ func TestAgentTurnModelRunnerBuildsRoleAwareTurnAndWaitsForCompletion(t *testing
 }
 
 func TestAgentTurnModelRunnerReturnsFailureEventError(t *testing.T) {
-	events := &fakeEventBusForAgent{ch: make(chan protocol.Envelope, 1)}
+	events := &fakeEventSubscriberForAgent{ch: make(chan protocol.Envelope, 1)}
 	events.ch <- protocol.NewEvent(protocol.EventTypeRequestFailed, protocol.EventOptions{
 		RequestID: "agent_turn_agent-1",
 		Payload:   map[string]any{"error": "boom"},
 	})
-	runner := NewAgentTurnModelRunner(&fakeTurnServiceForAgent{}, events)
+	runner := NewAgentTurnModelRunner(&fakeTurnServiceForAgent{}, events).WithSession("sess-1")
 
 	resp, err := runner.RunModel(context.Background(), agentcore.ModelRequest{
 		Agent: agentcore.Agent{ID: "agent-1"},
@@ -119,8 +117,8 @@ func TestAgentTurnModelRunnerReturnsFailureEventError(t *testing.T) {
 
 func TestAgentTurnModelRunnerInterruptsOnCancellation(t *testing.T) {
 	turns := &fakeTurnServiceForAgent{}
-	events := &fakeEventBusForAgent{ch: make(chan protocol.Envelope)}
-	runner := NewAgentTurnModelRunner(turns, events)
+	events := &fakeEventSubscriberForAgent{ch: make(chan protocol.Envelope)}
+	runner := NewAgentTurnModelRunner(turns, events).WithSession("sess-1")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 

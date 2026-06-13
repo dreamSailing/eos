@@ -142,7 +142,6 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&cliSkipPermissions, "dangerously-skip-permissions", false, "Compatibility alias for --access-mode danger-full-access --approval-mode never")
 
 	rootCmd.AddCommand(newBridgeCmd())
-	rootCmd.AddCommand(newAppServerCmd())
 	rootCmd.AddCommand(newDaemonCmd())
 	rootCmd.AddCommand(newDocumentCmd())
 	rootCmd.AddCommand(newExecCmd())

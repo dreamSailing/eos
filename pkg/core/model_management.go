@@ -1,3 +1,5 @@
+//go:build legacy
+
 package core
 
 // Copyright (c) 2026 DreamSailing
@@ -123,8 +125,8 @@ func (r *Runtime) ModelCatalog() ModelCatalogState {
 	return ModelCatalogState{
 		Providers:           items,
 		Presets:             presets,
-		AllowCustomProvider: true,
-		AllowCustomModel:    true,
+		AllowCustomProvider: ai.AllowCustomProviderFromCatalog(),
+		AllowCustomModel:    ai.AllowCustomModelFromCatalog(),
 	}
 }
 

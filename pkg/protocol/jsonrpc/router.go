@@ -88,7 +88,7 @@ func (c *InProcessClient) Call(ctx context.Context, method string, params any, o
 		return err
 	}
 	if resp.Error != nil {
-		return fmt.Errorf("jsonrpc error %d: %s", resp.Error.Code, resp.Error.Message)
+		return NewRPCError(resp.Error)
 	}
 	if out == nil || len(resp.Result) == 0 {
 		return nil

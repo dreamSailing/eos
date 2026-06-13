@@ -90,7 +90,28 @@ func TestConvertEventRequestCompletedUsesInvokeDone(t *testing.T) {
 		Type: string(protocol.EventTypeRequestDone),
 		RID:  "req-3",
 		Data: map[string]any{
+			"text":    "completed turn text",
 			"message": "request completed",
+		},
+	})
+
+	done, ok := msg.(InvokeDoneMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want InvokeDoneMsg", msg)
+	}
+	if done.Content != "completed turn text" {
+		t.Fatalf("Content=%q, want completed turn text", done.Content)
+	}
+}
+
+func TestConvertEventRequestCompletedEmptyTextFallsBackToStream(t *testing.T) {
+	// turn.completed 在 text 为空时，Go 侧依赖 aiLive 缓冲区回退。
+	// 此测试验证即使 "text" 键缺失或为空，InvokeDoneMsg 仍正常返回。
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
+		Type: string(protocol.EventTypeRequestDone),
+		RID:  "req-4",
+		Data: map[string]any{
+			"message": "request completed without text",
 		},
 	})
 

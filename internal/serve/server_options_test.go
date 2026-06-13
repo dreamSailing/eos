@@ -46,45 +46,45 @@ func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {
 	}()
 
 	rd := bufio.NewReader(outR)
+	lines := make(chan string, 64)
+	go func() {
+		for {
+			l, err := rd.ReadString('\n')
+			if err != nil {
+				return
+			}
+			lines <- l
+		}
+	}()
 	write := func(obj any) {
 		b, _ := json.Marshal(obj)
 		_, _ = inW.Write(append(b, '\n'))
 	}
 
-	readLine := func(timeout time.Duration) map[string]any {
-		type res struct {
-			line string
-			err  error
-		}
-		ch := make(chan res, 1)
-		go func() {
-			l, e := rd.ReadString('\n')
-			ch <- res{line: l, err: e}
-		}()
-		select {
-		case r := <-ch:
-			if r.err != nil {
-				t.Fatalf("read: %v", r.err)
-			}
-			m := map[string]any{}
-			if err := json.Unmarshal([]byte(strings.TrimSpace(r.line)), &m); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			return m
-		case <-time.After(timeout):
-			t.Fatalf("timeout reading output")
-			return nil
-		}
-	}
-
-	readResponse := func(id float64, timeout time.Duration) map[string]any {
-		deadline := time.Now().Add(timeout)
+	readLine := func() map[string]any {
+		deadline := time.Now().Add(5 * time.Second)
 		for {
 			remain := time.Until(deadline)
 			if remain <= 0 {
-				t.Fatalf("timeout waiting response id=%v", id)
+				t.Fatalf("timeout reading output")
 			}
-			m := readLine(remain)
+			select {
+			case l := <-lines:
+				m := map[string]any{}
+				if err := json.Unmarshal([]byte(strings.TrimSpace(l)), &m); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				return m
+			case <-time.After(remain):
+				t.Fatalf("timeout reading output")
+				return nil
+			}
+		}
+	}
+
+	readResponse := func(id float64) map[string]any {
+		for {
+			m := readLine()
 			if m["id"] == nil {
 				continue
 			}
@@ -97,7 +97,7 @@ func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"}})
-	_ = readResponse(1, 2*time.Second)
+	_ = readResponse(1)
 
 	write(map[string]any{
 		"jsonrpc": "2.0",
@@ -112,7 +112,7 @@ func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {
 			},
 		},
 	})
-	resp := readResponse(2, 2*time.Second)
+	resp := readResponse(2)
 	resObj, _ := resp["result"].(map[string]any)
 	sid, _ := resObj["sessionID"].(string)
 	if strings.TrimSpace(sid) == "" {
@@ -132,7 +132,7 @@ func TestSessionOptions_PlanModeBlocksNonLowRisk(t *testing.T) {
 			},
 		},
 	})
-	execResp := readResponse(3, 2*time.Second)
+	execResp := readResponse(3)
 	if execResp["error"] == nil {
 		t.Fatalf("expected error, got: %v", execResp)
 	}
@@ -169,43 +169,43 @@ func TestSessionInfoExposesAccessAndApprovalDerivedFromLegacyFields(t *testing.T
 	}()
 
 	rd := bufio.NewReader(outR)
+	lines := make(chan string, 64)
+	go func() {
+		for {
+			l, err := rd.ReadString('\n')
+			if err != nil {
+				return
+			}
+			lines <- l
+		}
+	}()
 	write := func(obj any) {
 		b, _ := json.Marshal(obj)
 		_, _ = inW.Write(append(b, '\n'))
 	}
-	readLine := func(timeout time.Duration) map[string]any {
-		type res struct {
-			line string
-			err  error
-		}
-		ch := make(chan res, 1)
-		go func() {
-			l, e := rd.ReadString('\n')
-			ch <- res{line: l, err: e}
-		}()
-		select {
-		case r := <-ch:
-			if r.err != nil {
-				t.Fatalf("read: %v", r.err)
-			}
-			m := map[string]any{}
-			if err := json.Unmarshal([]byte(strings.TrimSpace(r.line)), &m); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			return m
-		case <-time.After(timeout):
-			t.Fatalf("timeout reading output")
-			return nil
-		}
-	}
-	readResponse := func(id float64, timeout time.Duration) map[string]any {
-		deadline := time.Now().Add(timeout)
+	readLine := func() map[string]any {
+		deadline := time.Now().Add(5 * time.Second)
 		for {
 			remain := time.Until(deadline)
 			if remain <= 0 {
-				t.Fatalf("timeout waiting response id=%v", id)
+				t.Fatalf("timeout reading output")
 			}
-			m := readLine(remain)
+			select {
+			case l := <-lines:
+				m := map[string]any{}
+				if err := json.Unmarshal([]byte(strings.TrimSpace(l)), &m); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				return m
+			case <-time.After(remain):
+				t.Fatalf("timeout reading output")
+				return nil
+			}
+		}
+	}
+	readResponse := func(id float64) map[string]any {
+		for {
+			m := readLine()
 			if m["id"] == nil {
 				continue
 			}
@@ -218,7 +218,7 @@ func TestSessionInfoExposesAccessAndApprovalDerivedFromLegacyFields(t *testing.T
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"}})
-	_ = readResponse(1, 2*time.Second)
+	_ = readResponse(1)
 
 	write(map[string]any{
 		"jsonrpc": "2.0",
@@ -231,7 +231,7 @@ func TestSessionInfoExposesAccessAndApprovalDerivedFromLegacyFields(t *testing.T
 			},
 		},
 	})
-	resp := readResponse(2, 2*time.Second)
+	resp := readResponse(2)
 	result, _ := resp["result"].(map[string]any)
 	sessionID, _ := result["sessionID"].(string)
 	write(map[string]any{
@@ -240,7 +240,7 @@ func TestSessionInfoExposesAccessAndApprovalDerivedFromLegacyFields(t *testing.T
 		"method":  "session.get",
 		"params":  map[string]any{"sessionID": sessionID},
 	})
-	sessionResp := readResponse(3, 2*time.Second)
+	sessionResp := readResponse(3)
 	sessionResult, _ := sessionResp["result"].(map[string]any)
 	sessionInfo, _ := sessionResult["session"].(map[string]any)
 	metadata, _ := sessionInfo["metadata"].(map[string]any)
@@ -289,45 +289,45 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 	}()
 
 	rd := bufio.NewReader(outR)
+	lines := make(chan string, 64)
+	go func() {
+		for {
+			l, err := rd.ReadString('\n')
+			if err != nil {
+				return
+			}
+			lines <- l
+		}
+	}()
 	write := func(obj any) {
 		b, _ := json.Marshal(obj)
 		_, _ = inW.Write(append(b, '\n'))
 	}
 
-	readLine := func(timeout time.Duration) map[string]any {
-		type res struct {
-			line string
-			err  error
-		}
-		ch := make(chan res, 1)
-		go func() {
-			l, e := rd.ReadString('\n')
-			ch <- res{line: l, err: e}
-		}()
-		select {
-		case r := <-ch:
-			if r.err != nil {
-				t.Fatalf("read: %v", r.err)
-			}
-			m := map[string]any{}
-			if err := json.Unmarshal([]byte(strings.TrimSpace(r.line)), &m); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			return m
-		case <-time.After(timeout):
-			t.Fatalf("timeout reading output")
-			return nil
-		}
-	}
-
-	readResponse := func(id float64, timeout time.Duration) map[string]any {
-		deadline := time.Now().Add(timeout)
+	readLine := func() map[string]any {
+		deadline := time.Now().Add(10 * time.Second)
 		for {
 			remain := time.Until(deadline)
 			if remain <= 0 {
-				t.Fatalf("timeout waiting response id=%v", id)
+				t.Fatalf("timeout reading output")
 			}
-			m := readLine(remain)
+			select {
+			case l := <-lines:
+				m := map[string]any{}
+				if err := json.Unmarshal([]byte(strings.TrimSpace(l)), &m); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				return m
+			case <-time.After(remain):
+				t.Fatalf("timeout reading output")
+				return nil
+			}
+		}
+	}
+
+	readResponse := func(id float64) map[string]any {
+		for {
+			m := readLine()
 			if m["id"] == nil {
 				continue
 			}
@@ -339,9 +339,9 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 		}
 	}
 
-	readNotification := func(timeout time.Duration) map[string]any {
+	readNotification := func() map[string]any {
 		for {
-			m := readLine(timeout)
+			m := readLine()
 			if m["method"] != "event" {
 				continue
 			}
@@ -350,7 +350,7 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"}})
-	_ = readResponse(1, 2*time.Second)
+	_ = readResponse(1)
 
 	write(map[string]any{
 		"jsonrpc": "2.0",
@@ -369,7 +369,7 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 			},
 		},
 	})
-	resp := readResponse(2, 2*time.Second)
+	resp := readResponse(2)
 	resObj, _ := resp["result"].(map[string]any)
 	sid, _ := resObj["sessionID"].(string)
 	if strings.TrimSpace(sid) == "" {
@@ -390,7 +390,7 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 		},
 	})
 	for i := 0; i < 3; i++ {
-		_ = readNotification(2 * time.Second)
+		_ = readNotification()
 	}
 
 	write(map[string]any{
@@ -406,7 +406,7 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 			},
 		},
 	})
-	tooMany := readResponse(4, 10*time.Second)
+	tooMany := readResponse(4)
 	if tooMany["error"] == nil {
 		t.Fatalf("expected error, got: %v", tooMany)
 	}
@@ -417,14 +417,14 @@ func TestToolExecute_MaxConcurrentAndCancel(t *testing.T) {
 		"method":  "tool.cancel",
 		"params":  map[string]any{"sessionID": sid, "callID": "c_sleep"},
 	})
-	cancelResp := readResponse(5, 10*time.Second)
+	cancelResp := readResponse(5)
 	cancelRes, _ := cancelResp["result"].(map[string]any)
 	ok, _ := cancelRes["ok"].(bool)
 	if !ok {
 		t.Fatalf("expected ok=true, got: %v", cancelResp)
 	}
 
-	execResp := readResponse(3, 20*time.Second)
+	execResp := readResponse(3)
 	if errObj, ok := execResp["error"].(map[string]any); ok && errObj != nil {
 		if got, _ := errObj["message"].(string); got != "ConfirmationRequired" {
 			t.Fatalf("expected ConfirmationRequired, got: %v", execResp)

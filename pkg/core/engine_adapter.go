@@ -1,3 +1,5 @@
+//go:build legacy
+
 package core
 
 import (
@@ -6,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -135,12 +138,16 @@ func (e *legacyEngine) ToolCatalog() coreapi.ToolCatalogService {
 	return legacyToolCatalogService{rt: e.rt}
 }
 
-func (e *legacyEngine) Events() coreapi.EventBus {
+func (e *legacyEngine) Events() coreapi.EventSubscriber {
 	return legacyEventBus{rt: e.rt}
 }
 
 func (e *legacyEngine) Sandbox() coreapi.SandboxService {
 	return legacySandboxService{rt: e.rt}
+}
+
+func (e *legacyEngine) Diagnostics() coreapi.DiagnosticsService {
+	return legacyDiagnosticsService{rt: e.rt}
 }
 
 type legacyStateService struct {
@@ -974,6 +981,50 @@ func (s legacyModelService) SyncEnv(context.Context) error {
 	return s.rt.SyncEnvModel()
 }
 
+func (s legacyModelService) Context(context.Context, coreapi.ModelContextRequest) (coreapi.ModelContextSnapshot, error) {
+	if s.rt == nil {
+		return coreapi.ModelContextSnapshot{}, unsupported("model/context")
+	}
+	for _, desc := range s.rt.ListModelDescriptors() {
+		if desc.IsActive {
+			return coreapi.ModelContextSnapshot{
+				GlobalDefaultName: strings.TrimSpace(desc.Name),
+				ResolvedModelName: strings.TrimSpace(desc.Name),
+				ResolvedScope:     "global",
+			}, nil
+		}
+	}
+	return coreapi.ModelContextSnapshot{}, nil
+}
+
+func (s legacyModelService) SetWorkspace(_ context.Context, req coreapi.SetWorkspaceModelRequest) error {
+	if s.rt == nil {
+		return unsupported("model/workspace/set")
+	}
+	return s.rt.ActivateModel(req.ModelName)
+}
+
+func (s legacyModelService) ClearWorkspace(context.Context, coreapi.ClearWorkspaceModelRequest) error {
+	if s.rt == nil {
+		return unsupported("model/workspace/clear")
+	}
+	return nil
+}
+
+func (s legacyModelService) SetSession(_ context.Context, req coreapi.SetSessionModelRequest) error {
+	if s.rt == nil {
+		return unsupported("model/session/set")
+	}
+	return s.rt.ActivateModel(req.ModelName)
+}
+
+func (s legacyModelService) ClearSession(context.Context, coreapi.ClearSessionModelRequest) error {
+	if s.rt == nil {
+		return unsupported("model/session/clear")
+	}
+	return nil
+}
+
 type legacyRemoteWorkspaceService struct {
 	rt *Runtime
 }
@@ -1339,6 +1390,13 @@ func (s legacyTurnService) Start(ctx context.Context, req coreapi.StartTurnReque
 		}
 	} else if currentID, err := s.rt.CurrentSessionID(); err == nil {
 		sessionID = strings.TrimSpace(currentID)
+	}
+	if sessionID == "" {
+		created, err := legacySessionService{s.rt}.Create(ctx, coreapi.CreateSessionRequest{})
+		if err != nil {
+			return coreapi.Turn{}, fmt.Errorf("turn/start: failed to create session: %w", err)
+		}
+		sessionID = strings.TrimSpace(created.ID)
 	}
 	turnID := strings.TrimSpace(req.TurnID)
 	if turnID == "" {
@@ -1992,6 +2050,39 @@ func (legacySandboxService) BackendStatus(context.Context) sandbox.BackendStatus
 	return sandbox.DetectBackend()
 }
 
+type legacyDiagnosticsService struct {
+	rt *Runtime
+}
+
+func (s legacyDiagnosticsService) Startup(_ context.Context) (coreapi.StartupDiagnosticsResult, error) {
+	result := coreapi.StartupDiagnosticsResult{}
+	if s.rt == nil {
+		return result, unsupported("diagnostics/startup")
+	}
+	if binary, err := os.Executable(); err == nil {
+		result.BinaryPath = binary
+	}
+	result.ManifestVersion = "0.1.0"
+	result.ProtocolVersion = "v1"
+	if storeDir := strings.TrimSpace(os.Getenv("EOS_STORE_DIR")); storeDir != "" {
+		result.StoreDir = storeDir
+	} else if coreDir := strings.TrimSpace(os.Getenv("EOS_CORE_STORE_DIR")); coreDir != "" {
+		result.StoreDir = coreDir
+	}
+	result.SandboxBackend = string(sandbox.DetectBackend().Backend)
+	if result.StoreDir != "" {
+		marker := filepath.Join(result.StoreDir, ".migration_complete")
+		if _, err := os.Stat(marker); err == nil {
+			result.MigrationMarker = "complete"
+		} else {
+			result.MigrationMarker = "pending"
+		}
+	}
+	result.OS = runtime.GOOS
+	result.Arch = runtime.GOARCH
+	return result, nil
+}
+
 func sandboxModeFromAccessMode(mode string) sandbox.Mode {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "read-only", "readonly", "read_only":
@@ -2596,33 +2687,11 @@ func loadLegacyRoleRegistry(rt *Runtime) (*agentcore.RoleRegistry, error) {
 	return agentcore.LoadRoleRegistryWithPaths(agentcore.DefaultRoleConfigPaths(legacyRoleWorkspaceRoot(rt)))
 }
 
-func legacyRoleConfigPaths(rt *Runtime) []string {
-	return agentcore.DefaultRoleConfigPaths(legacyRoleWorkspaceRoot(rt)).Ordered()
-}
-
 func legacyRoleWorkspaceRoot(rt *Runtime) string {
 	if rt == nil {
 		return ""
 	}
 	return strings.TrimSpace(rt.workingRoot())
-}
-
-func compactUniqueStrings(items []string) []string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		key := strings.ToLower(item)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, item)
-	}
-	return out
 }
 
 func maskAPIKey(value string) string {
@@ -2780,6 +2849,7 @@ var _ coreapi.ToolExecutor = legacyToolExecutor{}
 var _ coreapi.ToolCatalogService = legacyToolCatalogService{}
 var _ coreapi.ToolTelemetryService = legacyToolTelemetryService{}
 var _ coreapi.EventBus = legacyEventBus{}
+var _ coreapi.EventPublisher = legacyEventBus{}
 var _ coreapi.SandboxService = legacySandboxService{}
 
 func approvalDecisionAllows(decision string) (bool, error) {
@@ -2792,11 +2862,4 @@ func approvalDecisionAllows(decision string) (bool, error) {
 	default:
 		return false, fmt.Errorf("approval/respond: unsupported decision %q", decision)
 	}
-}
-
-func unixOrZero(t time.Time) int64 {
-	if t.IsZero() {
-		return 0
-	}
-	return t.Unix()
 }

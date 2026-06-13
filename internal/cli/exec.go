@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/pkg/core"
+	"github.com/dreamSailing/eos/pkg/coreapi"
 	"github.com/spf13/cobra"
 )
 
@@ -69,72 +69,51 @@ func newExecCmd() *cobra.Command {
 	return cmd
 }
 
+// runExec 是 eos exec <prompt> 的生产入口。
+//
+// 生产路径：启动 eos-core sidecar（Rust-only），走 engine.Turns().Start + 事件订阅。
+// 不接受 Go legacy runtime 作为 production 回退；legacy 仅在
+// EOS_CORE_ALLOW_FALLBACK=1 显式开启时作为 dev/test fixture 出现。
 func runExec(ctx context.Context, opts execOptions) error {
 	if opts.Output == "" {
 		opts.Output = "text"
 	}
-
-	rt := core.NewRuntime()
-	defer rt.Close()
-
-	rt.ApplyStartupOptions(core.StartupOptions{
-		AccessMode:      opts.AccessMode,
-		ApprovalMode:    opts.ApprovalMode,
-		SandboxMode:     opts.Sandbox,
-		SkipPermissions: opts.SkipPermission,
-	})
-
-	if strings.TrimSpace(opts.Workspace) != "" {
-		rt.LegacyCore().SetActiveWorkspaceRoot(strings.TrimSpace(opts.Workspace))
-	}
-
-	if strings.TrimSpace(opts.ExecutionMode) != "" {
-		rt.SetExecutionMode(opts.ExecutionMode)
-	}
-
 	if opts.Timeout <= 0 {
 		opts.Timeout = 10 * time.Minute
 	}
+	startedAt := time.Now()
 
-	var cancel context.CancelFunc
-	ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
 
-	start := time.Now()
-	events, invokeErr := rt.Invoke(ctx, opts.Prompt)
-
-	var content string
-	var execErr error
-	if invokeErr != nil {
-		execErr = invokeErr
-	} else {
-		for ev := range events {
-			switch ev.Type {
-			case "TextFinal":
-				content = ev.Message
-			case "Error":
-				if execErr == nil {
-					execErr = fmt.Errorf("%s", ev.Message)
-				}
-			}
-		}
+	selected, err := startRustOnlyEngine(ctx, "exec", execOptionEnv(opts))
+	if err != nil {
+		return err
 	}
-	elapsed := time.Since(start)
+	defer selected.Close()
 
-	if execErr != nil {
+	engine := selected.Engine
+	if err := applyExecStartup(ctx, engine, opts); err != nil {
+		return err
+	}
+
+	content, err := runSingleTurn(ctx, engine, opts.Prompt, startedAt)
+	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			execErr = fmt.Errorf("exec timed out after %s", opts.Timeout)
+			err = fmt.Errorf("exec timed out after %s", opts.Timeout)
 		}
-		if opts.Output == "json" {
-			writeExecJSON(os.Stdout, ExecResult{Error: execErr.Error()})
-		} else {
-			fmt.Fprintln(os.Stderr, "Error:", execErr.Error())
-		}
-		return execErr
+		writeExecError(opts.Output, err)
+		return err
 	}
 
-	usage := rt.UsageSummary()
-	modelName := rt.ModelName()
+	usage := coreapi.UsageSummary{}
+	if summary, err := engine.Usage().Summary(ctx); err == nil {
+		usage = summary
+	}
+	modelName, _ := resolveActiveModelName(ctx, engine)
 
 	result := ExecResult{
 		Content:     content,
@@ -142,33 +121,79 @@ func runExec(ctx context.Context, opts execOptions) error {
 		InputTokens: usage.InputTokens,
 		ReplyTokens: usage.ReplyTokens,
 		TotalTokens: usage.TotalTokens,
-		DurationMs:  int(elapsed.Milliseconds()),
+		DurationMs:  int(time.Since(startedAt).Milliseconds()),
 		CostUSD:     usage.CostUSD,
 		Workspace:   opts.Workspace,
 	}
-
-	switch opts.Output {
-	case "json":
-		writeExecJSON(os.Stdout, result)
-	default:
-		fmt.Fprintln(os.Stdout, content)
-		parts := []string{
-			fmt.Sprintf("Model: %s", modelName),
-			fmt.Sprintf("Duration: %v", elapsed.Round(time.Millisecond)),
-		}
-		if usage.TotalTokens != nil {
-			parts = append(parts, fmt.Sprintf("Tokens: %d", *usage.TotalTokens))
-		}
-		if usage.CostUSD != nil {
-			parts = append(parts, fmt.Sprintf("Cost: $%.6f", *usage.CostUSD))
-		}
-		if opts.Workspace != "" {
-			parts = append(parts, fmt.Sprintf("Workspace: %s", opts.Workspace))
-		}
-		fmt.Fprintf(os.Stderr, "\n---\n%s\n", strings.Join(parts, " | "))
-	}
-
+	writeExecOutput(opts.Output, result)
 	return nil
+}
+
+// execOptionEnv 把 exec flags 透传到 eos-core 子进程环境变量。
+// 与 internal/ui/adapter.tuiOptionEnv 字段保持一致。
+func execOptionEnv(opts execOptions) map[string]string {
+	env := map[string]string{}
+	if v := strings.TrimSpace(opts.AccessMode); v != "" {
+		env["EOS_ACCESS_MODE"] = v
+	}
+	if v := strings.TrimSpace(opts.ApprovalMode); v != "" {
+		env["EOS_APPROVAL_MODE"] = v
+	}
+	if v := strings.TrimSpace(opts.Sandbox); v != "" {
+		env["EOS_SANDBOX_MODE"] = v
+	}
+	if opts.SkipPermission {
+		env["EOS_SKIP_PERMISSIONS"] = "1"
+	}
+	return env
+}
+
+// applyExecStartup 把 workspace/execution-mode 等 startup 配置应用到已 handshake 的 engine。
+func applyExecStartup(ctx context.Context, engine coreapi.Engine, opts execOptions) error {
+	if engine == nil {
+		return fmt.Errorf("core engine unavailable")
+	}
+	if ws := strings.TrimSpace(opts.Workspace); ws != "" {
+		if err := engine.Workspaces().SetForeground(ctx, coreapi.WorkspacePathRequest{Path: ws}); err != nil {
+			return fmt.Errorf("set foreground workspace: %w", err)
+		}
+	}
+	if mode := strings.TrimSpace(opts.ExecutionMode); mode != "" {
+		if err := engine.Modes().SetExecutionMode(ctx, coreapi.SetModeRequest{Mode: mode}); err != nil {
+			return fmt.Errorf("set execution mode: %w", err)
+		}
+	}
+	return nil
+}
+
+func writeExecError(output string, err error) {
+	if output == "json" {
+		writeExecJSON(os.Stdout, ExecResult{Error: err.Error()})
+		return
+	}
+	fmt.Fprintln(os.Stderr, "Error:", err.Error())
+}
+
+func writeExecOutput(output string, result ExecResult) {
+	if output == "json" {
+		writeExecJSON(os.Stdout, result)
+		return
+	}
+	fmt.Fprintln(os.Stdout, result.Content)
+	parts := []string{
+		fmt.Sprintf("Model: %s", result.Model),
+		fmt.Sprintf("Duration: %v", time.Duration(result.DurationMs)*time.Millisecond),
+	}
+	if result.TotalTokens != nil {
+		parts = append(parts, fmt.Sprintf("Tokens: %d", *result.TotalTokens))
+	}
+	if result.CostUSD != nil {
+		parts = append(parts, fmt.Sprintf("Cost: $%.6f", *result.CostUSD))
+	}
+	if result.Workspace != "" {
+		parts = append(parts, fmt.Sprintf("Workspace: %s", result.Workspace))
+	}
+	fmt.Fprintf(os.Stderr, "\n---\n%s\n", strings.Join(parts, " | "))
 }
 
 func writeExecJSON(f *os.File, v ExecResult) {

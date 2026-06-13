@@ -2,6 +2,7 @@ package jsonrpc
 
 const (
 	MethodInitialize                 = "initialize"
+	MethodShutdown                   = "shutdown"
 	MethodWorkspaceList              = "workspace/list"
 	MethodWorkspaceDefault           = "workspace/default"
 	MethodWorkspaceLast              = "workspace/last"
@@ -84,6 +85,12 @@ const (
 	MethodModelDelete                = "model/delete"
 	MethodModelActivate              = "model/activate"
 	MethodModelSyncEnv               = "model/sync_env"
+	MethodModelReload                = "model/reload"
+	MethodModelContext               = "model/context"
+	MethodModelWorkspaceSet          = "model/workspace/set"
+	MethodModelWorkspaceClear        = "model/workspace/clear"
+	MethodModelSessionSet            = "model/session/set"
+	MethodModelSessionClear          = "model/session/clear"
 	MethodRemoteWorkspaceList        = "remote_workspace/list"
 	MethodRemoteWorkspaceOpen        = "remote_workspace/open"
 	MethodRemoteWorkspaceForget      = "remote_workspace/forget"
@@ -127,6 +134,11 @@ const (
 	MethodSandboxPolicy              = "sandbox/policy"
 	MethodSandboxSetPolicy           = "sandbox/set_policy"
 	MethodSandboxBackend             = "sandbox/backend_status"
+	MethodConfigReload               = "config/reload"
+	MethodAgentControl               = "agent/control"
+	MethodOrchestratorStart          = "orchestrator/start"
+	MethodOrchestratorCancel         = "orchestrator/cancel"
+	MethodDiagnosticsStartup         = "diagnostics/startup"
 )
 
 const (
@@ -134,3 +146,146 @@ const (
 	NotificationInitialized  = "initialized"
 	NotificationStateChanged = "state/changed"
 )
+
+func AllCoreMethods() []string {
+	return []string{
+		MethodInitialize,
+		MethodShutdown,
+		MethodWorkspaceList,
+		MethodWorkspaceDefault,
+		MethodWorkspaceLast,
+		MethodWorkspaceResolve,
+		MethodWorkspaceRemember,
+		MethodWorkspaceForget,
+		MethodWorkspaceAdd,
+		MethodWorkspaceRemove,
+		MethodWorkspaceUse,
+		MethodWorkspaceSetForeground,
+		MethodWorkspaceTrust,
+		MethodWorkspaceWorktreeList,
+		MethodWorkspaceWorktreeCreate,
+		MethodWorkspaceWorktreeRemove,
+		MethodSessionCreate,
+		MethodSessionResume,
+		MethodSessionList,
+		MethodSessionCurrent,
+		MethodSessionSetCurrent,
+		MethodSessionDelete,
+		MethodSessionRename,
+		MethodSessionMessagesLoad,
+		MethodSessionMessagesSave,
+		MethodMCPList,
+		MethodMCPUpsert,
+		MethodMCPImportJSON,
+		MethodMCPDelete,
+		MethodMCPSetEnabled,
+		MethodLSPList,
+		MethodLSPDetect,
+		MethodLSPStart,
+		MethodLSPDiagnostics,
+		MethodLSPDiagnosticsSummary,
+		MethodConfigRulesGet,
+		MethodConfigRulesSnapshot,
+		MethodConfigRulesSave,
+		MethodConfigRulesReset,
+		MethodConfigSettingsGet,
+		MethodConfigSettingsSave,
+		MethodPermissionSnapshot,
+		MethodPermissionPendingReview,
+		MethodPermissionClearReview,
+		MethodPermissionAccessModeSet,
+		MethodPermissionApprovalModeSet,
+		MethodExtensionsSkillsList,
+		MethodExtensionsSkillsReload,
+		MethodExtensionsSkillSetEnabled,
+		MethodExtensionsSkillInvoke,
+		MethodExtensionsPluginsList,
+		MethodExtensionsPluginSetEnabled,
+		MethodBrowserStatus,
+		MethodContextPreview,
+		MethodContextStats,
+		MethodContextWindow,
+		MethodContextPin,
+		MethodContextCompact,
+		MethodContextClear,
+		MethodContextExport,
+		MethodUsageSummary,
+		MethodUsageCostSummary,
+		MethodUsageCostItems,
+		MethodVersionsList,
+		MethodVersionsRollback,
+		MethodVersionsDelete,
+		MethodVersionsDeleteFile,
+		MethodVersionsClear,
+		MethodTaskList,
+		MethodTaskTodos,
+		MethodTaskTail,
+		MethodTaskKill,
+		MethodTaskCleanup,
+		MethodRuntimeModesGet,
+		MethodRuntimeExecutionModeSet,
+		MethodRuntimeSandboxModeSet,
+		MethodRuntimeReasoningLevelSet,
+		MethodModelList,
+		MethodModelCatalog,
+		MethodModelUpsert,
+		MethodModelSave,
+		MethodModelDelete,
+		MethodModelActivate,
+		MethodModelSyncEnv,
+		MethodModelReload,
+		MethodModelContext,
+		MethodModelWorkspaceSet,
+		MethodModelWorkspaceClear,
+		MethodModelSessionSet,
+		MethodModelSessionClear,
+		MethodRemoteWorkspaceList,
+		MethodRemoteWorkspaceOpen,
+		MethodRemoteWorkspaceForget,
+		MethodRemoteWorkspaceClearCache,
+		MethodRemoteRepoCurrent,
+		MethodGitStatus,
+		MethodGitDiff,
+		MethodGitBranches,
+		MethodGitLog,
+		MethodGitShow,
+		MethodInsightPredictNextUser,
+		MethodInsightPlanSnapshot,
+		MethodInsightMemorySnapshot,
+		MethodMemorySnapshot,
+		MethodMemorySave,
+		MethodMemoryRebuildIndex,
+		MethodMemoryRecordAdd,
+		MethodMemoryRecordList,
+		MethodMemoryRecordSearch,
+		MethodMemoryRecordDelete,
+		MethodRoleList,
+		MethodRoleResolve,
+		MethodAgentSpawn,
+		MethodAgentInput,
+		MethodAgentWait,
+		MethodAgentRun,
+		MethodAgentToolExecute,
+		MethodAgentList,
+		MethodAgentClose,
+		MethodEventSubscribe,
+		MethodEventUnsubscribe,
+		MethodTurnStart,
+		MethodTurnInterrupt,
+		MethodToolCatalog,
+		MethodToolExecute,
+		MethodToolTraces,
+		MethodToolStats,
+		MethodApprovalRespond,
+		MethodInquiryRespond,
+		MethodStateSnapshot,
+		MethodSandboxPolicy,
+		MethodSandboxSetPolicy,
+		MethodSandboxBackend,
+		MethodConfigReload,
+		MethodAgentControl,
+		MethodOrchestratorStart,
+		MethodOrchestratorCancel,
+		MethodDiagnosticsStartup,
+	}
+}

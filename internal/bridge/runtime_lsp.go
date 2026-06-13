@@ -1,5 +1,5 @@
-//go:build !without_lsp
-// +build !without_lsp
+//go:build legacy && !without_lsp
+// +build legacy,!without_lsp
 
 package bridge
 

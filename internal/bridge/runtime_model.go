@@ -1,3 +1,5 @@
+//go:build legacy
+
 package bridge
 
 // Copyright (c) 2026 DreamSailing
@@ -8,8 +10,8 @@ package bridge
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
+
 	"github.com/dreamSailing/eos/internal/ai"
 	"github.com/dreamSailing/eos/internal/config"
 )
@@ -120,28 +122,12 @@ func (rc *RuntimeCore) GetContextWindowTokens() int {
 
 // ResolveAPIConfig 解析 API 配置
 func (rc *RuntimeCore) ResolveAPIConfig() (string, string, string, string) {
-	base := os.Getenv("EOS_API_BASE")
-	key := os.Getenv("EOS_API_KEY")
-	model := os.Getenv("EOS_MODEL")
-	home, _ := os.UserHomeDir()
-	cfgPath := filepath.Join(home, ".eos.json")
-	if base == "" || key == "" || model == "" {
-		if m, ok := rc.GetActiveModel(); ok {
-			if base == "" {
-				base = m.APIBase
-			}
-			if key == "" {
-				key = m.APIKey
-			}
-			if model == "" {
-				model = m.Model
-			}
-		}
+	cfg, cfgPath := config.Load()
+	if m, ok := config.ActiveModel(cfg); ok {
+		return strings.TrimSpace(m.APIBase),
+			strings.TrimSpace(m.APIKey),
+			strings.TrimSpace(m.Model),
+			cfgPath
 	}
-	if model == "" && base != "" {
-		if m := config.InferDefaultModel(base); m != "" {
-			model = m
-		}
-	}
-	return base, key, model, cfgPath
+	return "", "", "", cfgPath
 }

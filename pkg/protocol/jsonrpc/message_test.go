@@ -115,3 +115,46 @@ func TestRouterAndInProcessClient(t *testing.T) {
 		t.Fatalf("ok=%v, want true", out["ok"])
 	}
 }
+
+func TestNewRequestAutoGeneratesTraceID(t *testing.T) {
+	req, err := NewRequest(StringID("t1"), "initialize", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	if !strings.HasPrefix(req.Trace, "eos-") {
+		t.Fatalf("trace=%q, want eos- prefix", req.Trace)
+	}
+	if len(req.Trace) < 10 {
+		t.Fatalf("trace=%q, too short", req.Trace)
+	}
+}
+
+func TestGenerateTraceIDIsUnique(t *testing.T) {
+	ids := make(map[string]bool, 100)
+	for i := 0; i < 100; i++ {
+		id := GenerateTraceID()
+		if ids[id] {
+			t.Fatalf("duplicate trace ID: %s", id)
+		}
+		ids[id] = true
+	}
+}
+
+func TestTraceFieldSurvivesRoundTrip(t *testing.T) {
+	req, err := NewRequest(StringID("r1"), "state/snapshot", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	trace := req.Trace
+	data, err := Marshal(req)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	decoded, err := Decode(data)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if decoded.Request.Trace != trace {
+		t.Fatalf("trace=%q, want %q", decoded.Request.Trace, trace)
+	}
+}

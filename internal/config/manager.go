@@ -24,28 +24,14 @@ func NewManager(path string) *Manager {
 }
 
 func (m *Manager) ResolveAPIConfig() (string, string, string, string) {
-	base := os.Getenv("EOS_API_BASE")
-	key := os.Getenv("EOS_API_KEY")
-	model := os.Getenv("EOS_MODEL")
-	if base == "" || key == "" || model == "" {
-		if entry, ok := m.GetActiveModel(); ok {
-			if base == "" {
-				base = entry.APIBase
-			}
-			if key == "" {
-				key = entry.APIKey
-			}
-			if model == "" {
-				model = entry.Model
-			}
-		}
+	cfg, p := Load()
+	if entry, ok := ActiveModel(cfg); ok {
+		return strings.TrimSpace(entry.APIBase),
+			strings.TrimSpace(entry.APIKey),
+			strings.TrimSpace(entry.Model),
+			p
 	}
-	if model == "" && base != "" {
-		if inferred := InferDefaultModel(base); inferred != "" {
-			model = inferred
-		}
-	}
-	return base, key, model, m.path
+	return "", "", "", p
 }
 
 func (m *Manager) ResolveCapabilityModelConfig(capability string) (ModelEntry, string, bool) {

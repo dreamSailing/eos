@@ -184,17 +184,29 @@ func (m *AppModel) handleModelSlash(args []string) tea.Cmd {
 	}
 
 	if strings.EqualFold(args[0], "current") {
-		modelName, modelBase := m.adapter.GetModelInfo()
-		if strings.TrimSpace(modelName) == "" || strings.TrimSpace(modelBase) == "" {
-			base, _, model, _ := m.adapter.ResolveAPIConfig()
-			if modelName == "" {
-				modelName = model
-			}
-			if modelBase == "" {
-				modelBase = base
-			}
+		snapshot, err := m.adapter.ModelContext(context.Background())
+		if err != nil {
+			m.appendSystem(err.Error(), "error")
+			return nil
 		}
-		m.appendSystem(fmt.Sprintf("%s: %s (%s)", m.localize("当前模型", "Current model"), strings.TrimSpace(modelName), strings.TrimSpace(modelBase)), "info")
+		modelName, modelBase := m.adapter.GetModelInfo()
+		modelName = strings.TrimSpace(modelName)
+		modelBase = strings.TrimSpace(modelBase)
+		if modelName == "" {
+			modelName = m.localize("未配置", "unconfigured")
+		}
+		if modelBase == "" {
+			modelBase = m.localize("未配置", "unconfigured")
+		}
+		scopeLabel := map[string]string{
+			"session":   m.localize("会话", "session"),
+			"workspace": m.localize("工作区", "workspace"),
+			"global":    m.localize("全局", "global"),
+		}[strings.ToLower(strings.TrimSpace(snapshot.ResolvedScope))]
+		if scopeLabel == "" {
+			scopeLabel = m.localize("未解析", "unresolved")
+		}
+		m.appendSystem(fmt.Sprintf("%s: %s (%s) [%s]", m.localize("当前模型", "Current model"), strings.TrimSpace(modelName), strings.TrimSpace(modelBase), scopeLabel), "info")
 		return nil
 	}
 
@@ -207,13 +219,22 @@ func (m *AppModel) handleModelSlash(args []string) tea.Cmd {
 		return nil
 	}
 
-	if err := m.adapter.ActivateModel(context.Background(), name); err != nil {
-		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("未找到模型", "Model not found"), name), "error")
+	scope, err := m.adapter.SelectModelForCurrentContext(context.Background(), name)
+	if err != nil {
+		m.appendSystem(err.Error(), "error")
 		return nil
 	}
 
 	m.refreshModelsPanel()
-	m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已切换模型", "Switched model"), name), "success")
+	scopeLabel := map[string]string{
+		"session":   m.localize("会话", "session"),
+		"workspace": m.localize("工作区", "workspace"),
+		"global":    m.localize("全局", "global"),
+	}[strings.ToLower(strings.TrimSpace(scope))]
+	if scopeLabel == "" {
+		scopeLabel = m.localize("当前上下文", "current context")
+	}
+	m.appendSystem(fmt.Sprintf("%s: %s [%s]", m.localize("已切换模型", "Switched model"), name, scopeLabel), "success")
 	return nil
 }
 
@@ -273,19 +294,13 @@ func (m *AppModel) handleSessionSlash(args []string) tea.Cmd {
 	}
 	for i := 0; i < limit; i++ {
 		meta := metas[i]
-		ts := time.Unix(meta.SavedAt, 0).Format("2006-01-02 15:04")
-		label := strings.TrimSpace(meta.Title)
-		if label == "" {
-			label = strings.TrimSpace(meta.Summary)
-		}
-		if label == "" {
-			label = strings.TrimSpace(meta.Preview)
-		}
+		ts := sessionTimestampLabel(meta)
+		label := sessionLabelFromMeta(meta)
 		prefix := " "
 		if meta.ID == currentID {
 			prefix = "*"
 		}
-		line := fmt.Sprintf("%s %s  %s  rounds=%d tokens=%d", prefix, meta.ID, ts, meta.Rounds, meta.Tokens)
+		line := fmt.Sprintf("%s %s  %s  rounds=%d", prefix, meta.ID, ts, sessionRoundsFromMeta(meta))
 		if label != "" {
 			line += "  " + label
 		}
@@ -513,15 +528,8 @@ func (m *AppModel) handleReloadPluginsSlash() tea.Cmd {
 
 func (m *AppModel) handleDoctorSlash() tea.Cmd {
 	modelName, modelBase := m.adapter.GetModelInfo()
-	if modelName == "" || modelBase == "" {
-		base, _, model, _ := m.adapter.ResolveAPIConfig()
-		if modelName == "" {
-			modelName = model
-		}
-		if modelBase == "" {
-			modelBase = base
-		}
-	}
+	modelName = strings.TrimSpace(modelName)
+	modelBase = strings.TrimSpace(modelBase)
 	snap, _ := m.adapter.PermissionSnapshot(context.Background())
 	sessions, _ := m.adapter.ListSessions(context.Background())
 	currentSessionID, _ := m.adapter.CurrentSessionID(context.Background())
@@ -808,8 +816,8 @@ func (m *AppModel) restoreSessionHistory(id string) {
 			content:   content,
 			timestamp: time.Now(),
 		}
-		if msg.Timestamp > 0 {
-			entry.timestamp = time.Unix(msg.Timestamp, 0)
+		if !msg.Time.IsZero() {
+			entry.timestamp = msg.Time
 		}
 		switch strings.ToLower(strings.TrimSpace(msg.Role)) {
 		case "assistant":
@@ -893,15 +901,8 @@ func optionalFloatText(value *float64, fallback string) string {
 
 func (m *AppModel) handleStatusSlash() tea.Cmd {
 	modelName, modelBase := m.adapter.GetModelInfo()
-	if modelName == "" {
-		base, _, model, _ := m.adapter.ResolveAPIConfig()
-		if modelName == "" {
-			modelName = model
-		}
-		if modelBase == "" {
-			modelBase = base
-		}
-	}
+	modelName = strings.TrimSpace(modelName)
+	modelBase = strings.TrimSpace(modelBase)
 	snap, _ := m.adapter.PermissionSnapshot(context.Background())
 	currentSessionID, _ := m.adapter.CurrentSessionID(context.Background())
 	browser, _ := m.adapter.BrowserStatus(context.Background())
@@ -993,20 +994,44 @@ func (m *AppModel) handleFastSlash() tea.Cmd {
 		return nil
 	}
 
-	// Toggle fast mode by switching to/from fast model
-	currentModel, _ := m.adapter.GetModelInfo()
-	if currentModel == cfg.FastModel {
-		// Switch back to active model
-		if active := cfg.Active; active != "" {
-			m.adapter.SetActiveModel(active)
-			_ = m.adapter.Reload()
-			m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已切换回标准模型", "Switched back to standard model"), active), "success")
-		}
-	} else {
-		m.adapter.SetActiveModel(cfg.FastModel)
-		_ = m.adapter.Reload()
-		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已切换到快速模型", "Switched to fast model"), cfg.FastModel), "success")
+	snapshot, err := m.adapter.ModelContext(context.Background())
+	if err != nil {
+		m.appendSystem(err.Error(), "error")
+		return nil
 	}
+
+	// Toggle fast mode by switching the current context, not the global active flag.
+	if strings.TrimSpace(snapshot.ResolvedModelName) == strings.TrimSpace(cfg.FastModel) {
+		target := strings.TrimSpace(cfg.Active)
+		if target == "" || strings.EqualFold(target, cfg.FastModel) {
+			for _, candidate := range []string{snapshot.WorkspaceModelName, snapshot.GlobalDefaultName} {
+				candidate = strings.TrimSpace(candidate)
+				if candidate != "" && !strings.EqualFold(candidate, cfg.FastModel) {
+					target = candidate
+					break
+				}
+			}
+		}
+		if target == "" || strings.EqualFold(target, cfg.FastModel) {
+			m.appendSystem(m.localize("无法切换回标准模型：未找到 fast_model 之外的默认模型。", "Cannot switch back: no non-fast default model found."), "warning")
+			return nil
+		}
+		if _, err := m.adapter.SelectModelForCurrentContext(context.Background(), target); err != nil {
+			m.appendSystem(err.Error(), "error")
+			return nil
+		}
+		m.refreshModelsPanel()
+		m.refreshShellWelcomeInfo()
+		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已切换回标准模型", "Switched back to standard model"), target), "success")
+		return nil
+	}
+	if _, err := m.adapter.SelectModelForCurrentContext(context.Background(), cfg.FastModel); err != nil {
+		m.appendSystem(err.Error(), "error")
+		return nil
+	}
+	m.refreshModelsPanel()
+	m.refreshShellWelcomeInfo()
+	m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已切换到快速模型", "Switched to fast model"), cfg.FastModel), "success")
 	return nil
 }
 
@@ -1249,4 +1274,54 @@ func (m *AppModel) applyTheme(name string) {
 	// Theme is stored and will be applied on next render
 	// The actual theme application happens in styles package
 	m.updateContextUsageUI()
+}
+
+// sessionTimestampLabel 从 coreapi.Session.Metadata 提取保存时间；缺省回退 UpdatedAt。
+func sessionTimestampLabel(meta coreapi.Session) string {
+	if v := mapString(meta.Metadata, "saved_at"); v != "" {
+		return v
+	}
+	if !meta.UpdatedAt.IsZero() {
+		return meta.UpdatedAt.Format("2006-01-02 15:04")
+	}
+	return ""
+}
+
+// sessionLabelFromMeta 从 coreapi.Session.Metadata 中按 title→preview→summary 顺序取首。
+func sessionLabelFromMeta(meta coreapi.Session) string {
+	for _, key := range []string{"title", "preview", "summary"} {
+		if v := strings.TrimSpace(mapString(meta.Metadata, key)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// sessionRoundsFromMeta 从 coreapi.Session.Metadata 读 rounds，缺省 0。
+func sessionRoundsFromMeta(meta coreapi.Session) int {
+	return mapInt(meta.Metadata, "rounds")
+}
+
+func mapString(metadata map[string]any, key string) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	value, _ := metadata[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func mapInt(metadata map[string]any, key string) int {
+	if len(metadata) == 0 {
+		return 0
+	}
+	switch value := metadata[key].(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	default:
+		return 0
+	}
 }

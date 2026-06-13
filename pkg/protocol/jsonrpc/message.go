@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 )
 
 const (
@@ -112,7 +114,15 @@ func NewRequest(id RequestID, method string, params any) (Request, error) {
 	if err != nil {
 		return Request{}, err
 	}
-	return Request{ID: id, Method: strings.TrimSpace(method), Params: raw}, nil
+	return Request{ID: id, Method: strings.TrimSpace(method), Params: raw, Trace: GenerateTraceID()}, nil
+}
+
+var traceCounter atomic.Uint64
+
+func GenerateTraceID() string {
+	ts := time.Now().Unix()
+	n := traceCounter.Add(1)
+	return fmt.Sprintf("eos-%08x%08x", ts, n)
 }
 
 func NewNotification(method string, params any) (Notification, error) {

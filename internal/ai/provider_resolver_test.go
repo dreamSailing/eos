@@ -5,9 +5,15 @@ package ai
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/dreamSailing/eos/pkg/coreapi"
+)
 
 func TestResolveProviderAndModelPrefersBaseSpecificPreset(t *testing.T) {
+	seedProviderResolverCatalog(t)
+
 	tests := []struct {
 		name         string
 		baseURL      string
@@ -83,6 +89,8 @@ func TestResolveProviderAndModelPrefersBaseSpecificPreset(t *testing.T) {
 }
 
 func TestGetModelContextWindowResolvesOfficialModelNames(t *testing.T) {
+	seedProviderResolverCatalog(t)
+
 	tests := []struct {
 		model string
 		want  int
@@ -106,4 +114,50 @@ func TestGetModelContextWindowResolvesOfficialModelNames(t *testing.T) {
 			t.Fatalf("GetModelContextWindow(%q) = %d, want %d", tt.model, got, tt.want)
 		}
 	}
+}
+
+func seedProviderResolverCatalog(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		ApplyCoreModelCatalog(coreapi.ModelCatalogState{})
+		globalResolver = NewResolver()
+	})
+
+	ApplyCoreModelCatalog(coreapi.ModelCatalogState{
+		Providers: []coreapi.ModelProviderOption{
+			{ID: "deepseek", Name: "DeepSeek", DefaultAPIBase: "https://api.deepseek.com", DefaultModels: []string{"deepseek-v4-pro"}},
+			{ID: "dashscope", Name: "阿里云通义", DefaultAPIBase: "https://dashscope.aliyuncs.com/compatible-mode/v1", CodePlanAPIBase: "https://coding.dashscope.aliyuncs.com/v1", HasCodePlan: true, DefaultModels: []string{"qwen3.6-plus", "dashscope-coding-plan-qwen3.6-plus"}},
+			{ID: "zhipu", Name: "智谱 GLM", DefaultAPIBase: "https://open.bigmodel.cn/api/paas/v4", CodePlanAPIBase: "https://open.bigmodel.cn/api/coding/paas/v4", ClaudeAPIBase: "https://open.bigmodel.cn/api/anthropic", HasCodePlan: true, HasClaudeCode: true, DefaultModels: []string{"glm-5", "zhipu-coding-plan-openai", "zhipu-coding-plan-claude"}},
+			{ID: "moonshot", Name: "Moonshot", DefaultAPIBase: "https://api.moonshot.cn/v1", DefaultModels: []string{"kimi-k2.6", "kimi-k2.5"}},
+			{ID: "minimax", Name: "MiniMax", DefaultAPIBase: "https://api.minimaxi.com/v1", CodePlanAPIBase: "https://api.minimaxi.com/v1", ClaudeAPIBase: "https://api.minimaxi.com/anthropic/v1", HasCodePlan: true, HasClaudeCode: true, DefaultModels: []string{"minimax-token-plan-openai", "minimax-token-plan-claude"}},
+			{ID: "mimo", Name: "小米 MiMo", DefaultAPIBase: "https://token-plan-cn.xiaomimimo.com/v1", CodePlanAPIBase: "https://token-plan-cn.xiaomimimo.com/v1", ClaudeAPIBase: "https://token-plan-cn.xiaomimimo.com/anthropic", HasCodePlan: true, HasClaudeCode: true, DefaultModels: []string{"mimo-token-plan-openai-pro", "mimo-token-plan-openai-omni", "mimo-token-plan-claude-pro"}},
+			{ID: "gemini", Name: "Google Gemini", DefaultAPIBase: "https://generativelanguage.googleapis.com/v1beta/openai", DefaultModels: []string{"gemini-3.1-pro-preview"}},
+			{ID: "openai", Name: "OpenAI", DefaultAPIBase: "https://api.openai.com/v1", DefaultModels: []string{"gpt-5.5", "gpt-5-codex"}},
+			{ID: "anthropic", Name: "Anthropic", DefaultAPIBase: "https://api.anthropic.com/v1", DefaultModels: []string{"claude-sonnet-4-6", "claude-haiku-4-5"}},
+		},
+		Presets: []coreapi.ModelPresetOption{
+			{ID: "deepseek-v4-pro", ProviderID: "deepseek", ModelName: "deepseek-v4-pro", APIType: "standard", ContextWindow: 1000000, SupportsTools: true},
+			{ID: "qwen3.6-plus", ProviderID: "dashscope", ModelName: "qwen3.6-plus", APIType: "standard", ContextWindow: 1000000, SupportsVision: true, SupportsTools: true},
+			{ID: "qwen3.6-max-preview", ProviderID: "dashscope", ModelName: "qwen3.6-max-preview", APIType: "standard", ContextWindow: 262144, SupportsTools: true},
+			{ID: "dashscope-coding-plan-qwen3.6-plus", ProviderID: "dashscope", ModelName: "qwen3.6-plus", APIType: "code-plan", ContextWindow: 1000000, SupportsVision: true, SupportsTools: true},
+			{ID: "glm-5", ProviderID: "zhipu", ModelName: "glm-5", APIType: "standard", ContextWindow: 200000, SupportsTools: true},
+			{ID: "zhipu-coding-plan-openai", ProviderID: "zhipu", ModelName: "glm-5", APIType: "code-plan", ContextWindow: 200000, SupportsTools: true},
+			{ID: "zhipu-coding-plan-claude", ProviderID: "zhipu", ModelName: "glm-5", APIType: "claude", ContextWindow: 200000, SupportsTools: true},
+			{ID: "kimi-k2.6", ProviderID: "moonshot", ModelName: "kimi-k2.6", APIType: "standard", ContextWindow: 0, SupportsTools: true},
+			{ID: "kimi-k2.5", ProviderID: "moonshot", ModelName: "kimi-k2.5", APIType: "standard", ContextWindow: 256000, SupportsVision: true, SupportsTools: true},
+			{ID: "minimax-token-plan-openai", ProviderID: "minimax", ModelName: "MiniMax-M2.7", APIType: "code-plan", ContextWindow: 204800, SupportsVision: true, SupportsTools: true},
+			{ID: "minimax-token-plan-claude", ProviderID: "minimax", ModelName: "MiniMax-M2.7", APIType: "claude", ContextWindow: 204800, SupportsVision: true, SupportsTools: true},
+			{ID: "mimo-token-plan-openai-pro", ProviderID: "mimo", ModelName: "mimo-v2.5-pro", APIType: "code-plan", ContextWindow: 1000000, SupportsTools: true},
+			{ID: "mimo-token-plan-openai-omni", ProviderID: "mimo", ModelName: "mimo-v2.5", APIType: "code-plan", ContextWindow: 1000000, SupportsVision: true, SupportsTools: true},
+			{ID: "mimo-token-plan-claude-pro", ProviderID: "mimo", ModelName: "mimo-v2.5-pro", APIType: "claude", ContextWindow: 1000000, SupportsTools: true},
+			{ID: "gemini-3.1-pro-preview", ProviderID: "gemini", ModelName: "gemini-3.1-pro-preview", APIType: "standard", ContextWindow: 1048576, SupportsVision: true, SupportsTools: true},
+			{ID: "gpt-5.5", ProviderID: "openai", ModelName: "gpt-5.5", APIType: "standard", ContextWindow: 1050000, SupportsTools: true},
+			{ID: "gpt-5-codex", ProviderID: "openai", ModelName: "gpt-5-codex", APIType: "standard", ContextWindow: 400000, SupportsTools: true},
+			{ID: "claude-sonnet-4-6", ProviderID: "anthropic", ModelName: "claude-sonnet-4-6", APIType: "standard", ContextWindow: 1000000, SupportsTools: true},
+			{ID: "claude-haiku-4-5", ProviderID: "anthropic", ModelName: "claude-haiku-4-5", APIType: "standard", ContextWindow: 200000, SupportsTools: true},
+		},
+		AllowCustomProvider: true,
+		AllowCustomModel:    true,
+	})
+	globalResolver = NewResolver()
 }

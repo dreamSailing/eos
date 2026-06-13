@@ -1,3 +1,5 @@
+//go:build legacy
+
 package core
 
 import (
@@ -518,20 +520,23 @@ func TestLegacyEventBusPublishSubscribeFilters(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	events, err := NewLegacyEngine(rt).Events().Subscribe(ctx, coreapi.EventFilter{
+	eng := NewLegacyEngine(rt)
+	sub := eng.Events()
+	events, err := sub.Subscribe(ctx, coreapi.EventFilter{
 		SessionID: "sess-a",
 		TurnID:    "turn-a",
 	})
 	if err != nil {
 		t.Fatalf("Events().Subscribe() error = %v", err)
 	}
+	pub := legacyEventBus{rt: rt}
 	ignored := protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
 		SessionID: "sess-b",
 		RequestID: "turn-a",
 		Payload:   protocol.TextPayloadMap(protocol.TextPayload{Text: "ignore"}),
 	})
-	if err := NewLegacyEngine(rt).Events().Publish(context.Background(), ignored); err != nil {
-		t.Fatalf("Events().Publish(ignored) error = %v", err)
+	if err := pub.Publish(context.Background(), ignored); err != nil {
+		t.Fatalf("Publish(ignored) error = %v", err)
 	}
 	select {
 	case got := <-events:
@@ -545,8 +550,8 @@ func TestLegacyEventBusPublishSubscribeFilters(t *testing.T) {
 		RequestID: "turn-a",
 		Payload:   protocol.TextPayloadMap(protocol.TextPayload{Text: "hello"}),
 	})
-	if err := NewLegacyEngine(rt).Events().Publish(context.Background(), want); err != nil {
-		t.Fatalf("Events().Publish(want) error = %v", err)
+	if err := pub.Publish(context.Background(), want); err != nil {
+		t.Fatalf("Publish(want) error = %v", err)
 	}
 	select {
 	case got := <-events:

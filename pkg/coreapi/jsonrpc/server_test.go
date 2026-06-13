@@ -42,8 +42,9 @@ type fakeEngine struct {
 	tools       coreapi.ToolExecutor
 	toolCatalog coreapi.ToolCatalogService
 	telemetry   coreapi.ToolTelemetryService
-	events      coreapi.EventBus
+	events      coreapi.EventSubscriber
 	sandbox     coreapi.SandboxService
+	diagnostics coreapi.DiagnosticsService
 }
 
 func (e fakeEngine) State() coreapi.StateService            { return e.state }
@@ -76,8 +77,9 @@ func (e fakeEngine) ToolCatalog() coreapi.ToolCatalogService { return e.toolCata
 func (e fakeEngine) ToolTelemetry() coreapi.ToolTelemetryService {
 	return e.telemetry
 }
-func (e fakeEngine) Events() coreapi.EventBus        { return e.events }
+func (e fakeEngine) Events() coreapi.EventSubscriber { return e.events }
 func (e fakeEngine) Sandbox() coreapi.SandboxService { return e.sandbox }
+func (e fakeEngine) Diagnostics() coreapi.DiagnosticsService { return e.diagnostics }
 
 type fakeStateService struct {
 	snapshot coreapi.StateSnapshot
@@ -577,6 +579,21 @@ func (s *fakeModelService) SyncEnv(context.Context) error {
 	s.synced = true
 	return s.err
 }
+func (s *fakeModelService) Context(context.Context, coreapi.ModelContextRequest) (coreapi.ModelContextSnapshot, error) {
+	return coreapi.ModelContextSnapshot{}, s.err
+}
+func (s *fakeModelService) SetWorkspace(context.Context, coreapi.SetWorkspaceModelRequest) error {
+	return s.err
+}
+func (s *fakeModelService) ClearWorkspace(context.Context, coreapi.ClearWorkspaceModelRequest) error {
+	return s.err
+}
+func (s *fakeModelService) SetSession(context.Context, coreapi.SetSessionModelRequest) error {
+	return s.err
+}
+func (s *fakeModelService) ClearSession(context.Context, coreapi.ClearSessionModelRequest) error {
+	return s.err
+}
 
 type fakeRemoteWorkspaceService struct {
 	items      []coreapi.RemoteWorkspace
@@ -875,7 +892,6 @@ func (e *fakeEvents) Subscribe(ctx context.Context, filter coreapi.EventFilter) 
 	e.seen = filter
 	return e.ch, e.err
 }
-func (*fakeEvents) Publish(context.Context, protocol.Envelope) error { return coreapi.ErrUnsupported }
 
 type captureNotifier struct {
 	ch chan protocoljsonrpc.Notification
@@ -2682,7 +2698,7 @@ func contains(items []string, want string) bool {
 }
 
 var _ coreapi.SandboxService = (*fakeSandboxService)(nil)
-var _ coreapi.EventBus = (*fakeEvents)(nil)
+var _ coreapi.EventSubscriber = (*fakeEvents)(nil)
 var _ coreapi.WorkspaceService = (*fakeWorkspaceService)(nil)
 var _ coreapi.MCPService = (*fakeMCPService)(nil)
 var _ coreapi.LSPService = (*fakeLSPService)(nil)

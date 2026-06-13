@@ -41,8 +41,9 @@ func (compileTimeEngine) ToolCatalog() ToolCatalogService { return nil }
 func (compileTimeEngine) ToolTelemetry() ToolTelemetryService {
 	return nil
 }
-func (compileTimeEngine) Events() EventBus        { return nil }
+func (compileTimeEngine) Events() EventSubscriber { return nil }
 func (compileTimeEngine) Sandbox() SandboxService { return nil }
+func (compileTimeEngine) Diagnostics() DiagnosticsService { return nil }
 
 type compileTimeSandbox struct{}
 
@@ -59,7 +60,6 @@ type compileTimeEvents struct{}
 func (compileTimeEvents) Subscribe(context.Context, EventFilter) (<-chan protocol.Envelope, error) {
 	return nil, nil
 }
-func (compileTimeEvents) Publish(context.Context, protocol.Envelope) error { return nil }
 
 type compileTimeToolTelemetry struct{}
 
@@ -167,6 +167,12 @@ func (compileTimePermissions) PendingReview(context.Context) (PendingReview, err
 	return PendingReview{}, nil
 }
 func (compileTimePermissions) ClearPendingReview(context.Context) error { return nil }
+func (compileTimePermissions) SetAccessMode(context.Context, SetModeRequest) error {
+	return nil
+}
+func (compileTimePermissions) SetApprovalMode(context.Context, SetModeRequest) error {
+	return nil
+}
 
 type compileTimeExtensions struct{}
 
@@ -248,6 +254,21 @@ func (compileTimeModels) Save(context.Context, ModelSaveRequest) error     { ret
 func (compileTimeModels) Delete(context.Context, ModelNameRequest) error   { return nil }
 func (compileTimeModels) Activate(context.Context, ModelNameRequest) error { return nil }
 func (compileTimeModels) SyncEnv(context.Context) error                    { return nil }
+func (compileTimeModels) Context(context.Context, ModelContextRequest) (ModelContextSnapshot, error) {
+	return ModelContextSnapshot{}, nil
+}
+func (compileTimeModels) SetWorkspace(context.Context, SetWorkspaceModelRequest) error {
+	return nil
+}
+func (compileTimeModels) ClearWorkspace(context.Context, ClearWorkspaceModelRequest) error {
+	return nil
+}
+func (compileTimeModels) SetSession(context.Context, SetSessionModelRequest) error {
+	return nil
+}
+func (compileTimeModels) ClearSession(context.Context, ClearSessionModelRequest) error {
+	return nil
+}
 
 type compileTimeRemoteWorkspaces struct{}
 
@@ -346,7 +367,7 @@ func TestInterfacesAreSatisfiable(t *testing.T) {
 	var _ ToolTelemetryService = compileTimeToolTelemetry{}
 	var _ ToolCatalogService = compileTimeToolCatalog{}
 	var _ SandboxService = compileTimeSandbox{}
-	var _ EventBus = compileTimeEvents{}
+	var _ EventSubscriber = compileTimeEvents{}
 }
 
 func TestErrUnsupportedSupportsErrorsIs(t *testing.T) {

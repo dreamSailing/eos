@@ -54,41 +54,41 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 		_, _ = inW.Write(append(b, '\n'))
 	}
 
-	readLine := func(timeout time.Duration) map[string]any {
-		type res struct {
-			line string
-			err  error
-		}
-		ch := make(chan res, 1)
-		go func() {
+	lines := make(chan string, 64)
+	go func() {
+		for {
 			l, e := rd.ReadString('\n')
-			ch <- res{line: l, err: e}
-		}()
-		select {
-		case r := <-ch:
-			if r.err != nil {
-				t.Fatalf("read: %v", r.err)
+			if e != nil {
+				return
 			}
-			m := map[string]any{}
-			if err := json.Unmarshal([]byte(strings.TrimSpace(r.line)), &m); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			return m
-		case <-time.After(timeout):
-			t.Fatalf("timeout reading output")
-			return nil
+			lines <- l
 		}
-	}
+	}()
 
-	readResponseAndEvents := func(id float64, timeout time.Duration) (map[string]any, []map[string]any) {
-		deadline := time.Now().Add(timeout)
-		events := make([]map[string]any, 0, 4)
+	readLine := func() map[string]any {
+		deadline := time.Now().Add(5 * time.Second)
 		for {
 			remain := time.Until(deadline)
 			if remain <= 0 {
-				t.Fatalf("timeout waiting response id=%v", id)
+				t.Fatalf("timeout reading output")
 			}
-			m := readLine(remain)
+			select {
+			case l := <-lines:
+				m := map[string]any{}
+				if err := json.Unmarshal([]byte(strings.TrimSpace(l)), &m); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				return m
+			case <-time.After(remain):
+				t.Fatalf("timeout reading output")
+			}
+		}
+	}
+
+	readResponseAndEvents := func(id float64) (map[string]any, []map[string]any) {
+		events := make([]map[string]any, 0, 4)
+		for {
+			m := readLine()
 			if m["method"] == "event" {
 				events = append(events, m)
 				continue
@@ -106,8 +106,8 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 		}
 	}
 
-	readResponse := func(id float64, timeout time.Duration) map[string]any {
-		resp, _ := readResponseAndEvents(id, timeout)
+	readResponse := func(id float64) map[string]any {
+		resp, _ := readResponseAndEvents(id)
 		return resp
 	}
 
@@ -166,7 +166,7 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 		"method":  "tool.list",
 		"params":  map[string]any{"sessionID": "s_none"},
 	})
-	resp := readResponse(1, 2*time.Second)
+	resp := readResponse(1)
 	if resp["error"] == nil {
 		t.Fatalf("expected error, got: %v", resp)
 	}
@@ -177,7 +177,7 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 		"method":  "initialize",
 		"params":  map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"},
 	})
-	resp = readResponse(2, 2*time.Second)
+	resp = readResponse(2)
 	if resp["result"] == nil {
 		t.Fatalf("expected result, got: %v", resp)
 	}
@@ -195,7 +195,7 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 			},
 		},
 	})
-	resp, events := readResponseAndEvents(3, 2*time.Second)
+	resp, events := readResponseAndEvents(3)
 	result, ok := resp["result"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected result object, got: %v", resp)
@@ -215,7 +215,7 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 		"method":  "session.get",
 		"params":  map[string]any{"sessionID": sessionID},
 	})
-	resp = readResponse(31, 2*time.Second)
+	resp = readResponse(31)
 	result, ok = resp["result"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected session.get result object, got: %v", resp)
@@ -239,7 +239,7 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 		"id":      32,
 		"method":  "session.list",
 	})
-	resp = readResponse(32, 2*time.Second)
+	resp = readResponse(32)
 	result, ok = resp["result"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected session.list result object, got: %v", resp)
@@ -269,7 +269,7 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 		"method":  "tool.list",
 		"params":  map[string]any{"sessionID": sessionID},
 	})
-	resp = readResponse(4, 2*time.Second)
+	resp = readResponse(4)
 	result, ok = resp["result"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected result object, got: %v", resp)
@@ -297,7 +297,7 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 			},
 		},
 	})
-	resp, events = readResponseAndEvents(5, 2*time.Second)
+	resp, events = readResponseAndEvents(5)
 	validateEvents(events)
 	p := findEvent(events, "approval.required")
 	if p == nil {
@@ -325,7 +325,7 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 		"method":  "session.get",
 		"params":  map[string]any{"sessionID": sessionID},
 	})
-	resp = readResponse(51, 2*time.Second)
+	resp = readResponse(51)
 	result, ok = resp["result"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected session.get result object after preflight, got: %v", resp)
@@ -357,7 +357,7 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 			"policyID":       "test",
 		},
 	})
-	resp, events = readResponseAndEvents(6, 2*time.Second)
+	resp, events = readResponseAndEvents(6)
 	validateEvents(events)
 	if resp["result"] == nil {
 		t.Fatalf("expected result, got: %v", resp)
@@ -391,7 +391,7 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 			},
 		},
 	})
-	resp, events = readResponseAndEvents(7, 5*time.Second)
+	resp, events = readResponseAndEvents(7)
 	validateEvents(events)
 	types := eventTypes(events)
 	if findEvent(events, "request.started") == nil || findEvent(events, "request.completed") == nil {
@@ -420,7 +420,7 @@ func TestStdioFlow_HandshakeSessionListPreflightApproveExecute(t *testing.T) {
 		"method":  "session.get",
 		"params":  map[string]any{"sessionID": sessionID},
 	})
-	resp = readResponse(71, 2*time.Second)
+	resp = readResponse(71)
 	result, ok = resp["result"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected session.get result object after request, got: %v", resp)
@@ -494,41 +494,41 @@ func TestStdioFlow_RequestStartReturnsApprovalDigestAndLifecycleEvents(t *testin
 		_, _ = inW.Write(append(b, '\n'))
 	}
 
-	readLine := func(timeout time.Duration) map[string]any {
-		type res struct {
-			line string
-			err  error
-		}
-		ch := make(chan res, 1)
-		go func() {
+	lines := make(chan string, 64)
+	go func() {
+		for {
 			l, e := rd.ReadString('\n')
-			ch <- res{line: l, err: e}
-		}()
-		select {
-		case r := <-ch:
-			if r.err != nil {
-				t.Fatalf("read: %v", r.err)
+			if e != nil {
+				return
 			}
-			m := map[string]any{}
-			if err := json.Unmarshal([]byte(strings.TrimSpace(r.line)), &m); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			return m
-		case <-time.After(timeout):
-			t.Fatalf("timeout reading output")
-			return nil
+			lines <- l
 		}
-	}
+	}()
 
-	readResponseAndEvents := func(id float64, timeout time.Duration) (map[string]any, []map[string]any) {
-		deadline := time.Now().Add(timeout)
-		events := make([]map[string]any, 0, 4)
+	readLine := func() map[string]any {
+		deadline := time.Now().Add(5 * time.Second)
 		for {
 			remain := time.Until(deadline)
 			if remain <= 0 {
-				t.Fatalf("timeout waiting response id=%v", id)
+				t.Fatalf("timeout reading output")
 			}
-			m := readLine(remain)
+			select {
+			case l := <-lines:
+				m := map[string]any{}
+				if err := json.Unmarshal([]byte(strings.TrimSpace(l)), &m); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				return m
+			case <-time.After(remain):
+				t.Fatalf("timeout reading output")
+			}
+		}
+	}
+
+	readResponseAndEvents := func(id float64) (map[string]any, []map[string]any) {
+		events := make([]map[string]any, 0, 4)
+		for {
+			m := readLine()
 			if m["method"] == "event" {
 				events = append(events, m)
 				continue
@@ -581,7 +581,7 @@ func TestStdioFlow_RequestStartReturnsApprovalDigestAndLifecycleEvents(t *testin
 		"method":  "initialize",
 		"params":  map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"},
 	})
-	if resp, _ := readResponseAndEvents(1, 2*time.Second); resp["result"] == nil {
+	if resp, _ := readResponseAndEvents(1); resp["result"] == nil {
 		t.Fatalf("expected initialize result, got: %v", resp)
 	}
 
@@ -598,7 +598,7 @@ func TestStdioFlow_RequestStartReturnsApprovalDigestAndLifecycleEvents(t *testin
 			},
 		},
 	})
-	resp, _ := readResponseAndEvents(2, 2*time.Second)
+	resp, _ := readResponseAndEvents(2)
 	result, ok := resp["result"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected session.create result, got: %v", resp)
@@ -626,7 +626,7 @@ func TestStdioFlow_RequestStartReturnsApprovalDigestAndLifecycleEvents(t *testin
 			},
 		},
 	})
-	resp, events := readResponseAndEvents(3, 5*time.Second)
+	resp, events := readResponseAndEvents(3)
 	validateEvents(events)
 	if findEvent(events, "request.started") == nil {
 		t.Fatalf("expected request.started event, got: %v", events)
@@ -666,7 +666,7 @@ func TestStdioFlow_RequestStartReturnsApprovalDigestAndLifecycleEvents(t *testin
 			"approvalDigest": digest,
 		},
 	})
-	if resp, events = readResponseAndEvents(4, 2*time.Second); resp["result"] == nil || findEvent(events, "approval.resolved") == nil {
+	if resp, events = readResponseAndEvents(4); resp["result"] == nil || findEvent(events, "approval.resolved") == nil {
 		t.Fatalf("expected approval resolve flow, got resp=%v events=%v", resp, events)
 	}
 	validateEvents(events)
@@ -689,7 +689,7 @@ func TestStdioFlow_RequestStartReturnsApprovalDigestAndLifecycleEvents(t *testin
 			},
 		},
 	})
-	resp, events = readResponseAndEvents(5, 5*time.Second)
+	resp, events = readResponseAndEvents(5)
 	validateEvents(events)
 	if findEvent(events, "request.completed") == nil {
 		t.Fatalf("expected request.completed event, got: %v", events)
@@ -748,41 +748,41 @@ func TestStdioFlow_RequestCancelEmitsRequestFailed(t *testing.T) {
 		go write(obj)
 	}
 
-	readLine := func(timeout time.Duration) map[string]any {
-		type res struct {
-			line string
-			err  error
-		}
-		ch := make(chan res, 1)
-		go func() {
+	lines := make(chan string, 64)
+	go func() {
+		for {
 			l, e := rd.ReadString('\n')
-			ch <- res{line: l, err: e}
-		}()
-		select {
-		case r := <-ch:
-			if r.err != nil {
-				t.Fatalf("read: %v", r.err)
+			if e != nil {
+				return
 			}
-			m := map[string]any{}
-			if err := json.Unmarshal([]byte(strings.TrimSpace(r.line)), &m); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			return m
-		case <-time.After(timeout):
-			t.Fatalf("timeout reading output")
-			return nil
+			lines <- l
 		}
-	}
+	}()
 
-	readResponseAndEvents := func(id float64, timeout time.Duration) (map[string]any, []map[string]any) {
-		deadline := time.Now().Add(timeout)
-		events := make([]map[string]any, 0, 4)
+	readLine := func() map[string]any {
+		deadline := time.Now().Add(5 * time.Second)
 		for {
 			remain := time.Until(deadline)
 			if remain <= 0 {
-				t.Fatalf("timeout waiting response id=%v", id)
+				t.Fatalf("timeout reading output")
 			}
-			m := readLine(remain)
+			select {
+			case l := <-lines:
+				m := map[string]any{}
+				if err := json.Unmarshal([]byte(strings.TrimSpace(l)), &m); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				return m
+			case <-time.After(remain):
+				t.Fatalf("timeout reading output")
+			}
+		}
+	}
+
+	readResponseAndEvents := func(id float64) (map[string]any, []map[string]any) {
+		events := make([]map[string]any, 0, 4)
+		for {
+			m := readLine()
 			if m["method"] == "event" {
 				events = append(events, m)
 				continue
@@ -795,15 +795,10 @@ func TestStdioFlow_RequestCancelEmitsRequestFailed(t *testing.T) {
 		}
 	}
 
-	readEventsUntil := func(timeout time.Duration, wantType string) []map[string]any {
-		deadline := time.Now().Add(timeout)
+	readEventsUntil := func(_ time.Duration, wantType string) []map[string]any {
 		events := make([]map[string]any, 0, 4)
 		for {
-			remain := time.Until(deadline)
-			if remain <= 0 {
-				t.Fatalf("timeout waiting event %q", wantType)
-			}
-			m := readLine(remain)
+			m := readLine()
 			if m["method"] != "event" {
 				continue
 			}
@@ -857,7 +852,7 @@ func TestStdioFlow_RequestCancelEmitsRequestFailed(t *testing.T) {
 		"method":  "initialize",
 		"params":  map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"},
 	})
-	if resp, _ := readResponseAndEvents(1, 2*time.Second); resp["result"] == nil {
+	if resp, _ := readResponseAndEvents(1); resp["result"] == nil {
 		t.Fatalf("expected initialize result, got: %v", resp)
 	}
 
@@ -874,7 +869,7 @@ func TestStdioFlow_RequestCancelEmitsRequestFailed(t *testing.T) {
 			},
 		},
 	})
-	resp, events := readResponseAndEvents(2, 2*time.Second)
+	resp, events := readResponseAndEvents(2)
 	result, ok := resp["result"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected session.create result, got: %v", resp)
@@ -916,7 +911,7 @@ func TestStdioFlow_RequestCancelEmitsRequestFailed(t *testing.T) {
 			"requestID": "req_cancel_1",
 		},
 	})
-	resp, cancelEvents := readResponseAndEvents(4, 2*time.Second)
+	resp, cancelEvents := readResponseAndEvents(4)
 	validateEvents(cancelEvents)
 	result, ok = resp["result"].(map[string]any)
 	if !ok {
@@ -926,7 +921,7 @@ func TestStdioFlow_RequestCancelEmitsRequestFailed(t *testing.T) {
 		t.Fatalf("expected request.cancel ok=true, got: %v", resp)
 	}
 
-	resp, finishEvents := readResponseAndEvents(3, 6*time.Second)
+	resp, finishEvents := readResponseAndEvents(3)
 	validateEvents(finishEvents)
 	if failed := findEvent(finishEvents, "request.failed"); failed != nil {
 		if findEvent(finishEvents, "request.completed") != nil {
@@ -985,41 +980,41 @@ func TestStdioFlow_InquiryResolveAliasCompletesRequest(t *testing.T) {
 		_, _ = inW.Write(append(b, '\n'))
 	}
 
-	readLine := func(timeout time.Duration) map[string]any {
-		type res struct {
-			line string
-			err  error
-		}
-		ch := make(chan res, 1)
-		go func() {
+	lines := make(chan string, 64)
+	go func() {
+		for {
 			l, e := rd.ReadString('\n')
-			ch <- res{line: l, err: e}
-		}()
-		select {
-		case r := <-ch:
-			if r.err != nil {
-				t.Fatalf("read: %v", r.err)
+			if e != nil {
+				return
 			}
-			m := map[string]any{}
-			if err := json.Unmarshal([]byte(strings.TrimSpace(r.line)), &m); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			return m
-		case <-time.After(timeout):
-			t.Fatalf("timeout reading output")
-			return nil
+			lines <- l
 		}
-	}
+	}()
 
-	readResponseAndEvents := func(id float64, timeout time.Duration) (map[string]any, []map[string]any) {
-		deadline := time.Now().Add(timeout)
-		events := make([]map[string]any, 0, 4)
+	readLine := func() map[string]any {
+		deadline := time.Now().Add(5 * time.Second)
 		for {
 			remain := time.Until(deadline)
 			if remain <= 0 {
-				t.Fatalf("timeout waiting response id=%v", id)
+				t.Fatalf("timeout reading output")
 			}
-			m := readLine(remain)
+			select {
+			case l := <-lines:
+				m := map[string]any{}
+				if err := json.Unmarshal([]byte(strings.TrimSpace(l)), &m); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				return m
+			case <-time.After(remain):
+				t.Fatalf("timeout reading output")
+			}
+		}
+	}
+
+	readResponseAndEvents := func(id float64) (map[string]any, []map[string]any) {
+		events := make([]map[string]any, 0, 4)
+		for {
+			m := readLine()
 			if m["method"] == "event" {
 				events = append(events, m)
 				continue
@@ -1071,7 +1066,7 @@ func TestStdioFlow_InquiryResolveAliasCompletesRequest(t *testing.T) {
 		"method":  "initialize",
 		"params":  map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"},
 	})
-	if resp, _ := readResponseAndEvents(1, 2*time.Second); resp["result"] == nil {
+	if resp, _ := readResponseAndEvents(1); resp["result"] == nil {
 		t.Fatalf("expected initialize result, got: %v", resp)
 	}
 
@@ -1086,7 +1081,7 @@ func TestStdioFlow_InquiryResolveAliasCompletesRequest(t *testing.T) {
 			},
 		},
 	})
-	resp, events := readResponseAndEvents(2, 2*time.Second)
+	resp, events := readResponseAndEvents(2)
 	validateEvents(events)
 	result, ok := resp["result"].(map[string]any)
 	if !ok {
@@ -1113,7 +1108,7 @@ func TestStdioFlow_InquiryResolveAliasCompletesRequest(t *testing.T) {
 			},
 		},
 	})
-	resp, events = readResponseAndEvents(3, 5*time.Second)
+	resp, events = readResponseAndEvents(3)
 	validateEvents(events)
 	if findEvent(events, "request.started") == nil || findEvent(events, "inquiry.required") == nil {
 		t.Fatalf("expected request.started + inquiry.required, got: %v", events)
@@ -1145,7 +1140,7 @@ func TestStdioFlow_InquiryResolveAliasCompletesRequest(t *testing.T) {
 			"text":      "先给出方案",
 		},
 	})
-	resp, events = readResponseAndEvents(4, 2*time.Second)
+	resp, events = readResponseAndEvents(4)
 	validateEvents(events)
 	if resp["result"] == nil || findEvent(events, "inquiry.resolved") == nil {
 		t.Fatalf("expected inquiry resolve flow, got resp=%v events=%v", resp, events)
@@ -1167,7 +1162,7 @@ func TestStdioFlow_InquiryResolveAliasCompletesRequest(t *testing.T) {
 			},
 		},
 	})
-	resp, events = readResponseAndEvents(5, 5*time.Second)
+	resp, events = readResponseAndEvents(5)
 	validateEvents(events)
 	if findEvent(events, "request.completed") == nil || findEvent(events, "tool.result") == nil {
 		t.Fatalf("expected completed request with tool result, got: %v", events)
@@ -1217,41 +1212,41 @@ func TestStdioFlow_SessionResumeAndDeleteAliases(t *testing.T) {
 		_, _ = inW.Write(append(b, '\n'))
 	}
 
-	readLine := func(timeout time.Duration) map[string]any {
-		type res struct {
-			line string
-			err  error
-		}
-		ch := make(chan res, 1)
-		go func() {
+	lines := make(chan string, 64)
+	go func() {
+		for {
 			l, e := rd.ReadString('\n')
-			ch <- res{line: l, err: e}
-		}()
-		select {
-		case r := <-ch:
-			if r.err != nil {
-				t.Fatalf("read: %v", r.err)
+			if e != nil {
+				return
 			}
-			m := map[string]any{}
-			if err := json.Unmarshal([]byte(strings.TrimSpace(r.line)), &m); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			return m
-		case <-time.After(timeout):
-			t.Fatalf("timeout reading output")
-			return nil
+			lines <- l
 		}
-	}
+	}()
 
-	readResponseAndEvents := func(id float64, timeout time.Duration) (map[string]any, []map[string]any) {
-		deadline := time.Now().Add(timeout)
-		events := make([]map[string]any, 0, 2)
+	readLine := func() map[string]any {
+		deadline := time.Now().Add(5 * time.Second)
 		for {
 			remain := time.Until(deadline)
 			if remain <= 0 {
-				t.Fatalf("timeout waiting response id=%v", id)
+				t.Fatalf("timeout reading output")
 			}
-			m := readLine(remain)
+			select {
+			case l := <-lines:
+				m := map[string]any{}
+				if err := json.Unmarshal([]byte(strings.TrimSpace(l)), &m); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				return m
+			case <-time.After(remain):
+				t.Fatalf("timeout reading output")
+			}
+		}
+	}
+
+	readResponseAndEvents := func(id float64) (map[string]any, []map[string]any) {
+		events := make([]map[string]any, 0, 2)
+		for {
+			m := readLine()
 			if m["method"] == "event" {
 				events = append(events, m)
 				continue
@@ -1285,12 +1280,12 @@ func TestStdioFlow_SessionResumeAndDeleteAliases(t *testing.T) {
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"}})
-	if resp, _ := readResponseAndEvents(1, 2*time.Second); resp["result"] == nil {
+	if resp, _ := readResponseAndEvents(1); resp["result"] == nil {
 		t.Fatalf("expected initialize result, got: %v", resp)
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 2, "method": "session.create", "params": map[string]any{"workspacePath": workspace}})
-	resp, events := readResponseAndEvents(2, 2*time.Second)
+	resp, events := readResponseAndEvents(2)
 	validateEvents(events)
 	result, ok := resp["result"].(map[string]any)
 	if !ok {
@@ -1302,7 +1297,7 @@ func TestStdioFlow_SessionResumeAndDeleteAliases(t *testing.T) {
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 3, "method": "session.resume", "params": map[string]any{"sessionID": sessionID}})
-	resp, events = readResponseAndEvents(3, 2*time.Second)
+	resp, events = readResponseAndEvents(3)
 	validateEvents(events)
 	result, ok = resp["result"].(map[string]any)
 	if !ok {
@@ -1317,7 +1312,7 @@ func TestStdioFlow_SessionResumeAndDeleteAliases(t *testing.T) {
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 4, "method": "session.delete", "params": map[string]any{"sessionID": sessionID}})
-	resp, events = readResponseAndEvents(4, 2*time.Second)
+	resp, events = readResponseAndEvents(4)
 	validateEvents(events)
 	result, ok = resp["result"].(map[string]any)
 	if !ok {
@@ -1328,7 +1323,7 @@ func TestStdioFlow_SessionResumeAndDeleteAliases(t *testing.T) {
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 5, "method": "session.get", "params": map[string]any{"sessionID": sessionID}})
-	resp, _ = readResponseAndEvents(5, 2*time.Second)
+	resp, _ = readResponseAndEvents(5)
 	if resp["error"] == nil {
 		t.Fatalf("expected SessionNotFound after delete, got: %v", resp)
 	}

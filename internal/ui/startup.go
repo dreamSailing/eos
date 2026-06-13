@@ -10,10 +10,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/dreamSailing/eos/internal/i18n"
-	sharedcore "github.com/dreamSailing/eos/pkg/core"
+	sidecarclient "github.com/dreamSailing/eos/pkg/coreapi/sidecar/client"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -40,22 +41,37 @@ func StartInteractiveTUI() {
 	StartInteractiveTUIWithOptions(TUIOptions{})
 }
 
-func StartInteractiveTUIWithOptions(opts TUIOptions) {
-	runtime := sharedcore.NewRuntime()
-	defer runtime.Close()
+// StartInteractiveTUIWithOptions 启动 TUI 入口。
+// 生产路径：直接启动 eos-core --app-server --stdio sidecar 子进程，
+// 用 sidecarclient.Client + NewAppModelFromCoreClient 构造 AppModel。
+//
+// StartCoreClient 是显式注入点，测试可通过 StartCoreClientForTest 替换为 stub。
+var StartCoreClient = func(ctx context.Context, opts sidecarclient.Options) (*sidecarclient.Client, error) {
+	return sidecarclient.Start(ctx, opts)
+}
 
+func StartInteractiveTUIWithOptions(opts TUIOptions) {
 	root, _ := os.Getwd()
 	if strings.TrimSpace(root) == "" {
 		root = "."
 	}
 	rememberKnownWorkspace(root, true)
-	applyTUIOptions(runtime, opts)
-	runtime.PrepareStartupContext(context.Background(), root)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	client, err := StartCoreClient(ctx, tuiSidecarClientOptions(opts))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start eos-core sidecar: %v\n", err)
+		os.Exit(1)
+	}
+	defer client.Close()
+
 	if strings.TrimSpace(opts.SessionID) != "" {
 		slog.Info("ui.startup.session", "session_id", opts.SessionID)
 	}
 
-	m := NewAppModelFromRuntime(runtime)
+	m := NewAppModelFromCoreClient(client)
 	slog.Info("ui.startup.app.run")
 	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		slog.Error("ui.startup.app.run.error", "error", err)
@@ -68,19 +84,53 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 	fmt.Println(T("goodbye.ended", "zh"))
 }
 
-// applyTUIOptions applies CLI-provided overrides to the runtime core
-func applyTUIOptions(runtime *sharedcore.Runtime, opts TUIOptions) {
-	if runtime == nil {
-		return
+func tuiSidecarClientOptions(opts TUIOptions) sidecarclient.Options {
+	return sidecarclient.Options{
+		Env:              tuiOptionEnv(opts),
+		VerifyChecksum:   true,
+		RequireSignature: true,
 	}
-	runtime.ApplyStartupOptions(sharedcore.StartupOptions{
-		ModelOverride:   opts.ModelOverride,
-		MaxTurns:        opts.MaxTurns,
-		AllowedTools:    append([]string(nil), opts.AllowedTools...),
-		DisallowedTools: append([]string(nil), opts.DisallowedTools...),
-		AccessMode:      opts.AccessMode,
-		ApprovalMode:    opts.ApprovalMode,
-		SandboxMode:     opts.SandboxMode,
-		SkipPermissions: opts.SkipPermissions,
-	})
+}
+
+// tuiOptionEnv 把 TUIOptions 透传到 eos-core 子进程环境变量。
+// 字段名与 eos-core-protocol 的 ENV_* 常量保持一致。
+func tuiOptionEnv(opts TUIOptions) map[string]string {
+	env := map[string]string{}
+	// Production TUI never inherits a fake provider selection from the parent shell.
+	env["EOS_MODEL_PROVIDER"] = ""
+	if storeDir := defaultRustCoreStoreDir(); storeDir != "" {
+		env["EOS_CORE_STORE_DIR"] = storeDir
+	}
+	if v := strings.TrimSpace(opts.ModelOverride); v != "" {
+		env["EOS_MODEL_OVERRIDE"] = v
+	}
+	if opts.MaxTurns > 0 {
+		env["EOS_MAX_TURNS"] = fmt.Sprintf("%d", opts.MaxTurns)
+	}
+	if len(opts.AllowedTools) > 0 {
+		env["EOS_ALLOWED_TOOLS"] = strings.Join(opts.AllowedTools, ",")
+	}
+	if len(opts.DisallowedTools) > 0 {
+		env["EOS_DISALLOWED_TOOLS"] = strings.Join(opts.DisallowedTools, ",")
+	}
+	if v := strings.TrimSpace(opts.AccessMode); v != "" {
+		env["EOS_ACCESS_MODE"] = v
+	}
+	if v := strings.TrimSpace(opts.ApprovalMode); v != "" {
+		env["EOS_APPROVAL_MODE"] = v
+	}
+	if v := strings.TrimSpace(opts.SandboxMode); v != "" {
+		env["EOS_SANDBOX_MODE"] = v
+	}
+	if opts.SkipPermissions {
+		env["EOS_SKIP_PERMISSIONS"] = "1"
+	}
+	return env
+}
+
+func defaultRustCoreStoreDir() string {
+	if dir, err := os.UserHomeDir(); err == nil && strings.TrimSpace(dir) != "" {
+		return filepath.Join(dir, ".eos", "core")
+	}
+	return ""
 }

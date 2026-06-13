@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -305,5 +306,56 @@ func TestExecTimeout_ContextCancellation(t *testing.T) {
 	<-ctx.Done()
 	if ctx.Err() != context.DeadlineExceeded {
 		t.Fatalf("expected DeadlineExceeded, got %v", ctx.Err())
+	}
+}
+
+// TestExecOptionEnv_DoesNotInjectLegacyMode 验证 exec flags 不会把 dev-only 的
+// EOS_CORE_ENGINE / EOS_CORE_ALLOW_FALLBACK 注入到生产环境变量。
+func TestExecOptionEnv_DoesNotInjectLegacyMode(t *testing.T) {
+	opts := execOptions{
+		AccessMode:     "workspace-write",
+		ApprovalMode:   "on-request",
+		Sandbox:        "workspace",
+		SkipPermission: false,
+	}
+	env := execOptionEnv(opts)
+	for key, value := range env {
+		if strings.EqualFold(key, "EOS_CORE_ENGINE") {
+			t.Fatalf("execOptionEnv leaked EOS_CORE_ENGINE=%q", value)
+		}
+		if strings.EqualFold(key, "EOS_CORE_ALLOW_FALLBACK") {
+			t.Fatalf("execOptionEnv leaked EOS_CORE_ALLOW_FALLBACK=%q", value)
+		}
+	}
+	if env["EOS_ACCESS_MODE"] != "workspace-write" {
+		t.Fatalf("EOS_ACCESS_MODE = %q, want workspace-write", env["EOS_ACCESS_MODE"])
+	}
+	if env["EOS_APPROVAL_MODE"] != "on-request" {
+		t.Fatalf("EOS_APPROVAL_MODE = %q, want on-request", env["EOS_APPROVAL_MODE"])
+	}
+	if _, ok := env["EOS_SKIP_PERMISSIONS"]; ok {
+		t.Fatalf("EOS_SKIP_PERMISSIONS should be absent when SkipPermission=false")
+	}
+}
+
+// TestExecFailsWithoutRustBinary 验证 `eos exec` 在缺 eos-core 二进制时直接 error，
+// 不会回退到 Go sharedcore。这是 packaging test 的关键。
+func TestExecFailsWithoutRustBinary(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("EOS_CORE_PATH", filepath.Join(dir, "no-such-binary"))
+	t.Setenv("EOS_CORE_ALLOW_FALLBACK", "")
+	t.Setenv("EOS_CORE_ENGINE", "") // 生产默认：rust-only
+
+	err := runExec(context.Background(), execOptions{
+		Prompt:  "hello world",
+		Output:  "text",
+		Timeout: 2 * time.Second,
+	})
+	if err == nil {
+		t.Fatal("runExec succeeded without rust binary; expected error")
+	}
+	if !strings.Contains(err.Error(), "eos-core") && !strings.Contains(err.Error(), "rust") &&
+		!strings.Contains(err.Error(), "sidecar") && !strings.Contains(err.Error(), "binary") {
+		t.Logf("note: runExec error = %q", err.Error())
 	}
 }

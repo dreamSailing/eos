@@ -2,7 +2,7 @@
 
 [中文](./README.md) | [English](./README.en.md)
 
-EOS is an open-source terminal AI coding assistant built in Go and orchestrated with CloudWeGo Eino. It is designed for day-to-day coding, code review, document workflows, local automation, and IDE / platform integration, with an interactive TUI, tool calling, safety controls, workspace-aware context, and extensible MCP support.
+EOS is an open-source terminal AI coding assistant with Rust Core as its core runtime, while the Go side provides the CLI entry point, TUI, bridge layer, and distribution integration. It is designed for day-to-day coding, code review, document workflows, local automation, and IDE / platform integration, with an interactive TUI, tool calling, safety controls, workspace-aware context, and extensible MCP support.
 
 - Repository: https://github.com/dreamSailing/eos
 - Issues: https://github.com/dreamSailing/eos/issues
@@ -20,7 +20,9 @@ EOS is more than a chat-style CLI. It is a local AI workbench with three main us
 
 Compared with heavier or more closed terminal assistants, EOS currently focuses on:
 
-- Go-native distribution with no Node.js runtime requirement
+- Rust Core handles sessions, runtime, tool orchestration, approvals, and sandboxing, while the Go CLI provides a lightweight entry point, TUI, bridge layer, and cross-platform distribution with no Node.js runtime requirement
+- Separating the core runtime from the CLI entry point gives EOS a clearer protocol boundary and allows the desktop app, IDE plugins, MCP hosts, and external platforms to reuse the same core capabilities
+- Tool execution, safety approvals, and sandbox policies are centralized in Rust Core, reducing inconsistent behavior and security risk across multiple entry points
 - OpenAI-compatible model access instead of a single vendor lock-in
 - Full workflows beyond coding chat: documents, MCP, search, Git, remote repositories, subagents, and task orchestration
 - Practical integration surfaces for local hosts, IDE bridges, and agent platforms

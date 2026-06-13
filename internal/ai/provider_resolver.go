@@ -43,7 +43,7 @@ func (r *Resolver) ResolveByModelName(modelName string) *ModelProviderInfo {
 	name := strings.ToLower(strings.TrimSpace(modelName))
 
 	// 从模型目录查找
-	for _, entry := range builtinModelsCatalog {
+	for _, entry := range r.catalog.GetAll() {
 		if strings.ToLower(entry.ModelName) == name || strings.ToLower(entry.ID) == name {
 			provider := r.registry.Get(entry.Provider)
 			if provider == nil {
@@ -52,8 +52,8 @@ func (r *Resolver) ResolveByModelName(modelName string) *ModelProviderInfo {
 
 			info := &ModelProviderInfo{
 				Provider:         provider,
-				Model:            &entry,
-				APIBase:          r.getAPIBaseForEntry(&entry, provider),
+				Model:            entry,
+				APIBase:          r.getAPIBaseForEntry(entry, provider),
 				ProviderType:     entry.Provider,
 				RequiresCodePlan: entry.APIType == APITypeCodePlan,
 			}
@@ -108,7 +108,7 @@ func (r *Resolver) resolveByBaseAndModel(baseURL, modelName string) *ModelProvid
 		return nil
 	}
 
-	for _, entry := range builtinModelsCatalog {
+	for _, entry := range r.catalog.GetAll() {
 		if strings.ToLower(strings.TrimSpace(entry.ModelName)) != name && strings.ToLower(strings.TrimSpace(entry.ID)) != name {
 			continue
 		}
@@ -116,13 +116,13 @@ func (r *Resolver) resolveByBaseAndModel(baseURL, modelName string) *ModelProvid
 		if provider == nil {
 			continue
 		}
-		expectedBase := normalizeResolverBase(r.getAPIBaseForEntry(&entry, provider))
+		expectedBase := normalizeResolverBase(r.getAPIBaseForEntry(entry, provider))
 		if expectedBase == "" || expectedBase != base {
 			continue
 		}
 		return &ModelProviderInfo{
 			Provider:         provider,
-			Model:            &entry,
+			Model:            entry,
 			APIBase:          strings.TrimSpace(baseURL),
 			ProviderType:     entry.Provider,
 			RequiresCodePlan: entry.APIType == APITypeCodePlan,
@@ -171,7 +171,7 @@ func (r *Resolver) GetAvailableProvidersForModel(modelName string) []*ProviderCo
 	name := strings.ToLower(strings.TrimSpace(modelName))
 	var providers []*ProviderConfig
 
-	for _, entry := range builtinModelsCatalog {
+	for _, entry := range r.catalog.GetAll() {
 		if strings.ToLower(entry.ModelName) == name || strings.ToLower(entry.ID) == name {
 			provider := r.registry.Get(entry.Provider)
 			if provider != nil {
@@ -275,8 +275,7 @@ func SupportsVisionFromCatalog(modelName string) bool {
 	if entry := GetModelEntry(id); entry != nil {
 		return entry.SupportsVision
 	}
-	// 回退到原来的检测方式
-	return SupportsVision(modelName)
+	return false
 }
 
 func SupportsCapabilityFromCatalog(modelName string, capability Capability) bool {
@@ -315,7 +314,7 @@ func SupportsToolsFromCatalog(modelName string) bool {
 	if entry := GetModelEntry(id); entry != nil {
 		return entry.SupportsTools
 	}
-	return true
+	return false
 }
 
 // GetModelContextWindow 获取模型的上下文窗口大小
@@ -346,8 +345,7 @@ func GetCatalogContextWindow(entry *ModelCatalogEntry) int {
 
 	modelName := strings.ToLower(strings.TrimSpace(entry.ModelName))
 	entryID := strings.ToLower(strings.TrimSpace(entry.ID))
-	for i := range builtinModelsCatalog {
-		candidate := &builtinModelsCatalog[i]
+	for _, candidate := range globalCatalog.GetAll() {
 		switch {
 		case modelName != "" && strings.EqualFold(candidate.ModelName, modelName) && candidate.ContextWindow > 0:
 			return candidate.ContextWindow
@@ -365,8 +363,7 @@ func findCatalogEntryByKey(key string) *ModelCatalogEntry {
 	if entry := GetModelEntry(key); entry != nil {
 		return entry
 	}
-	for i := range builtinModelsCatalog {
-		entry := &builtinModelsCatalog[i]
+	for _, entry := range globalCatalog.GetAll() {
 		if strings.EqualFold(strings.TrimSpace(entry.ModelName), key) {
 			return entry
 		}

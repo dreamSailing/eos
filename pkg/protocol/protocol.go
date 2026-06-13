@@ -5,7 +5,6 @@ package protocol
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"strings"
 	"time"
@@ -34,34 +33,52 @@ const (
 type EventType string
 
 const (
-	EventTypeTextDelta      EventType = "text.delta"
-	EventTypeTextFinal      EventType = "text.final"
-	EventTypeTextReasoning  EventType = "text.reasoning"
-	EventTypeToolCall       EventType = "tool.call"
-	EventTypeToolResult     EventType = "tool.result"
-	EventTypeToolStep       EventType = "tool.step"
-	EventTypeApprovalReq    EventType = "approval.required"
-	EventTypeApprovalDone   EventType = "approval.resolved"
-	EventTypeInquiryReq     EventType = "inquiry.required"
-	EventTypeInquiryDone    EventType = "inquiry.resolved"
-	EventTypeRequestStarted EventType = "request.started"
-	EventTypeRequestDone    EventType = "request.completed"
-	EventTypeRequestFailed  EventType = "request.failed"
-	EventTypeSessionUpdated EventType = "session.updated"
-	EventTypeAgentStarted   EventType = "agent.started"
-	EventTypeAgentProgress  EventType = "agent.progress"
-	EventTypeAgentDone      EventType = "agent.completed"
-	EventTypeAgentFailed    EventType = "agent.failed"
-	EventTypeAgentCancelled EventType = "agent.cancelled"
-	EventTypeTaskStarted    EventType = "task.started"
-	EventTypeTaskUpdated    EventType = "task.updated"
-	EventTypeTaskDone       EventType = "task.completed"
-	EventTypeTaskFailed     EventType = "task.failed"
-	EventTypeLoopBlocked    EventType = "loop.block"
-	EventTypeTurnWrapUp     EventType = "turn.wrap_up"
-	EventTypeModeChanged    EventType = "mode.changed"
-	EventTypeBudgetUpdated  EventType = "budget.updated"
+	EventTypeTextDelta        EventType = "text.delta"
+	EventTypeTextFinal        EventType = "text.final"
+	EventTypeTextReasoning    EventType = "text.reasoning"
+	EventTypeToolCall         EventType = "tool.call"
+	EventTypeToolResult       EventType = "tool.result"
+	EventTypeToolStep         EventType = "tool.step"
+	EventTypeApprovalReq      EventType = "approval.required"
+	EventTypeApprovalDone     EventType = "approval.resolved"
+	EventTypeInquiryReq       EventType = "inquiry.required"
+	EventTypeInquiryDone      EventType = "inquiry.resolved"
+	EventTypeRequestStarted   EventType = "request.started"
+	EventTypeRequestDone      EventType = "request.completed"
+	EventTypeRequestFailed    EventType = "request.failed"
+	EventTypeSessionUpdated   EventType = "session.updated"
+	EventTypeAgentStarted     EventType = "agent.started"
+	EventTypeAgentProgress    EventType = "agent.progress"
+	EventTypeAgentDone        EventType = "agent.completed"
+	EventTypeAgentFailed      EventType = "agent.failed"
+	EventTypeAgentCancelled   EventType = "agent.cancelled"
+	EventTypeTaskStarted      EventType = "task.started"
+	EventTypeTaskUpdated      EventType = "task.updated"
+	EventTypeTaskDone         EventType = "task.completed"
+	EventTypeTaskFailed       EventType = "task.failed"
+	EventTypeLoopBlocked      EventType = "loop.block"
+	EventTypeTurnWrapUp       EventType = "turn.wrap_up"
+	EventTypeModeChanged      EventType = "mode.changed"
+	EventTypeBudgetUpdated    EventType = "budget.updated"
 	EventTypeMemorySuggestion EventType = "memory.suggestion"
+
+	EventTypeTurnStarted               EventType = "turn.started"
+	EventTypeTurnTextDelta             EventType = "turn.text_delta"
+	EventTypeTurnReasoningDelta        EventType = "turn.reasoning_delta"
+	EventTypeTurnToolCallStart         EventType = "turn.tool_call_start"
+	EventTypeTurnToolCallDelta         EventType = "turn.tool_call_delta"
+	EventTypeTurnToolCallDone          EventType = "turn.tool_call_done"
+	EventTypeTurnToolObservation       EventType = "turn.tool_observation"
+	EventTypeTurnCompleted             EventType = "turn.completed"
+	EventTypeTurnError                 EventType = "turn.error"
+	EventTypeTurnCancelled             EventType = "turn.cancelled"
+	EventTypeTurnInterrupted           EventType = "turn.interrupted"
+	EventTypeTurnWaitingApproval       EventType = "turn.waiting_approval"
+	EventTypeTurnPreCompact            EventType = "turn.pre_compact"
+	EventTypeTurnMidCompact            EventType = "turn.mid_compact"
+	EventTypeTurnModelDownshift        EventType = "turn.model_downshift"
+	EventTypeTurnContextWindowExceeded EventType = "turn.context_window_exceeded"
+	EventTypeTurnToolLoopExhausted     EventType = "turn.tool_loop_exhausted"
 )
 
 type Envelope struct {
@@ -70,6 +87,8 @@ type Envelope struct {
 	EventType     EventType      `json:"event_type"`
 	SessionID     string         `json:"session_id,omitempty"`
 	ThreadID      string         `json:"thread_id,omitempty"`
+	TurnID        string         `json:"turn_id,omitempty"`
+	AgentID       string         `json:"agent_id,omitempty"`
 	RequestID     string         `json:"request_id,omitempty"`
 	CorrelationID string         `json:"correlation_id,omitempty"`
 	Timestamp     time.Time      `json:"timestamp"`
@@ -81,6 +100,8 @@ type EventOptions struct {
 	EventID       string
 	SessionID     string
 	ThreadID      string
+	TurnID        string
+	AgentID       string
 	RequestID     string
 	CorrelationID string
 	Timestamp     time.Time
@@ -110,11 +131,44 @@ func NewEvent(eventType EventType, opts EventOptions) Envelope {
 		EventType:     eventType,
 		SessionID:     strings.TrimSpace(opts.SessionID),
 		ThreadID:      strings.TrimSpace(opts.ThreadID),
+		TurnID:        strings.TrimSpace(opts.TurnID),
+		AgentID:       strings.TrimSpace(opts.AgentID),
 		RequestID:     strings.TrimSpace(opts.RequestID),
 		CorrelationID: strings.TrimSpace(opts.CorrelationID),
 		Timestamp:     ts,
 		Source:        src,
 		Payload:       ClonePayload(opts.Payload),
+	}
+}
+
+func NormalizeEventType(eventType EventType) EventType {
+	switch eventType {
+	case EventTypeTurnStarted:
+		return EventTypeRequestStarted
+	case EventTypeTurnTextDelta:
+		return EventTypeTextDelta
+	case EventTypeTurnReasoningDelta:
+		return EventTypeTextReasoning
+	case EventTypeTurnToolCallStart:
+		return EventTypeToolCall
+	case EventTypeTurnToolCallDelta:
+		return EventTypeToolStep
+	case EventTypeTurnToolCallDone:
+		return EventTypeToolCall
+	case EventTypeTurnToolObservation:
+		return EventTypeToolResult
+	case EventTypeTurnCompleted:
+		return EventTypeRequestDone
+	case EventTypeTurnError, EventTypeTurnCancelled, EventTypeTurnInterrupted:
+		return EventTypeRequestFailed
+	case EventTypeTurnWaitingApproval:
+		return EventTypeApprovalReq
+	case EventTypeTurnPreCompact, EventTypeTurnMidCompact, EventTypeTurnModelDownshift:
+		return EventTypeTextReasoning
+	case EventTypeTurnContextWindowExceeded, EventTypeTurnToolLoopExhausted:
+		return EventTypeToolStep
+	default:
+		return eventType
 	}
 }
 

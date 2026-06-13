@@ -1,3 +1,5 @@
+//go:build legacy
+
 package core
 
 // Copyright (c) 2026 DreamSailing

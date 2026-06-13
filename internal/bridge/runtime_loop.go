@@ -1,3 +1,5 @@
+//go:build legacy
+
 package bridge
 
 // Copyright (c) 2026 DreamSailing
@@ -397,8 +399,14 @@ func (rc *RuntimeCore) loop() {
 		rc.modelBase = rt.ModelBase()
 		rc.mu.Unlock()
 		if rc.cm != nil {
-			base, key, _, _ := rc.ResolveAPIConfig()
-			ai.PrimeContextWindowFromProvider(ctx, base, key, rc.modelName)
+			if entry, ok := rc.GetActiveModel(); ok {
+				base := strings.TrimSpace(entry.APIBase)
+				key := strings.TrimSpace(entry.APIKey)
+				model := strings.TrimSpace(entry.Model)
+				if model != "" {
+					ai.PrimeContextWindowFromProvider(ctx, base, key, model)
+				}
+			}
 			rc.cm.SetModel(rc.modelName)
 			window := ai.ContextWindowTokens(rc.modelName)
 			rc.mu.Lock()

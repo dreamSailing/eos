@@ -1,3 +1,5 @@
+//go:build legacy
+
 // adapter 包是 TUI 与运行时之间的兼容层。
 //
 // 依赖边界（import boundary）:
@@ -1495,14 +1497,25 @@ func (a *RuntimeAdapter) ExportSessionMarkdown(ctx context.Context, id, outputPa
 	if outputPath == "" {
 		return errors.New("output path required")
 	}
-	messages, err := a.LoadSessionMessages(ctx, id)
+	bridgeMessages, err := a.LoadSessionMessages(ctx, id)
 	if err != nil {
 		return err
+	}
+	converted := make([]coreapi.SessionMessage, 0, len(bridgeMessages))
+	for _, m := range bridgeMessages {
+		converted = append(converted, coreapi.SessionMessage{
+			Role:       m.Role,
+			Type:       m.Type,
+			Content:    m.Content,
+			Time:       time.Unix(m.Timestamp, 0),
+			ImagePaths: append([]string(nil), m.ImagePaths...),
+			Metadata:   cloneMap(m.Metadata),
+		})
 	}
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(outputPath, []byte(renderSessionMarkdown(id, messages)), 0o644)
+	return os.WriteFile(outputPath, []byte(renderSessionMarkdown(id, converted)), 0o644)
 }
 
 func (a *RuntimeAdapter) RespondPrompt(ctx context.Context, id, kind string, response PromptResponse) error {
@@ -1627,20 +1640,13 @@ func (a *RuntimeAdapter) startEventPumps() {
 	}
 	a.pumpsOnce.Do(func() {
 		go func() {
-			var legacyEvents <-chan bridge.Event
-			if a.useLegacyEvents && a.core != nil {
-				legacyEvents = a.core.Events()
-			}
+			// bridge 事件归一化已被 protocol.Envelope 路径取代；
+			// 保留 useLegacyEvents 标志位以保持 API 兼容，但已不依赖 bridge。
+			_ = a.useLegacyEvents
 			for {
 				select {
 				case event := <-a.notificationCh:
 					a.publishEvent(event)
-				case event, ok := <-legacyEvents:
-					if !ok {
-						legacyEvents = nil
-						continue
-					}
-					a.publishEvent(normalizeRuntimeEvent(event))
 				}
 			}
 		}()
@@ -1716,29 +1722,6 @@ func bridgeEventFromNotification(notification protocoljsonrpc.Notification) (Run
 	return runtimeEventFromEnvelope(envelope), true
 }
 
-func runtimeEventFromEnvelope(envelope protocol.Envelope) RuntimeEvent {
-	data := protocol.ClonePayload(envelope.Payload)
-	if data == nil {
-		data = map[string]any{}
-	}
-	if strings.TrimSpace(envelope.EventID) != "" {
-		data["event_id"] = strings.TrimSpace(envelope.EventID)
-	}
-	if strings.TrimSpace(envelope.SessionID) != "" {
-		data["session_id"] = strings.TrimSpace(envelope.SessionID)
-	}
-	if strings.TrimSpace(envelope.RequestID) != "" {
-		data["request_id"] = strings.TrimSpace(envelope.RequestID)
-	}
-	content := firstEventText(data, "", "text", "message", "summary", "error")
-	return RuntimeEvent{
-		Type:    string(envelope.EventType),
-		RID:     firstNonEmptyString(envelope.RequestID, envelope.CorrelationID, envelope.EventID),
-		Content: content,
-		Data:    data,
-	}
-}
-
 func bridgeSessionMessagesFromCoreAPI(items []coreapi.SessionMessage) []bridge.SessionTranscriptMessage {
 	out := make([]bridge.SessionTranscriptMessage, 0, len(items))
 	for _, item := range items {
@@ -1756,29 +1739,6 @@ func bridgeSessionMessagesFromCoreAPI(items []coreapi.SessionMessage) []bridge.S
 		})
 	}
 	return out
-}
-
-func renderSessionMarkdown(id string, messages []bridge.SessionTranscriptMessage) string {
-	var b strings.Builder
-	b.WriteString("# Session: ")
-	b.WriteString(strings.TrimSpace(id))
-	b.WriteString("\n\n")
-	for _, msg := range messages {
-		content := strings.TrimSpace(msg.Content)
-		if content == "" {
-			continue
-		}
-		role := strings.TrimSpace(msg.Role)
-		if role == "" {
-			role = "unknown"
-		}
-		b.WriteString("**")
-		b.WriteString(role)
-		b.WriteString("**: ")
-		b.WriteString(content)
-		b.WriteString("\n\n")
-	}
-	return b.String()
 }
 
 func persistedSessionMetasFromCoreAPI(items []coreapi.Session) []bridge.PersistedSessionMeta {
@@ -1960,68 +1920,8 @@ func coreAPISettingsFromRuntime(s sharedcore.Settings) coreapi.Settings {
 	}
 }
 
-func coreAPISettingsFromInternal(s settings.Settings) coreapi.Settings {
-	return coreapi.Settings{
-		PlanPromptStyle:      strings.TrimSpace(s.PlanPromptStyle),
-		PlanBubbleColor:      strings.TrimSpace(s.PlanBubbleColor),
-		AutoContext:          adapterBoolPtr(s.AutoContext),
-		DesktopNotifications: cloneAdapterBoolPtr(s.DesktopNotifications),
-		MaxInjectKB:          s.MaxInjectKB,
-		WatchMode:            strings.TrimSpace(s.WatchMode),
-		WatchDebounceMs:      s.WatchDebounceMs,
-		PollIntervalSec:      s.PollIntervalSec,
-		Language:             strings.TrimSpace(s.Language),
-		Theme:                strings.TrimSpace(s.Theme),
-		Trusted:              adapterBoolPtr(s.Trusted),
-		MaxTurnTokens:        s.MaxTurnTokens,
-		MaxSessionTokens:     s.MaxSessionTokens,
-	}
-}
-
-func settingsFromCoreAPI(s coreapi.Settings) settings.Settings {
-	autoContext := true
-	if s.AutoContext != nil {
-		autoContext = *s.AutoContext
-	}
-	trusted := false
-	if s.Trusted != nil {
-		trusted = *s.Trusted
-	}
-	out := settings.Settings{
-		PlanPromptStyle:      strings.TrimSpace(s.PlanPromptStyle),
-		PlanBubbleColor:      strings.TrimSpace(s.PlanBubbleColor),
-		AutoContext:          autoContext,
-		DesktopNotifications: cloneAdapterBoolPtr(s.DesktopNotifications),
-		MaxInjectKB:          s.MaxInjectKB,
-		WatchMode:            strings.TrimSpace(s.WatchMode),
-		WatchDebounceMs:      s.WatchDebounceMs,
-		PollIntervalSec:      s.PollIntervalSec,
-		Language:             strings.TrimSpace(s.Language),
-		Theme:                strings.TrimSpace(s.Theme),
-		Trusted:              trusted,
-		MaxTurnTokens:        s.MaxTurnTokens,
-		MaxSessionTokens:     s.MaxSessionTokens,
-	}
-	if strings.TrimSpace(out.PlanPromptStyle) == "" {
-		out.PlanPromptStyle = "concise"
-	}
-	if out.MaxInjectKB <= 0 {
-		out.MaxInjectKB = 48
-	}
-	if out.WatchDebounceMs <= 0 {
-		out.WatchDebounceMs = 500
-	}
-	if out.PollIntervalSec <= 0 {
-		out.PollIntervalSec = 5
-	}
-	if strings.TrimSpace(out.Language) == "" {
-		out.Language = "zh"
-	}
-	if strings.TrimSpace(out.Theme) == "" {
-		out.Theme = "dark"
-	}
-	return out
-}
+// coreAPISettingsFromInternal / settingsFromCoreAPI 已迁出至 core_client.go。
+// 该测试文件仅保留 *_test.go 可见的辅助函数（adapterBoolPtr / cloneAdapterBoolPtr）。
 
 func adapterBoolPtr(v bool) *bool {
 	out := v
@@ -2047,32 +1947,6 @@ func coreAPIMemorySnapshotFromRuntime(snapshot sharedcore.MemorySnapshot) coreap
 			Summary:   strings.TrimSpace(doc.Summary),
 			UpdatedAt: doc.UpdatedAt,
 		})
-	}
-	return out
-}
-
-func mcpEntriesFromCoreAPI(items []coreapi.MCPServer) []config.MCPEntry {
-	out := make([]config.MCPEntry, 0, len(items))
-	for _, item := range items {
-		out = append(out, config.MCPEntry{
-			Name:                 strings.TrimSpace(item.Name),
-			Type:                 config.MCPClientType(strings.TrimSpace(item.Type)),
-			Command:              strings.TrimSpace(item.Command),
-			Args:                 append([]string(nil), item.Args...),
-			Envs:                 cloneStringMap(item.Envs),
-			BaseURL:              strings.TrimSpace(item.BaseURL),
-			Enabled:              item.Enabled,
-			Auth:                 configMCPAuthFromCoreAPI(item.Auth),
-			ApprovalMode:         strings.TrimSpace(item.ApprovalMode),
-			ToolApprovalOverride: cloneStringMap(item.ToolApprovalOverride),
-		})
-		if out[len(out)-1].Command == "" && strings.TrimSpace(item.Target) != "" {
-			if out[len(out)-1].Type == config.MCPTypeSSE || out[len(out)-1].Type == config.MCPTypeStreamableHTTP {
-				out[len(out)-1].BaseURL = strings.TrimSpace(item.Target)
-			} else {
-				out[len(out)-1].Command = strings.TrimSpace(item.Target)
-			}
-		}
 	}
 	return out
 }
@@ -2103,26 +1977,6 @@ func mcpEntriesFromRuntime(items []sharedcore.MCPServer) []config.MCPEntry {
 	return out
 }
 
-func coreAPIUpsertMCPRequest(entry config.MCPEntry) coreapi.UpsertMCPRequest {
-	target := strings.TrimSpace(entry.Command)
-	if strings.TrimSpace(entry.BaseURL) != "" {
-		target = strings.TrimSpace(entry.BaseURL)
-	}
-	return coreapi.UpsertMCPRequest{
-		Name:                 strings.TrimSpace(entry.Name),
-		Type:                 string(entry.Type),
-		Target:               target,
-		Command:              strings.TrimSpace(entry.Command),
-		Args:                 append([]string(nil), entry.Args...),
-		Envs:                 cloneStringMap(entry.Envs),
-		BaseURL:              strings.TrimSpace(entry.BaseURL),
-		Enabled:              entry.Enabled,
-		Auth:                 coreAPIMCPAuthFromConfig(entry.Auth),
-		ApprovalMode:         strings.TrimSpace(entry.ApprovalMode),
-		ToolApprovalOverride: cloneStringMap(entry.ToolApprovalOverride),
-	}
-}
-
 func runtimeMCPServerFromConfig(entry config.MCPEntry) sharedcore.MCPServer {
 	target := strings.TrimSpace(entry.Command)
 	if strings.TrimSpace(entry.BaseURL) != "" {
@@ -2140,30 +1994,6 @@ func runtimeMCPServerFromConfig(entry config.MCPEntry) sharedcore.MCPServer {
 		Auth:                 runtimeMCPAuthFromConfig(entry.Auth),
 		ApprovalMode:         strings.TrimSpace(entry.ApprovalMode),
 		ToolApprovalOverride: cloneStringMap(entry.ToolApprovalOverride),
-	}
-}
-
-func configMCPAuthFromCoreAPI(auth *coreapi.MCPAuth) *config.MCPAuth {
-	if auth == nil {
-		return nil
-	}
-	return &config.MCPAuth{
-		Type:       strings.TrimSpace(auth.Type),
-		Token:      auth.Token,
-		Headers:    cloneStringMap(auth.Headers),
-		HeadersEnv: cloneStringMap(auth.HeadersEnv),
-	}
-}
-
-func coreAPIMCPAuthFromConfig(auth *config.MCPAuth) *coreapi.MCPAuth {
-	if auth == nil {
-		return nil
-	}
-	return &coreapi.MCPAuth{
-		Type:       strings.TrimSpace(auth.Type),
-		Token:      auth.Token,
-		Headers:    cloneStringMap(auth.Headers),
-		HeadersEnv: cloneStringMap(auth.HeadersEnv),
 	}
 }
 
@@ -2268,16 +2098,7 @@ func coreAPIModelsFromRuntime(items []sharedcore.ModelDescriptor) []coreapi.Mode
 	return out
 }
 
-func cloneStringMap(in map[string]string) map[string]string {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(in))
-	for key, value := range in {
-		out[key] = value
-	}
-	return out
-}
+// cloneStringMap 已迁出至 core_client.go。RuntimeAdapter 继续使用 adapter 包级实现。
 
 func mapString(metadata map[string]any, key string) string {
 	if len(metadata) == 0 {
@@ -2315,41 +2136,6 @@ func cloneMap(in map[string]any) map[string]any {
 		out[key] = value
 	}
 	return out
-}
-
-func firstEventText(data map[string]any, fallback string, keys ...string) string {
-	for _, key := range keys {
-		value, _ := data[key].(string)
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return strings.TrimSpace(fallback)
-}
-
-func toolResultOutputText(result coreapi.ToolResult) string {
-	if len(result.Output) == 0 {
-		return strings.TrimRight(result.Display, "\n")
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(result.Output, &payload); err != nil {
-		return strings.TrimRight(result.Display, "\n")
-	}
-	for _, key := range []string{"stdout", "output", "text", "stderr"} {
-		if value, ok := payload[key].(string); ok && strings.TrimSpace(value) != "" {
-			return strings.TrimRight(value, "\n")
-		}
-	}
-	return strings.TrimRight(result.Display, "\n")
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func resolveAPIConfigFromDescriptor(desc sharedcore.ModelDescriptor) (string, string, string, string) {

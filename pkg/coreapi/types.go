@@ -39,8 +39,9 @@ type Engine interface {
 	Tools() ToolExecutor
 	ToolCatalog() ToolCatalogService
 	ToolTelemetry() ToolTelemetryService
-	Events() EventBus
+	Events() EventSubscriber
 	Sandbox() SandboxService
+	Diagnostics() DiagnosticsService
 }
 
 type StateService interface {
@@ -105,6 +106,8 @@ type PermissionService interface {
 	Snapshot(context.Context) (PermissionSnapshot, error)
 	PendingReview(context.Context) (PendingReview, error)
 	ClearPendingReview(context.Context) error
+	SetAccessMode(context.Context, SetModeRequest) error
+	SetApprovalMode(context.Context, SetModeRequest) error
 }
 
 type ExtensionService interface {
@@ -164,6 +167,11 @@ type ModelService interface {
 	Delete(context.Context, ModelNameRequest) error
 	Activate(context.Context, ModelNameRequest) error
 	SyncEnv(context.Context) error
+	Context(context.Context, ModelContextRequest) (ModelContextSnapshot, error)
+	SetWorkspace(context.Context, SetWorkspaceModelRequest) error
+	ClearWorkspace(context.Context, ClearWorkspaceModelRequest) error
+	SetSession(context.Context, SetSessionModelRequest) error
+	ClearSession(context.Context, ClearSessionModelRequest) error
 }
 
 type RemoteWorkspaceService interface {
@@ -239,15 +247,45 @@ type ToolTelemetryService interface {
 	Stats(context.Context) ([]ToolStat, error)
 }
 
-type EventBus interface {
+// EventSubscriber 订阅运行时事件流。
+// 生产 Engine（包括 Rust sidecar RemoteEngine）只需暴露此接口。
+type EventSubscriber interface {
 	Subscribe(context.Context, EventFilter) (<-chan protocol.Envelope, error)
+}
+
+// EventPublisher 向运行时事件总线发布事件。
+// 仅 legacy/in-process 引擎实现此接口；生产 RemoteEngine 不提供 Publish 能力。
+type EventPublisher interface {
 	Publish(context.Context, protocol.Envelope) error
+}
+
+// EventBus 是 EventSubscriber + EventPublisher 的联合接口，
+// 仅供 legacy/in-process 引擎与测试 fake 使用。
+// 新代码应优先依赖 EventSubscriber。
+type EventBus interface {
+	EventSubscriber
+	EventPublisher
 }
 
 type SandboxService interface {
 	Policy(context.Context, SessionRef) (sandbox.Policy, error)
 	SetPolicy(context.Context, SessionRef, sandbox.Policy) error
 	BackendStatus(context.Context) sandbox.BackendStatus
+}
+
+type StartupDiagnosticsResult struct {
+	BinaryPath      string `json:"binary_path"`
+	ManifestVersion string `json:"manifest_version"`
+	ProtocolVersion string `json:"protocol_version"`
+	StoreDir        string `json:"store_dir"`
+	SandboxBackend  string `json:"sandbox_backend"`
+	MigrationMarker string `json:"migration_marker"`
+	OS              string `json:"os"`
+	Arch            string `json:"arch"`
+}
+
+type DiagnosticsService interface {
+	Startup(context.Context) (StartupDiagnosticsResult, error)
 }
 
 type SessionRef struct {
@@ -357,6 +395,39 @@ type ModelSaveRequest struct {
 
 type ModelNameRequest struct {
 	Name string `json:"name"`
+}
+
+type ModelContextRequest struct {
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
+	SessionID     string `json:"session_id,omitempty"`
+}
+
+type ModelContextSnapshot struct {
+	WorkspaceRoot     string `json:"workspace_root,omitempty"`
+	SessionID         string `json:"session_id,omitempty"`
+	GlobalDefaultName string `json:"global_default_name,omitempty"`
+	WorkspaceModelName string `json:"workspace_model_name,omitempty"`
+	SessionModelName   string `json:"session_model_name,omitempty"`
+	ResolvedModelName  string `json:"resolved_model_name,omitempty"`
+	ResolvedScope      string `json:"resolved_scope,omitempty"`
+}
+
+type SetWorkspaceModelRequest struct {
+	WorkspaceRoot string `json:"workspace_root"`
+	ModelName     string `json:"model_name"`
+}
+
+type ClearWorkspaceModelRequest struct {
+	WorkspaceRoot string `json:"workspace_root"`
+}
+
+type SetSessionModelRequest struct {
+	SessionID string `json:"session_id"`
+	ModelName string `json:"model_name"`
+}
+
+type ClearSessionModelRequest struct {
+	SessionID string `json:"session_id"`
 }
 
 type RemoteWorkspaceRef struct {
@@ -887,6 +958,11 @@ type ModelPresetOption struct {
 	Tags                    []string `json:"tags,omitempty"`
 	Description             string   `json:"description,omitempty"`
 	SupportsReasoningEffort bool     `json:"supports_reasoning_effort"`
+	SupportsVision          bool     `json:"supports_vision"`
+	SupportsImageGeneration bool     `json:"supports_image_generation"`
+	SupportsVideoGeneration bool     `json:"supports_video_generation"`
+	SupportsSpeechSynthesis bool     `json:"supports_speech_synthesis"`
+	SupportsTools           bool     `json:"supports_tools"`
 }
 
 type ModelCatalogState struct {

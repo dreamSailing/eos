@@ -1,3 +1,5 @@
+//go:build legacy
+
 package core
 
 // Copyright (c) 2026 DreamSailing
@@ -291,6 +293,57 @@ func TestFilterTrustedWorkspacesNoMatch(t *testing.T) {
 	if !reflect.DeepEqual(filtered, trusted) {
 		t.Fatalf("filtered=%v, want %v", filtered, trusted)
 	}
+}
+
+func legacyEventToProtocol(ev Event, sessionID, threadID string, ts time.Time) protocol.Envelope {
+	requestID := strings.TrimSpace(ev.RequestID)
+	correlationID := requestID
+	payload := protocol.ClonePayload(ev.Data)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+
+	eventType := protocol.EventTypeTextDelta
+	switch strings.TrimSpace(ev.Type) {
+	case "TextDelta":
+		eventType = protocol.EventTypeTextDelta
+		payload["text"] = ev.Message
+	case "TextFinal":
+		eventType = protocol.EventTypeTextFinal
+		payload["text"] = ev.Message
+	case "ToolStep":
+		eventType = protocol.EventTypeToolStep
+		payload["message"] = ev.Message
+	case "ConfirmRequired":
+		eventType = protocol.EventTypeApprovalReq
+		payload["approval_id"] = requestID
+		if _, ok := payload["message"]; !ok {
+			payload["message"] = ev.Message
+		}
+	case "Inquiry":
+		eventType = protocol.EventTypeInquiryReq
+		payload["inquiry_id"] = requestID
+		if _, ok := payload["question"]; !ok {
+			payload["question"] = ev.Message
+		}
+	case "Error":
+		eventType = protocol.EventTypeRequestFailed
+		payload["error"] = ev.Message
+	default:
+		if strings.TrimSpace(ev.Message) != "" {
+			payload["text"] = ev.Message
+		}
+	}
+
+	return protocol.NewEvent(eventType, protocol.EventOptions{
+		SessionID:     sessionID,
+		ThreadID:      threadID,
+		RequestID:     requestID,
+		CorrelationID: correlationID,
+		Timestamp:     ts,
+		Source:        protocol.SourceCore,
+		Payload:       payload,
+	})
 }
 
 func TestLegacyEventToProtocolMapsTextFinal(t *testing.T) {

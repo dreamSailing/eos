@@ -1,3 +1,5 @@
+//go:build legacy
+
 package core
 
 // Copyright (c) 2026 DreamSailing
@@ -360,8 +362,13 @@ func (r *Runtime) PrepareStartupContext(ctx context.Context, root string) {
 	if cm == nil {
 		return
 	}
-	base, key, model, _ := r.core.ResolveAPIConfig()
-	if strings.TrimSpace(model) != "" {
+	if entry, ok := r.core.GetActiveModel(); ok {
+		base := strings.TrimSpace(entry.APIBase)
+		key := strings.TrimSpace(entry.APIKey)
+		model := strings.TrimSpace(entry.Model)
+		if model == "" {
+			return
+		}
 		ai.PrimeContextWindowFromProvider(ctx, base, key, model)
 		cm.SetModel(model)
 		switch window := ai.ContextWindowTokens(model); {
@@ -712,24 +719,6 @@ func (r *Runtime) Close() {
 		r.core.Shutdown()
 	}
 	r.closeStateChangeSubscribers()
-}
-
-func (r *Runtime) ListModels() []Model {
-	cfg, _ := r.core.LoadFullModelConfig()
-	out := make([]Model, 0, len(cfg.Models))
-	for _, m := range cfg.Models {
-		supportsReasoning := m.SupportsReasoningEffort || ai.SupportsReasoningEffort(m.Model)
-		out = append(out, Model{
-			Name:                    m.Name,
-			APIBase:                 m.APIBase,
-			APIKey:                  m.APIKey,
-			Model:                   m.Model,
-			Source:                  m.Source,
-			IsActive:                strings.TrimSpace(cfg.Active) == strings.TrimSpace(m.Name),
-			SupportsReasoningEffort: supportsReasoning,
-		})
-	}
-	return out
 }
 
 func (r *Runtime) UpsertModel(name, base, key, model string) error {
@@ -3386,57 +3375,6 @@ func bridgeEventToProtocol(ev bridge.Event, sessionID, threadID, fallbackRequest
 			Payload:       payload,
 		}), true
 	}
-}
-
-func legacyEventToProtocol(ev Event, sessionID, threadID string, ts time.Time) protocol.Envelope {
-	requestID := strings.TrimSpace(ev.RequestID)
-	correlationID := requestID
-	payload := protocol.ClonePayload(ev.Data)
-	if payload == nil {
-		payload = map[string]any{}
-	}
-
-	eventType := protocol.EventTypeTextDelta
-	switch strings.TrimSpace(ev.Type) {
-	case "TextDelta":
-		eventType = protocol.EventTypeTextDelta
-		payload["text"] = ev.Message
-	case "TextFinal":
-		eventType = protocol.EventTypeTextFinal
-		payload["text"] = ev.Message
-	case "ToolStep":
-		eventType = protocol.EventTypeToolStep
-		payload["message"] = ev.Message
-	case "ConfirmRequired":
-		eventType = protocol.EventTypeApprovalReq
-		payload["approval_id"] = requestID
-		if _, ok := payload["message"]; !ok {
-			payload["message"] = ev.Message
-		}
-	case "Inquiry":
-		eventType = protocol.EventTypeInquiryReq
-		payload["inquiry_id"] = requestID
-		if _, ok := payload["question"]; !ok {
-			payload["question"] = ev.Message
-		}
-	case "Error":
-		eventType = protocol.EventTypeRequestFailed
-		payload["error"] = ev.Message
-	default:
-		if strings.TrimSpace(ev.Message) != "" {
-			payload["text"] = ev.Message
-		}
-	}
-
-	return protocol.NewEvent(eventType, protocol.EventOptions{
-		SessionID:     sessionID,
-		ThreadID:      threadID,
-		RequestID:     requestID,
-		CorrelationID: correlationID,
-		Timestamp:     ts,
-		Source:        protocol.SourceCore,
-		Payload:       payload,
-	})
 }
 
 func mapBridgeEvent(ev bridge.Event) (Event, bool) {

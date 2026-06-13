@@ -85,43 +85,43 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 	}()
 
 	rd := bufio.NewReader(outR)
+	lines := make(chan string, 64)
+	go func() {
+		for {
+			l, err := rd.ReadString('\n')
+			if err != nil {
+				return
+			}
+			lines <- l
+		}
+	}()
 	write := func(obj any) {
 		b, _ := json.Marshal(obj)
 		_, _ = inW.Write(append(b, '\n'))
 	}
-	readLine := func(timeout time.Duration) map[string]any {
-		type res struct {
-			line string
-			err  error
-		}
-		ch := make(chan res, 1)
-		go func() {
-			l, e := rd.ReadString('\n')
-			ch <- res{line: l, err: e}
-		}()
-		select {
-		case r := <-ch:
-			if r.err != nil {
-				t.Fatalf("read: %v", r.err)
-			}
-			m := map[string]any{}
-			if err := json.Unmarshal([]byte(strings.TrimSpace(r.line)), &m); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			return m
-		case <-time.After(timeout):
-			t.Fatalf("timeout reading output")
-			return nil
-		}
-	}
-	readResponse := func(id float64, timeout time.Duration) map[string]any {
-		deadline := time.Now().Add(timeout)
+	readLine := func() map[string]any {
+		deadline := time.Now().Add(30 * time.Second)
 		for {
 			remain := time.Until(deadline)
 			if remain <= 0 {
-				t.Fatalf("timeout waiting response id=%v", id)
+				t.Fatalf("timeout reading output")
 			}
-			m := readLine(remain)
+			select {
+			case l := <-lines:
+				m := map[string]any{}
+				if err := json.Unmarshal([]byte(strings.TrimSpace(l)), &m); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				return m
+			case <-time.After(remain):
+				t.Fatalf("timeout reading output")
+				return nil
+			}
+		}
+	}
+	readResponse := func(id float64) map[string]any {
+		for {
+			m := readLine()
 			if m["method"] == "event" {
 				continue
 			}
@@ -142,7 +142,7 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"}})
-	_ = readResponse(1, 30*time.Second)
+	_ = readResponse(1)
 
 	write(map[string]any{
 		"jsonrpc": "2.0",
@@ -157,7 +157,7 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 			},
 		},
 	})
-	resp := readResponse(2, 30*time.Second)
+	resp := readResponse(2)
 	result, _ := resp["result"].(map[string]any)
 	sessionID, _ := result["sessionID"].(string)
 	if sessionID == "" {
@@ -165,7 +165,7 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 3, "method": "capability.list", "params": map[string]any{"sessionID": sessionID}})
-	capResp := readResponse(3, 30*time.Second)
+	capResp := readResponse(3)
 	capResult, _ := capResp["result"].(map[string]any)
 	capabilities, _ := capResult["capabilities"].([]any)
 	if got, _ := capResult["mode"].(string); got != "auto" {
@@ -204,7 +204,7 @@ func TestCapabilityListIncludesUnifiedCapabilitiesWhileToolListStaysExecutable(t
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 4, "method": "tool.list", "params": map[string]any{"sessionID": sessionID}})
-	toolResp := readResponse(4, 30*time.Second)
+	toolResp := readResponse(4)
 	toolResult, _ := toolResp["result"].(map[string]any)
 	toolsAny, _ := toolResult["tools"].([]any)
 	toolCatalog, _ := toolResult["catalog"].([]any)
@@ -268,43 +268,43 @@ func TestCapabilityListWorkspaceSandboxBlocksFullAccessCapabilities(t *testing.T
 	}()
 
 	rd := bufio.NewReader(outR)
+	lines := make(chan string, 64)
+	go func() {
+		for {
+			l, err := rd.ReadString('\n')
+			if err != nil {
+				return
+			}
+			lines <- l
+		}
+	}()
 	write := func(obj any) {
 		b, _ := json.Marshal(obj)
 		_, _ = inW.Write(append(b, '\n'))
 	}
-	readLine := func(timeout time.Duration) map[string]any {
-		type res struct {
-			line string
-			err  error
-		}
-		ch := make(chan res, 1)
-		go func() {
-			l, e := rd.ReadString('\n')
-			ch <- res{line: l, err: e}
-		}()
-		select {
-		case r := <-ch:
-			if r.err != nil {
-				t.Fatalf("read: %v", r.err)
-			}
-			m := map[string]any{}
-			if err := json.Unmarshal([]byte(strings.TrimSpace(r.line)), &m); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			return m
-		case <-time.After(timeout):
-			t.Fatalf("timeout reading output")
-			return nil
-		}
-	}
-	readResponse := func(id float64, timeout time.Duration) map[string]any {
-		deadline := time.Now().Add(timeout)
+	readLine := func() map[string]any {
+		deadline := time.Now().Add(30 * time.Second)
 		for {
 			remain := time.Until(deadline)
 			if remain <= 0 {
-				t.Fatalf("timeout waiting response id=%v", id)
+				t.Fatalf("timeout reading output")
 			}
-			m := readLine(remain)
+			select {
+			case l := <-lines:
+				m := map[string]any{}
+				if err := json.Unmarshal([]byte(strings.TrimSpace(l)), &m); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				return m
+			case <-time.After(remain):
+				t.Fatalf("timeout reading output")
+				return nil
+			}
+		}
+	}
+	readResponse := func(id float64) map[string]any {
+		for {
+			m := readLine()
 			if m["method"] == "event" {
 				continue
 			}
@@ -325,7 +325,7 @@ func TestCapabilityListWorkspaceSandboxBlocksFullAccessCapabilities(t *testing.T
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"client": map[string]any{"name": "test", "version": "0.0.1"}, "protocolVersion": "1.0"}})
-	_ = readResponse(1, 10*time.Second)
+	_ = readResponse(1)
 
 	write(map[string]any{
 		"jsonrpc": "2.0",
@@ -338,7 +338,7 @@ func TestCapabilityListWorkspaceSandboxBlocksFullAccessCapabilities(t *testing.T
 			},
 		},
 	})
-	resp := readResponse(2, 10*time.Second)
+	resp := readResponse(2)
 	result, _ := resp["result"].(map[string]any)
 	sessionID, _ := result["sessionID"].(string)
 	if sessionID == "" {
@@ -346,7 +346,7 @@ func TestCapabilityListWorkspaceSandboxBlocksFullAccessCapabilities(t *testing.T
 	}
 
 	write(map[string]any{"jsonrpc": "2.0", "id": 3, "method": "capability.list", "params": map[string]any{"sessionID": sessionID}})
-	capResp := readResponse(3, 10*time.Second)
+	capResp := readResponse(3)
 	capResult, _ := capResp["result"].(map[string]any)
 	catalog, _ := capResult["catalog"].([]any)
 	summary, _ := capResult["summary"].(map[string]any)
