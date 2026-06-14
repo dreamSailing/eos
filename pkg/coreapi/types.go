@@ -403,9 +403,9 @@ type ModelContextRequest struct {
 }
 
 type ModelContextSnapshot struct {
-	WorkspaceRoot     string `json:"workspace_root,omitempty"`
-	SessionID         string `json:"session_id,omitempty"`
-	GlobalDefaultName string `json:"global_default_name,omitempty"`
+	WorkspaceRoot      string `json:"workspace_root,omitempty"`
+	SessionID          string `json:"session_id,omitempty"`
+	GlobalDefaultName  string `json:"global_default_name,omitempty"`
 	WorkspaceModelName string `json:"workspace_model_name,omitempty"`
 	SessionModelName   string `json:"session_model_name,omitempty"`
 	ResolvedModelName  string `json:"resolved_model_name,omitempty"`
@@ -660,19 +660,19 @@ type ListToolCatalogRequest struct {
 }
 
 type ToolDefinition struct {
-	Name               string                    `json:"name"`
-	Description        string                    `json:"description,omitempty"`
-	RiskLevel          string                    `json:"risk_level,omitempty"`
+	Name               string                       `json:"name"`
+	Description        string                       `json:"description,omitempty"`
+	RiskLevel          string                       `json:"risk_level,omitempty"`
 	Params             map[string]ToolParameterInfo `json:"params,omitempty"`
-	Examples           []ToolExample             `json:"examples,omitempty"`
-	Source             string                    `json:"source,omitempty"`
-	Category           string                    `json:"category,omitempty"`
-	VisibleIn          []string                  `json:"visible_in,omitempty"`
-	ReadOnly           bool                      `json:"read_only"`
-	Invocable          bool                      `json:"invocable"`
-	RequiresFullAccess bool                      `json:"requires_full_access"`
-	Tags               []string                  `json:"tags,omitempty"`
-	Metadata           map[string]any            `json:"metadata,omitempty"`
+	Examples           []ToolExample                `json:"examples,omitempty"`
+	Source             string                       `json:"source,omitempty"`
+	Category           string                       `json:"category,omitempty"`
+	VisibleIn          []string                     `json:"visible_in,omitempty"`
+	ReadOnly           bool                         `json:"read_only"`
+	Invocable          bool                         `json:"invocable"`
+	RequiresFullAccess bool                         `json:"requires_full_access"`
+	Tags               []string                     `json:"tags,omitempty"`
+	Metadata           map[string]any               `json:"metadata,omitempty"`
 }
 
 type ToolParameterInfo struct {
@@ -687,19 +687,26 @@ type ToolExample struct {
 }
 
 type EventFilter struct {
-	SessionID string `json:"session_id,omitempty"`
-	TurnID    string `json:"turn_id,omitempty"`
-	AgentID   string `json:"agent_id,omitempty"`
+	EventTypes []string `json:"event_types,omitempty"`
+	SessionID  string   `json:"session_id,omitempty"`
+	TurnID     string   `json:"turn_id,omitempty"`
+	AgentID    string   `json:"agent_id,omitempty"`
 }
 
 type EventSubscribeRequest struct {
-	SessionID string `json:"session_id,omitempty"`
-	TurnID    string `json:"turn_id,omitempty"`
-	AgentID   string `json:"agent_id,omitempty"`
+	EventTypes []string        `json:"event_types,omitempty"`
+	SessionID  string          `json:"session_id,omitempty"`
+	TurnID     string          `json:"turn_id,omitempty"`
+	AgentID    string          `json:"agent_id,omitempty"`
+	Filter     json.RawMessage `json:"filter,omitempty"`
 }
 
 type EventSubscription struct {
-	ID string `json:"id"`
+	ID             string   `json:"id,omitempty"`
+	SubscriptionID string   `json:"subscription_id,omitempty"`
+	EventTypes     []string `json:"event_types,omitempty"`
+	Active         bool     `json:"active"`
+	CreatedAt      string   `json:"created_at,omitempty"`
 }
 
 type EventUnsubscribeRequest struct {
@@ -769,11 +776,11 @@ type LSPDiagnosticItem struct {
 }
 
 type LSPDiagnosticsSummary struct {
-	Files    int                  `json:"files"`
-	Errors   int                  `json:"errors"`
-	Warnings int                  `json:"warnings"`
-	Infos    int                  `json:"infos"`
-	Items    []LSPDiagnosticItem  `json:"items,omitempty"`
+	Files    int                 `json:"files"`
+	Errors   int                 `json:"errors"`
+	Warnings int                 `json:"warnings"`
+	Infos    int                 `json:"infos"`
+	Items    []LSPDiagnosticItem `json:"items,omitempty"`
 }
 
 type Settings struct {
