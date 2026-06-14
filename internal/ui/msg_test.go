@@ -64,6 +64,69 @@ func TestConvertEventToolResult(t *testing.T) {
 	}
 }
 
+func TestConvertEventIgnoresTurnToolCallDoneAsNewToolCall(t *testing.T) {
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
+		Type: "tool.call",
+		RID:  "turn-1",
+		Data: map[string]any{
+			"original_event_type": string(protocol.EventTypeTurnToolCallDone),
+			"id":                  "tc_pwd",
+			"name":                "shell_pwd",
+			"arguments":           "{}",
+		},
+	})
+	if msg != nil {
+		t.Fatalf("msg type = %T, want nil for tool_call_done", msg)
+	}
+}
+
+func TestConvertEventTurnToolObservationUsesRequestID(t *testing.T) {
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
+		Type: "tool.result",
+		RID:  "turn-1",
+		Data: map[string]any{
+			"original_event_type": string(protocol.EventTypeTurnToolObservation),
+			"request_id":          "tc_pwd",
+			"tool":                "shell_pwd",
+			"status":              "success",
+		},
+	})
+
+	res, ok := msg.(ToolResultMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want ToolResultMsg", msg)
+	}
+	if res.ID != "tc_pwd" {
+		t.Fatalf("ID=%q, want request_id tc_pwd", res.ID)
+	}
+	if res.Status != "success" {
+		t.Fatalf("Status=%q, want success", res.Status)
+	}
+}
+
+func TestConvertEventToolCallWithStringArgumentsJSON(t *testing.T) {
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
+		Type: "tool.call",
+		RID:  "tc_pwd",
+		Data: map[string]any{
+			"id":        "tc_pwd",
+			"name":      "shell_pwd",
+			"arguments": "{}",
+		},
+	})
+
+	res, ok := msg.(ToolCallMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want ToolCallMsg", msg)
+	}
+	if res.ID != "tc_pwd" {
+		t.Fatalf("ID=%q, want tc_pwd", res.ID)
+	}
+	if res.Name != "shell_pwd" {
+		t.Fatalf("Name=%q, want shell_pwd", res.Name)
+	}
+}
+
 func TestConvertEventTextFinal(t *testing.T) {
 	msg := ConvertEvent(uiadapter.RuntimeEvent{
 		Type: "text.final",

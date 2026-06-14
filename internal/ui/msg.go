@@ -6,6 +6,7 @@ package ui
 // 商业使用请联系版权人获得商业授权。
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ type Msg interface {
 
 // ConvertEvent 将 runtime event 转换为 UI Msg
 func ConvertEvent(e uiadapter.RuntimeEvent) Msg {
+	originalEventType := eventString(e.Data, "original_event_type")
 	switch e.Type {
 	case "meta", "delta", string(protocol.EventTypeTextDelta):
 		return AIResponseMsg{Type: "delta", Content: eventText(e, "text", "message"), RID: e.RID}
@@ -32,9 +34,12 @@ func ConvertEvent(e uiadapter.RuntimeEvent) Msg {
 		string(protocol.EventTypeTaskStarted), string(protocol.EventTypeTaskUpdated), string(protocol.EventTypeTaskDone):
 		return ThinkingMsg{RID: e.RID, Content: eventText(e, "message", "text", "label", "title"), Done: false}
 	case "tool_call", string(protocol.EventTypeToolCall):
+		if originalEventType == string(protocol.EventTypeTurnToolCallDone) {
+			return nil
+		}
 		return ToolCallMsg{
 			ID:     eventID(e, "id"),
-			Name:   eventText(e, "tool_name", "name", "message"),
+			Name:   eventText(e, "tool_name", "name", "tool", "message"),
 			Params: eventParams(e),
 		}
 	case "tool_result", string(protocol.EventTypeToolResult):
@@ -43,7 +48,7 @@ func ConvertEvent(e uiadapter.RuntimeEvent) Msg {
 			status = "success"
 		}
 		return ToolResultMsg{
-			ID:     eventID(e, "id"),
+			ID:     eventID(e, "id", "request_id"),
 			Status: status,
 			Output: eventText(e, "display", "message", "text", "error"),
 		}
@@ -159,6 +164,16 @@ func eventParams(e uiadapter.RuntimeEvent) map[string]any {
 			out[k] = v
 		}
 		return out
+	}
+	if raw, ok := e.Data["arguments"].(string); ok {
+		raw = strings.TrimSpace(raw)
+		if raw != "" {
+			var out map[string]any
+			if err := json.Unmarshal([]byte(raw), &out); err == nil && len(out) > 0 {
+				return out
+			}
+			return map[string]any{"arguments": raw}
+		}
 	}
 	return e.Data
 }
