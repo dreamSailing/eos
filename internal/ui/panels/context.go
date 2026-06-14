@@ -18,6 +18,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 // ContextPanel 上下文面板
@@ -32,6 +33,7 @@ type ContextPanel struct {
 	viewing     bool // 是否正在查看详情
 	detail      viewport.Model
 	stats       ContextStats
+	previewWidth int
 }
 
 type ContextStats struct {
@@ -95,10 +97,24 @@ func NewContextPanel(styles *styles.Styles, lang string) *ContextPanel {
 }
 
 func (p *ContextPanel) updateTableColumns() {
+	contentWidth := p.innerWidth()
+	roleWidth := 12
+	tokensWidth := 10
+	minPreviewWidth := 18
+	previewWidth := contentWidth - roleWidth - tokensWidth - 4
+	if previewWidth < minPreviewWidth {
+		roleWidth = 10
+		tokensWidth = 8
+		previewWidth = contentWidth - roleWidth - tokensWidth - 4
+	}
+	if previewWidth < minPreviewWidth {
+		previewWidth = minPreviewWidth
+	}
+	p.previewWidth = previewWidth
 	columns := []table.Column{
-		{Title: i18n.T("ctx.col.role", p.language), Width: 12},
-		{Title: i18n.T("ctx.col.preview", p.language), Width: 40},
-		{Title: i18n.T("ctx.col.tokens", p.language), Width: 10},
+		{Title: i18n.T("ctx.col.role", p.language), Width: roleWidth},
+		{Title: i18n.T("ctx.col.preview", p.language), Width: previewWidth},
+		{Title: i18n.T("ctx.col.tokens", p.language), Width: tokensWidth},
 	}
 	p.table.SetColumns(columns)
 }
@@ -107,6 +123,7 @@ func (p *ContextPanel) updateTableColumns() {
 func (p *ContextPanel) SetMessages(messages []ContextMessage) {
 	p.messages = messages
 	p.updateTable()
+	p.syncLayout()
 }
 
 func (p *ContextPanel) ResetView() {
@@ -123,6 +140,7 @@ func (p *ContextPanel) SetStats(modelName string, maxPromptTokens int, pinnedTok
 	p.stats.MaxPromptTokens = maxPromptTokens
 	p.stats.PinnedTokens = pinnedTokens
 	p.stats.ConversationTokens = conversationTokens
+	p.syncLayout()
 }
 
 // updateTable 更新表格内容
@@ -174,6 +192,7 @@ func (p *ContextPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 		p.language = msg.Language
 		p.updateTableColumns()
 		p.updateTable()
+		p.syncLayout()
 		return p, nil
 
 	case tea.KeyMsg:
@@ -281,15 +300,14 @@ func (p *ContextPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 
 // View 渲染
 func (p *ContextPanel) View() string {
+	p.syncLayout()
+
 	// 如果在查看详情模式，显示详情
 	if p.viewing {
 		return p.viewDetail()
 	}
 
 	var content strings.Builder
-
-	content.WriteString(p.styles.PanelTitle.Render(i18n.T("ctx.list.title", p.language)))
-	content.WriteString("\n\n")
 
 	if p.stats.MaxPromptTokens > 0 {
 		model := p.stats.ModelName
@@ -302,24 +320,22 @@ func (p *ContextPanel) View() string {
 		}
 		line := fmt.Sprintf("Model: %s  Win: %d  Prompt: %d  Pinned: %d (%d%%)  Conv: %d",
 			model, p.stats.ContextWindow, p.stats.MaxPromptTokens, p.stats.PinnedTokens, pinnedPct, p.stats.ConversationTokens)
-		content.WriteString(p.styles.TextMuted.Render(line))
-		content.WriteString("\n\n")
+		content.WriteString(p.styles.TextMuted.Render(truncateForWidth(line, p.innerWidth())))
+		content.WriteString("\n")
 	}
 
 	content.WriteString(p.table.View())
-	content.WriteString("\n\n")
+	content.WriteString("\n")
 
 	// 显示当前选中的消息信息
 	selected := p.GetSelectedMessage()
 	if selected != nil {
-		selectedText := fmt.Sprintf("%s [%s] %s: %d %s",
+		selectedText := fmt.Sprintf("%s %s · Tokens: %d",
 			i18n.T("ctx.selected", p.language),
-			p.styles.TextInfo.Render(selected.Role),
-			p.styles.TextMuted.Render("Tokens"),
-			selected.Tokens,
-			p.styles.TextMuted.Render("..."))
-		content.WriteString(selectedText)
-		content.WriteString("\n\n")
+			selected.Role,
+			selected.Tokens)
+		content.WriteString(renderFixedWidthLine(p.styles.TextMuted.Render(selectedText), p.innerWidth()))
+		content.WriteString("\n")
 	}
 
 	// 显示操作列表
@@ -343,11 +359,12 @@ func (p *ContextPanel) View() string {
 			opStrs = append(opStrs, p.styles.TextMuted.Render(text))
 		}
 	}
-	content.WriteString(fmt.Sprintf("%s %s\n\n",
+	content.WriteString(renderFixedWidthLine(fmt.Sprintf("%s %s",
 		i18n.T("models.action", p.language),
-		strings.Join(opStrs, "  ")))
+		strings.Join(opStrs, "  ")), p.innerWidth()))
+	content.WriteString("\n")
 
-	content.WriteString(p.styles.TextMuted.Render(i18n.T("ctx.help", p.language)))
+	content.WriteString(p.styles.TextMuted.Render(truncateForWidth(i18n.T("ctx.help", p.language), p.innerWidth())))
 
 	return p.RenderBorder(content.String(), i18n.T("context.manager.title", p.language))
 }
@@ -382,18 +399,94 @@ func (p *ContextPanel) viewDetail() string {
 // SetSize 设置大小
 func (p *ContextPanel) SetSize(width, height int) {
 	p.BasePanel.SetSize(width, height)
-	w := width - 4
-	h := height - 12
-	if w < 1 {
-		w = 1
+	p.syncLayout()
+}
+
+func (p *ContextPanel) syncLayout() {
+	w := p.innerWidth()
+	h := p.innerHeight()
+	if h < 3 {
+		h = 3
 	}
-	if h < 1 {
-		h = 1
+
+	reservedLines := 3 // selected + actions + help
+	if p.stats.MaxPromptTokens > 0 {
+		reservedLines++
 	}
+	if p.GetSelectedMessage() != nil {
+		reservedLines++
+	}
+	tableHeight := h - reservedLines
+	if tableHeight < 3 {
+		tableHeight = 3
+	}
+
 	p.table.SetWidth(w)
-	p.table.SetHeight(h)
+	p.table.SetHeight(tableHeight)
 	p.detail.Width = w
 	p.detail.Height = h
+	p.updateTableColumns()
+}
+
+func (p *ContextPanel) innerWidth() int {
+	w := p.width - 6
+	if w < 24 {
+		return 24
+	}
+	return w
+}
+
+func (p *ContextPanel) innerHeight() int {
+	h := p.height - 8
+	if h < 3 {
+		return 3
+	}
+	return h
+}
+
+func renderFixedWidthLine(line string, width int) string {
+	if width < 1 {
+		return line
+	}
+	return lipgloss.NewStyle().Width(width).Render(line)
+}
+
+func truncateForWidth(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\t", " ")
+	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+	if s == "" {
+		return ""
+	}
+	if runewidth.StringWidth(s) <= width {
+		return s
+	}
+	if width == 1 {
+		return "…"
+	}
+	var b strings.Builder
+	cur := 0
+	for _, r := range s {
+		rw := runewidth.RuneWidth(r)
+		if rw == 0 {
+			rw = 1
+		}
+		if cur+rw > width-1 {
+			break
+		}
+		b.WriteRune(r)
+		cur += rw
+	}
+	out := strings.TrimSpace(b.String())
+	if out == "" {
+		return "…"
+	}
+	return out + "…"
 }
 
 // ContextCompactMsg 压缩上下文消息
