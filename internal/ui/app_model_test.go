@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/pkg/filedialog"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/state"
@@ -311,6 +312,43 @@ func TestPromptRequestNonPermissionStillUsesConfirmView(t *testing.T) {
 	}
 	if updated.inlinePermissionReq != nil {
 		t.Fatalf("did not expect inline permission state for non-permission prompt")
+	}
+}
+
+func TestWorkspaceTrustUsesWorkspaceLocalMarker(t *testing.T) {
+	setTestHome(t)
+	workspace := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	app := newTestAppModel(t)
+
+	if app.isWorkspaceTrusted(workspace) {
+		t.Fatal("workspace should not be trusted before local marker exists")
+	}
+	if err := app.addTrustedWorkspace(workspace); err != nil {
+		t.Fatalf("addTrustedWorkspace() error = %v", err)
+	}
+	if !app.isWorkspaceTrusted(workspace) {
+		t.Fatal("workspace should be trusted after local marker is written")
+	}
+	if _, err := os.Stat(config.WorkspaceTrustPath(workspace)); err != nil {
+		t.Fatalf("expected workspace local trust marker to exist: %v", err)
+	}
+}
+
+func TestWorkspaceTrustKeepsLegacyGlobalCompatibility(t *testing.T) {
+	setTestHome(t)
+	workspace := filepath.Join(t.TempDir(), "legacy-repo")
+	cfg, cfgPath := config.Load()
+	cfg.TrustedWorkspaces = []string{config.NormalizeWorkspacePath(workspace)}
+	if err := config.Save(cfg, cfgPath); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	app := newTestAppModel(t)
+	if !app.isWorkspaceTrusted(workspace) {
+		t.Fatal("workspace should remain trusted from legacy global config")
 	}
 }
 

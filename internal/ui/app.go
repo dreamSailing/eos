@@ -24,7 +24,6 @@ import (
 	"github.com/dreamSailing/eos/internal/ui/features/slash"
 	"github.com/dreamSailing/eos/internal/ui/panels"
 	"github.com/dreamSailing/eos/internal/ui/styles"
-	sidecarclient "github.com/dreamSailing/eos/pkg/coreapi/sidecar/client"
 	"github.com/dreamSailing/eos/internal/ui/views/confirm"
 	"github.com/dreamSailing/eos/internal/ui/views/help"
 	"github.com/dreamSailing/eos/internal/ui/views/setup"
@@ -32,6 +31,7 @@ import (
 	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/version"
 	"github.com/dreamSailing/eos/pkg/coreapi"
+	sidecarclient "github.com/dreamSailing/eos/pkg/coreapi/sidecar/client"
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
@@ -1008,9 +1008,12 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.OptionIndex != 0 {
 				return m, tea.Quit
 			}
-			if err := m.adapter.TrustWorkspace(context.Background(), path); err != nil {
+			if err := m.addTrustedWorkspace(path); err != nil {
 				m.appendSystem(fmt.Sprintf("信任工作区失败: %v", err), "error")
 				return m, nil
+			}
+			if err := m.adapter.TrustWorkspace(context.Background(), path); err != nil {
+				m.appendSystem(fmt.Sprintf("信任工作区已保存，但同步到核心失败: %v", err), "warning")
 			}
 			m.trustPendingPath = ""
 			m.trustPendingAction = ""
@@ -1947,6 +1950,9 @@ func (m *AppModel) openConfirm(req confirm.Request) {
 }
 
 func (m *AppModel) isWorkspaceTrusted(path string) bool {
+	if config.IsWorkspaceTrustedLocal(path) {
+		return true
+	}
 	cfg, _ := config.Load()
 	want := config.NormalizeWorkspacePath(path)
 	for _, p := range cfg.TrustedWorkspaces {
@@ -1957,19 +1963,8 @@ func (m *AppModel) isWorkspaceTrusted(path string) bool {
 	return false
 }
 
-func (m *AppModel) addTrustedWorkspace(path string) {
-	cfg, cfgPath := config.Load()
-	if strings.TrimSpace(cfgPath) == "" {
-		return
-	}
-	want := config.NormalizeWorkspacePath(path)
-	for _, p := range cfg.TrustedWorkspaces {
-		if config.PathsEqual(config.NormalizeWorkspacePath(p), want) {
-			return
-		}
-	}
-	cfg.TrustedWorkspaces = append(cfg.TrustedWorkspaces, want)
-	_ = config.Save(cfg, cfgPath)
+func (m *AppModel) addTrustedWorkspace(path string) error {
+	return config.TrustWorkspaceLocal(path)
 }
 
 func resolveWorkspaceInputPath(raw string) (string, error) {
