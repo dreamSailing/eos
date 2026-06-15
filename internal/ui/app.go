@@ -2842,6 +2842,26 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 // handleToolCall 处理工具调用
 func (m *AppModel) handleToolCall(msg ToolCallMsg) tea.Cmd {
 	m.clearCurrentThinking()
+	// turn.tool_call_start 先建卡（无参数），turn.tool_call_done 再带真实参数。
+	// 若已有同 ID 的 inflight 卡片，直接补全参数而不是新建重复卡片。
+	if track, ok := m.toolInflight[msg.ID]; ok {
+		if len(msg.Params) > 0 {
+			track.params = msg.Params
+			m.toolInflight[msg.ID] = track
+			if track.idx >= 0 && track.idx < len(m.history) {
+				e := m.history[track.idx]
+				if len(e.toolParams) == 0 {
+					e.toolParams = msg.Params
+					m.history[track.idx] = e
+					m.rebuildHistoryContent()
+				}
+			}
+			if m.msgRenderer != nil {
+				m.shell.SetLive(m.msgRenderer.RenderToolCall(track.name, msg.Params))
+			}
+		}
+		return nil
+	}
 	entry := historyEntry{
 		kind:       "tool",
 		toolID:     msg.ID,

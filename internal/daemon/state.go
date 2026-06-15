@@ -41,7 +41,7 @@ func DefaultScheduleFile() string {
 }
 
 func DefaultLogFile() string {
-	return filepath.Join(config.ConfiguredLogDir(), "daemon.log")
+	return filepath.Join(config.ConfiguredLogDir(), "cli", "daemon.log")
 }
 
 func LoadState(path string) (State, error) {

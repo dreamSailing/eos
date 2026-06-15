@@ -177,3 +177,21 @@ func TestSkillCreationPromptsMentionScopeWorkflow(t *testing.T) {
 		t.Fatalf("using tools guidance should mention ask_user_question:\n%s", usingTools)
 	}
 }
+
+func TestUsingToolsSectionEnforcesParameterContract(t *testing.T) {
+	// Playbook §5「工具调用策略」要求系统层提示词约束：参数不确定时先探索，
+	// 不要猜参数调用。这些是所有 agent 共享的行为约束，必须出现在
+	// getUsingToolsSection 中，不能只留在 RoleSeniorDevPrompt 里。
+	usingTools := getUsingToolsSection(&PromptConfig{})
+
+	for _, want := range []string{
+		"把工具调用当成严格 API 调用",
+		"参数不确定时：先探索，再调用",
+		"不允许编造路径、文件名、命令、API 名、配置字段或 ID",
+		"并行工具调用",
+	} {
+		if !strings.Contains(usingTools, want) {
+			t.Fatalf("using tools guidance missing %q\n%s", want, usingTools)
+		}
+	}
+}

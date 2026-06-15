@@ -53,7 +53,7 @@ func init() {
 }
 
 func defaultLogDir() string {
-	return config.ConfiguredLogDir()
+	return filepath.Join(config.ConfiguredLogDir(), "cli")
 }
 
 func NewLogger(dir string) {
@@ -61,7 +61,7 @@ func NewLogger(dir string) {
 		dir = defaultLogDir()
 	}
 	_ = os.MkdirAll(dir, 0755)
-	lj := &lumberjack.Logger{Filename: filepath.Join(dir, "server.log"), MaxSize: 10, MaxBackups: 7, MaxAge: 30, Compress: true}
+	lj := &lumberjack.Logger{Filename: filepath.Join(dir, "eos-cli.log"), MaxSize: 10, MaxBackups: 7, MaxAge: 30, Compress: true}
 	lvl := getLogLevel()
 	h1 := slog.NewJSONHandler(lj, &slog.HandlerOptions{AddSource: true, Level: lvl})
 	slog.SetDefault(slog.New(h1))

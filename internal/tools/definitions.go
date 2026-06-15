@@ -605,7 +605,7 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolRead,
-			Description: "统一读取工具。注意：path 参数必须是有效的文件系统路径，不要包含 '@' 等特殊前缀。",
+			Description: "读取文件系统。通过 mode 选择行为：file(默认) 读取文件内容并返回带行号的文本；directory 列出目录条目；exists 返回路径是否存在；resolve 解析路径并返回候选路径与状态。path 必填，必须是有效的文件系统路径（不要含 '@' 等前缀）。不知道确切路径时，先用 search(mode:glob/text) 或 read(mode:directory) 定位，拿到真实路径再调用本工具。PDF 文件须用 pages 指定页码范围。",
 			Params: map[string]*schema.ParameterInfo{
 				"mode":  {Type: schema.String, Required: false, Desc: "读取模式: file (默认, 读取文件内容), directory (列出目录条目), exists (检查路径是否存在), resolve (解析路径并返回候选路径与状态)"},
 				"path":  {Type: schema.String, Required: true, Desc: "要读取的绝对或相对路径 (e.g., 'main.go', 'internal/utils')"},
@@ -716,7 +716,7 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolFS,
-			Description: "统一文件系统操作 (模式: write, create, mkdir, delete, move, copy, diff)。如需检查文件是否存在或读取内容，请使用 'read' 工具。",
+			Description: "文件系统写操作（非读取）。通过 mode 选择行为：write 覆盖写入文件、create 创建文件或目录、mkdir 建目录、delete 删除文件或目录、move/copy 移动或复制、diff 生成当前内容与给定 content 的差异。各模式所需参数不同：write/create/mkdir/delete/diff 需 path（delete/diff 还需 content），move/copy 需 source+destination。检查文件是否存在或读取内容请用 read 工具。path 必须是确切路径；不确定时先用 search 定位。",
 			Params: map[string]*schema.ParameterInfo{
 				"mode":        {Type: schema.String, Required: false, Desc: "操作模式: write (写入/覆盖文件), create (创建文件/目录), mkdir (创建目录), delete (删除文件/目录), move (移动文件/目录), copy (复制文件/目录), diff (生成差异)"},
 				"path":        {Type: schema.String, Required: false, Desc: "文件/目录路径 (用于 write, create, mkdir, delete, diff)"},
@@ -759,7 +759,7 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolSearch,
-			Description: "统一搜索工具 (模式: glob, regex, text, code, deps, graph)",
+			Description: "在项目中搜索文件或代码。pattern 必填，必须来自用户问题、错误日志或已读代码中的真实关键词，不要用空 pattern 或泛泛猜测词。通过 mode 选择行为：glob 按文件名模式匹配（如 **/*.go）、regex 按正则搜内容、text 按纯文本搜内容、code 做代码语义搜索。root 限定搜索根目录，limit 限制结果数。建议先搜内容定位文件，再 read 相关片段；多次搜索关键词不同时可在同一轮并行调用。",
 			Params: map[string]*schema.ParameterInfo{
 				"mode":             {Type: schema.String, Required: false, Desc: "搜索模式: glob (文件名匹配), regex (正则内容搜索), text (文本内容搜索), code (代码语义搜索)"},
 				"pattern":          {Type: schema.String, Required: true, Desc: "搜索模式或查询字符串"},
@@ -793,7 +793,7 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolBash,
-			Description: "执行 Shell 命令 (同步)",
+			Description: "在用户默认 shell 中同步执行命令并返回 stdout/stderr 与退出码。command 必填。仅用于专用工具（read/search/edit/fs）覆盖不到的系统命令，如构建、测试、git、进程管理；不要用它替代 cat/sed/grep/ls。运行前必须知道当前工作目录和命令目的；不确定命令是否存在时先查项目脚本或文档。命令失败先分析原因，不要直接换一个猜测命令。",
 			Params: map[string]*schema.ParameterInfo{
 				"command": {Type: schema.String, Required: true, Desc: "要执行的命令"},
 			},
@@ -847,7 +847,7 @@ func GetAllToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolEdit,
-			Description: "统一编辑工具。必需参数: single模式需(file, find, replace); multi模式需(file, edits); batch模式需(edits)。",
+			Description: "在文件中做精确文本替换，不整文件重写。mode 必填：single 单次替换（需 file+find，replace 可选留空即删除匹配）、multi 同文件多处替换（需 file+edits）、batch 跨文件编辑（需 edits，每项含 file/find/replace）。find 必须是文件中真实存在的文本（或 regex:true 时为正则），不要凭记忆猜 find 内容——编辑前先 read 目标片段拿到准确文本。limit 限制单次替换次数；caseInsensitive 忽略大小写。匹配不到时工具会报错，应回头读文件确认 find 文本而非盲目重试。",
 			Params: map[string]*schema.ParameterInfo{
 				"mode":            {Type: schema.String, Required: true, Desc: "编辑模式: single (单次替换), multi (同文件多次编辑), batch (跨文件编辑)"},
 				"file":            {Type: schema.String, Required: false, Desc: "文件路径 (single/multi 模式必填)"},

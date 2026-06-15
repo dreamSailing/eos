@@ -64,19 +64,102 @@ func TestConvertEventToolResult(t *testing.T) {
 	}
 }
 
-func TestConvertEventIgnoresTurnToolCallDoneAsNewToolCall(t *testing.T) {
+func TestConvertEventTurnToolCallDoneCarriesArguments(t *testing.T) {
+	// turn.tool_call_done 是唯一携带完整 arguments 的事件，必须产出 ToolCallMsg
+	// 且把 arguments 解析为参数，而不是丢弃。
 	msg := ConvertEvent(uiadapter.RuntimeEvent{
 		Type: "tool.call",
 		RID:  "turn-1",
 		Data: map[string]any{
 			"original_event_type": string(protocol.EventTypeTurnToolCallDone),
 			"id":                  "tc_pwd",
-			"name":                "shell_pwd",
-			"arguments":           "{}",
+			"name":                "read_file",
+			"arguments":           `{"file_path":"/tmp/a.txt","offset":10,"limit":5}`,
 		},
 	})
-	if msg != nil {
-		t.Fatalf("msg type = %T, want nil for tool_call_done", msg)
+	res, ok := msg.(ToolCallMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want ToolCallMsg (done must carry arguments)", msg)
+	}
+	if res.ID != "tc_pwd" {
+		t.Fatalf("ID=%q, want tc_pwd", res.ID)
+	}
+	if res.Name != "read_file" {
+		t.Fatalf("Name=%q, want read_file", res.Name)
+	}
+	if p, _ := res.Params["file_path"].(string); p != "/tmp/a.txt" {
+		t.Fatalf("Params[file_path]=%v, want /tmp/a.txt", res.Params["file_path"])
+	}
+	if _, ok := res.Params["offset"]; !ok {
+		t.Fatalf("Params missing offset, got %v", res.Params)
+	}
+}
+
+func TestConvertEventToolCallStartDoesNotLeakEnvelope(t *testing.T) {
+	// turn.tool_call_start 只有 id/name，没有 arguments。
+	// 必须返回 nil 参数，绝不能把信封字段当成参数返回（这正是导致
+	// 卡片渲染出 event_id/session_id/turn_id 的根因）。
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
+		Type: "tool.call",
+		RID:  "turn-1",
+		Data: map[string]any{
+			"original_event_type": string(protocol.EventTypeTurnToolCallStart),
+			"event_id":            "evt_xxx",
+			"id":                  "tc_1",
+			"name":                "list_directory",
+			"session_id":          "sess_21",
+			"turn_id":             "tui_turn_xxx",
+		},
+	})
+	res, ok := msg.(ToolCallMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want ToolCallMsg", msg)
+	}
+	if len(res.Params) != 0 {
+		t.Fatalf("Params=%v, want empty (start has no arguments)", res.Params)
+	}
+}
+
+func TestConvertEventToolCallDoesNotFallBackToEnvelope(t *testing.T) {
+	// 兼容旧测试：即使没有任何可识别的参数键，也不应把整个 Data
+	// （信封元数据）当参数返回。
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
+		Type: "tool.call",
+		RID:  "turn-1",
+		Data: map[string]any{
+			"id":         "tc_3",
+			"name":       "grep",
+			"event_id":   "evt_yyy",
+			"session_id": "sess_9",
+			"turn_id":    "tui_turn_zzz",
+		},
+	})
+	res, ok := msg.(ToolCallMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want ToolCallMsg", msg)
+	}
+	if len(res.Params) != 0 {
+		t.Fatalf("Params=%v, want empty when no real arguments present", res.Params)
+	}
+}
+
+func TestConvertEventToolCallAcceptsInputAlias(t *testing.T) {
+	// 部分适配器用 input/parameters 而非 arguments 承载参数。
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
+		Type: "tool.call",
+		RID:  "turn-1",
+		Data: map[string]any{
+			"id":    "tc_4",
+			"name":  "read_file",
+			"input": `{"file_path":"/tmp/b.txt"}`,
+		},
+	})
+	res, ok := msg.(ToolCallMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want ToolCallMsg", msg)
+	}
+	if p, _ := res.Params["file_path"].(string); p != "/tmp/b.txt" {
+		t.Fatalf("Params[file_path]=%v, want /tmp/b.txt", res.Params["file_path"])
 	}
 }
 

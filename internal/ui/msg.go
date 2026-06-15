@@ -22,7 +22,6 @@ type Msg interface {
 
 // ConvertEvent 将 runtime event 转换为 UI Msg
 func ConvertEvent(e uiadapter.RuntimeEvent) Msg {
-	originalEventType := eventString(e.Data, "original_event_type")
 	switch e.Type {
 	case "meta", "delta", string(protocol.EventTypeTextDelta):
 		return AIResponseMsg{Type: "delta", Content: eventText(e, "text", "message"), RID: e.RID}
@@ -34,9 +33,12 @@ func ConvertEvent(e uiadapter.RuntimeEvent) Msg {
 		string(protocol.EventTypeTaskStarted), string(protocol.EventTypeTaskUpdated), string(protocol.EventTypeTaskDone):
 		return ThinkingMsg{RID: e.RID, Content: eventText(e, "message", "text", "label", "title"), Done: false}
 	case "tool_call", string(protocol.EventTypeToolCall):
-		if originalEventType == string(protocol.EventTypeTurnToolCallDone) {
-			return nil
-		}
+		// 注意：NormalizeEventType 把 turn.tool_call_start 与 turn.tool_call_done
+		// 都归一化成 tool.call，原始类型保留在 Data["original_event_type"]。
+		// Rust runtime 在 ToolCallDone 触发前会累积所有 arguments_delta，
+		// 所以 done 事件携带完整 arguments（见 eos-core-runtime/src/lib.rs）。
+		// 因此无需在 TUI 逐事件累积 delta：start 先建空参卡片，done 到达时
+		// handleToolCall 会用真实参数补全同一张卡片。
 		return ToolCallMsg{
 			ID:     eventID(e, "id"),
 			Name:   eventText(e, "tool_name", "name", "tool", "message"),
@@ -155,27 +157,33 @@ func eventParams(e uiadapter.RuntimeEvent) map[string]any {
 	if e.Data == nil {
 		return nil
 	}
-	if raw, ok := e.Data["arguments"].(map[string]any); ok && len(raw) > 0 {
-		return raw
-	}
-	if raw, ok := e.Data["arguments"].(map[string]interface{}); ok && len(raw) > 0 {
-		out := make(map[string]any, len(raw))
-		for k, v := range raw {
-			out[k] = v
+	// 按 arguments -> input/parameters/params 的顺序解析工具参数。
+	// 绝不能在找不到参数时把整个信封 Data 当参数返回——那会让 UI 把
+	// event_id/session_id/turn_id 等元数据渲染成工具参数。
+	for _, key := range []string{"arguments", "input", "parameters", "params"} {
+		raw, ok := e.Data[key]
+		if !ok || raw == nil {
+			continue
 		}
-		return out
-	}
-	if raw, ok := e.Data["arguments"].(string); ok {
-		raw = strings.TrimSpace(raw)
-		if raw != "" {
+		switch v := raw.(type) {
+		case map[string]any:
+			if len(v) > 0 {
+				return v
+			}
+		case string:
+			// JSON 字符串是多数模型适配器的承载形态。
+			v = strings.TrimSpace(v)
+			if v == "" {
+				continue
+			}
 			var out map[string]any
-			if err := json.Unmarshal([]byte(raw), &out); err == nil && len(out) > 0 {
+			if err := json.Unmarshal([]byte(v), &out); err == nil && len(out) > 0 {
 				return out
 			}
-			return map[string]any{"arguments": raw}
+			// 非 JSON 字符串：忽略，不回退到信封。
 		}
 	}
-	return e.Data
+	return nil
 }
 
 func eventString(data map[string]any, keys ...string) string {

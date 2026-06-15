@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/pkg/coreapi"
 	"github.com/dreamSailing/eos/pkg/coreapi/engineprovider"
 	"github.com/dreamSailing/eos/pkg/coreapi/sidecar"
@@ -318,7 +319,18 @@ func productionSidecarProcessOptions(env map[string]string) sidecar.ProcessOptio
 		Env:              nextEnv,
 		VerifyChecksum:   true,
 		RequireSignature: true,
+		Stderr:           coreStderrWriter(),
 	}
+}
+
+func coreStderrWriter() io.Writer {
+	dir := filepath.Join(config.ConfiguredLogDir(), "core")
+	_ = os.MkdirAll(dir, 0755)
+	f, err := os.OpenFile(filepath.Join(dir, "eos-core.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return io.Discard
+	}
+	return f
 }
 
 func headlessRustCoreStoreDir() string {
