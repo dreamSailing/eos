@@ -638,6 +638,8 @@ func (m Model) Init() tea.Cmd {
 		m.content.Init(),
 		m.input.Init(),
 		m.hints.Init(),
+		// 启动欢迎动画
+		WelcomeTickCmd(),
 	)
 }
 
@@ -649,6 +651,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		m.statusAnim = (m.statusAnim + 1) % 4
 		return m, tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg { return statusTickMsg{} })
+	}
+
+	// 欢迎动画帧
+	if _, ok := msg.(WelcomeTickMsg); ok {
+		if m.showWelcome && m.welcome != nil {
+			m.welcome.Tick()
+			return m, WelcomeTickCmd()
+		}
+		return m, nil
 	}
 
 	var cmds []tea.Cmd
