@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dreamSailing/eos/internal/ui/styles"
 	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/version"
-	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -39,11 +39,11 @@ type WelcomeCard struct {
 
 // particle 粒子结构
 type particle struct {
-	x    float64
-	y    float64
-	vx   float64
-	vy   float64
-	char string
+	x      float64
+	y      float64
+	vx     float64
+	vy     float64
+	char   string
 	bright float64
 }
 
@@ -71,11 +71,11 @@ func (w *WelcomeCard) initParticles() {
 
 	for i := 0; i < 60; i++ {
 		p := particle{
-			x:    rng.Float64() * float64(w.width),
-			y:    rng.Float64() * float64(w.height),
-			vx:   (rng.Float64() - 0.5) * 0.2,
-			vy:   (rng.Float64() - 0.5) * 0.1,
-			char: starChars[rng.Intn(len(starChars))],
+			x:      rng.Float64() * float64(w.width),
+			y:      rng.Float64() * float64(w.height),
+			vx:     (rng.Float64() - 0.5) * 0.2,
+			vy:     (rng.Float64() - 0.5) * 0.1,
+			char:   starChars[rng.Intn(len(starChars))],
 			bright: 0.3 + rng.Float64()*0.7,
 		}
 		w.particles = append(w.particles, p)
@@ -162,9 +162,9 @@ func (w *WelcomeCard) View() string {
 	// Logo - 大号块字符 EOS
 	logoLines := []string{
 		"  ███████  ██████  ███████ ",
-		"  ██       ██  ██  ██   ██",
-		"  █████    ██  ██  ██   ██",
-		"  ██       ██  ██  ██   ██",
+		"  ██       ██  ██  ██      ",
+		"  █████    ██  ██  ███████ ",
+		"  ██       ██  ██       ██ ",
 		"  ███████  ██████  ███████ ",
 	}
 
