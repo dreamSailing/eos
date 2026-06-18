@@ -30,9 +30,11 @@ const (
 type APIType string
 
 const (
-	APITypeStandard APIType = "standard"  // 标准 API
-	APITypeCodePlan APIType = "code-plan" // Code/Plan 套餐 API (OpenAI 兼容)
-	APITypeClaude   APIType = "claude"    // Claude 兼容 API (Anthropic 协议)
+	APITypeStandard        APIType = "standard"          // 标准 API
+	APITypeCodePlan        APIType = "code-plan"         // Code/Plan 套餐 API (OpenAI 兼容)
+	APITypeClaude          APIType = "claude"            // Claude 兼容 API (Anthropic 协议)
+	APITypeTokenPlan       APIType = "token-plan"        // Token Plan 套餐 API (OpenAI 兼容)
+	APITypeTokenPlanClaude APIType = "token-plan-claude" // Token Plan Claude 兼容 API
 )
 
 // ProviderConfig 服务商配置
@@ -207,6 +209,19 @@ func GetAPIBase(provider ProviderType, apiType APIType, customBase string) strin
 			return cfg.CodePlanAPIBase
 		}
 		return cfg.DefaultAPIBase
+	case APITypeTokenPlan:
+		if cfg.TokenPlanAPIBase != "" {
+			return cfg.TokenPlanAPIBase
+		}
+		return cfg.DefaultAPIBase
+	case APITypeTokenPlanClaude:
+		if cfg.TokenPlanClaudeAPIBase != "" {
+			return cfg.TokenPlanClaudeAPIBase
+		}
+		if cfg.TokenPlanAPIBase != "" {
+			return cfg.TokenPlanAPIBase
+		}
+		return cfg.DefaultAPIBase
 	default:
 		return cfg.DefaultAPIBase
 	}
@@ -217,7 +232,7 @@ func GetCodePlanModelNames() []string {
 	result := make([]string, 0)
 	seen := make(map[string]struct{})
 	for _, entry := range globalCatalog.GetAll() {
-		if entry == nil || entry.APIType != APITypeCodePlan {
+		if entry == nil || (entry.APIType != APITypeCodePlan && entry.APIType != APITypeTokenPlan && entry.APIType != APITypeTokenPlanClaude) {
 			continue
 		}
 		for _, key := range []string{entry.ID, entry.ModelName} {
@@ -239,7 +254,7 @@ func GetCodePlanModelNames() []string {
 // IsCodePlanModel 检查模型是否需要使用 Code Plan API。
 func IsCodePlanModel(modelName string) bool {
 	entry := findCatalogEntryByKey(strings.ToLower(strings.TrimSpace(modelName)))
-	return entry != nil && entry.APIType == APITypeCodePlan
+	return entry != nil && (entry.APIType == APITypeCodePlan || entry.APIType == APITypeTokenPlan || entry.APIType == APITypeTokenPlanClaude)
 }
 
 // ParseProviderType 从字符串解析服务商类型

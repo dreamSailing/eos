@@ -55,7 +55,7 @@ func (r *Resolver) ResolveByModelName(modelName string) *ModelProviderInfo {
 				Model:            entry,
 				APIBase:          r.getAPIBaseForEntry(entry, provider),
 				ProviderType:     entry.Provider,
-				RequiresCodePlan: entry.APIType == APITypeCodePlan,
+				RequiresCodePlan: entry.APIType == APITypeCodePlan || entry.APIType == APITypeTokenPlan || entry.APIType == APITypeTokenPlanClaude,
 			}
 			return info
 		}
@@ -125,7 +125,7 @@ func (r *Resolver) resolveByBaseAndModel(baseURL, modelName string) *ModelProvid
 			Model:            entry,
 			APIBase:          strings.TrimSpace(baseURL),
 			ProviderType:     entry.Provider,
-			RequiresCodePlan: entry.APIType == APITypeCodePlan,
+			RequiresCodePlan: entry.APIType == APITypeCodePlan || entry.APIType == APITypeTokenPlan || entry.APIType == APITypeTokenPlanClaude,
 		}
 	}
 
@@ -152,6 +152,17 @@ func (r *Resolver) getAPIBaseForEntry(entry *ModelCatalogEntry, provider *Provid
 		// 如果没有专门的 Claude Base，尝试返回 CodePlan
 		if provider.CodePlanAPIBase != "" {
 			return provider.CodePlanAPIBase
+		}
+	case APITypeTokenPlan:
+		if provider.TokenPlanAPIBase != "" {
+			return provider.TokenPlanAPIBase
+		}
+	case APITypeTokenPlanClaude:
+		if provider.TokenPlanClaudeAPIBase != "" {
+			return provider.TokenPlanClaudeAPIBase
+		}
+		if provider.TokenPlanAPIBase != "" {
+			return provider.TokenPlanAPIBase
 		}
 	}
 	return provider.DefaultAPIBase
