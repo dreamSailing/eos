@@ -29,11 +29,14 @@ func ApplyCoreModelCatalog(catalog coreapi.ModelCatalogState) {
 			ClaudeAPIBase:           strings.TrimSpace(provider.ClaudeAPIBase),
 			AgentPlanAPIBase:        strings.TrimSpace(provider.AgentPlanAPIBase),
 			AgentPlanClaudeAPIBase:  strings.TrimSpace(provider.AgentPlanClaudeAPIBase),
+			TokenPlanAPIBase:        strings.TrimSpace(provider.TokenPlanAPIBase),
+			TokenPlanClaudeAPIBase:  strings.TrimSpace(provider.TokenPlanClaudeAPIBase),
 			APIKeyEnv:               strings.TrimSpace(provider.APIKeyEnv),
 			Website:                 strings.TrimSpace(provider.Website),
 			HasCodePlan:             provider.HasCodePlan,
 			HasClaudeCode:           provider.HasClaudeCode,
 			HasAgentPlan:            provider.HasAgentPlan,
+			HasTokenPlan:            provider.HasTokenPlan,
 			DefaultModels:           append([]string(nil), provider.DefaultModels...),
 		}
 		cfg.EinoComponent = defaultEinoComponent(cfg.Type)
