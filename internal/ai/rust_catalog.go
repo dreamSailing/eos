@@ -21,17 +21,20 @@ func ApplyCoreModelCatalog(catalog coreapi.ModelCatalogState) {
 	providers := make([]*ProviderConfig, 0, len(catalog.Providers)+1)
 	for _, provider := range catalog.Providers {
 		cfg := &ProviderConfig{
-			ID:              strings.TrimSpace(provider.ID),
-			Name:            strings.TrimSpace(provider.Name),
-			Type:            ProviderType(strings.TrimSpace(provider.ID)),
-			DefaultAPIBase:  strings.TrimSpace(provider.DefaultAPIBase),
-			CodePlanAPIBase: strings.TrimSpace(provider.CodePlanAPIBase),
-			ClaudeAPIBase:   strings.TrimSpace(provider.ClaudeAPIBase),
-			APIKeyEnv:       strings.TrimSpace(provider.APIKeyEnv),
-			Website:         strings.TrimSpace(provider.Website),
-			HasCodePlan:     provider.HasCodePlan,
-			HasClaudeCode:   provider.HasClaudeCode,
-			DefaultModels:   append([]string(nil), provider.DefaultModels...),
+			ID:                      strings.TrimSpace(provider.ID),
+			Name:                    strings.TrimSpace(provider.Name),
+			Type:                    ProviderType(strings.TrimSpace(provider.ID)),
+			DefaultAPIBase:          strings.TrimSpace(provider.DefaultAPIBase),
+			CodePlanAPIBase:         strings.TrimSpace(provider.CodePlanAPIBase),
+			ClaudeAPIBase:           strings.TrimSpace(provider.ClaudeAPIBase),
+			AgentPlanAPIBase:        strings.TrimSpace(provider.AgentPlanAPIBase),
+			AgentPlanClaudeAPIBase:  strings.TrimSpace(provider.AgentPlanClaudeAPIBase),
+			APIKeyEnv:               strings.TrimSpace(provider.APIKeyEnv),
+			Website:                 strings.TrimSpace(provider.Website),
+			HasCodePlan:             provider.HasCodePlan,
+			HasClaudeCode:           provider.HasClaudeCode,
+			HasAgentPlan:            provider.HasAgentPlan,
+			DefaultModels:           append([]string(nil), provider.DefaultModels...),
 		}
 		cfg.EinoComponent = defaultEinoComponent(cfg.Type)
 		providers = append(providers, cfg)

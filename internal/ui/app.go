@@ -104,17 +104,20 @@ type AppModel struct {
 	stopRequested      bool
 }
 
+// bubbleActionHit 存储气泡操作按钮的点击区域信息，
+// 用于处理用户点击 AI 回复中的复制、下载等操作按钮
 type bubbleActionHit struct {
-	y      int
-	x0     int
-	x1     int
-	idx    int
-	action string
-	text   string
+	y      int    // 按钮所在行号
+	x0     int    // 按钮起始列（包含）
+	x1     int    // 按钮结束列（包含）
+	idx    int    // 对应历史记录条目的索引
+	action string // 操作类型（如 "copy", "download"）
+	text   string // 需要复制或下载的文本内容
 }
 
+// planDownloadRequest 记录待下载的计划文件信息
 type planDownloadRequest struct {
-	HistoryIndex int
+	HistoryIndex int // 历史记录中该计划的索引
 }
 
 var choosePlanDownloadDirectory = filedialog.ChooseDirectory
@@ -125,20 +128,26 @@ func (r bubbleActionHit) matches(action string) bool {
 	return strings.EqualFold(strings.TrimSpace(r.action), strings.TrimSpace(action))
 }
 
+// ctxUsageTickMsg 上下文使用率定时刷新消息
 type ctxUsageTickMsg struct{}
+
+// predictionDebounceMsg 预测防抖消息，用于延迟触发下一条消息预测
 type predictionDebounceMsg struct {
-	Seq   int
-	Draft string
+	Seq   int    // 序列号，用于丢弃过期的防抖消息
+	Draft string // 当时的输入草稿内容
 }
 
+// ctxUsageTick 每 900ms 触发一次上下文使用率刷新
 func (m *AppModel) ctxUsageTick() tea.Cmd {
 	return tea.Tick(900*time.Millisecond, func(time.Time) tea.Msg { return ctxUsageTickMsg{} })
 }
 
+// updateContextUsageUI 从适配器获取当前上下文使用情况并更新 shell 显示
 func (m *AppModel) updateContextUsageUI() {
 	if m == nil || m.shell == nil || m.adapter == nil {
 		return
 	}
+	// 有历史记录或正在处理时才显示上下文信息
 	if len(m.history) > 0 || m.state.Processing {
 		m.shell.SetContextVisible(true)
 	}
@@ -149,6 +158,7 @@ func (m *AppModel) updateContextUsageUI() {
 	m.shell.SetContextUsage(tokens, ratio)
 }
 
+// updateBGTaskCountUI 刷新后台任务数量显示
 func (m *AppModel) updateBGTaskCountUI() {
 	if m == nil || m.shell == nil || m.adapter == nil {
 		return
@@ -160,6 +170,7 @@ func (m *AppModel) updateBGTaskCountUI() {
 	m.shell.SetBGTaskCount(len(tasks))
 }
 
+// clearPrediction 清除预测文本，递增序列号使旧预测失效
 func (m *AppModel) clearPrediction() {
 	if m == nil {
 		return
@@ -172,6 +183,7 @@ func (m *AppModel) clearPrediction() {
 	}
 }
 
+// syncPredictionState 同步 shell 的预测状态到本地缓存
 func (m *AppModel) syncPredictionState() {
 	if m == nil || m.shell == nil {
 		return
@@ -181,6 +193,9 @@ func (m *AppModel) syncPredictionState() {
 	}
 }
 
+// canPredict 判断当前是否可以触发下一条消息预测
+// 需要满足：模型适配器就绪、shell 就绪、预测功能开启、
+// 处于 shell 视图、AI 模式、且不在处理中
 func (m *AppModel) canPredict() bool {
 	return m != nil &&
 		m.adapter != nil &&
@@ -191,6 +206,7 @@ func (m *AppModel) canPredict() bool {
 		!m.state.Processing
 }
 
+// schedulePrediction 调度一次预测请求，300ms 防抖后触发
 func (m *AppModel) schedulePrediction(draft string) tea.Cmd {
 	if !m.canPredict() {
 		m.clearPrediction()
@@ -203,6 +219,7 @@ func (m *AppModel) schedulePrediction(draft string) tea.Cmd {
 	})
 }
 
+// requestPrediction 向适配器请求下一条用户消息的预测建议
 func (m *AppModel) requestPrediction(draft string) tea.Cmd {
 	if m == nil || m.adapter == nil || m.shell == nil {
 		return nil
@@ -222,6 +239,7 @@ func (m *AppModel) requestPrediction(draft string) tea.Cmd {
 	}
 }
 
+// refreshShellWelcomeInfo 从适配器获取模型信息并更新欢迎卡片显示
 func (m *AppModel) refreshShellWelcomeInfo() {
 	if m == nil || m.shell == nil || m.adapter == nil {
 		return
@@ -230,6 +248,7 @@ func (m *AppModel) refreshShellWelcomeInfo() {
 	m.shell.SetWelcomeInfo(modelName, modelBase, "")
 }
 
+// updateInlinePermissionUI 更新内联权限确认框的显示
 func (m *AppModel) updateInlinePermissionUI() {
 	if m == nil || m.shell == nil {
 		return
@@ -247,6 +266,7 @@ func (m *AppModel) updateInlinePermissionUI() {
 	))
 }
 
+// showInlinePermission 显示内联权限确认框，用于 AI 请求执行敏感操作时的用户确认
 func (m *AppModel) showInlinePermission(req confirm.Request) {
 	reqCopy := req
 	m.inlinePermissionReq = &reqCopy
@@ -257,6 +277,7 @@ func (m *AppModel) showInlinePermission(req confirm.Request) {
 	}
 }
 
+// clearInlinePermission 清除内联权限确认框状态
 func (m *AppModel) clearInlinePermission() {
 	m.inlinePermissionReq = nil
 	m.inlinePermissionSelected = 0
@@ -265,10 +286,12 @@ func (m *AppModel) clearInlinePermission() {
 	}
 }
 
+// refreshAILive 刷新 AI 实时响应区域，包括思考过程和流式回复
 func (m *AppModel) refreshAILive() {
 	if m == nil || m.shell == nil {
 		return
 	}
+	// 非处理状态时清除实时显示
 	if !m.state.Processing {
 		m.shell.ClearLive()
 		m.shell.SetStatusHints(false, false)
@@ -277,6 +300,7 @@ func (m *AppModel) refreshAILive() {
 	var blocks []string
 	thinking := strings.TrimSpace(m.thinkingLive.String())
 	thinkingShown := m.state.Thinking && state.Thinking() && thinking != ""
+	// 渲染思考过程块
 	if thinkingShown {
 		if m.msgRenderer != nil {
 			hint := i18n.T("status.hint.thinking_expand", m.state.Language)
@@ -285,6 +309,7 @@ func (m *AppModel) refreshAILive() {
 			blocks = append(blocks, thinking)
 		}
 	}
+	// 渲染流式回复块
 	live := strings.TrimSpace(m.aiLive.String())
 	liveShown := live != ""
 	if live != "" {
@@ -303,6 +328,7 @@ func (m *AppModel) refreshAILive() {
 	m.shell.SetLive(strings.Join(blocks, "\n\n"))
 }
 
+// clearCurrentThinking 清除当前思考状态，包括内容缓冲区和展开状态
 func (m *AppModel) clearCurrentThinking() {
 	if m == nil {
 		return
@@ -316,43 +342,53 @@ func (m *AppModel) clearCurrentThinking() {
 	}
 }
 
+// ansiRe 匹配 ANSI 转义序列，用于清理文本中的终端样式代码
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
 
+// clearCopiedMsg 清除复制成功提示的消息
 type clearCopiedMsg struct {
-	idx int
+	idx int // 要清除的历史记录索引
 }
 
+// toolTrack 跟踪正在执行的工具调用状态
 type toolTrack struct {
-	name    string
-	started time.Time
-	idx     int
-	params  map[string]any
+	name    string         // 工具名称
+	started time.Time      // 开始执行时间
+	idx     int            // 在历史记录中的索引
+	params  map[string]any // 工具调用参数
 }
 
+// historyEntry 历史记录条目，支持多种类型：用户输入、AI 回复、工具调用、系统消息等
 type historyEntry struct {
-	kind          string
-	content       string
-	timestamp     time.Time
-	tokens        int
-	duration      time.Duration
-	level         string
-	toolID        string
-	toolName      string
-	toolParams    map[string]any
-	toolOutput    string
-	toolSuccess   bool
-	toolStatus    string
-	agentName     string
-	agentID       string
-	agentEvent    string
-	sourceAgent   string
-	sourceAgentID string
-	task          string
-	executionMode string
-	rawMarkdown   string
-	copiedAt      time.Time
+	// 通用字段
+	kind          string        // 条目类型："user", "ai", "tool", "system", "agent.task", "agent.final"
+	content       string        // 条目内容
+	timestamp     time.Time     // 时间戳
+	tokens        int           // token 数量（用于 AI 回复）
+	duration      time.Duration // 执行耗时
+	level         string        // 消息级别（用于系统消息）："error", "warning", "success", "info"
+	executionMode string        // 执行模式（用于 AI 回复）："auto", "plan" 等
+	rawMarkdown   string        // 原始 markdown 内容（用于计划下载）
+	copiedAt      time.Time     // 复制时间（用于显示复制成功提示）
+
+	// 工具调用相关字段
+	toolID      string         // 工具调用唯一 ID
+	toolName    string         // 工具名称
+	toolParams  map[string]any // 工具调用参数
+	toolOutput  string         // 工具执行输出
+	toolSuccess bool           // 工具是否执行成功
+	toolStatus  string         // 工具执行状态："running", "success", "error", "canceled"
+
+	// Agent 相关字段
+	agentName     string // Agent 名称
+	agentID       string // Agent ID
+	agentEvent    string // Agent 事件类型
+	sourceAgent   string // 来源 Agent 名称
+	sourceAgentID string // 来源 Agent ID
+	task          string // Agent 任务描述
 }
 
+// resolveShellWelcomeInfo 从适配器获取模型信息，用于欢迎卡片显示
 func resolveShellWelcomeInfo(adapter *adapter.CoreClientAdapter) (string, string) {
 	modelName, modelBase := adapter.GetModelInfo()
 	if modelName == "" {
@@ -376,6 +412,7 @@ func NewAppModelFromCoreEngine(engine coreapi.Engine) *AppModel {
 	return newAppModel(hydrateCatalogFromAdapter(adapter.NewCoreClientAdapterFromEngine(engine)))
 }
 
+// hydrateCatalogFromAdapter 从适配器加载模型目录并应用到全局状态
 func hydrateCatalogFromAdapter(coreAdapter *adapter.CoreClientAdapter) *adapter.CoreClientAdapter {
 	if coreAdapter == nil {
 		return nil
@@ -389,6 +426,7 @@ func hydrateCatalogFromAdapter(coreAdapter *adapter.CoreClientAdapter) *adapter.
 	return coreAdapter
 }
 
+// newAppModel 初始化应用模型，创建所有视图和面板
 func newAppModel(adapter *adapter.CoreClientAdapter) *AppModel {
 	theme := styles.GetTheme("dark")
 	styles := styles.NewStyles(theme)
@@ -1989,10 +2027,15 @@ func resolveWorkspaceInputPath(raw string) (string, error) {
 	return config.NormalizeWorkspacePath(abs), nil
 }
 
-// sendMessage 发送消息
+// sendMessage 发送用户消息到 AI 引擎
+// 1. 展开特殊宏（如 #problems_and_diagnostics）
+// 2. 更新 UI 状态为处理中
+// 3. 处理图片附件
+// 4. 异步调用适配器执行 AI 请求
 func (m *AppModel) sendMessage() tea.Cmd {
 	value := m.shell.GetInputValue()
 	expanded := value
+	// 展开 LSP 诊断宏
 	if strings.Contains(strings.ToLower(expanded), "#problems_and_diagnostics") {
 		md := ""
 		if m.adapter != nil {
@@ -2014,14 +2057,14 @@ func (m *AppModel) sendMessage() tea.Cmd {
 	m.shell.SetStatusHints(false, false)
 	m.shell.ClearLive()
 
-	// 记录AI开始时间
+	// 记录 AI 开始时间和 token 计数
 	m.currentAIStartTime = time.Now()
 	m.currentAITokens = 0
 	m.setActiveCancel(func() {
 		m.adapter.CancelForegroundRequest()
 	})
 
-	// 使用新的消息渲染器显示用户消息
+	// 处理图片附件
 	imagePaths := m.pendingImagePaths
 	m.pendingImagePaths = nil
 	if len(imagePaths) > 0 {
@@ -2042,13 +2085,14 @@ func (m *AppModel) sendMessage() tea.Cmd {
 		}
 	}
 
+	// 显示用户消息
 	display := value
 	if strings.TrimSpace(display) == "" && len(imagePaths) > 0 {
 		display = i18n.T("chat.image_only", m.state.Language)
 	}
 	m.appendHistory(historyEntry{kind: "user", content: display, timestamp: time.Now()})
 
-	// 异步调用Runtime
+	// 异步调用 AI 引擎
 	invoke := func() tea.Msg {
 		ctx := context.Background()
 		content, err := m.adapter.Invoke(ctx, expanded, m.state.ExecutionMode, imagePaths)
@@ -2063,6 +2107,8 @@ func (m *AppModel) sendMessage() tea.Cmd {
 	return tea.Batch(invoke, m.shell.StatusTick())
 }
 
+// sendBashCommand 执行 Bash 命令
+// 带有 30 秒超时，执行结果通过 ToolResultMsg 返回
 func (m *AppModel) sendBashCommand() tea.Cmd {
 	value := strings.TrimSpace(m.shell.GetInputValue())
 	m.shell.AddToHistory(value)
@@ -2093,6 +2139,7 @@ func (m *AppModel) sendBashCommand() tea.Cmd {
 	}
 }
 
+// refreshContextPanel 刷新上下文面板的数据
 func (m *AppModel) refreshContextPanel() {
 	if m == nil || m.adapter == nil {
 		return
@@ -2132,6 +2179,7 @@ func (m *AppModel) refreshContextPanel() {
 	panel.SetMessages(msgs)
 }
 
+// parseContextPreviewLine 解析上下文预览行，格式为 "role: content"
 func parseContextPreviewLine(line string) (string, string) {
 	line = strings.TrimSpace(line)
 	role, content, ok := strings.Cut(line, ":")
@@ -2145,6 +2193,7 @@ func parseContextPreviewLine(line string) (string, string) {
 	return role, strings.TrimSpace(content)
 }
 
+// estimateDisplayTokens 估算内容的 token 数量（约 4 个字符一个 token）
 func estimateDisplayTokens(content string) int {
 	content = strings.TrimSpace(content)
 	if content == "" {
@@ -2158,6 +2207,7 @@ func estimateDisplayTokens(content string) int {
 	return tokens
 }
 
+// rulesSnapshotDocument 从规则快照中获取指定作用域的文档
 func rulesSnapshotDocument(snapshot coreapi.RulesSnapshot, scope string) coreapi.RuleDocument {
 	scope = strings.ToLower(strings.TrimSpace(scope))
 	for _, doc := range snapshot.Documents {
@@ -2168,6 +2218,7 @@ func rulesSnapshotDocument(snapshot coreapi.RulesSnapshot, scope string) coreapi
 	return coreapi.RuleDocument{Scope: scope}
 }
 
+// memorySnapshotDocument 从记忆快照中获取指定作用域的文档
 func memorySnapshotDocument(snapshot coreapi.MemorySnapshot, scopes ...string) coreapi.MemoryDocument {
 	for _, scope := range scopes {
 		scope = strings.ToLower(strings.TrimSpace(scope))
@@ -2183,6 +2234,7 @@ func memorySnapshotDocument(snapshot coreapi.MemorySnapshot, scopes ...string) c
 	return coreapi.MemoryDocument{}
 }
 
+// refreshMemoryPanel 刷新记忆面板的数据，包括全局、项目、会话和索引四个作用域
 func (m *AppModel) refreshMemoryPanel() {
 	if m == nil || m.adapter == nil {
 		return
@@ -2257,6 +2309,7 @@ func (m *AppModel) listenEvents() tea.Cmd {
 	}
 }
 
+// cancelProcessingUI 取消处理状态，清除所有进行中的 UI 状态
 func (m *AppModel) cancelProcessingUI() {
 	m.state.Processing = false
 	m.shell.SetProcessing(false)
@@ -2269,11 +2322,13 @@ func (m *AppModel) cancelProcessingUI() {
 	m.stopRequested = false
 }
 
+// setActiveCancel 设置当前活跃的取消函数
 func (m *AppModel) setActiveCancel(cancel context.CancelFunc) {
 	m.activeCancel = cancel
 	m.stopRequested = false
 }
 
+// cancelActiveRequest 取消当前活跃的请求，返回是否成功取消
 func (m *AppModel) cancelActiveRequest() bool {
 	if m == nil || m.activeCancel == nil || m.stopRequested {
 		return false
@@ -2285,6 +2340,7 @@ func (m *AppModel) cancelActiveRequest() bool {
 	return true
 }
 
+// markInflightToolsCanceled 将所有进行中的工具标记为已取消
 func (m *AppModel) markInflightToolsCanceled(output string) {
 	if len(m.toolInflight) == 0 {
 		return
@@ -2402,6 +2458,7 @@ func (m *AppModel) rebuildHistoryContent() {
 	m.shell.SetContentPreserveOffset(sb.String())
 }
 
+// stripANSI 清除字符串中的 ANSI 转义序列
 func stripANSI(s string) string {
 	if strings.IndexByte(s, 0x1b) < 0 {
 		return s
@@ -2409,6 +2466,7 @@ func stripANSI(s string) string {
 	return ansiRe.ReplaceAllString(s, "")
 }
 
+// runeIndex 将字节索引转换为 rune 索引
 func runeIndex(s string, byteIdx int) int {
 	if byteIdx <= 0 {
 		return 0
@@ -2419,6 +2477,8 @@ func runeIndex(s string, byteIdx int) int {
 	return len([]rune(s[:byteIdx]))
 }
 
+// trackBubbleActionsAt 跟踪渲染后内容中气泡操作按钮的位置
+// 用于后续的鼠标点击事件处理
 func (m *AppModel) trackBubbleActionsAt(startLine int, idx int, e historyEntry, rendered string) {
 	if m.msgRenderer == nil {
 		return
@@ -2456,6 +2516,8 @@ func (m *AppModel) trackBubbleActionsAt(startLine int, idx int, e historyEntry, 
 	}
 }
 
+// tryHandleBubbleActionAt 尝试处理指定坐标处的气泡操作点击
+// 返回处理命令或 nil（如果点击位置没有按钮）
 func (m *AppModel) tryHandleBubbleActionAt(x, y int) tea.Cmd {
 	ox, oy := m.shell.ContentOrigin()
 	if x < ox || y < oy {
@@ -2476,6 +2538,7 @@ func (m *AppModel) tryHandleBubbleActionAt(x, y int) tea.Cmd {
 		}
 		switch {
 		case h.matches("copy"):
+			// 复制操作：将文本写入剪贴板
 			if err := clipboard.WriteAll(h.text); err != nil {
 				m.appendSystem(i18n.T("tool.error.copy_error", m.state.Language, err), "error")
 				return func() tea.Msg { return nil }
@@ -2485,14 +2548,18 @@ func (m *AppModel) tryHandleBubbleActionAt(x, y int) tea.Cmd {
 			}
 			m.rebuildHistoryContent()
 			m.appendSystem(i18n.T("clipboard.copied", m.state.Language), "success")
+			// 1.6 秒后清除复制成功提示
 			return tea.Tick(1600*time.Millisecond, func(time.Time) tea.Msg { return clearCopiedMsg{idx: h.idx} })
 		case h.matches("download"):
+			// 下载操作：保存计划文件
 			return m.handlePlanDownloadAction(h.idx)
 		}
 	}
 	return nil
 }
 
+// handlePlanDownloadAction 处理计划文件下载操作
+// 尝试打开目录选择器，如果不可用则回退到文本输入确认框
 func (m *AppModel) handlePlanDownloadAction(idx int) tea.Cmd {
 	if _, ok := m.planDownloadEntry(idx); !ok {
 		m.appendSystem(i18n.T("plan.download.unavailable", m.state.Language), "warning")
@@ -2510,6 +2577,7 @@ func (m *AppModel) handlePlanDownloadAction(idx int) tea.Cmd {
 	case filedialog.IsCanceled(err):
 		return func() tea.Msg { return nil }
 	case filedialog.IsUnavailable(err):
+		// 目录选择器不可用，回退到文本输入
 		m.pendingPlanDownload = &planDownloadRequest{HistoryIndex: idx}
 		m.openConfirm(confirm.Request{
 			Kind:      "plan_download_path",
@@ -2525,6 +2593,7 @@ func (m *AppModel) handlePlanDownloadAction(idx int) tea.Cmd {
 	return func() tea.Msg { return nil }
 }
 
+// planDownloadEntry 获取指定索引的计划下载条目
 func (m *AppModel) planDownloadEntry(idx int) (historyEntry, bool) {
 	if idx < 0 || idx >= len(m.history) {
 		return historyEntry{}, false
@@ -2539,6 +2608,7 @@ func (m *AppModel) planDownloadEntry(idx int) (historyEntry, bool) {
 	return entry, true
 }
 
+// savePlanHistoryEntryToDir 将计划文件保存到指定目录
 func (m *AppModel) savePlanHistoryEntryToDir(idx int, rawDir string) (string, error) {
 	entry, ok := m.planDownloadEntry(idx)
 	if !ok {
@@ -2560,6 +2630,7 @@ func (m *AppModel) savePlanHistoryEntryToDir(idx int, rawDir string) (string, er
 	return path, nil
 }
 
+// nextPlanDownloadFileName 生成计划下载文件名，格式：plan-{sessionID}-{timestamp}.md
 func (m *AppModel) nextPlanDownloadFileName(ts time.Time) string {
 	stamp := ts
 	if stamp.IsZero() {
@@ -2576,6 +2647,7 @@ func (m *AppModel) nextPlanDownloadFileName(ts time.Time) string {
 	return fmt.Sprintf("%s-%s.md", name, stamp.Format("20060102-150405"))
 }
 
+// sanitizePlanFileNameSegment 清理文件名中的非法字符
 func sanitizePlanFileNameSegment(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -2601,6 +2673,7 @@ func sanitizePlanFileNameSegment(raw string) string {
 	return strings.Trim(b.String(), "-")
 }
 
+// uniqueAvailablePath 确保文件路径唯一，如果已存在则添加数字后缀
 func uniqueAvailablePath(path string) string {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return path
@@ -2620,6 +2693,8 @@ func (m *AppModel) appendSystem(text, level string) {
 	m.appendHistory(historyEntry{kind: "system", content: text, level: level})
 }
 
+// pasteClipboardImage 粘贴剪贴板中的图片到附件列表
+// 仅在 AI 模式的 shell 视图中有效
 func (m *AppModel) pasteClipboardImage() tea.Cmd {
 	if m.activeView != "shell" {
 		return func() tea.Msg { return nil }
@@ -2637,6 +2712,7 @@ func (m *AppModel) pasteClipboardImage() tea.Cmd {
 		}
 		return func() tea.Msg { return nil }
 	}
+	// 保存图片到 .eos/attachments 目录
 	wd, err := os.Getwd()
 	if err != nil || strings.TrimSpace(wd) == "" {
 		m.appendSystem("粘贴图片失败: 无法获取工作目录", "error")
@@ -2654,6 +2730,7 @@ func (m *AppModel) pasteClipboardImage() tea.Cmd {
 	}
 	m.pendingImagePaths = append(m.pendingImagePaths, path)
 	m.appendSystem("已添加图片: "+filepath.Base(path), "success")
+	// 检查模型是否支持视觉
 	modelName, _ := m.adapter.GetModelInfo()
 	if strings.TrimSpace(modelName) != "" && !ai.SupportsVisionFromCatalog(modelName) {
 		m.appendSystem("当前模型可能不具备视觉能力，图片可能无法解析", "warning")
@@ -2661,6 +2738,7 @@ func (m *AppModel) pasteClipboardImage() tea.Cmd {
 	return func() tea.Msg { return nil }
 }
 
+// toggleThinkingExpand 切换思考过程的展开/折叠状态
 func (m *AppModel) toggleThinkingExpand() tea.Cmd {
 	if m == nil || !m.state.Thinking || strings.TrimSpace(m.thinkingLive.String()) == "" {
 		return nil
@@ -2673,10 +2751,11 @@ func (m *AppModel) toggleThinkingExpand() tea.Cmd {
 	return func() tea.Msg { return nil }
 }
 
-// handleGlobalKey 处理全局键盘输入
+// handleGlobalKey 处理全局快捷键，这些快捷键在所有视图中都有效
 func (m *AppModel) handleGlobalKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "ctrl+c":
+		// Ctrl+C：如果正在处理则取消，否则退出应用
 		if m.state.Processing {
 			m.cancelProcessingUI()
 			return nil
@@ -2684,7 +2763,7 @@ func (m *AppModel) handleGlobalKey(msg tea.KeyMsg) tea.Cmd {
 		return tea.Quit
 
 	case "f2":
-		// 切换模式
+		// F2：切换 AI/Bash 模式
 		m.shell.ToggleMode()
 		if m.shell.GetMode() == shell.ModeAI {
 			m.state.Mode = "ai"
@@ -2694,7 +2773,7 @@ func (m *AppModel) handleGlobalKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 
 	case "?":
-		// 打开帮助面板
+		// ?：打开帮助面板
 		m.clearPrediction()
 		m.activeView = "help"
 		if m.helpView != nil {
@@ -2704,6 +2783,7 @@ func (m *AppModel) handleGlobalKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 
 	case "esc":
+		// Esc：如果正在处理则取消当前请求，否则隐藏提示并清空输入
 		if m.state.Processing {
 			if m.cancelActiveRequest() {
 				m.markInflightToolsCanceled(i18n.T("toast.stopped", m.state.Language))
@@ -2718,6 +2798,7 @@ func (m *AppModel) handleGlobalKey(msg tea.KeyMsg) tea.Cmd {
 		return func() tea.Msg { return nil } // 返回非nil阻止进入else分支
 
 	case "tab":
+		// Tab：如果有预测则接受预测，否则切换思考状态
 		if m.activeView == "shell" && m.shell.GetMode() == shell.ModeAI && !m.shell.IsHintsVisible() {
 			if m.shell.CanAcceptPrediction() {
 				m.shell.HandleKey(msg)
@@ -2729,13 +2810,16 @@ func (m *AppModel) handleGlobalKey(msg tea.KeyMsg) tea.Cmd {
 			return func() tea.Msg { return nil }
 		}
 	case "ctrl+o":
+		// Ctrl+O：循环切换实时面板显示模式
 		if m.activeView == "shell" && m.shell != nil && m.shell.GetMode() == shell.ModeAI {
 			m.shell.CycleLivePanelMode()
 			return func() tea.Msg { return nil }
 		}
 	case "alt+v":
+		// Alt+V：粘贴剪贴板中的图片
 		return m.pasteClipboardImage()
 	case "alt+h":
+		// Alt+H：切换思考过程展开/折叠
 		if m.activeView == "shell" && m.shell != nil && m.shell.GetMode() == shell.ModeAI && m.state.Thinking && strings.TrimSpace(m.thinkingLive.String()) != "" {
 			return m.toggleThinkingExpand()
 		}
@@ -2789,10 +2873,14 @@ func (m *AppModel) updateHintsBasedOnInput() {
 	m.shell.HideHints()
 }
 
-// handleAIResponse 处理 AI 响应
+// handleAIResponse 处理 AI 响应消息，支持三种类型：
+// - "delta": 流式回复片段，追加到实时显示区域
+// - "final": 完整回复，保存到历史记录并结束处理状态
+// - "error": 错误消息，作为系统消息记录
 func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 	switch msg.Type {
 	case "delta":
+		// 流式回复：清除预测、清除思考过程、追加内容到实时显示
 		m.clearPrediction()
 		if strings.TrimSpace(msg.Content) != "" && strings.TrimSpace(m.thinkingLive.String()) != "" {
 			m.clearCurrentThinking()
@@ -2801,6 +2889,7 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 		m.currentAITokens += len(msg.Content) / 4
 		m.refreshAILive()
 	case "final":
+		// 完整回复：清除实时显示、保存到历史、恢复空闲状态、调度预测
 		duration := time.Since(m.currentAIStartTime)
 		m.shell.ClearLive()
 		m.aiLive.Reset()
@@ -2808,6 +2897,7 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 		m.shell.SetStatusHints(false, false)
 		mainContent := strings.TrimSpace(msg.Content)
 		agentContent := strings.TrimSpace(m.lastAgentFinal)
+		// 避免重复记录：如果本轮有委派且内容与 agent final 相同则跳过
 		if !(m.delegatedThisRound && mainContent != "" && agentContent != "" && mainContent == agentContent) {
 			m.appendHistory(historyEntry{
 				kind:          "ai",
@@ -2825,6 +2915,7 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 		m.stopRequested = false
 		return m.schedulePrediction(m.shell.GetInputValue())
 	case "error":
+		// 错误：清除所有状态，记录错误消息
 		m.clearPrediction()
 		m.shell.ClearLive()
 		m.aiLive.Reset()
@@ -2839,11 +2930,14 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 	return nil
 }
 
-// handleToolCall 处理工具调用
+// handleToolCall 处理工具调用消息
+// 工具调用分两个阶段：
+// 1. tool_call_start：创建工具卡片（可能无参数）
+// 2. tool_call_done：补充真实参数
+// 如果已有同 ID 的进行中卡片，只更新参数而非新建
 func (m *AppModel) handleToolCall(msg ToolCallMsg) tea.Cmd {
 	m.clearCurrentThinking()
-	// turn.tool_call_start 先建卡（无参数），turn.tool_call_done 再带真实参数。
-	// 若已有同 ID 的 inflight 卡片，直接补全参数而不是新建重复卡片。
+	// 如果已有同 ID 的进行中卡片，更新参数
 	if track, ok := m.toolInflight[msg.ID]; ok {
 		if len(msg.Params) > 0 {
 			track.params = msg.Params
@@ -2862,6 +2956,7 @@ func (m *AppModel) handleToolCall(msg ToolCallMsg) tea.Cmd {
 		}
 		return nil
 	}
+	// 新建工具卡片
 	entry := historyEntry{
 		kind:       "tool",
 		toolID:     msg.ID,
@@ -2880,7 +2975,9 @@ func (m *AppModel) handleToolCall(msg ToolCallMsg) tea.Cmd {
 	return nil
 }
 
-// handleToolResult 处理工具结果
+// handleToolResult 处理工具执行结果
+// 如果有对应的进行中卡片，更新其状态；否则创建新记录
+// 对于 bash 工具，完成后会结束处理状态
 func (m *AppModel) handleToolResult(msg ToolResultMsg) tea.Cmd {
 	success := msg.Status == "success"
 	track, ok := m.toolInflight[msg.ID]
@@ -2894,6 +2991,7 @@ func (m *AppModel) handleToolResult(msg ToolResultMsg) tea.Cmd {
 		name = track.name
 		duration = time.Since(track.started)
 	}
+	// 更新已存在的工具卡片
 	if ok && track.idx >= 0 && track.idx < len(m.history) {
 		e := m.history[track.idx]
 		e.kind = "tool"
@@ -2908,6 +3006,7 @@ func (m *AppModel) handleToolResult(msg ToolResultMsg) tea.Cmd {
 		e.duration = duration
 		m.history[track.idx] = e
 		m.rebuildHistoryContent()
+		// bash 工具完成后恢复空闲状态
 		if strings.EqualFold(name, "bash") {
 			m.state.Processing = false
 			m.shell.SetProcessing(false)
@@ -2916,6 +3015,7 @@ func (m *AppModel) handleToolResult(msg ToolResultMsg) tea.Cmd {
 		}
 		return nil
 	}
+	// 处理取消的 bash 工具
 	if msg.Status == "canceled" {
 		if strings.EqualFold(name, "bash") {
 			m.activeCancel = nil
@@ -2923,6 +3023,7 @@ func (m *AppModel) handleToolResult(msg ToolResultMsg) tea.Cmd {
 		}
 		return nil
 	}
+	// 创建新的工具记录（无对应卡片的情况）
 	m.appendHistory(historyEntry{kind: "tool", toolID: msg.ID, toolName: name, toolOutput: msg.Output, toolSuccess: success, toolStatus: msg.Status, duration: duration, timestamp: time.Now()})
 	if strings.EqualFold(name, "bash") {
 		m.state.Processing = false
@@ -2949,7 +3050,7 @@ func (m *AppModel) refreshModelsPanel() {
 	panel.SetModels(models, active)
 }
 
-// handleModelSelect 处理模型选择
+// handleModelSelect 处理模型选择，根据作用域显示不同的成功消息
 func (m *AppModel) handleModelSelect(msg panels.ModelSelectMsg) {
 	scope, err := m.adapter.SelectModelForCurrentContext(context.Background(), msg.Name)
 	if err != nil {
@@ -2988,13 +3089,15 @@ func (m *AppModel) handleModelSyncEnv() {
 	m.appendSystem("Synced model from environment variables", "success")
 }
 
-// handleModelFormComplete 处理模型表单完成
+// handleModelFormComplete 处理模型表单完成事件
+// 根据编辑模式决定是更新还是添加模型
 func (m *AppModel) handleModelFormComplete(msg setup.ModelFormCompleteMsg) {
 	m.activeView = "shell"
 	m.shell.FocusInput()
+	// 初始设置流程中不显示成功消息
 	suppressSuccessMessage := m.initialSetupFlow && len(m.history) == 0 && !msg.EditMode
 
-	// 使用配置中的名称
+	// 生成模型名称
 	name := msg.Config.Name
 	if name == "" {
 		name = fmt.Sprintf("model-%d", time.Now().Unix()%100000)
@@ -3033,7 +3136,7 @@ func (m *AppModel) handleModelFormComplete(msg setup.ModelFormCompleteMsg) {
 	m.refreshModelsPanel()
 }
 
-// handleMCPToggle 处理 MCP 服务器切换
+// handleMCPToggle 切换 MCP 服务器的启用/禁用状态
 func (m *AppModel) handleMCPToggle(msg panels.MCPToggleMsg) tea.Cmd {
 	configServers, err := m.adapter.MCPServers(context.Background())
 	if err != nil {
@@ -3055,6 +3158,7 @@ func (m *AppModel) handleMCPToggle(msg panels.MCPToggleMsg) tea.Cmd {
 			status = i18n.T("mcp.status.enabled", m.state.Language)
 		}
 		m.appendSystem(fmt.Sprintf(i18n.T("mcp.msg.toggled", m.state.Language), status, msg.Name), "success")
+		// 重新加载 MCP 配置
 		return func() tea.Msg {
 			return MCPReloadDoneMsg{Err: m.adapter.Reload()}
 		}
@@ -3293,6 +3397,8 @@ func (m *AppModel) handleMemoryRebuildIndex() {
 	m.refreshMemoryPanel()
 }
 
+// handleMCPConfigSubmit 处理 MCP 配置提交
+// 支持两种格式：旧版 JSON 标签格式和新版数组/对象格式
 func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 	raw := strings.TrimSpace(msg.Text)
 	if raw == "" {
@@ -3300,14 +3406,18 @@ func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 		return nil
 	}
 
+	// 尝试多种格式解析 MCP 配置
 	parseEntries := func(text string) ([]config.MCPEntry, error) {
+		// 尝试旧版格式
 		if entries, err := config.ParseLegacyMCPServersJSON([]byte(text)); err == nil && len(entries) > 0 {
 			return entries, nil
 		}
+		// 尝试数组格式
 		var arr []config.MCPEntry
 		if err := json.Unmarshal([]byte(text), &arr); err == nil && len(arr) > 0 {
 			return arr, nil
 		}
+		// 尝试单对象格式
 		var one config.MCPEntry
 		if err := json.Unmarshal([]byte(text), &one); err != nil {
 			return nil, err
@@ -3322,6 +3432,7 @@ func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 	}
 
 	if msg.Edit {
+		// 编辑模式：只支持单个 MCPEntry
 		if len(entries) != 1 {
 			m.appendSystem("编辑模式只支持一个 MCPEntry 对象", "warning")
 			return nil
@@ -3331,6 +3442,7 @@ func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 			m.appendSystem("缺少 name 字段", "warning")
 			return nil
 		}
+		// 处理重命名：先添加新名称，再删除旧名称
 		if msg.OriginalName != "" && entry.Name != msg.OriginalName {
 			if err := m.adapter.AddMCPEntries(context.Background(), []config.MCPEntry{entry}); err != nil {
 				m.appendSystem(fmt.Sprintf("新增（用于重命名）失败: %v", err), "error")
@@ -3342,18 +3454,21 @@ func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 				return nil
 			}
 		} else {
+			// 直接更新
 			if err := m.adapter.UpsertMCPEntry(context.Background(), entry); err != nil {
 				m.appendSystem("更新失败: "+err.Error(), "error")
 				return nil
 			}
 		}
 	} else {
+		// 添加模式
 		if err := m.adapter.AddMCPEntries(context.Background(), entries); err != nil {
 			m.appendSystem(fmt.Sprintf("新增失败: %v", err), "error")
 			return nil
 		}
 	}
 
+	// 刷新 MCP 面板并重新加载配置
 	m.activeView = "panel"
 	m.activePanel = "mcp"
 	m.shell.ClearInput()
@@ -3365,6 +3480,7 @@ func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 }
 
 // refreshCostPanel 刷新成本统计面板
+// 获取成本明细和使用汇总，按模型聚合后更新面板
 func (m *AppModel) refreshCostPanel() {
 	if costPanel, ok := m.panels["cost"].(*panels.CostPanel); ok {
 		ctx := context.Background()
@@ -3379,6 +3495,7 @@ func (m *AppModel) refreshCostPanel() {
 			return
 		}
 
+		// 按模型聚合成本数据
 		modelStats := aggregateCostItemsByModel(items)
 		stats := make([]panels.CostStats, 0, len(modelStats))
 		for _, s := range modelStats {
@@ -3400,14 +3517,16 @@ func (m *AppModel) refreshCostPanel() {
 	}
 }
 
+// costModelAggregate 按模型聚合的成本统计
 type costModelAggregate struct {
-	Model  string
-	Rounds int
-	Input  *int
-	Reply  *int
-	Total  *int
+	Model  string // 模型名称
+	Rounds int    // 调用轮次
+	Input  *int   // 输入 token 数（可能为 nil）
+	Reply  *int   // 回复 token 数（可能为 nil）
+	Total  *int   // 总 token 数（可能为 nil）
 }
 
+// aggregateCostItemsByModel 按模型聚合成本统计数据
 func aggregateCostItemsByModel(items []coreapi.CostItem) []costModelAggregate {
 	byModel := map[string]*costModelAggregate{}
 	for _, item := range items {
@@ -3435,6 +3554,7 @@ func aggregateCostItemsByModel(items []coreapi.CostItem) []costModelAggregate {
 	return out
 }
 
+// addOptionalInt 累加两个可选整数
 func addOptionalInt(total *int, value *int) *int {
 	if value == nil {
 		return total
@@ -3446,6 +3566,7 @@ func addOptionalInt(total *int, value *int) *int {
 	return &next
 }
 
+// optionalIntLabel 将可选整数转换为显示标签
 func (m *AppModel) optionalIntLabel(value *int) string {
 	if value == nil {
 		return m.localize("未知", "unknown")
@@ -3453,7 +3574,11 @@ func (m *AppModel) optionalIntLabel(value *int) string {
 	return fmt.Sprintf("%d", *value)
 }
 
-// handleSettingsSave 处理保存设置
+// handleSettingsSave 处理设置保存
+// 1. 保存配置到本地文件
+// 2. 保存工作区设置到核心
+// 3. 处理语言切换
+// 4. 更新预测功能状态
 func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredictionEnabled *bool) {
 	if settings == nil {
 		return
@@ -3462,7 +3587,7 @@ func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredict
 	// 检查语言是否改变
 	langChanged := settings.Language != m.state.Language
 
-	// 保存到核心
+	// 保存配置到本地文件
 	cfg, path := config.Load()
 	if path != "" {
 		cfg.Language = settings.Language
@@ -3470,24 +3595,25 @@ func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredict
 			enabled := *globalPredictionEnabled
 			cfg.NextMessagePredictionEnabled = &enabled
 		}
-		// 保存配置
 		if err := config.Save(cfg, path); err != nil {
 			m.appendSystem(fmt.Sprintf("Failed to save settings: %v", err), "error")
 			return
 		}
 	}
 
+	// 保存工作区设置到核心
 	if err := m.adapter.SaveSettings(context.Background(), *settings); err != nil {
 		m.appendSystem(fmt.Sprintf("Failed to save workspace settings: %v", err), "error")
 		return
 	}
 
-	// 如果语言改变了，发送语言切换消息
+	// 处理语言切换
 	if langChanged {
 		m.state.Language = settings.Language
 		m.shell.SetLanguage(settings.Language)
 		m.Update(panels.LanguageChangeMsg{Language: settings.Language})
 	}
+	// 更新预测功能状态
 	if globalPredictionEnabled != nil {
 		m.predictionEnabled = *globalPredictionEnabled
 		if !m.predictionEnabled {
@@ -3577,6 +3703,8 @@ func (m *AppModel) handleVersionsDeleteAll() {
 	m.refreshVersionsPanel()
 }
 
+// versionFileMatches 检查版本文件路径是否匹配目标路径
+// 支持绝对路径和相对路径的模糊匹配
 func versionFileMatches(file, target string) bool {
 	file = normalizeVersionPath(file)
 	target = normalizeVersionPath(target)
@@ -3586,6 +3714,7 @@ func versionFileMatches(file, target string) bool {
 	if strings.EqualFold(file, target) {
 		return true
 	}
+	// 绝对路径与相对路径的后缀匹配
 	if isAbsVersionPath(file) && !isAbsVersionPath(target) {
 		return strings.HasSuffix(strings.ToLower(file), "/"+strings.ToLower(target))
 	}
@@ -3595,6 +3724,7 @@ func versionFileMatches(file, target string) bool {
 	return false
 }
 
+// normalizeVersionPath 标准化版本文件路径
 func normalizeVersionPath(path string) string {
 	path = filepath.ToSlash(strings.TrimSpace(path))
 	if path == "" {
@@ -3608,10 +3738,12 @@ func normalizeVersionPath(path string) string {
 	return path
 }
 
+// isAbsVersionPath 检查路径是否为绝对路径
 func isAbsVersionPath(path string) bool {
 	return filepath.IsAbs(filepath.FromSlash(path))
 }
 
+// versionSummarySize 从版本摘要中提取文件大小
 func versionSummarySize(summary string) int {
 	summary = strings.TrimSpace(summary)
 	if summary == "" {

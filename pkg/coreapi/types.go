@@ -952,6 +952,9 @@ type ModelProviderOption struct {
 	ClaudeAPIBase   string   `json:"claude_api_base,omitempty"`
 	HasCodePlan     bool     `json:"has_code_plan"`
 	HasClaudeCode   bool     `json:"has_claude_code"`
+	HasAgentPlan    bool     `json:"has_agent_plan"`
+	AgentPlanAPIBase        string   `json:"agent_plan_api_base,omitempty"`
+	AgentPlanClaudeAPIBase  string   `json:"agent_plan_claude_api_base,omitempty"`
 	DefaultModels   []string `json:"default_models,omitempty"`
 }
 
