@@ -21,7 +21,6 @@ func ApplyCoreModelCatalog(catalog coreapi.ModelCatalogState) {
 	providers := make([]*ProviderConfig, 0, len(catalog.Providers)+1)
 	for _, provider := range catalog.Providers {
 		cfg := providerConfigFromEndpoints(&provider)
-		cfg.EinoComponent = defaultEinoComponent(cfg.Type)
 		providers = append(providers, cfg)
 	}
 	if catalog.AllowCustomProvider {
@@ -157,25 +156,6 @@ func AllowCustomProviderFromCatalog() bool {
 
 func AllowCustomModelFromCatalog() bool {
 	return allowCustomModel
-}
-
-func defaultEinoComponent(provider ProviderType) string {
-	switch provider {
-	case ProviderDeepSeek:
-		return "deepseek"
-	case ProviderDashScope:
-		return "dashscope"
-	case ProviderByteDance:
-		return "volcengine"
-	case ProviderZhipu:
-		return "zhipuai"
-	case ProviderOpenAI:
-		return "openai"
-	case ProviderAnthropic:
-		return "anthropic"
-	default:
-		return ""
-	}
 }
 
 func firstNonEmpty(primary, fallback string) string {

@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/internal/toolapi"
+	"github.com/dreamSailing/eos/internal/modes"
 	"github.com/dreamSailing/eos/internal/ui/panels"
 	"github.com/dreamSailing/eos/pkg/coreapi"
 
@@ -49,8 +49,8 @@ func isSupportedExecutionModeInput(raw string) bool {
 	if strings.TrimSpace(raw) == "" {
 		return false
 	}
-	normalized := toolapi.NormalizeExecutionMode(raw)
-	for _, item := range toolapi.SupportedExecutionModes() {
+	normalized := modes.NormalizeExecutionMode(raw)
+	for _, item := range modes.SupportedExecutionModes() {
 		if item.Name == normalized {
 			return true
 		}
@@ -69,8 +69,8 @@ func isSupportedAccessModeInput(raw string) bool {
 	if strings.TrimSpace(raw) == "" {
 		return false
 	}
-	normalized := toolapi.NormalizeAccessMode(raw)
-	for _, item := range toolapi.SupportedAccessModes() {
+	normalized := modes.NormalizeAccessMode(raw)
+	for _, item := range modes.SupportedAccessModes() {
 		if item.Name == normalized {
 			return true
 		}
@@ -82,8 +82,8 @@ func isSupportedApprovalModeInput(raw string) bool {
 	if strings.TrimSpace(raw) == "" {
 		return false
 	}
-	normalized := toolapi.NormalizeApprovalMode(raw)
-	for _, item := range toolapi.SupportedApprovalModes() {
+	normalized := modes.NormalizeApprovalMode(raw)
+	for _, item := range modes.SupportedApprovalModes() {
 		if item.Name == normalized {
 			return true
 		}
@@ -334,7 +334,7 @@ func (m *AppModel) handlePermissionsSlash(args []string) tea.Cmd {
 	if len(args) > 0 {
 		switch {
 		case len(args) == 1 && isSupportedExecutionModeInput(args[0]):
-			mode := toolapi.NormalizeExecutionMode(args[0])
+			mode := modes.NormalizeExecutionMode(args[0])
 			if err := m.adapter.SetExecutionMode(context.Background(), mode); err != nil {
 				m.appendSystem(err.Error(), "error")
 				return nil
@@ -343,14 +343,14 @@ func (m *AppModel) handlePermissionsSlash(args []string) tea.Cmd {
 			m.shell.SetExecutionMode(mode)
 			m.appendSystem(fmt.Sprintf("%s %s", m.localize("执行模式已切换为", "Execution mode switched to"), m.executionModeLabel(mode)), "success")
 		case len(args) >= 2 && strings.EqualFold(strings.TrimSpace(args[0]), "access") && isSupportedAccessModeInput(args[1]):
-			mode := toolapi.NormalizeAccessMode(args[1])
+			mode := modes.NormalizeAccessMode(args[1])
 			if err := m.adapter.SetAccessMode(context.Background(), mode); err != nil {
 				m.appendSystem(err.Error(), "error")
 				return nil
 			}
 			m.appendSystem(fmt.Sprintf("%s %s", m.localize("访问模式已切换为", "Access mode switched to"), mode), "success")
 		case len(args) >= 2 && strings.EqualFold(strings.TrimSpace(args[0]), "approval") && isSupportedApprovalModeInput(args[1]):
-			mode := toolapi.NormalizeApprovalMode(args[1])
+			mode := modes.NormalizeApprovalMode(args[1])
 			if err := m.adapter.SetApprovalMode(context.Background(), mode); err != nil {
 				m.appendSystem(err.Error(), "error")
 				return nil
@@ -833,7 +833,7 @@ func (m *AppModel) restoreSessionHistory(id string) {
 }
 
 func (m *AppModel) executionModeLabel(mode string) string {
-	switch toolapi.NormalizeExecutionMode(mode) {
+	switch modes.NormalizeExecutionMode(mode) {
 	case "plan":
 		return "plan"
 	default:

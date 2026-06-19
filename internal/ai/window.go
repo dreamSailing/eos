@@ -12,8 +12,10 @@ func ContextWindowTokens(model string) int {
 	if v, ok := getContextWindowOverride(m); ok && v > 0 {
 		return v
 	}
-	if v := GetModelContextWindow(m); v > 0 {
-		return v
+	if entry := findCatalogEntryByKey(m); entry != nil {
+		if v := GetCatalogContextWindow(entry); v > 0 {
+			return v
+		}
 	}
 	switch {
 	case strings.Contains(m, "gpt-5.5"):

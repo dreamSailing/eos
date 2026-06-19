@@ -15,7 +15,7 @@ import (
 
 	"github.com/dreamSailing/eos/internal/i18n"
 	"github.com/dreamSailing/eos/internal/state"
-	"github.com/dreamSailing/eos/internal/toolapi"
+	"github.com/dreamSailing/eos/internal/modes"
 	"github.com/dreamSailing/eos/internal/ui/components/content"
 	"github.com/dreamSailing/eos/internal/ui/components/hints"
 	"github.com/dreamSailing/eos/internal/ui/components/input"
@@ -387,7 +387,7 @@ func (m *Model) SetContextUsage(tokens int, ratio float64) {
 }
 
 func (m *Model) SetExecutionMode(mode string) {
-	m.executionMode = toolapi.NormalizeExecutionMode(mode)
+	m.executionMode = modes.NormalizeExecutionMode(mode)
 }
 
 func (m *Model) SetThinkingExpanded(v bool) {
@@ -883,7 +883,7 @@ func (m Model) renderStatusBar() string {
 }
 
 func executionModeLabel(_ string, mode string) string {
-	switch toolapi.NormalizeExecutionMode(mode) {
+	switch modes.NormalizeExecutionMode(mode) {
 	case "plan":
 		return "plan"
 	default:

@@ -14,7 +14,6 @@ import (
 	"github.com/dreamSailing/eos/internal/ai"
 	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/i18n"
-	mcppkg "github.com/dreamSailing/eos/internal/mcp"
 	"github.com/dreamSailing/eos/internal/pkg/clip"
 	"github.com/dreamSailing/eos/internal/pkg/filedialog"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
@@ -3187,7 +3186,7 @@ func (m *AppModel) handleMCPAdd() {
 
 func (m *AppModel) handleMCPAddBrowser() {
 	m.activeView = "setup"
-	editor := setup.NewMCPConfigEditorView(m.styles, m.state.Language, mcppkg.RecommendedBrowserPresetJSON(), false, "")
+	editor := setup.NewMCPConfigEditorView(m.styles, m.state.Language, recommendedBrowserPresetJSON(), false, "")
 	editor.SetSize(m.width, m.height)
 	m.setupView = editor
 }

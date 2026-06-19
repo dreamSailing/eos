@@ -6,26 +6,31 @@ import (
 	"github.com/dreamSailing/eos/pkg/coreapi"
 )
 
+// ep is a shorthand for creating ProviderEndpoint literals in tests.
+func ep(plan, format, base string) coreapi.ProviderEndpoint {
+	return coreapi.ProviderEndpoint{Plan: plan, Format: format, APIBase: base}
+}
+
 func TestApplyCoreModelCatalogReplacesProviderAndPresetLookups(t *testing.T) {
 	t.Cleanup(func() {
 		globalRegistry = NewProviderRegistry()
 		globalCatalog = NewModelCatalog()
-		globalResolver = NewResolver()
 	})
 
 	ApplyCoreModelCatalog(coreapi.ModelCatalogState{
 		Providers: []coreapi.ModelProviderOption{{
-			ID:             "example",
-			Name:           "Example",
-			DefaultAPIBase: "https://example.invalid/v1",
-			DefaultModels:  []string{"example-vision"},
+			ID:            "example",
+			Name:          "Example",
+			Endpoints:     []coreapi.ProviderEndpoint{ep("api", "openai_chat", "https://example.invalid/v1")},
+			DefaultModels: []string{"example-vision"},
 		}},
 		Presets: []coreapi.ModelPresetOption{{
 			ID:             "example-vision",
 			Name:           "Example Vision",
 			ProviderID:     "example",
 			ModelName:      "example-vision",
-			APIType:        "standard",
+			Plan:           "api",
+			Format:         "openai_chat",
 			ContextWindow:  12345,
 			SupportsVision: true,
 			SupportsTools:  true,
@@ -60,7 +65,6 @@ func TestApplyCoreModelCatalogEmptySnapshotStaysEmpty(t *testing.T) {
 	t.Cleanup(func() {
 		globalRegistry = NewProviderRegistry()
 		globalCatalog = NewModelCatalog()
-		globalResolver = NewResolver()
 	})
 
 	ApplyCoreModelCatalog(coreapi.ModelCatalogState{})

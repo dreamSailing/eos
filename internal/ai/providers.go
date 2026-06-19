@@ -55,7 +55,6 @@ type ProviderConfig struct {
 	HasTokenPlan    bool         // 是否支持 Token Plan
 	TokenPlanAPIBase        string // Token Plan API Base URL (OpenAI 兼容)
 	TokenPlanClaudeAPIBase  string // Token Plan Claude 兼容 API Base URL
-	EinoComponent   string       // Eino 组件名称（空则用 OpenAI 兼容）
 	DefaultModels   []string     // 默认/推荐模型列表
 }
 

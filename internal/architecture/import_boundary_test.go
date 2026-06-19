@@ -273,60 +273,10 @@ func packagePath(root, dir string) (string, error) {
 	return modulePath + "/" + rel, nil
 }
 
-// toolAPIImplLegacyFiles 是 toolapi/impl 中允许导入 internal/tools 和 internal/runtime
-// 的遗留适配器文件白名单。只有这些文件可以直接依赖遗留包。
-// catalog.go 暂未迁移，待后续重构时从白名单移除。
-var toolAPIImplLegacyFiles = map[string]bool{
-	"legacy_bridge.go": true,
-	"catalog.go":       true,
-}
-
-// toolAPIImplForbiddenImports 是 toolapi/impl 中非遗留文件禁止导入的包前缀。
-var toolAPIImplForbiddenImports = []string{
-	"github.com/dreamSailing/eos/internal/tools",
-	"github.com/dreamSailing/eos/internal/runtime",
-}
-
-// TestToolAPIImplDependencyBoundary 验证 toolapi/impl 中的 executor.go、tasks.go、
-// bridge.go、services.go 不直接依赖 internal/tools 或 internal/runtime。
-// 所有遗留依赖应集中在 legacy_bridge.go 中。
-func TestToolAPIImplDependencyBoundary(t *testing.T) {
-	root := moduleRoot(t)
-	implRoot := filepath.Join(root, "internal", "toolapi", "impl")
-	violations := map[string][]string{}
-
-	err := filepath.WalkDir(implRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		basename := filepath.Base(path)
-		if toolAPIImplLegacyFiles[basename] {
-			return nil
-		}
-		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
-		if err != nil {
-			return err
-		}
-		for _, imp := range file.Imports {
-			importPath := strings.Trim(imp.Path.Value, `"`)
-			for _, forbidden := range toolAPIImplForbiddenImports {
-				if importPath == forbidden || strings.HasPrefix(importPath, forbidden+"/") {
-					violations[basename] = append(violations[basename], importPath)
-				}
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walk toolapi/impl imports: %v", err)
-	}
-	if len(violations) > 0 {
-		t.Fatalf("toolapi/impl clean files have forbidden legacy imports (should be in legacy_bridge.go only):\n%#v", violations)
-	}
-}
+// toolAPIImplLegacyFiles, toolAPIImplForbiddenImports and
+// TestToolAPIImplDependencyBoundary guarded the internal/toolapi/impl
+// dependency boundary. That package was removed together with the rest of
+// the Go gateway layer, so the guard is no longer applicable.
 
 func moduleRoot(t *testing.T) string {
 	t.Helper()

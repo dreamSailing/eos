@@ -1,6 +1,6 @@
 package cli
 
-import "github.com/dreamSailing/eos/internal/toolapi"
+import "github.com/dreamSailing/eos/internal/modes"
 
 type resolvedModeConfig struct {
 	AccessMode    string
@@ -21,18 +21,18 @@ func resolveModeConfig(accessMode string, approvalMode string, sandboxMode strin
 
 	resolvedAccess := ""
 	if accessMode != "" {
-		resolvedAccess = toolapi.NormalizeAccessMode(accessMode)
+		resolvedAccess = modes.NormalizeAccessMode(accessMode)
 	}
 	resolvedApproval := ""
 	if approvalMode != "" {
-		resolvedApproval = toolapi.NormalizeApprovalMode(approvalMode)
+		resolvedApproval = modes.NormalizeApprovalMode(approvalMode)
 	}
-	resolvedSandbox := toolapi.NormalizeSandboxMode(sandboxMode)
+	resolvedSandbox := modes.NormalizeSandboxMode(sandboxMode)
 	if resolvedSandbox == "" {
-		resolvedSandbox = toolapi.SandboxModeFromAccessMode(toolapi.ResolveAccessMode(toolapi.ExecSession{SandboxMode: sandboxMode}))
+		resolvedSandbox = modes.SandboxModeFromAccessMode(modes.ResolveAccessMode(modes.ExecSession{SandboxMode: sandboxMode}))
 	}
 	if resolvedAccess != "" {
-		resolvedSandbox = toolapi.SandboxModeFromAccessMode(resolvedAccess)
+		resolvedSandbox = modes.SandboxModeFromAccessMode(resolvedAccess)
 	}
 
 	return resolvedModeConfig{
