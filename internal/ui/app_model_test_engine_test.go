@@ -288,18 +288,19 @@ func (s *testModelService) List(context.Context) ([]coreapi.ModelConfig, error) 
 func (s *testModelService) Catalog(context.Context) (coreapi.ModelCatalogState, error) {
 	return coreapi.ModelCatalogState{
 		Providers: []coreapi.ModelProviderOption{{
-			ID:             "openai",
-			Name:           "OpenAI",
-			DefaultAPIBase: "https://api.openai.com/v1",
-			DefaultModels:  []string{"gpt-5-codex"},
-		}},
-		Presets: []coreapi.ModelPresetOption{{
-			ID:            "gpt-5-codex",
-			Name:          "GPT-5-Codex",
-			ProviderID:    "openai",
-			ModelName:     "gpt-5-codex",
-			APIType:       "standard",
-			ContextWindow: 400000,
+				ID:            "openai",
+				Name:          "OpenAI",
+				Endpoints:     []coreapi.ProviderEndpoint{{Plan: "api", Format: "openai_chat", APIBase: "https://api.openai.com/v1"}},
+				DefaultModels: []string{"gpt-5-codex"},
+			}},
+			Presets: []coreapi.ModelPresetOption{{
+				ID:            "gpt-5-codex",
+				Name:          "GPT-5-Codex",
+				ProviderID:    "openai",
+				ModelName:     "gpt-5-codex",
+				Plan:          "api",
+				Format:        "openai_chat",
+				ContextWindow: 400000,
 			Tags:          []string{"推荐", "编程"},
 			SupportsTools: true,
 		}},

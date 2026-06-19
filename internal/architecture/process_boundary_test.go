@@ -33,7 +33,6 @@ import (
 // 格式：文件路径:函数名:被调用函数 = 出现次数。
 // 新调用点必须通过 sandbox.GuardedRunner 或在此显式分类。
 var allowedProcessExecCalls = map[string]int{
-	"internal/bridge/guarded_cmd.go:guardedGitCmd:utils.CommandContext":                    1,
 	"internal/daemon/manager.go:StartBackground:exec.Command":                              1,
 	"internal/document/convert.go:convertWithSoffice:utils.Command":                        1,
 	"internal/lsp/client.go:Start:utils.CommandContext":                                    1,
@@ -66,7 +65,6 @@ var allowedProcessExecCalls = map[string]int{
 	"internal/tools/worktree_tool.go:IsGitRepo:utils.Command":                              1,
 	"internal/tools/worktree_tool.go:enterWorktreeStructured:utils.CommandContext":         1,
 	"internal/ui/slash_runtime.go:copyToClipboard:exec.Command":                            3,
-	"pkg/core/core.go:runGitCommand:utils.CommandContext":                                  1,
 	"pkg/coreapi/sidecar/process_client.go:StartProcess:exec.Command":                      1,
 }
 

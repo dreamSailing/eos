@@ -20,25 +20,7 @@ func ApplyCoreModelCatalog(catalog coreapi.ModelCatalogState) {
 
 	providers := make([]*ProviderConfig, 0, len(catalog.Providers)+1)
 	for _, provider := range catalog.Providers {
-		cfg := &ProviderConfig{
-			ID:                      strings.TrimSpace(provider.ID),
-			Name:                    strings.TrimSpace(provider.Name),
-			Type:                    ProviderType(strings.TrimSpace(provider.ID)),
-			DefaultAPIBase:          strings.TrimSpace(provider.DefaultAPIBase),
-			CodePlanAPIBase:         strings.TrimSpace(provider.CodePlanAPIBase),
-			ClaudeAPIBase:           strings.TrimSpace(provider.ClaudeAPIBase),
-			AgentPlanAPIBase:        strings.TrimSpace(provider.AgentPlanAPIBase),
-			AgentPlanClaudeAPIBase:  strings.TrimSpace(provider.AgentPlanClaudeAPIBase),
-			TokenPlanAPIBase:        strings.TrimSpace(provider.TokenPlanAPIBase),
-			TokenPlanClaudeAPIBase:  strings.TrimSpace(provider.TokenPlanClaudeAPIBase),
-			APIKeyEnv:               strings.TrimSpace(provider.APIKeyEnv),
-			Website:                 strings.TrimSpace(provider.Website),
-			HasCodePlan:             provider.HasCodePlan,
-			HasClaudeCode:           provider.HasClaudeCode,
-			HasAgentPlan:            provider.HasAgentPlan,
-			HasTokenPlan:            provider.HasTokenPlan,
-			DefaultModels:           append([]string(nil), provider.DefaultModels...),
-		}
+		cfg := providerConfigFromEndpoints(&provider)
 		cfg.EinoComponent = defaultEinoComponent(cfg.Type)
 		providers = append(providers, cfg)
 	}
@@ -58,7 +40,7 @@ func ApplyCoreModelCatalog(catalog coreapi.ModelCatalogState) {
 			Name:                    strings.TrimSpace(preset.Name),
 			Provider:                ProviderType(strings.TrimSpace(preset.ProviderID)),
 			ModelName:               strings.TrimSpace(preset.ModelName),
-			APIType:                 APIType(strings.TrimSpace(preset.APIType)),
+			APIType:                 apiTypeFromPlanFormat(preset.Plan, preset.Format),
 			ContextWindow:           preset.ContextWindow,
 			ThinkingCap:             DetectThinkingCapability(firstNonEmpty(preset.ModelName, preset.ID)),
 			SupportsVision:          preset.SupportsVision,
@@ -73,6 +55,100 @@ func ApplyCoreModelCatalog(catalog coreapi.ModelCatalogState) {
 		entries = append(entries, entry)
 	}
 	globalCatalog.replaceAll(entries)
+}
+
+// providerConfigFromEndpoints derives the legacy flat ProviderConfig fields
+// from the new (plan, format) endpoints vector.
+func providerConfigFromEndpoints(p *coreapi.ModelProviderOption) *ProviderConfig {
+	cfg := &ProviderConfig{
+		ID:            strings.TrimSpace(p.ID),
+		Name:          strings.TrimSpace(p.Name),
+		Type:          ProviderType(strings.TrimSpace(p.ID)),
+		APIKeyEnv:     strings.TrimSpace(p.APIKeyEnv),
+		Website:       strings.TrimSpace(p.Website),
+		DefaultModels: append([]string(nil), p.DefaultModels...),
+	}
+
+	for _, ep := range p.Endpoints {
+		plan := strings.ToLower(strings.TrimSpace(ep.Plan))
+		fmt := strings.ToLower(strings.TrimSpace(ep.Format))
+		base := strings.TrimSpace(ep.APIBase)
+
+		switch {
+		case fmt == "openai_chat" && (plan == "" || plan == "api"):
+			if cfg.DefaultAPIBase == "" {
+				cfg.DefaultAPIBase = base
+			}
+		case fmt == "openai_chat" && plan == "code":
+			cfg.CodePlanAPIBase = base
+			cfg.HasCodePlan = true
+		case fmt == "openai_chat" && plan == "agent":
+			cfg.AgentPlanAPIBase = base
+			cfg.HasAgentPlan = true
+		case fmt == "openai_chat" && plan == "token":
+			cfg.TokenPlanAPIBase = base
+			cfg.HasTokenPlan = true
+		case fmt == "anthropic" && plan == "agent":
+			cfg.AgentPlanClaudeAPIBase = base
+			cfg.HasAgentPlan = true
+		case fmt == "anthropic" && plan == "token":
+			cfg.TokenPlanClaudeAPIBase = base
+			cfg.HasTokenPlan = true
+		case fmt == "anthropic":
+			cfg.ClaudeAPIBase = base
+			cfg.HasClaudeCode = true
+		case fmt == "openai_responses" && cfg.DefaultAPIBase == "":
+			// Responses API endpoint also serves as a valid base for the provider
+			cfg.DefaultAPIBase = base
+		}
+	}
+
+	// Fallback: if no explicit default, use first available base
+	if cfg.DefaultAPIBase == "" {
+		for _, ep := range p.Endpoints {
+			if base := strings.TrimSpace(ep.APIBase); base != "" {
+				cfg.DefaultAPIBase = base
+				break
+			}
+		}
+	}
+
+	// Derive boolean flags from endpoint presence
+	if cfg.CodePlanAPIBase != "" {
+		cfg.HasCodePlan = true
+	}
+	if cfg.ClaudeAPIBase != "" {
+		cfg.HasClaudeCode = true
+	}
+
+	return cfg
+}
+
+// apiTypeFromPlanFormat maps (plan, format) to the legacy APIType enum.
+func apiTypeFromPlanFormat(plan, format string) APIType {
+	plan = strings.ToLower(strings.TrimSpace(plan))
+	fmt := strings.ToLower(strings.TrimSpace(format))
+
+	switch fmt {
+	case "openai_chat", "openai_responses":
+		switch plan {
+		case "code":
+			return APITypeCodePlan
+		case "token":
+			return APITypeTokenPlan
+		default:
+			return APITypeStandard
+		}
+	case "anthropic":
+		switch plan {
+		case "token":
+			return APITypeTokenPlanClaude
+		default:
+			return APITypeClaude
+		}
+	default:
+		return APITypeStandard
+	}
 }
 
 func AllowCustomProviderFromCatalog() bool {
