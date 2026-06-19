@@ -935,30 +935,27 @@ type ModelConfig struct {
 	Active                  bool   `json:"active"`
 	SupportsReasoningEffort bool   `json:"supports_reasoning_effort"`
 	ProviderID              string `json:"provider_id,omitempty"`
-	APIType                 string `json:"api_type,omitempty"`
+	Format                  string `json:"format,omitempty"`
 	PresetID                string `json:"preset_id,omitempty"`
 	EditKind                string `json:"edit_kind,omitempty"`
 	CanEdit                 bool   `json:"can_edit"`
 	CanDelete               bool   `json:"can_delete"`
 }
 
+// ProviderEndpoint 服务商一个接入端点 = (plan, format) 组合。
+type ProviderEndpoint struct {
+	Plan    string `json:"plan,omitempty"`
+	Format  string `json:"format,omitempty"`
+	APIBase string `json:"api_base,omitempty"`
+}
+
 type ModelProviderOption struct {
-	ID              string   `json:"id"`
-	Name            string   `json:"name,omitempty"`
-	Website         string   `json:"website,omitempty"`
-	APIKeyEnv       string   `json:"api_key_env,omitempty"`
-	DefaultAPIBase  string   `json:"default_api_base,omitempty"`
-	CodePlanAPIBase string   `json:"code_plan_api_base,omitempty"`
-	ClaudeAPIBase   string   `json:"claude_api_base,omitempty"`
-	HasCodePlan     bool     `json:"has_code_plan"`
-	HasClaudeCode   bool     `json:"has_claude_code"`
-	HasAgentPlan    bool     `json:"has_agent_plan"`
-	AgentPlanAPIBase        string   `json:"agent_plan_api_base,omitempty"`
-	AgentPlanClaudeAPIBase  string   `json:"agent_plan_claude_api_base,omitempty"`
-	HasTokenPlan    bool     `json:"has_token_plan"`
-	TokenPlanAPIBase        string   `json:"token_plan_api_base,omitempty"`
-	TokenPlanClaudeAPIBase  string   `json:"token_plan_claude_api_base,omitempty"`
-	DefaultModels   []string `json:"default_models,omitempty"`
+	ID            string             `json:"id"`
+	Name          string             `json:"name,omitempty"`
+	Website       string             `json:"website,omitempty"`
+	APIKeyEnv     string             `json:"api_key_env,omitempty"`
+	Endpoints     []ProviderEndpoint `json:"endpoints,omitempty"`
+	DefaultModels []string           `json:"default_models,omitempty"`
 }
 
 type ModelPresetOption struct {
@@ -966,7 +963,8 @@ type ModelPresetOption struct {
 	Name                    string   `json:"name,omitempty"`
 	ProviderID              string   `json:"provider_id,omitempty"`
 	ModelName               string   `json:"model_name,omitempty"`
-	APIType                 string   `json:"api_type,omitempty"`
+	Plan                    string   `json:"plan,omitempty"`
+	Format                  string   `json:"format,omitempty"`
 	ContextWindow           int      `json:"context_window,omitempty"`
 	Tags                    []string `json:"tags,omitempty"`
 	Description             string   `json:"description,omitempty"`
