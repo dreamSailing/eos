@@ -100,7 +100,7 @@ func runExec(ctx context.Context, opts execOptions) error {
 		return err
 	}
 
-	content, err := runSingleTurn(ctx, engine, opts.Prompt, startedAt)
+	content, err := runSingleTurn(ctx, engine, opts.Prompt, opts.Output, startedAt)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			err = fmt.Errorf("exec timed out after %s", opts.Timeout)

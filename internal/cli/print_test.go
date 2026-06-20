@@ -160,7 +160,7 @@ func TestRunSingleTurnConsumesTurnEventsBeforeStartReturns(t *testing.T) {
 	var content string
 	var err error
 	go func() {
-		content, err = runSingleTurn(context.Background(), engine, "hello", time.Now())
+		content, err = runSingleTurn(context.Background(), engine, "hello", "json", time.Now())
 		close(done)
 	}()
 

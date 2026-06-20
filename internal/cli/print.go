@@ -81,7 +81,7 @@ func RunPrintMode(opts PrintOptions) error {
 		return err
 	}
 
-	content, err := runSingleTurn(ctx, engine, opts.Query, startedAt)
+	content, err := runSingleTurn(ctx, engine, opts.Query, opts.OutputFormat, startedAt)
 	if err != nil {
 		writePrintError(opts.OutputFormat, err)
 		return err
@@ -251,7 +251,9 @@ func emitPrintResult(format string, result PrintResult, started time.Time, usage
 			fmt.Fprintln(os.Stdout, string(bs))
 		}
 	default:
-		fmt.Fprintln(os.Stdout, result.Content)
+		// text 格式：runSingleTurn 已在收到 text_delta 时实时打印到 stdout，
+		// 这里只补一行换行 + 元数据页脚到 stderr，避免重复输出正文。
+		fmt.Fprintln(os.Stdout)
 		parts := []string{
 			fmt.Sprintf("Model: %s", modelName),
 			fmt.Sprintf("Duration: %v", time.Since(started).Round(time.Millisecond)),
@@ -348,7 +350,10 @@ func printExecAllowFallback(label string) bool {
 }
 
 // runSingleTurn 启动一个 turn，订阅事件流直到 request.done/failed，返回 final 文本。
-func runSingleTurn(ctx context.Context, engine coreapi.Engine, query string, started time.Time) (string, error) {
+//
+// 对 text 输出格式，每个 text_delta 实时写入 stdout（逐 chunk 涌现，对齐 codex 体验）；
+// json/stream-json 仍只在 turn 结束后输出完整结构，保持机器可读契约不变。
+func runSingleTurn(ctx context.Context, engine coreapi.Engine, query, outputFormat string, started time.Time) (string, error) {
 	if engine == nil {
 		return "", fmt.Errorf("core engine unavailable")
 	}
@@ -370,6 +375,8 @@ func runSingleTurn(ctx context.Context, engine coreapi.Engine, query string, sta
 		Input:     query,
 	})
 
+	// text 格式实时打印 delta；其它格式只累积，turn 结束后统一输出。
+	streamLive := strings.EqualFold(strings.TrimSpace(outputFormat), "text")
 	var content string
 	eventsCh := events
 	startDoneCh := startDone
@@ -397,7 +404,11 @@ func runSingleTurn(ctx context.Context, engine coreapi.Engine, query string, sta
 			eventType, payload, rawEventType := normalizePrintEvent(ev)
 			switch eventType {
 			case protocol.EventTypeTextDelta:
-				content += firstNonEmpty("", payload, "text", "message")
+				text := firstNonEmpty("", payload, "text", "message")
+				content += text
+				if streamLive && text != "" {
+					fmt.Fprint(os.Stdout, text)
+				}
 			case protocol.EventTypeTextFinal:
 				if text := firstNonEmpty("", payload, "text", "message"); text != "" {
 					content = text
