@@ -142,7 +142,7 @@ func LoadPrivateKeyFromPEM(data []byte) (ed25519.PrivateKey, error) {
 //   2. ResolveOptions.PublicKeyPath passed to ResolveBinary
 //   3. defaultPublicKeyPEM (this constant)
 const defaultPublicKeyPEM = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAfqyEzw3DhXSGPRvxfaZnhgNnb+YN8S7Ti8JJAUex0xI=
+MCowBQYDK2VwAyEAWFF0GIhDM21TOAFJla4CdaqU3uea1rfMyR+349Ac50A=
 -----END PUBLIC KEY-----`
 
 func DefaultPublicKey() ed25519.PublicKey {
