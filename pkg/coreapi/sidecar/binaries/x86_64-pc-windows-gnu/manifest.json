@@ -5,7 +5,7 @@
   "target": "x86_64-pc-windows-gnu",
   "binary": "eos-core.exe",
   "sha256": "sha256:18559ebe19e70683b595a1d25415ee4edcd80ee14e45d549838152a9548c469d",
-  "signature": "ed25519:+V1BOMbp3qRTFpqhlm43dj6behTcNS4rHfIb/srNkewu1DBiQ1UZpfMqPU4bQTunKZ2m6pmKqaB27mtmgrsTAw==",
+  "signature": "ed25519:3z39hoCjkeSdBFs4NA3oGTTmb93hVO65q/HlcKUdK6KIKHMqNX54ZsXRYbr9vSXEQ+0aRG2zqsOZ3VnLbhcvAg==",
   "signature_algorithm": "ed25519",
   "min_cli_version": "v1.0.0-beta.1",
   "features": [
