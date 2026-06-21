@@ -140,7 +140,6 @@ func RunPrintModeStream(ctx context.Context, query string, w io.Writer) error {
 	var content string
 	eventsCh := events
 	startDoneCh := startDone
-	var fallbackTimer <-chan time.Time
 	for {
 		select {
 		case <-ctx.Done():
@@ -150,12 +149,7 @@ func RunPrintModeStream(ctx context.Context, query string, w io.Writer) error {
 			if result.err != nil {
 				return result.err
 			}
-			fallbackTimer = time.After(250 * time.Millisecond)
-		case <-fallbackTimer:
-			if content != "" {
-				fmt.Fprintln(w)
-			}
-			return nil
+			// turn/start is non-blocking; rely on request.done/failed to terminate.
 		case ev, ok := <-eventsCh:
 			if !ok {
 				eventsCh = nil
@@ -392,7 +386,6 @@ func runSingleTurn(ctx context.Context, engine coreapi.Engine, query, outputForm
 	var content string
 	eventsCh := events
 	startDoneCh := startDone
-	var fallbackTimer <-chan time.Time
 	for {
 		select {
 		case <-ctx.Done():
@@ -402,9 +395,10 @@ func runSingleTurn(ctx context.Context, engine coreapi.Engine, query, outputForm
 			if result.err != nil {
 				return content, result.err
 			}
-			fallbackTimer = time.After(250 * time.Millisecond)
-		case <-fallbackTimer:
-			return content, nil
+			// turn/start is non-blocking; the turn runs on a background thread
+			// and delivers results via events (item.delta / item.completed /
+			// request.completed). No fallback timer needed — request.done or
+			// request.failed is the termination signal.
 		case ev, ok := <-eventsCh:
 			if !ok {
 				eventsCh = nil
