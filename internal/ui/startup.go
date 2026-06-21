@@ -8,6 +8,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -85,10 +86,17 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 }
 
 func tuiSidecarClientOptions(opts TUIOptions) sidecarclient.Options {
+	// Capture core stderr to a file for debugging
+	stderrFile, err := os.Create(filepath.Join(os.TempDir(), "eos-core-debug.log"))
+	var stderrWriter io.Writer = io.Discard
+	if err == nil {
+		stderrWriter = stderrFile
+	}
 	return sidecarclient.Options{
 		Env:              tuiOptionEnv(opts),
 		VerifyChecksum:   true,
 		RequireSignature: true,
+		Stderr:           stderrWriter,
 	}
 }
 
