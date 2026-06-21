@@ -2203,7 +2203,7 @@ func TestEventSubscribeOverJSONRPCForwardsNotifications(t *testing.T) {
 		t.Fatal("subscription context is nil")
 	}
 
-	want := protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
+	want := protocol.NewEvent(protocol.EventTypeItemDelta, protocol.EventOptions{
 		EventID:   "evt-sub",
 		SessionID: "sess-1",
 		RequestID: "turn-1",
@@ -2219,7 +2219,7 @@ func TestEventSubscribeOverJSONRPCForwardsNotifications(t *testing.T) {
 		if err := json.Unmarshal(notification.Params, &got); err != nil {
 			t.Fatalf("Unmarshal(notification.Params) error = %v", err)
 		}
-		if got.EventID != "evt-sub" || got.EventType != protocol.EventTypeTextDelta {
+		if got.EventID != "evt-sub" || got.EventType != protocol.EventTypeItemDelta {
 			t.Fatalf("event=%+v, want evt-sub text.delta", got)
 		}
 	case <-time.After(2 * time.Second):
@@ -2354,7 +2354,7 @@ func TestTurnStartOverJSONRPCForwardsEvents(t *testing.T) {
 		t.Fatalf("event filter=%+v, want sess-1/turn-1", events.seen)
 	}
 
-	want := protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
+	want := protocol.NewEvent(protocol.EventTypeItemDelta, protocol.EventOptions{
 		EventID:   "evt-1",
 		SessionID: "sess-1",
 		RequestID: "turn-1",
@@ -2370,7 +2370,7 @@ func TestTurnStartOverJSONRPCForwardsEvents(t *testing.T) {
 		if err := json.Unmarshal(notification.Params, &got); err != nil {
 			t.Fatalf("notification params unmarshal error = %v", err)
 		}
-		if got.EventID != "evt-1" || got.EventType != protocol.EventTypeTextDelta {
+		if got.EventID != "evt-1" || got.EventType != protocol.EventTypeItemDelta {
 			t.Fatalf("notification envelope=%+v, want evt-1 text.delta", got)
 		}
 	case <-time.After(2 * time.Second):

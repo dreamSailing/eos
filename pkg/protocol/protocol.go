@@ -33,13 +33,12 @@ const (
 type EventType string
 
 const (
-	EventTypeTextDelta        EventType = "text.delta"
-	EventTypeTextFinal        EventType = "text.final"
-	EventTypeTextReasoning    EventType = "text.reasoning"
-	EventTypeToolCall         EventType = "tool.call"
-	EventTypeToolResult       EventType = "tool.result"
-	EventTypeToolStep         EventType = "tool.step"
-	EventTypeApprovalReq      EventType = "approval.required"
+	EventTypeItemStarted     EventType = "item.started"
+	EventTypeItemDelta       EventType = "item.delta"
+	EventTypeItemCompleted   EventType = "item.completed"
+	EventTypeTextFinal       EventType = "text.final"
+	EventTypeTextReasoning   EventType = "text.reasoning"
+	EventTypeApprovalReq     EventType = "approval.required"
 	EventTypeApprovalDone     EventType = "approval.resolved"
 	EventTypeInquiryReq       EventType = "inquiry.required"
 	EventTypeInquiryDone      EventType = "inquiry.resolved"
@@ -63,12 +62,9 @@ const (
 	EventTypeMemorySuggestion EventType = "memory.suggestion"
 
 	EventTypeTurnStarted               EventType = "turn.started"
-	EventTypeTurnTextDelta             EventType = "turn.text_delta"
-	EventTypeTurnReasoningDelta        EventType = "turn.reasoning_delta"
-	EventTypeTurnToolCallStart         EventType = "turn.tool_call_start"
-	EventTypeTurnToolCallDelta         EventType = "turn.tool_call_delta"
-	EventTypeTurnToolCallDone          EventType = "turn.tool_call_done"
-	EventTypeTurnToolObservation       EventType = "turn.tool_observation"
+	EventTypeTurnItemStarted           EventType = "turn.item_started"
+	EventTypeTurnItemDelta             EventType = "turn.item_delta"
+	EventTypeTurnItemCompleted         EventType = "turn.item_completed"
 	EventTypeTurnCompleted             EventType = "turn.completed"
 	EventTypeTurnError                 EventType = "turn.error"
 	EventTypeTurnCancelled             EventType = "turn.cancelled"
@@ -145,18 +141,12 @@ func NormalizeEventType(eventType EventType) EventType {
 	switch eventType {
 	case EventTypeTurnStarted:
 		return EventTypeRequestStarted
-	case EventTypeTurnTextDelta:
-		return EventTypeTextDelta
-	case EventTypeTurnReasoningDelta:
-		return EventTypeTextReasoning
-	case EventTypeTurnToolCallStart:
-		return EventTypeToolCall
-	case EventTypeTurnToolCallDelta:
-		return EventTypeToolStep
-	case EventTypeTurnToolCallDone:
-		return EventTypeToolCall
-	case EventTypeTurnToolObservation:
-		return EventTypeToolResult
+	case EventTypeTurnItemStarted:
+		return EventTypeItemStarted
+	case EventTypeTurnItemDelta:
+		return EventTypeItemDelta
+	case EventTypeTurnItemCompleted:
+		return EventTypeItemCompleted
 	case EventTypeTurnCompleted:
 		return EventTypeRequestDone
 	case EventTypeTurnError, EventTypeTurnCancelled, EventTypeTurnInterrupted:
@@ -166,7 +156,7 @@ func NormalizeEventType(eventType EventType) EventType {
 	case EventTypeTurnPreCompact, EventTypeTurnMidCompact, EventTypeTurnModelDownshift:
 		return EventTypeTextReasoning
 	case EventTypeTurnContextWindowExceeded, EventTypeTurnToolLoopExhausted:
-		return EventTypeToolStep
+		return EventTypeTextReasoning
 	default:
 		return eventType
 	}

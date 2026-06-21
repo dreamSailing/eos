@@ -31,13 +31,14 @@ func TestEnvelopeRoundTripsTurnAndAgentID(t *testing.T) {
 
 func TestNormalizeRustTurnEventTypes(t *testing.T) {
 	tests := map[EventType]EventType{
-		EventTypeTurnStarted:        EventTypeRequestStarted,
-		EventTypeTurnTextDelta:      EventTypeTextDelta,
-		EventTypeTurnReasoningDelta: EventTypeTextReasoning,
-		EventTypeTurnCompleted:      EventTypeRequestDone,
-		EventTypeTurnError:          EventTypeRequestFailed,
-		EventTypeTurnCancelled:      EventTypeRequestFailed,
-		EventTypeTurnInterrupted:    EventTypeRequestFailed,
+		EventTypeTurnStarted:       EventTypeRequestStarted,
+		EventTypeTurnItemStarted:   EventTypeItemStarted,
+		EventTypeTurnItemDelta:     EventTypeItemDelta,
+		EventTypeTurnItemCompleted: EventTypeItemCompleted,
+		EventTypeTurnCompleted:     EventTypeRequestDone,
+		EventTypeTurnError:         EventTypeRequestFailed,
+		EventTypeTurnCancelled:     EventTypeRequestFailed,
+		EventTypeTurnInterrupted:   EventTypeRequestFailed,
 	}
 	for input, want := range tests {
 		if got := NormalizeEventType(input); got != want {

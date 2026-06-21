@@ -170,7 +170,7 @@ func TestRunSingleTurnConsumesTurnEventsBeforeStartReturns(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("turn/start was not called")
 	}
-	events <- protocol.NewEvent(protocol.EventTypeTurnTextDelta, protocol.EventOptions{
+	events <- protocol.NewEvent(protocol.EventTypeTurnItemDelta, protocol.EventOptions{
 		SessionID: req.SessionID,
 		TurnID:    req.TurnID,
 		Payload:   map[string]any{"text": "hello from core"},

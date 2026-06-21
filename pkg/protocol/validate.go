@@ -32,12 +32,19 @@ func ValidateEnvelope(ev Envelope) error {
 	}
 
 	switch ev.EventType {
-	case EventTypeTextDelta, EventTypeTextFinal, EventTypeTextReasoning:
-		if err := requirePayloadString(ev.Payload, "text"); err != nil {
+	case EventTypeItemStarted, EventTypeItemCompleted:
+		if err := requirePayloadItem(ev.Payload, "item"); err != nil {
 			return fmt.Errorf("%s: %w", ev.EventType, err)
 		}
-	case EventTypeToolCall, EventTypeToolResult:
-		if err := requirePayloadString(ev.Payload, "tool_name"); err != nil {
+	case EventTypeItemDelta:
+		if err := requirePayloadString(ev.Payload, "item_id"); err != nil {
+			return fmt.Errorf("%s: %w", ev.EventType, err)
+		}
+		if err := requirePayloadString(ev.Payload, "delta"); err != nil {
+			return fmt.Errorf("%s: %w", ev.EventType, err)
+		}
+	case EventTypeTextFinal, EventTypeTextReasoning:
+		if err := requirePayloadString(ev.Payload, "text"); err != nil {
 			return fmt.Errorf("%s: %w", ev.EventType, err)
 		}
 	case EventTypeApprovalReq:
@@ -95,6 +102,20 @@ func requireRequestID(ev Envelope) error {
 func requirePayloadString(payload map[string]any, key string) error {
 	if eventString(payload, key) == "" {
 		return fmt.Errorf("payload.%s required", key)
+	}
+	return nil
+}
+
+func requirePayloadItem(payload map[string]any, key string) error {
+	if len(payload) == 0 {
+		return fmt.Errorf("payload.%s required", key)
+	}
+	raw, ok := payload[key]
+	if !ok {
+		return fmt.Errorf("payload.%s required", key)
+	}
+	if _, ok := raw.(map[string]any); !ok {
+		return fmt.Errorf("payload.%s must be an object", key)
 	}
 	return nil
 }

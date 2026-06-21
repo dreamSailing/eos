@@ -265,8 +265,16 @@ func (a *CoreClientAdapter) Invoke(ctx context.Context, query, executionMode str
 				continue
 			}
 			switch event.Type {
-			case string(protocol.EventTypeTextDelta), "delta":
-				content += firstEventText(event.Data, event.Content, "text", "message")
+			case string(protocol.EventTypeItemDelta), "delta":
+				// Only accumulate text deltas (not reasoning/tool_args).
+				if dt := eventString(event.Data, "delta_type"); dt == "" || dt == "text" {
+					content += firstEventText(event.Data, event.Content, "delta", "text", "message")
+				}
+			case string(protocol.EventTypeItemCompleted):
+				// An AgentMessage completion carries the full segment text.
+				if text := itemCompletedText(event.Data); text != "" {
+					final = text
+				}
 			case string(protocol.EventTypeTextFinal), "final":
 				final = firstEventText(event.Data, event.Content, "text", "message")
 			case string(protocol.EventTypeRequestDone):
@@ -1323,6 +1331,26 @@ func firstEventText(data map[string]any, fallback string, keys ...string) string
 		}
 	}
 	return strings.TrimSpace(fallback)
+}
+
+// itemCompletedText extracts the text from an item.completed event's payload,
+// which nests the TurnItem under payload.item. Only AgentMessage items carry
+// displayable text.
+func itemCompletedText(data map[string]any) string {
+	item, ok := data["item"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	if kind, _ := item["kind"].(string); kind != "agent_message" {
+		return ""
+	}
+	text, _ := item["text"].(string)
+	return strings.TrimSpace(text)
+}
+
+func eventString(data map[string]any, key string) string {
+	v, _ := data[key].(string)
+	return v
 }
 
 func runtimeEventFromEnvelope(envelope protocol.Envelope) RuntimeEvent {

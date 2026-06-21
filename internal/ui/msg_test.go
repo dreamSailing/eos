@@ -71,7 +71,7 @@ func TestConvertEventTurnToolCallDoneCarriesArguments(t *testing.T) {
 		Type: "tool.call",
 		RID:  "turn-1",
 		Data: map[string]any{
-			"original_event_type": string(protocol.EventTypeTurnToolCallDone),
+			"original_event_type": string(protocol.EventTypeTurnItemCompleted),
 			"id":                  "tc_pwd",
 			"name":                "read_file",
 			"arguments":           `{"file_path":"/tmp/a.txt","offset":10,"limit":5}`,
@@ -103,7 +103,7 @@ func TestConvertEventToolCallStartDoesNotLeakEnvelope(t *testing.T) {
 		Type: "tool.call",
 		RID:  "turn-1",
 		Data: map[string]any{
-			"original_event_type": string(protocol.EventTypeTurnToolCallStart),
+			"original_event_type": string(protocol.EventTypeTurnItemStarted),
 			"event_id":            "evt_xxx",
 			"id":                  "tc_1",
 			"name":                "list_directory",
@@ -168,7 +168,7 @@ func TestConvertEventTurnToolObservationUsesRequestID(t *testing.T) {
 		Type: "tool.result",
 		RID:  "turn-1",
 		Data: map[string]any{
-			"original_event_type": string(protocol.EventTypeTurnToolObservation),
+			"original_event_type": string(protocol.EventTypeTurnItemCompleted),
 			"request_id":          "tc_pwd",
 			"tool":                "shell_pwd",
 			"status":              "success",

@@ -82,6 +82,7 @@ type AppModel struct {
 	aiLive             strings.Builder
 	thinkingLive       strings.Builder
 	thinkingExpanded   bool
+	activeItemID       string // current AgentMessage item being streamed
 	toolInflight       map[string]toolTrack
 	history            []historyEntry
 	delegatedThisRound bool
@@ -848,22 +849,37 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+	case ItemStartedMsg:
+		// A new AgentMessage text segment begins. Create a fresh history entry
+		// and reset the live buffer so each round renders as its own paragraph.
+		if msg.ItemType == "agent_message" || msg.ItemType == "" {
+			m.startAgentMessageItem(msg.ItemID)
+		}
+	case ItemDeltaMsg:
+		if !m.state.Processing {
+			return m, nil
+		}
+		m.handleItemDelta(msg)
+	case ItemCompletedMsg:
+		m.handleItemCompleted(msg)
 	case InvokeDoneMsg:
 		if !m.state.Processing {
 			return m, nil
 		}
-		content := msg.Content
-		if content == "" {
-			content = strings.TrimSpace(m.aiLive.String())
-		}
-		if strings.Contains(content, "agent.task:") || strings.Contains(content, "agent.final:") {
-			m.cancelProcessingUI()
-			return m, nil
-		}
-		cmd := m.handleAIResponse(AIResponseMsg{Type: "final", Content: content})
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
+		// turn.completed: archive any remaining live text, then finalize.
+		// Under the item model, most segments were already archived via
+		// item_completed; this is a safety net for any trailing buffer.
+		m.archiveAgentMessage()
+		m.aiLive.Reset()
+		m.activeItemID = ""
+		m.shell.ClearLive()
+		m.clearCurrentThinking()
+		m.shell.SetStatusHints(false, false)
+		m.state.Processing = false
+		m.shell.SetProcessing(false)
+		m.activeCancel = nil
+		m.stopRequested = false
+		_ = msg.Content
 	case PredictionUpdateMsg:
 		if msg.Seq != m.predictionSeq {
 			return m, nil
@@ -2929,12 +2945,80 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 	return nil
 }
 
+// startAgentMessageItem begins a new text-segment item. It archives the
+// current aiLive buffer (if any) into a history entry, then resets the buffer
+// so each round of multi-round output renders as its own paragraph. This is
+// the codex-style interleaving: [text段1] → [tool] → [text段2].
+func (m *AppModel) startAgentMessageItem(itemID string) {
+	// Archive any accumulated live text from a previous segment.
+	if m.aiLive.Len() > 0 {
+		m.archiveAgentMessage()
+	}
+	m.activeItemID = itemID
+	m.aiLive.Reset()
+	m.currentAITokens = 0
+}
+
+// archiveAgentMessage saves the current aiLive content as a finalized history
+// entry (an "ai" paragraph). Called when a segment ends (item_completed) or
+// when a new segment/tool starts.
+func (m *AppModel) archiveAgentMessage() {
+	text := strings.TrimSpace(m.aiLive.String())
+	if text == "" {
+		return
+	}
+	duration := time.Since(m.currentAIStartTime)
+	m.appendHistory(historyEntry{
+		kind:          "ai",
+		content:       m.aiLive.String(),
+		rawMarkdown:   m.aiLive.String(),
+		executionMode: m.state.ExecutionMode,
+		timestamp:     time.Now(),
+		tokens:        m.currentAITokens,
+		duration:      duration,
+	})
+}
+
+// handleItemDelta appends an incremental chunk to the current item's live
+// buffer and refreshes the display.
+func (m *AppModel) handleItemDelta(msg ItemDeltaMsg) {
+	if msg.DeltaType == "text" || msg.DeltaType == "" {
+		m.clearPrediction()
+		m.aiLive.WriteString(msg.Delta)
+		m.currentAITokens += len(msg.Delta) / 4
+		m.refreshAILive()
+	}
+}
+
+// handleItemCompleted finalizes an AgentMessage item: archive the live text
+// into a history entry and clear the buffer for the next segment.
+func (m *AppModel) handleItemCompleted(msg ItemCompletedMsg) {
+	if msg.ItemType != "agent_message" && msg.ItemType != "" {
+		return
+	}
+	// If the completed event carries full text, prefer it over the buffer.
+	if strings.TrimSpace(msg.Text) != "" {
+		m.aiLive.Reset()
+		m.aiLive.WriteString(msg.Text)
+	}
+	m.archiveAgentMessage()
+	m.aiLive.Reset()
+	m.activeItemID = ""
+	m.shell.ClearLive()
+}
+
 // handleToolCall 处理工具调用消息
 // 工具调用分两个阶段：
 // 1. tool_call_start：创建工具卡片（可能无参数）
 // 2. tool_call_done：补充真实参数
 // 如果已有同 ID 的进行中卡片，只更新参数而非新建
 func (m *AppModel) handleToolCall(msg ToolCallMsg) tea.Cmd {
+	// A tool call starts: archive any in-progress text segment so the tool
+	// card appears after it (codex-style [text]→[tool] interleaving).
+	m.archiveAgentMessage()
+	m.aiLive.Reset()
+	m.activeItemID = ""
+	m.shell.ClearLive()
 	m.clearCurrentThinking()
 	// 如果已有同 ID 的进行中卡片，更新参数
 	if track, ok := m.toolInflight[msg.ID]; ok {

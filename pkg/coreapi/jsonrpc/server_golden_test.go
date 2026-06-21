@@ -181,7 +181,7 @@ func TestEventNotificationWireShapeNoJSONRPCVersion(t *testing.T) {
 	}
 
 	// Publish an event
-	ev := protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
+	ev := protocol.NewEvent(protocol.EventTypeItemDelta, protocol.EventOptions{
 		EventID:   "evt-wire",
 		SessionID: "sess-wire",
 		RequestID: "turn-wire",
@@ -215,7 +215,7 @@ func TestEventNotificationWireShapeNoJSONRPCVersion(t *testing.T) {
 		if err := json.Unmarshal(notif.Params, &envelope); err != nil {
 			t.Fatalf("Unmarshal(envelope) error = %v", err)
 		}
-		if envelope.EventID != "evt-wire" || envelope.EventType != protocol.EventTypeTextDelta {
+		if envelope.EventID != "evt-wire" || envelope.EventType != protocol.EventTypeItemDelta {
 			t.Fatalf("envelope=%+v, want evt-wire text.delta", envelope)
 		}
 	case <-timeout():

@@ -114,14 +114,10 @@ func ensureProtocolPayload(payload map[string]any, content, eventType string) {
 		return
 	}
 	switch eventType {
-	case string(protocol.EventTypeTextDelta),
+	case string(protocol.EventTypeItemDelta),
 		string(protocol.EventTypeTextFinal),
 		string(protocol.EventTypeTextReasoning):
 		ensurePayloadText(payload, content)
-	case string(protocol.EventTypeToolCall):
-		ensureToolName(payload, content)
-	case string(protocol.EventTypeToolResult):
-		ensureToolResult(payload, content)
 	case string(protocol.EventTypeApprovalReq):
 		ensureApprovalPayload(payload, "", content)
 	case string(protocol.EventTypeInquiryReq):

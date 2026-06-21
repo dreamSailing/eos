@@ -38,7 +38,7 @@ func TestRequestDoesNotEmitJSONRPCVersion(t *testing.T) {
 }
 
 func TestDecodeNotificationWithProtocolEnvelopePayload(t *testing.T) {
-	ev := protocol.NewEvent(protocol.EventTypeTextDelta, protocol.EventOptions{
+	ev := protocol.NewEvent(protocol.EventTypeItemDelta, protocol.EventOptions{
 		EventID:   "evt_fixed",
 		RequestID: "turn_1",
 		Timestamp: time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC),
@@ -65,8 +65,8 @@ func TestDecodeNotificationWithProtocolEnvelopePayload(t *testing.T) {
 	if err := json.Unmarshal(decoded.Notification.Params, &got); err != nil {
 		t.Fatalf("unmarshal envelope: %v", err)
 	}
-	if got.EventType != protocol.EventTypeTextDelta {
-		t.Fatalf("event_type=%q, want %q", got.EventType, protocol.EventTypeTextDelta)
+	if got.EventType != protocol.EventTypeItemDelta {
+		t.Fatalf("event_type=%q, want %q", got.EventType, protocol.EventTypeItemDelta)
 	}
 }
 

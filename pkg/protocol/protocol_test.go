@@ -15,7 +15,7 @@ import (
 
 func TestNewEventDefaults(t *testing.T) {
 	before := time.Now()
-	ev := NewEvent(EventTypeTextDelta, EventOptions{
+	ev := NewEvent(EventTypeItemDelta, EventOptions{
 		RequestID: "req_123",
 		Payload:   TextPayloadMap(TextPayload{Text: "hello"}),
 	})
@@ -27,8 +27,8 @@ func TestNewEventDefaults(t *testing.T) {
 	if ev.EventID == "" {
 		t.Fatal("expected generated event id")
 	}
-	if ev.EventType != EventTypeTextDelta {
-		t.Fatalf("event_type=%q, want %q", ev.EventType, EventTypeTextDelta)
+	if ev.EventType != EventTypeItemDelta {
+		t.Fatalf("event_type=%q, want %q", ev.EventType, EventTypeItemDelta)
 	}
 	if ev.Source != SourceCore {
 		t.Fatalf("source=%q, want %q", ev.Source, SourceCore)

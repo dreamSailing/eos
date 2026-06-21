@@ -166,10 +166,22 @@ func RunPrintModeStream(ctx context.Context, query string, w io.Writer) error {
 			}
 			eventType, payload, rawEventType := normalizePrintEvent(ev)
 			switch eventType {
-			case protocol.EventTypeTextDelta:
-				text := firstNonEmpty("", payload, "text", "message")
+			case protocol.EventTypeItemDelta:
+				if dt := firstNonEmpty("", payload, "delta_type"); dt != "" && dt != "text" {
+					continue // skip reasoning/tool_args deltas in print mode
+				}
+				text := firstNonEmpty("", payload, "delta", "text", "message")
 				content += text
 				fmt.Fprint(w, text)
+			case protocol.EventTypeItemCompleted:
+				// AgentMessage completion carries full text; use it if non-empty.
+				if item, ok := payload["item"].(map[string]any); ok {
+					if k, _ := item["kind"].(string); k == "agent_message" {
+						if text, _ := item["text"].(string); text != "" {
+							content = text
+						}
+					}
+				}
 			case protocol.EventTypeTextFinal:
 				text := firstNonEmpty("", payload, "text", "message")
 				if text != "" {
@@ -403,11 +415,22 @@ func runSingleTurn(ctx context.Context, engine coreapi.Engine, query, outputForm
 			}
 			eventType, payload, rawEventType := normalizePrintEvent(ev)
 			switch eventType {
-			case protocol.EventTypeTextDelta:
-				text := firstNonEmpty("", payload, "text", "message")
+			case protocol.EventTypeItemDelta:
+				if dt := firstNonEmpty("", payload, "delta_type"); dt != "" && dt != "text" {
+					continue // skip reasoning/tool_args deltas
+				}
+				text := firstNonEmpty("", payload, "delta", "text", "message")
 				content += text
 				if streamLive && text != "" {
 					fmt.Fprint(os.Stdout, text)
+				}
+			case protocol.EventTypeItemCompleted:
+				if item, ok := payload["item"].(map[string]any); ok {
+					if k, _ := item["kind"].(string); k == "agent_message" {
+						if text, _ := item["text"].(string); text != "" {
+							content = text
+						}
+					}
 				}
 			case protocol.EventTypeTextFinal:
 				if text := firstNonEmpty("", payload, "text", "message"); text != "" {

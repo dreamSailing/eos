@@ -23,8 +23,17 @@ type Msg interface {
 // ConvertEvent 将 runtime event 转换为 UI Msg
 func ConvertEvent(e uiadapter.RuntimeEvent) Msg {
 	switch e.Type {
-	case "meta", "delta", string(protocol.EventTypeTextDelta):
-		return AIResponseMsg{Type: "delta", Content: eventText(e, "text", "message"), RID: e.RID}
+	case string(protocol.EventTypeItemStarted):
+		return convertItemStarted(e)
+	case string(protocol.EventTypeItemDelta):
+		return ItemDeltaMsg{
+			ItemID:    eventString(e.Data, "item_id"),
+			DeltaType: eventString(e.Data, "delta_type"),
+			Delta:     eventText(e, "delta", "text", "message"),
+			RID:       e.RID,
+		}
+	case string(protocol.EventTypeItemCompleted):
+		return convertItemCompleted(e)
 	case "final", string(protocol.EventTypeTextFinal):
 		return AIResponseMsg{Type: "final", Content: eventText(e, "text", "message"), RID: e.RID}
 	case string(protocol.EventTypeRequestDone):
@@ -32,28 +41,6 @@ func ConvertEvent(e uiadapter.RuntimeEvent) Msg {
 	case "reasoning", "phase.note", string(protocol.EventTypeTextReasoning),
 		string(protocol.EventTypeTaskStarted), string(protocol.EventTypeTaskUpdated), string(protocol.EventTypeTaskDone):
 		return ThinkingMsg{RID: e.RID, Content: eventText(e, "message", "text", "label", "title"), Done: false}
-	case "tool_call", string(protocol.EventTypeToolCall):
-		// 注意：NormalizeEventType 把 turn.tool_call_start 与 turn.tool_call_done
-		// 都归一化成 tool.call，原始类型保留在 Data["original_event_type"]。
-		// Rust runtime 在 ToolCallDone 触发前会累积所有 arguments_delta，
-		// 所以 done 事件携带完整 arguments（见 eos-core-runtime/src/lib.rs）。
-		// 因此无需在 TUI 逐事件累积 delta：start 先建空参卡片，done 到达时
-		// handleToolCall 会用真实参数补全同一张卡片。
-		return ToolCallMsg{
-			ID:     eventID(e, "id"),
-			Name:   eventText(e, "tool_name", "name", "tool", "message"),
-			Params: eventParams(e),
-		}
-	case "tool_result", string(protocol.EventTypeToolResult):
-		status := eventString(e.Data, "status")
-		if status == "" {
-			status = "success"
-		}
-		return ToolResultMsg{
-			ID:     eventID(e, "id", "request_id"),
-			Status: status,
-			Output: eventText(e, "display", "message", "text", "error"),
-		}
 	case "agent.task":
 		// 调度agent给子agent分配任务
 		sourceName, sourceID := eventAgentSource(e.Data)
@@ -135,6 +122,61 @@ func convertPromptEvent(e uiadapter.RuntimeEvent) PromptRequestMsg {
 		msg.Kind = "permission"
 	}
 	return msg
+}
+
+// convertItemStarted turns an item.started event into a Msg. The payload
+// nests the TurnItem under payload.item with a "kind" discriminator
+// ("agent_message" or "tool_call").
+func convertItemStarted(e uiadapter.RuntimeEvent) Msg {
+	item, _ := e.Data["item"].(map[string]any)
+	kind, _ := item["kind"].(string)
+	id, _ := item["id"].(string)
+	switch kind {
+	case "tool_call":
+		name, _ := item["name"].(string)
+		args, _ := item["arguments"].(string)
+		return ToolCallMsg{ID: id, Name: name, Params: parseToolParams(args)}
+	default:
+		// agent_message (or unknown): start a new text segment.
+		return ItemStartedMsg{ItemID: id, ItemType: kind, RID: e.RID}
+	}
+}
+
+// convertItemCompleted turns an item.completed event into a Msg. For
+// agent_message items it carries the full segment text; for tool_call items
+// it carries the result.
+func convertItemCompleted(e uiadapter.RuntimeEvent) Msg {
+	item, _ := e.Data["item"].(map[string]any)
+	kind, _ := item["kind"].(string)
+	id, _ := item["id"].(string)
+	switch kind {
+	case "tool_call":
+		name, _ := item["name"].(string)
+		result, _ := item["result"].(map[string]any)
+		status, _ := result["status"].(string)
+		if status == "" {
+			status = "success"
+		}
+		output, _ := result["display"].(string)
+		if output == "" {
+			output, _ = result["error"].(string)
+		}
+		return ToolResultMsg{ID: id, Name: name, Status: status, Output: output}
+	default:
+		text, _ := item["text"].(string)
+		reasoning, _ := item["reasoning"].(string)
+		return ItemCompletedMsg{ItemID: id, ItemType: kind, Text: text, Reasoning: reasoning, RID: e.RID}
+	}
+}
+
+// parseToolParams parses a JSON arguments string into a params map.
+func parseToolParams(args string) map[string]any {
+	params := map[string]any{}
+	if strings.TrimSpace(args) == "" {
+		return params
+	}
+	_ = json.Unmarshal([]byte(args), &params)
+	return params
 }
 
 func eventID(e uiadapter.RuntimeEvent, keys ...string) string {
@@ -322,6 +364,33 @@ type AIResponseMsg struct {
 	RID     string
 }
 
+// ItemStartedMsg signals the start of a new output item (a text segment or a
+// tool call). The shell creates a new history entry for this item_id.
+type ItemStartedMsg struct {
+	ItemID   string
+	ItemType string // "agent_message" or "tool_call"
+	RID      string
+}
+
+// ItemDeltaMsg carries an incremental chunk for an in-progress item.
+// DeltaType is "text", "reasoning", or "tool_args".
+type ItemDeltaMsg struct {
+	ItemID    string
+	DeltaType string
+	Delta     string
+	RID       string
+}
+
+// ItemCompletedMsg signals an item is finished. For agent_message items, Text
+// holds the full segment text. The shell finalizes the history entry.
+type ItemCompletedMsg struct {
+	ItemID    string
+	ItemType  string
+	Text      string
+	Reasoning string
+	RID       string
+}
+
 type InvokeDoneMsg struct {
 	Content string
 }
@@ -347,6 +416,7 @@ type ToolCallMsg struct {
 
 type ToolResultMsg struct {
 	ID     string
+	Name   string
 	Status string
 	Output string
 }
@@ -436,6 +506,9 @@ func (KeyMsg) msgType()              {}
 func (MouseMsg) msgType()            {}
 func (AIRequestMsg) msgType()        {}
 func (AIResponseMsg) msgType()       {}
+func (ItemStartedMsg) msgType()     {}
+func (ItemDeltaMsg) msgType()       {}
+func (ItemCompletedMsg) msgType()   {}
 func (InvokeDoneMsg) msgType()       {}
 func (PredictionUpdateMsg) msgType() {}
 func (ThinkingMsg) msgType()         {}
