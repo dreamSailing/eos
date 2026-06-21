@@ -39,13 +39,20 @@ func TestConvertEventApprovalRequired(t *testing.T) {
 }
 
 func TestConvertEventToolResult(t *testing.T) {
+	// item.completed with a tool_call item carrying a result.
 	msg := ConvertEvent(uiadapter.RuntimeEvent{
-		Type:    "tool.result",
-		RID:     "tool-1",
-		Content: "fallback output",
+		Type: string(protocol.EventTypeItemCompleted),
+		RID:  "turn-1",
 		Data: map[string]any{
-			"status":  "success",
-			"display": "命令执行完成",
+			"item": map[string]any{
+				"kind": "tool_call",
+				"id":   "tc_pwd",
+				"name": "shell_pwd",
+				"result": map[string]any{
+					"status":  "success",
+					"display": "命令执行完成",
+				},
+			},
 		},
 	})
 
@@ -53,8 +60,8 @@ func TestConvertEventToolResult(t *testing.T) {
 	if !ok {
 		t.Fatalf("msg type = %T, want ToolResultMsg", msg)
 	}
-	if res.ID != "tool-1" {
-		t.Fatalf("ID=%q, want tool-1", res.ID)
+	if res.ID != "tc_pwd" {
+		t.Fatalf("ID=%q, want tc_pwd", res.ID)
 	}
 	if res.Status != "success" {
 		t.Fatalf("Status=%q, want success", res.Status)
@@ -65,21 +72,22 @@ func TestConvertEventToolResult(t *testing.T) {
 }
 
 func TestConvertEventTurnToolCallDoneCarriesArguments(t *testing.T) {
-	// turn.tool_call_done 是唯一携带完整 arguments 的事件，必须产出 ToolCallMsg
-	// 且把 arguments 解析为参数，而不是丢弃。
+	// item.started with a tool_call item carries the tool name + arguments.
 	msg := ConvertEvent(uiadapter.RuntimeEvent{
-		Type: "tool.call",
+		Type: string(protocol.EventTypeItemStarted),
 		RID:  "turn-1",
 		Data: map[string]any{
-			"original_event_type": string(protocol.EventTypeTurnItemCompleted),
-			"id":                  "tc_pwd",
-			"name":                "read_file",
-			"arguments":           `{"file_path":"/tmp/a.txt","offset":10,"limit":5}`,
+			"item": map[string]any{
+				"kind":      "tool_call",
+				"id":        "tc_pwd",
+				"name":      "read_file",
+				"arguments": `{"file_path":"/tmp/a.txt","offset":10,"limit":5}`,
+			},
 		},
 	})
 	res, ok := msg.(ToolCallMsg)
 	if !ok {
-		t.Fatalf("msg type = %T, want ToolCallMsg (done must carry arguments)", msg)
+		t.Fatalf("msg type = %T, want ToolCallMsg", msg)
 	}
 	if res.ID != "tc_pwd" {
 		t.Fatalf("ID=%q, want tc_pwd", res.ID)
@@ -96,19 +104,21 @@ func TestConvertEventTurnToolCallDoneCarriesArguments(t *testing.T) {
 }
 
 func TestConvertEventToolCallStartDoesNotLeakEnvelope(t *testing.T) {
-	// turn.tool_call_start 只有 id/name，没有 arguments。
-	// 必须返回 nil 参数，绝不能把信封字段当成参数返回（这正是导致
-	// 卡片渲染出 event_id/session_id/turn_id 的根因）。
+	// item.started with a tool_call that has no arguments must return empty
+	// params, never leaking envelope fields.
 	msg := ConvertEvent(uiadapter.RuntimeEvent{
-		Type: "tool.call",
+		Type: string(protocol.EventTypeItemStarted),
 		RID:  "turn-1",
 		Data: map[string]any{
-			"original_event_type": string(protocol.EventTypeTurnItemStarted),
-			"event_id":            "evt_xxx",
-			"id":                  "tc_1",
-			"name":                "list_directory",
-			"session_id":          "sess_21",
-			"turn_id":             "tui_turn_xxx",
+			"item": map[string]any{
+				"kind":      "tool_call",
+				"id":        "tc_1",
+				"name":      "list_directory",
+				"arguments": "",
+			},
+			"event_id":   "evt_xxx",
+			"session_id": "sess_21",
+			"turn_id":    "tui_turn_xxx",
 		},
 	})
 	res, ok := msg.(ToolCallMsg)
@@ -121,14 +131,16 @@ func TestConvertEventToolCallStartDoesNotLeakEnvelope(t *testing.T) {
 }
 
 func TestConvertEventToolCallDoesNotFallBackToEnvelope(t *testing.T) {
-	// 兼容旧测试：即使没有任何可识别的参数键，也不应把整个 Data
-	// （信封元数据）当参数返回。
 	msg := ConvertEvent(uiadapter.RuntimeEvent{
-		Type: "tool.call",
+		Type: string(protocol.EventTypeItemStarted),
 		RID:  "turn-1",
 		Data: map[string]any{
-			"id":         "tc_3",
-			"name":       "grep",
+			"item": map[string]any{
+				"kind":      "tool_call",
+				"id":        "tc_3",
+				"name":      "grep",
+				"arguments": "",
+			},
 			"event_id":   "evt_yyy",
 			"session_id": "sess_9",
 			"turn_id":    "tui_turn_zzz",
@@ -144,14 +156,16 @@ func TestConvertEventToolCallDoesNotFallBackToEnvelope(t *testing.T) {
 }
 
 func TestConvertEventToolCallAcceptsInputAlias(t *testing.T) {
-	// 部分适配器用 input/parameters 而非 arguments 承载参数。
 	msg := ConvertEvent(uiadapter.RuntimeEvent{
-		Type: "tool.call",
+		Type: string(protocol.EventTypeItemStarted),
 		RID:  "turn-1",
 		Data: map[string]any{
-			"id":    "tc_4",
-			"name":  "read_file",
-			"input": `{"file_path":"/tmp/b.txt"}`,
+			"item": map[string]any{
+				"kind":      "tool_call",
+				"id":        "tc_4",
+				"name":      "read_file",
+				"arguments": `{"file_path":"/tmp/b.txt"}`,
+			},
 		},
 	})
 	res, ok := msg.(ToolCallMsg)
@@ -165,13 +179,17 @@ func TestConvertEventToolCallAcceptsInputAlias(t *testing.T) {
 
 func TestConvertEventTurnToolObservationUsesRequestID(t *testing.T) {
 	msg := ConvertEvent(uiadapter.RuntimeEvent{
-		Type: "tool.result",
+		Type: string(protocol.EventTypeItemCompleted),
 		RID:  "turn-1",
 		Data: map[string]any{
-			"original_event_type": string(protocol.EventTypeTurnItemCompleted),
-			"request_id":          "tc_pwd",
-			"tool":                "shell_pwd",
-			"status":              "success",
+			"item": map[string]any{
+				"kind": "tool_call",
+				"id":   "tc_pwd",
+				"name": "shell_pwd",
+				"result": map[string]any{
+					"status": "success",
+				},
+			},
 		},
 	})
 
@@ -180,7 +198,7 @@ func TestConvertEventTurnToolObservationUsesRequestID(t *testing.T) {
 		t.Fatalf("msg type = %T, want ToolResultMsg", msg)
 	}
 	if res.ID != "tc_pwd" {
-		t.Fatalf("ID=%q, want request_id tc_pwd", res.ID)
+		t.Fatalf("ID=%q, want tc_pwd", res.ID)
 	}
 	if res.Status != "success" {
 		t.Fatalf("Status=%q, want success", res.Status)
@@ -189,12 +207,15 @@ func TestConvertEventTurnToolObservationUsesRequestID(t *testing.T) {
 
 func TestConvertEventToolCallWithStringArgumentsJSON(t *testing.T) {
 	msg := ConvertEvent(uiadapter.RuntimeEvent{
-		Type: "tool.call",
+		Type: string(protocol.EventTypeItemStarted),
 		RID:  "tc_pwd",
 		Data: map[string]any{
-			"id":        "tc_pwd",
-			"name":      "shell_pwd",
-			"arguments": "{}",
+			"item": map[string]any{
+				"kind":      "tool_call",
+				"id":        "tc_pwd",
+				"name":      "shell_pwd",
+				"arguments": "{}",
+			},
 		},
 	})
 
