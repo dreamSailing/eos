@@ -141,8 +141,8 @@ func LoadPrivateKeyFromPEM(data []byte) (ed25519.PrivateKey, error) {
 //   1. EOS_SIGNATURE_PUBLIC_KEY env var pointing at a PEM file
 //   2. ResolveOptions.PublicKeyPath passed to ResolveBinary
 //   3. defaultPublicKeyPEM (this constant)
-const defaultPublicKeyPEM = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAWFF0GIhDM21TOAFJla4CdaqU3uea1rfMyR+349Ac50A=
+	const defaultPublicKeyPEM = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAfqyEzw3DhXSGPRvxfaZnhgNnb+YN8S7Ti8JJAUex0xI=
 -----END PUBLIC KEY-----`
 
 func DefaultPublicKey() ed25519.PublicKey {
