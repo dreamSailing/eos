@@ -2275,7 +2275,10 @@ func (m *AppModel) refreshMemoryPanel() {
 func (m *AppModel) handleRuntimeEvent(e adapter.RuntimeEvent) (tea.Model, tea.Cmd) {
 	uiMsg := ConvertEvent(e)
 	if uiMsg != nil {
-		return m.Update(uiMsg)
+		_, cmd := m.Update(uiMsg)
+		// Always re-arm the event listener so the pump keeps draining events
+		// even when the inner Update returned a nil cmd (e.g. ItemDeltaMsg).
+		return m, tea.Batch(cmd, m.listenEvents())
 	}
 	return m, m.listenEvents()
 }
