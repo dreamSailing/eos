@@ -29,9 +29,10 @@ type Styles struct {
 	StatusBar lipgloss.Style
 
 	// 面板样式
-	Panel      lipgloss.Style
-	PanelTitle lipgloss.Style
-	PanelBody  lipgloss.Style
+	Panel        lipgloss.Style
+	PanelTitle   lipgloss.Style
+	PanelBody    lipgloss.Style
+	ContentPanel lipgloss.Style // 对话内容区面板（纯黑背景，与终端默认背景一致）
 
 	// 按钮样式
 	Button      lipgloss.Style
@@ -116,9 +117,9 @@ func NewStyles(theme *Theme) *Styles {
 		Background(theme.Surface).
 		Foreground(theme.Text)
 
-	// 内容区域
+	// 内容区域（与 ContentPanel 一致，纯黑背景）
 	s.Content = lipgloss.NewStyle().
-		Background(theme.Surface).
+		Background(lipgloss.Color("#000000")).
 		Foreground(theme.Text).
 		Padding(0, 1)
 
@@ -148,6 +149,16 @@ func NewStyles(theme *Theme) *Styles {
 	// 面板样式
 	s.Panel = lipgloss.NewStyle().
 		Background(theme.Surface).
+		Foreground(theme.Text).
+		Border(lipgloss.NormalBorder(), true, true, true, true).
+		BorderForeground(theme.Muted)
+
+	// 对话内容区面板：纯黑背景，与终端默认背景融合，
+	// 避免文本行（终端默认黑）与面板背景形成色差。
+	// 注意：必须用纯黑 #000000 而非 theme.Background(#0f172a 深蓝)，
+	// 否则文本行透出的终端默认纯黑会与面板深蓝产生色差。
+	s.ContentPanel = lipgloss.NewStyle().
+		Background(lipgloss.Color("#000000")).
 		Foreground(theme.Text).
 		Border(lipgloss.NormalBorder(), true, true, true, true).
 		BorderForeground(theme.Muted)

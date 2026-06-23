@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/state"
 	"github.com/dreamSailing/eos/internal/modes"
+	"github.com/dreamSailing/eos/internal/state"
 	"github.com/dreamSailing/eos/internal/ui/components/content"
 	"github.com/dreamSailing/eos/internal/ui/components/hints"
 	"github.com/dreamSailing/eos/internal/ui/components/input"
@@ -319,7 +319,7 @@ func (m Model) renderLivePanel() string {
 	}
 	body = padToHeight(body, bodyH)
 
-	return m.styles.Panel.Render(lipgloss.JoinVertical(lipgloss.Left, title, body))
+	return m.styles.ContentPanel.Render(lipgloss.JoinVertical(lipgloss.Left, title, body))
 }
 
 func (m Model) renderInlineLive() string {
@@ -776,7 +776,7 @@ func (m Model) View() string {
 			contentView = lipgloss.JoinVertical(lipgloss.Left, contentView, inlineLive)
 		}
 	}
-	sections = append(sections, m.styles.Panel.Render(contentView))
+	sections = append(sections, m.styles.ContentPanel.Render(contentView))
 
 	if livePanel := m.renderLivePanel(); livePanel != "" {
 		sections = append(sections, livePanel)
