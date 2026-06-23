@@ -366,6 +366,8 @@ var enText = map[string]string{
 	"footer.esc":                             "Esc to cancel",
 	"confirm.help":                           "Enter: confirm | Esc: cancel | ↑/↓: select | 1..9: quick select",
 	"confirm.help.text":                      "Enter: confirm | Esc: cancel | ↑/↓: select | 1..9: quick select | Tab: text",
+	"action.popup.title":                     "Actions",
+	"action.popup.help":                      "Enter: confirm | Esc: cancel | ↑/↓: select | 1..9: quick select",
 	"permission.inline.title":                "Permission Request",
 	"permission.inline.help":                 "↑/↓ select | Enter allow | Esc deny | 1..9 quick select",
 	"diagnostics.header":                     "Code Diagnostics",

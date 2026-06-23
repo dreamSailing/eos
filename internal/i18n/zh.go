@@ -368,6 +368,8 @@ var zhText = map[string]string{
 	"footer.esc":                             "Esc 取消",
 	"confirm.help":                           "Enter 确认 | Esc 取消 | ↑/↓ 选择 | 1..9 快速选择",
 	"confirm.help.text":                      "Enter 确认 | Esc 取消 | ↑/↓ 选择 | 1..9 快速选择 | Tab 输入框",
+	"action.popup.title":                     "操作",
+	"action.popup.help":                      "Enter 确认 | Esc 取消 | ↑/↓ 选择 | 1..9 快速选择",
 	"permission.inline.title":                "授权请求",
 	"permission.inline.help":                 "↑/↓ 选择 | Enter 授权 | Esc 拒绝 | 1..9 快速选择",
 	"diagnostics.header":                     "代码诊断",

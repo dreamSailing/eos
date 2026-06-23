@@ -15,6 +15,7 @@ import (
 	"github.com/dreamSailing/eos/internal/pkg/filedialog"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/state"
+	"github.com/dreamSailing/eos/internal/ui/components/messages"
 	"github.com/dreamSailing/eos/internal/ui/features/slash"
 	"github.com/dreamSailing/eos/internal/ui/views/setup"
 	"github.com/dreamSailing/eos/pkg/coreapi"
@@ -555,32 +556,43 @@ func TestRenderHistoryEntryShowsDownloadActionOnlyForPlanMessages(t *testing.T) 
 	setTestHome(t)
 	app := newTestAppModel(t)
 
-	planRendered := stripANSIAppTest(app.renderHistoryEntry(historyEntry{
+	// 文本流布局下不再渲染内联按钮；动作列表由 bubbleActionsForEntry 决定，
+	// 点击消息文本时弹出操作弹框。这里断言动作集合的正确性。
+	hasAction := func(actions []messages.BubbleAction, kind string) bool {
+		for _, a := range actions {
+			if a.Kind == kind {
+				return true
+			}
+		}
+		return false
+	}
+
+	planActions := app.bubbleActionsForEntry(historyEntry{
 		kind:          "ai",
 		content:       "## 执行计划",
 		rawMarkdown:   "## 执行计划",
 		executionMode: "plan",
 		timestamp:     time.Now(),
-	}))
-	if !strings.Contains(planRendered, "复制") {
-		t.Fatalf("expected copy action in plan render, got %q", planRendered)
+	})
+	if !hasAction(planActions, "copy") {
+		t.Fatalf("expected copy action for plan entry, got %v", planActions)
 	}
-	if !strings.Contains(planRendered, "下载") {
-		t.Fatalf("expected download action in plan render, got %q", planRendered)
+	if !hasAction(planActions, "download") {
+		t.Fatalf("expected download action for plan entry, got %v", planActions)
 	}
 
-	autoRendered := stripANSIAppTest(app.renderHistoryEntry(historyEntry{
+	autoActions := app.bubbleActionsForEntry(historyEntry{
 		kind:          "ai",
 		content:       "普通回复",
 		rawMarkdown:   "普通回复",
 		executionMode: "auto",
 		timestamp:     time.Now(),
-	}))
-	if !strings.Contains(autoRendered, "复制") {
-		t.Fatalf("expected copy action in auto render, got %q", autoRendered)
+	})
+	if !hasAction(autoActions, "copy") {
+		t.Fatalf("expected copy action for auto entry, got %v", autoActions)
 	}
-	if strings.Contains(autoRendered, "下载") {
-		t.Fatalf("did not expect download action in auto render, got %q", autoRendered)
+	if hasAction(autoActions, "download") {
+		t.Fatalf("did not expect download action for auto entry, got %v", autoActions)
 	}
 }
 

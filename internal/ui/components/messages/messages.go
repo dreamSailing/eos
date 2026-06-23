@@ -14,7 +14,6 @@ import (
 
 	"github.com/dreamSailing/eos/internal/ui/styles"
 
-	"github.com/charmbracelet/lipgloss"
 	xansi "github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 )
@@ -50,79 +49,16 @@ type UserMessage struct {
 func (m *UserMessage) Type() MessageType { return MsgTypeUser }
 
 func (m *UserMessage) Render(s *styles.Styles, width int) string {
-	bw := bubbleWidth(width)
-
-	wrappedLines := wrapText(m.Content, bw-4)
-
-	var result strings.Builder
-	for i, line := range wrappedLines {
-		result.WriteString(s.MsgUser.Render(line))
-		if i < len(wrappedLines)-1 {
-			result.WriteString("\n")
-		}
-	}
-
-	bubble := s.MsgUserBorder.Render(result.String())
-	return lipgloss.Place(width, lipgloss.Height(bubble), lipgloss.Right, lipgloss.Top, bubble)
+	// 文本流布局：首行 "› " 前缀，续行缩进，无气泡边框。
+	return renderUserStream(s, m.Content, width)
 }
 
-// AIMessage AI消息
-type AIMessage struct {
-	Content   string
-	Timestamp time.Time
-	Tokens    int
-	Duration  time.Duration
-	Done      bool
-	Actions   []BubbleAction
-}
-
+// BubbleAction 描述消息可触发的操作（复制/下载）。
+// 文本流布局下不再渲染为内联按钮，仅用于标记可点击性，
+// 由 app 层在点击消息文本时弹出操作弹框。
 type BubbleAction struct {
 	Kind  string
 	Label string
-}
-
-func (m *AIMessage) Type() MessageType { return MsgTypeAI }
-
-func (m *AIMessage) Render(s *styles.Styles, width int) string {
-	var result strings.Builder
-	bw := bubbleWidth(width)
-
-	// 头部
-	header := s.MsgAIHeader.Render(fmt.Sprintf("🤖 Assistant ─── %s", m.Timestamp.Format("15:04:05")))
-	result.WriteString(header)
-	result.WriteString("\n")
-
-	// 内容
-	if m.Content != "" {
-		content := wrapText(m.Content, bw-4)
-		for _, line := range content {
-			result.WriteString(s.MsgAI.Render(line))
-			result.WriteString("\n")
-		}
-	}
-
-	// 底部信息（如果完成）
-	if m.Done {
-		var footerParts []string
-		footerParts = append(footerParts, s.TextSuccess.Render("✓ Done"))
-		if m.Tokens > 0 {
-			footerParts = append(footerParts, s.TextInfo.Render(fmt.Sprintf("%d tokens", m.Tokens)))
-		}
-		if m.Duration > 0 {
-			footerParts = append(footerParts, s.TextWarning.Render(fmt.Sprintf("%.1fs", m.Duration.Seconds())))
-		}
-		if len(footerParts) > 0 {
-			footer := s.MsgAIFooter.Render(strings.Join(footerParts, " · "))
-			result.WriteString(footer)
-		}
-		if strings.TrimSpace(m.Content) != "" && len(m.Actions) > 0 {
-			result.WriteString("\n")
-			result.WriteString(renderBubbleActions(s, bw-4, m.Actions))
-		}
-	}
-
-	bubble := s.MsgAIBorder.Render(result.String())
-	return lipgloss.Place(width, lipgloss.Height(bubble), lipgloss.Left, lipgloss.Top, bubble)
 }
 
 type AgentBubbleMessage struct {
@@ -145,93 +81,10 @@ type AgentBubbleMessage struct {
 func (m *AgentBubbleMessage) Type() MessageType { return MsgTypeAgent }
 
 func (m *AgentBubbleMessage) Render(s *styles.Styles, width int) string {
-	var result strings.Builder
-	bw := bubbleWidth(width)
-
-	dot := renderAgentEventDot(s, m.Event, m.IsMain, m.Done)
-	eventLabel := renderAgentEventLabel(s, m.Event)
-	route := renderAgentRoute(s, m.SourceName, m.Name)
-	agentID := renderAgentID(s, m.AgentID)
-	label := ""
-	if m.Label != "" {
-		label = s.TextMuted.Render(m.Label)
-	}
-	ts := ""
-	if !m.Timestamp.IsZero() {
-		ts = s.TextMuted.Render(m.Timestamp.Format("15:04:05"))
-	}
-
-	headerParts := []string{dot, eventLabel, route}
-	if agentID != "" {
-		headerParts = append(headerParts, agentID)
-	}
-	if label != "" {
-		headerParts = append(headerParts, label)
-	}
-	if ts != "" {
-		headerParts = append(headerParts, ts)
-	}
-	result.WriteString(strings.Join(headerParts, " "))
-	result.WriteString("\n")
-
-	if m.Content != "" {
-		if m.PreStyled {
-			lines := splitAndWrapANSI(m.Content, bw-4)
-			for i, line := range lines {
-				result.WriteString(line)
-				if i < len(lines)-1 {
-					result.WriteString("\n")
-				}
-			}
-		} else {
-			lines := wrapText(m.Content, bw-4)
-			for i, line := range lines {
-				result.WriteString(s.MsgAgent.Render(line))
-				if i < len(lines)-1 {
-					result.WriteString("\n")
-				}
-			}
-		}
-	}
-
-	if m.Done && (m.Tokens > 0 || m.Duration > 0) {
-		var parts []string
-		if m.Tokens > 0 {
-			parts = append(parts, s.TextMuted.Render(fmt.Sprintf("%d tokens", m.Tokens)))
-		}
-		if m.Duration > 0 {
-			parts = append(parts, s.TextMuted.Render(fmt.Sprintf("%.1fs", m.Duration.Seconds())))
-		}
-		if len(parts) > 0 {
-			result.WriteString("\n")
-			result.WriteString(s.TextMuted.Render(strings.Join(parts, " · ")))
-		}
-	}
-
-	if m.Done && strings.TrimSpace(m.Content) != "" && len(m.Actions) > 0 {
-		result.WriteString("\n")
-		result.WriteString(renderBubbleActions(s, bw-4, m.Actions))
-	}
-
-	return s.MsgAgentBorder.Render(result.String())
-}
-
-func renderBubbleActions(s *styles.Styles, width int, actions []BubbleAction) string {
-	if len(actions) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(actions))
-	for _, action := range actions {
-		label := strings.TrimSpace(action.Label)
-		if label == "" {
-			continue
-		}
-		parts = append(parts, s.MsgActionButton.Render(label))
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return lipgloss.PlaceHorizontal(width, lipgloss.Right, strings.Join(parts, " "))
+	// 文本流布局：头部行 "● [event] source -> name <id> ts" + 内容缩进 + 可选元信息。
+	// 不再渲染内联操作按钮；Actions 仅标记可点击性，由 app 层弹框承载。
+	return renderAgentFinalStream(s, m.Event, m.SourceName, m.Name, m.AgentID,
+		m.Content, m.PreStyled, m.Tokens, m.Duration, m.Done, m.Timestamp, width)
 }
 
 func splitAndWrapANSI(text string, maxWidth int) []string {
@@ -258,40 +111,8 @@ type AgentDispatchMessage struct {
 func (m *AgentDispatchMessage) Type() MessageType { return MsgTypeAgent }
 
 func (m *AgentDispatchMessage) Render(s *styles.Styles, width int) string {
-	var result strings.Builder
-	bw := bubbleWidth(width)
-
-	dot := renderAgentEventDot(s, m.Event, false, false)
-	eventLabel := renderAgentEventLabel(s, firstNonEmptyString(strings.TrimSpace(m.Event), "dispatch"))
-	route := renderAgentRoute(s, m.SourceName, m.AgentName)
-	agentID := renderAgentID(s, m.AgentID)
-	ts := ""
-	if !m.Timestamp.IsZero() {
-		ts = s.TextMuted.Render(m.Timestamp.Format("15:04:05"))
-	}
-
-	headerParts := []string{dot, eventLabel, route}
-	if agentID != "" {
-		headerParts = append(headerParts, agentID)
-	}
-	if ts != "" {
-		headerParts = append(headerParts, ts)
-	}
-	result.WriteString(strings.Join(headerParts, " "))
-	result.WriteString("\n")
-
-	taskText := strings.TrimSpace(m.Task)
-	if taskText != "" {
-		lines := wrapText(taskText, bw-4)
-		for i, line := range lines {
-			result.WriteString(s.MsgAgent.Render(line))
-			if i < len(lines)-1 {
-				result.WriteString("\n")
-			}
-		}
-	}
-
-	return s.MsgAgentBorder.Render(result.String())
+	// 文本流布局：头部行 + 任务文本缩进，无气泡边框。
+	return renderAgentTaskStream(s, m.Event, m.SourceName, m.AgentName, m.AgentID, m.Task, m.Timestamp, width)
 }
 
 // ToolCallMessage 工具调用消息
@@ -318,32 +139,25 @@ func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
 	// 头部
 	icon := "🔧"
 	statusStr := ""
-	border := s.MsgToolBorder
 	switch m.Status {
 	case "running":
 		statusStr = s.TextInfo.Render("⏳ Executing...")
 	case "success":
 		icon = "✅"
 		statusStr = s.MsgToolSuccess.Render(fmt.Sprintf("✓ Success · %s", formatDuration(m.Duration)))
-		if s.Theme != nil {
-			border = border.BorderForeground(s.Theme.Success)
-		}
 	case "error":
 		icon = "❌"
 		statusStr = s.MsgToolError.Render(fmt.Sprintf("✗ Failed · %s", formatDuration(m.Duration)))
-		if s.Theme != nil {
-			border = border.BorderForeground(s.Theme.Error)
-		}
 	}
 
 	headerLeft := s.MsgToolHeader.Render(fmt.Sprintf("%s Tool: %s", icon, displayToolName(m.Name)))
 	result.WriteString(headerLeft)
 	result.WriteString("\n")
 
-	blockStyle := s.ToolCall.MarginLeft(1)
-	resultStyle := s.ToolResult.MarginLeft(1)
+	blockStyle := s.ToolCall
+	resultStyle := s.ToolResult
 	if m.Status == "error" {
-		resultStyle = s.MsgToolError.MarginLeft(1)
+		resultStyle = s.MsgToolError
 	}
 	dividerW := contentW
 	if dividerW > 18 {
@@ -627,7 +441,7 @@ func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
 		result.WriteString(statusStr)
 	}
 
-	return border.Render(result.String())
+	return result.String()
 }
 
 func displayToolName(raw string) string {
@@ -684,94 +498,6 @@ func displayToolName(raw string) string {
 	return b.String()
 }
 
-// AgentMessage 子Agent消息（调度任务 - 蓝色圆点）
-type AgentMessage struct {
-	Name       string
-	Task       string
-	Goal       string
-	Progress   int // 0-100
-	Step       int
-	TotalSteps int
-	Status     string // "running", "completed", "failed"
-	Duration   time.Duration
-	Results    []string
-}
-
-func (m *AgentMessage) Type() MessageType { return MsgTypeAgent }
-
-func (m *AgentMessage) Render(s *styles.Styles, width int) string {
-	var result strings.Builder
-
-	// 头部 - 蓝色圆点表示调度任务
-	dot := s.TextInfo.Render("●")
-	name := s.MsgAgentHeader.Render(m.Name)
-	if m.Status == "completed" {
-		dot = s.TextSuccess.Render("●")
-	}
-	if m.Status == "failed" {
-		dot = s.TextError.Render("●")
-	}
-	result.WriteString(dot + " " + name)
-	result.WriteString("\n")
-
-	// 任务信息
-	if m.Task != "" {
-		result.WriteString(fmt.Sprintf("📋 %s\n", m.Task))
-	}
-	if m.Goal != "" {
-		result.WriteString(fmt.Sprintf("🎯 %s\n", m.Goal))
-	}
-
-	// 进度条
-	if m.Status == "running" && m.TotalSteps > 0 {
-		progressBar := renderProgressBar(m.Progress, width-6, s)
-		result.WriteString(progressBar)
-		result.WriteString("\n")
-		result.WriteString(s.MsgAgentRunning.Render(fmt.Sprintf("⏳ Step %d/%d", m.Step, m.TotalSteps)))
-		result.WriteString("\n")
-	}
-
-	// 结果
-	if len(m.Results) > 0 && m.Status == "completed" {
-		result.WriteString(s.MsgAgentDone.Render(fmt.Sprintf("✓ Completed %d items", len(m.Results))))
-		result.WriteString("\n")
-	}
-
-	// 耗时
-	if m.Duration > 0 {
-		result.WriteString(s.TextMuted.Render(fmt.Sprintf("⏱ %s", formatDuration(m.Duration))))
-	}
-
-	return s.MsgAgentBorder.Render(result.String())
-}
-
-// AgentFinalMessage 子Agent最终输出（绿色圆点）
-type AgentFinalMessage struct {
-	AgentName string
-	Content   string
-}
-
-func (m *AgentFinalMessage) Type() MessageType { return MsgTypeAgent }
-
-func (m *AgentFinalMessage) Render(s *styles.Styles, width int) string {
-	var result strings.Builder
-
-	// 头部 - 绿色圆点表示最终结果
-	result.WriteString(s.TextSuccess.Render("●") + " " + s.TextSuccess.Bold(true).Render(m.AgentName))
-	result.WriteString("\n")
-
-	// 内容
-	if m.Content != "" {
-		lines := wrapText(m.Content, width-4)
-		for _, line := range lines {
-			result.WriteString(line)
-			result.WriteString("\n")
-		}
-	}
-
-	return s.MsgAgentBorder.Render(result.String())
-}
-
 // PlanMessage 计划消息
 type PlanMessage struct {
 	Title       string
@@ -824,7 +550,7 @@ func (m *PlanMessage) Render(s *styles.Styles, width int) string {
 		result.WriteString("\n")
 	}
 
-	return s.MsgPlanBorder.Render(result.String())
+	return result.String()
 }
 
 // ThinkingMessage 思考过程消息
@@ -896,7 +622,7 @@ func (m *ThinkingMessage) Render(s *styles.Styles, width int) string {
 		}
 	}
 
-	return s.MsgThinkingBorder.Render(result.String())
+	return result.String()
 }
 
 func lastNonEmptyLine(text string) string {

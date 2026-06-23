@@ -63,44 +63,38 @@ type Styles struct {
 	ToolResult lipgloss.Style
 	Thinking   lipgloss.Style
 
-	// 消息组件样式 (新增)
+	// 消息组件样式 (文本流布局)
 	// 用户消息
-	MsgUser       lipgloss.Style
-	MsgUserPrefix lipgloss.Style
-	MsgUserBorder lipgloss.Style
+	MsgUser          lipgloss.Style
+	StreamUserPrefix lipgloss.Style // 用户消息首行前缀 "› "
 
 	// AI消息
-	MsgAI       lipgloss.Style
-	MsgAIHeader lipgloss.Style
-	MsgAIFooter lipgloss.Style
-	MsgAIBorder lipgloss.Style
+	MsgAI          lipgloss.Style
+	MsgAIHeader    lipgloss.Style
+	MsgAIFooter    lipgloss.Style
+	StreamAIPrefix lipgloss.Style // AI 消息首行前缀 "• "
+	StreamMeta     lipgloss.Style // 元信息行（tokens · duration 等）
 
 	// 工具调用消息
 	MsgTool        lipgloss.Style
 	MsgToolHeader  lipgloss.Style
 	MsgToolSuccess lipgloss.Style
 	MsgToolError   lipgloss.Style
-	MsgToolBorder  lipgloss.Style
 
 	// 子Agent消息
 	MsgAgent        lipgloss.Style
 	MsgAgentHeader  lipgloss.Style
 	MsgAgentRunning lipgloss.Style
 	MsgAgentDone    lipgloss.Style
-	MsgAgentBorder  lipgloss.Style
-	MsgActionButton lipgloss.Style
-	MsgCopyButton   lipgloss.Style
 
 	// 计划消息
 	MsgPlan       lipgloss.Style
 	MsgPlanHeader lipgloss.Style
 	MsgPlanStep   lipgloss.Style
-	MsgPlanBorder lipgloss.Style
 
 	// 思考过程
 	MsgThinking       lipgloss.Style
 	MsgThinkingHeader lipgloss.Style
-	MsgThinkingBorder lipgloss.Style
 
 	// 系统消息
 	MsgSystem  lipgloss.Style
@@ -246,20 +240,13 @@ func NewStyles(theme *Theme) *Styles {
 		Foreground(theme.Info).
 		Padding(0, 1)
 
-	// 消息组件样式 (新增)
+	// 消息组件样式 (文本流布局)
 	s.MsgUser = lipgloss.NewStyle().
-		Foreground(theme.Text).
-		Background(theme.Primary)
+		Foreground(theme.Text)
 
-	s.MsgUserPrefix = lipgloss.NewStyle().
-		Foreground(theme.Text).
-		Background(theme.Primary)
-
-	s.MsgUserBorder = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.Primary).
-		Background(theme.Primary).
-		Padding(0, 1)
+	s.StreamUserPrefix = lipgloss.NewStyle().
+		Foreground(theme.TextMuted).
+		Bold(true)
 
 	// AI消息
 	s.MsgAI = lipgloss.NewStyle().
@@ -274,11 +261,11 @@ func NewStyles(theme *Theme) *Styles {
 		Foreground(theme.TextMuted).
 		Italic(true)
 
-	s.MsgAIBorder = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.Muted).
-		Background(theme.SurfaceAlt).
-		Padding(0, 1)
+	s.StreamAIPrefix = lipgloss.NewStyle().
+		Foreground(theme.TextMuted)
+
+	s.StreamMeta = lipgloss.NewStyle().
+		Foreground(theme.TextMuted)
 
 	// 工具调用消息
 	s.MsgTool = lipgloss.NewStyle().
@@ -295,11 +282,6 @@ func NewStyles(theme *Theme) *Styles {
 	s.MsgToolError = lipgloss.NewStyle().
 		Foreground(theme.Error)
 
-	s.MsgToolBorder = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.Warning).
-		Padding(0, 1)
-
 	// 子Agent消息
 	s.MsgAgent = lipgloss.NewStyle().
 		Foreground(theme.Text).
@@ -315,18 +297,6 @@ func NewStyles(theme *Theme) *Styles {
 	s.MsgAgentDone = lipgloss.NewStyle().
 		Foreground(theme.Success)
 
-	s.MsgAgentBorder = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.Secondary).
-		Padding(0, 1)
-
-	s.MsgActionButton = lipgloss.NewStyle().
-		Foreground(theme.Background).
-		Background(theme.Primary).
-		Bold(true).
-		Padding(0, 1)
-	s.MsgCopyButton = s.MsgActionButton
-
 	// 计划消息
 	s.MsgPlan = lipgloss.NewStyle().
 		Foreground(theme.Text).
@@ -339,11 +309,6 @@ func NewStyles(theme *Theme) *Styles {
 	s.MsgPlanStep = lipgloss.NewStyle().
 		Foreground(theme.Text)
 
-	s.MsgPlanBorder = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.Accent).
-		Padding(0, 1)
-
 	// 思考过程
 	s.MsgThinking = lipgloss.NewStyle().
 		Foreground(theme.Text).
@@ -352,12 +317,6 @@ func NewStyles(theme *Theme) *Styles {
 	s.MsgThinkingHeader = lipgloss.NewStyle().
 		Foreground(theme.Info).
 		Bold(true)
-
-	s.MsgThinkingBorder = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.Info).
-		Padding(0, 1).
-		Background(theme.SurfaceAlt)
 
 	// 系统消息
 	s.MsgSystem = lipgloss.NewStyle().

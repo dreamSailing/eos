@@ -6,14 +6,11 @@ package messages
 // 商业使用请联系版权人获得商业授权。
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/dreamSailing/eos/internal/ui/render"
 	"github.com/dreamSailing/eos/internal/ui/styles"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 // Renderer 消息渲染器
@@ -106,16 +103,16 @@ func (r *Renderer) RenderUserInput(content string) string {
 
 func (r *Renderer) RenderAIResponseAt(content string, tokens int, duration time.Duration, done bool, ts time.Time) string {
 	msg := &AgentBubbleMessage{
-		Name:       r.mainAgent,
-		Label:      r.mainLabel,
-		Event:      "result",
-		IsMain:     true,
-		PreStyled:  done && r.mdEnabled,
-		Content:    r.maybeRenderMarkdown(content, done),
-		Timestamp:  ts,
-		Tokens:     tokens,
-		Duration:   duration,
-		Done:       done,
+		Name:      r.mainAgent,
+		Label:     r.mainLabel,
+		Event:     "result",
+		IsMain:    true,
+		PreStyled: done && r.mdEnabled,
+		Content:   r.maybeRenderMarkdown(content, done),
+		Timestamp: ts,
+		Tokens:    tokens,
+		Duration:  duration,
+		Done:      done,
 	}
 	return msg.Render(r.styles, r.width)
 }
@@ -126,17 +123,17 @@ func (r *Renderer) RenderAIResponseAtWithCopy(content string, tokens int, durati
 
 func (r *Renderer) RenderAIResponseAtWithActions(content string, tokens int, duration time.Duration, done bool, ts time.Time, actions []BubbleAction) string {
 	msg := &AgentBubbleMessage{
-		Name:       r.mainAgent,
-		Label:      r.mainLabel,
-		Event:      "result",
-		IsMain:     true,
-		PreStyled:  done && r.mdEnabled,
-		Content:    r.maybeRenderMarkdown(content, done),
-		Timestamp:  ts,
-		Tokens:     tokens,
-		Duration:   duration,
-		Done:       done,
-		Actions:    actions,
+		Name:      r.mainAgent,
+		Label:     r.mainLabel,
+		Event:     "result",
+		IsMain:    true,
+		PreStyled: done && r.mdEnabled,
+		Content:   r.maybeRenderMarkdown(content, done),
+		Timestamp: ts,
+		Tokens:    tokens,
+		Duration:  duration,
+		Done:      done,
+		Actions:   actions,
 	}
 	return msg.Render(r.styles, r.width)
 }
@@ -279,120 +276,4 @@ func (r *Renderer) RenderSystem(content, level string) string {
 		Level:   level,
 	}
 	return msg.Render(r.styles, r.width)
-}
-
-// MessageBuilder 消息构建器，用于构建复杂消息
-type MessageBuilder struct {
-	lines []string
-	style lipgloss.Style
-}
-
-// NewMessageBuilder 创建新的消息构建器
-func NewMessageBuilder(style lipgloss.Style) *MessageBuilder {
-	return &MessageBuilder{
-		lines: []string{},
-		style: style,
-	}
-}
-
-// AddLine 添加一行
-func (b *MessageBuilder) AddLine(line string) *MessageBuilder {
-	b.lines = append(b.lines, line)
-	return b
-}
-
-// AddFormatted 添加格式化行
-func (b *MessageBuilder) AddFormatted(format string, args ...any) *MessageBuilder {
-	b.lines = append(b.lines, lipgloss.NewStyle().Render(fmt.Sprintf(format, args...)))
-	return b
-}
-
-// AddIndented 添加缩进行
-func (b *MessageBuilder) AddIndented(indent int, content string) *MessageBuilder {
-	prefix := strings.Repeat("  ", indent)
-	b.lines = append(b.lines, prefix+content)
-	return b
-}
-
-// AddSeparator 添加分隔线
-func (b *MessageBuilder) AddSeparator(width int) *MessageBuilder {
-	sep := strings.Repeat("─", width)
-	b.lines = append(b.lines, lipgloss.NewStyle().Foreground(lipgloss.Color("#64748b")).Render(sep))
-	return b
-}
-
-// Build 构建消息
-func (b *MessageBuilder) Build() string {
-	return b.style.Render(strings.Join(b.lines, "\n"))
-}
-
-// RenderSimpleUser 渲染简单用户消息（用于快速显示）
-func (r *Renderer) RenderSimpleUser(content string) string {
-	prefix := r.styles.MsgUserPrefix.Render("▶")
-	return r.styles.MsgUserBorder.Render(prefix + " " + content)
-}
-
-// RenderSimpleAI 渲染简单AI消息（用于流式输出）
-func (r *Renderer) RenderSimpleAI(content string) string {
-	header := r.styles.MsgAIHeader.Render("🤖 Assistant")
-	return header + "\n" + r.styles.MsgAI.Render(content)
-}
-
-// RenderSimpleTool 渲染简单工具消息
-func (r *Renderer) RenderSimpleTool(name, status string) string {
-	var icon string
-	switch status {
-	case "running":
-		icon = "⏳"
-	case "success":
-		icon = "✓"
-	case "error":
-		icon = "✗"
-	default:
-		icon = "🔧"
-	}
-
-	return r.styles.MsgToolHeader.Render(fmt.Sprintf("%s %s", icon, name))
-}
-
-// RenderTokenStats 渲染Token统计
-func (r *Renderer) RenderTokenStats(input, output, total int) string {
-	var result strings.Builder
-
-	result.WriteString(r.styles.TextMuted.Render("📊 Token Usage\n"))
-	result.WriteString(r.styles.TextMuted.Render(strings.Repeat("─", 30)) + "\n")
-
-	if total > 0 {
-		inputPct := (input * 100) / total
-		outputPct := (output * 100) / total
-
-		inputBar := renderMiniBar(inputPct, 15, r.styles.TextInfo)
-		outputBar := renderMiniBar(outputPct, 15, r.styles.TextSuccess)
-
-		result.WriteString(fmt.Sprintf("Input:  %s %d (%d%%)\n", inputBar, input, inputPct))
-		result.WriteString(fmt.Sprintf("Output: %s %d (%d%%)\n", outputBar, output, outputPct))
-		result.WriteString(fmt.Sprintf("Total:  %d tokens\n", total))
-	}
-
-	return result.String()
-}
-
-// 辅助函数
-
-func renderMiniBar(percentage, width int, style lipgloss.Style) string {
-	if width < 2 {
-		return ""
-	}
-
-	filled := (percentage * width) / 100
-	if filled < 0 {
-		filled = 0
-	}
-	if filled > width {
-		filled = width
-	}
-
-	empty := width - filled
-
-	return style.Render(strings.Repeat("█", filled)) + lipgloss.NewStyle().Foreground(lipgloss.Color("#64748b")).Render(strings.Repeat("░", empty))
 }

@@ -34,6 +34,7 @@ import (
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // AppState 应用程序状态
@@ -68,6 +69,7 @@ type AppModel struct {
 	helpView                 *help.HelpView
 	setupView                any // 可以是 *setup.SetupView 或 *setup.ModelSetupView
 	confirmView              *confirm.Model
+	actionPopup              *confirm.ActionPopup // 点击消息文本弹出的操作选择框
 	prevView                 string
 	inlinePermissionReq      *confirm.Request
 	inlinePermissionSelected int
@@ -104,15 +106,24 @@ type AppModel struct {
 	stopRequested      bool
 }
 
-// bubbleActionHit 存储气泡操作按钮的点击区域信息，
-// 用于处理用户点击 AI 回复中的复制、下载等操作按钮
+// bubbleActionHit 记录一条可点击消息文本在内容区中的行范围，
+// 用于点击 AI/子 Agent 回复文本时弹出操作选择框（复制/下载）。
 type bubbleActionHit struct {
-	y      int    // 按钮所在行号
-	x0     int    // 按钮起始列（包含）
-	x1     int    // 按钮结束列（包含）
-	idx    int    // 对应历史记录条目的索引
-	action string // 操作类型（如 "copy", "download"）
-	text   string // 需要复制或下载的文本内容
+	y       int      // 消息起始行号
+	lines   int      // 消息占用的行数（含空行）
+	idx     int      // 对应历史记录条目的索引
+	actions []string // 该条目可用动作（如 "copy"、"download"）
+	text    string   // 待复制/下载的文本内容
+}
+
+// hasAction 报告该命中区是否提供指定动作。
+func (r bubbleActionHit) hasAction(action string) bool {
+	for _, a := range r.actions {
+		if strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(action)) {
+			return true
+		}
+	}
+	return false
 }
 
 // planDownloadRequest 记录待下载的计划文件信息
@@ -123,10 +134,6 @@ type planDownloadRequest struct {
 var choosePlanDownloadDirectory = filedialog.ChooseDirectory
 var writePlanDownloadFile = os.WriteFile
 var planDownloadNow = time.Now
-
-func (r bubbleActionHit) matches(action string) bool {
-	return strings.EqualFold(strings.TrimSpace(r.action), strings.TrimSpace(action))
-}
 
 // ctxUsageTickMsg 上下文使用率定时刷新消息
 type ctxUsageTickMsg struct{}
@@ -600,6 +607,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.confirmView != nil {
 			m.confirmView.SetSize(msg.Width, msg.Height)
 		}
+		if m.actionPopup != nil {
+			m.actionPopup.SetSize(msg.Width, msg.Height)
+		}
 		// 更新消息渲染器宽度
 		if m.msgRenderer != nil {
 			m.msgRenderer.SetWidth(msg.Width - 4)
@@ -648,6 +658,16 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			updated, cmd := m.confirmView.Update(msg)
 			m.confirmView = updated
 			return m, cmd
+		}
+
+		// 操作弹框拦截按键（覆盖在 shell 之上，不切换 activeView）
+		if m.actionPopup != nil {
+			updated, cmd := m.actionPopup.Update(msg)
+			m.actionPopup = updated
+			if cmd != nil {
+				return m, cmd
+			}
+			return m, nil
 		}
 
 		if m.activeView == "help" {
@@ -1198,6 +1218,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.history[msg.idx].copiedAt = time.Time{}
 			m.rebuildHistoryContent()
 		}
+
+	case confirm.ActionResultMsg:
+		return m, m.handleActionResult(msg)
 
 	case setup.SetupCompleteMsg:
 		// 设置完成
@@ -2271,6 +2294,15 @@ func (m *AppModel) refreshMemoryPanel() {
 	panel.SetData(root, global.Path, global.Content, global.Exists, project.Path, project.Content, project.Exists, sessionDoc.Path, sessionDoc.Content, sessionDoc.Exists, index.Path, index.Content, index.Exists)
 }
 
+// overlayCenter 将弹框内容居中叠加到底层视图之上。
+// 采用 lipgloss.Place 按尺寸居中，背景仍透出底层 shell 文本流。
+func overlayCenter(width, height int, background, overlay string) string {
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, overlay,
+		lipgloss.WithWhitespaceChars(" "),
+		lipgloss.WithWhitespaceForeground(lipgloss.Color("")),
+	)
+}
+
 // handleRuntimeEvent 处理 runtime event 消息
 func (m *AppModel) handleRuntimeEvent(e adapter.RuntimeEvent) (tea.Model, tea.Cmd) {
 	uiMsg := ConvertEvent(e)
@@ -2291,7 +2323,11 @@ func (m *AppModel) View() string {
 
 	switch m.activeView {
 	case "shell":
-		return m.shell.View()
+		view := m.shell.View()
+		if m.actionPopup != nil {
+			return overlayCenter(m.width, m.height, view, m.actionPopup.View())
+		}
+		return view
 	case "confirm":
 		if m.confirmView != nil {
 			return m.confirmView.View()
@@ -2421,25 +2457,14 @@ func (m *AppModel) renderHistoryEntry(e historyEntry) string {
 	}
 }
 
-func (m *AppModel) copyButtonLabel(e historyEntry) string {
-	if !e.copiedAt.IsZero() && time.Since(e.copiedAt) <= 1500*time.Millisecond {
-		return i18n.T("op.copied", m.state.Language)
-	}
-	return i18n.T("op.copy", m.state.Language)
-}
-
 func (m *AppModel) bubbleActionsForEntry(e historyEntry) []messages.BubbleAction {
 	if (e.kind != "ai" && e.kind != "agent.final") || strings.TrimSpace(e.content) == "" {
 		return nil
 	}
-	actions := []messages.BubbleAction{
-		{Kind: "copy", Label: m.copyButtonLabel(e)},
-	}
+	// 文本流布局下 Label 不再用于内联按钮；弹框展示文案由 actionLabel(kind) 解析。
+	actions := []messages.BubbleAction{{Kind: "copy"}}
 	if strings.EqualFold(strings.TrimSpace(e.executionMode), "plan") && strings.TrimSpace(e.rawMarkdown) != "" {
-		actions = append(actions, messages.BubbleAction{
-			Kind:  "download",
-			Label: i18n.T("op.download", m.state.Language),
-		})
+		actions = append(actions, messages.BubbleAction{Kind: "download"})
 	}
 	return actions
 }
@@ -2495,8 +2520,9 @@ func runeIndex(s string, byteIdx int) int {
 	return len([]rune(s[:byteIdx]))
 }
 
-// trackBubbleActionsAt 跟踪渲染后内容中气泡操作按钮的位置
-// 用于后续的鼠标点击事件处理
+// trackBubbleActionsAt 登记一条可点击消息文本在内容区中的行范围。
+// 文本流布局下不再有内联按钮，改为把整条 AI/子 Agent 回复文本登记为
+// 可点击区，点击时弹出操作选择框（复制/下载）。
 func (m *AppModel) trackBubbleActionsAt(startLine int, idx int, e historyEntry, rendered string) {
 	if m.msgRenderer == nil {
 		return
@@ -2509,71 +2535,113 @@ func (m *AppModel) trackBubbleActionsAt(startLine int, idx int, e historyEntry, 
 	if payload == "" {
 		return
 	}
-	lines := strings.Split(stripANSI(rendered), "\n")
-	for i, line := range lines {
-		for _, action := range actions {
-			label := strings.TrimSpace(action.Label)
-			if label == "" {
-				continue
-			}
-			bi := strings.LastIndex(line, label)
-			if bi < 0 {
-				continue
-			}
-			x0 := runeIndex(line, bi)
-			x1 := x0 + len([]rune(label)) - 1
-			m.actionHits = append(m.actionHits, bubbleActionHit{
-				y:      startLine + i,
-				x0:     x0,
-				x1:     x1,
-				idx:    idx,
-				action: action.Kind,
-				text:   payload,
-			})
+	kinds := make([]string, 0, len(actions))
+	for _, a := range actions {
+		if k := strings.TrimSpace(a.Kind); k != "" {
+			kinds = append(kinds, k)
 		}
 	}
+	if len(kinds) == 0 {
+		return
+	}
+	lineCount := strings.Count(rendered, "\n") + 1
+	m.actionHits = append(m.actionHits, bubbleActionHit{
+		y:       startLine,
+		lines:   lineCount,
+		idx:     idx,
+		actions: kinds,
+		text:    payload,
+	})
 }
 
-// tryHandleBubbleActionAt 尝试处理指定坐标处的气泡操作点击
-// 返回处理命令或 nil（如果点击位置没有按钮）
+// tryHandleBubbleActionAt 尝试处理指定坐标处的消息点击。
+// 命中可点击消息文本时弹出操作选择框；未命中返回 nil。
 func (m *AppModel) tryHandleBubbleActionAt(x, y int) tea.Cmd {
+	if m.actionPopup != nil {
+		return nil
+	}
 	ox, oy := m.shell.ContentOrigin()
 	if x < ox || y < oy {
 		return nil
 	}
-	lx := x - ox
 	ly := y - oy
 	if ly < 0 || ly >= m.shell.ContentHeight() {
 		return nil
 	}
 	line := m.shell.ContentYOffset() + ly
 	for _, h := range m.actionHits {
-		if h.y != line {
+		if line < h.y || line >= h.y+h.lines {
 			continue
 		}
-		if lx < h.x0 || lx > h.x1 {
-			continue
-		}
-		switch {
-		case h.matches("copy"):
-			// 复制操作：将文本写入剪贴板
-			if err := clipboard.WriteAll(h.text); err != nil {
-				m.appendSystem(i18n.T("tool.error.copy_error", m.state.Language, err), "error")
-				return func() tea.Msg { return nil }
-			}
-			if h.idx >= 0 && h.idx < len(m.history) {
-				m.history[h.idx].copiedAt = time.Now()
-			}
-			m.rebuildHistoryContent()
-			m.appendSystem(i18n.T("clipboard.copied", m.state.Language), "success")
-			// 1.6 秒后清除复制成功提示
-			return tea.Tick(1600*time.Millisecond, func(time.Time) tea.Msg { return clearCopiedMsg{idx: h.idx} })
-		case h.matches("download"):
-			// 下载操作：保存计划文件
-			return m.handlePlanDownloadAction(h.idx)
-		}
+		m.openActionPopup(h)
+		return nil
 	}
 	return nil
+}
+
+// openActionPopup 根据命中区构造操作选择弹框。
+func (m *AppModel) openActionPopup(h bubbleActionHit) {
+	items := make([]confirm.ActionItem, 0, len(h.actions))
+	for _, kind := range h.actions {
+		items = append(items, confirm.ActionItem{
+			Kind:  kind,
+			Label: m.actionLabel(kind),
+		})
+	}
+	m.actionPopup = confirm.NewActionPopup(m.styles, m.state.Language, confirm.ActionRequest{
+		Actions: items,
+		Payload: h.text,
+		Index:   h.idx,
+	})
+	m.actionPopup.SetSize(m.width, m.height)
+	m.shell.BlurInput()
+}
+
+// actionLabel 返回动作在弹框中的展示文案。
+func (m *AppModel) actionLabel(kind string) string {
+	switch strings.TrimSpace(strings.ToLower(kind)) {
+	case "copy":
+		return i18n.T("op.copy", m.state.Language)
+	case "download":
+		return i18n.T("op.download", m.state.Language)
+	default:
+		return kind
+	}
+}
+
+// handleActionResult 处理操作弹框的结果：执行复制/下载，并关闭弹框。
+func (m *AppModel) handleActionResult(msg confirm.ActionResultMsg) tea.Cmd {
+	idx := msg.Index
+	closePopup := func() {
+		m.actionPopup = nil
+		if m.activeView == "shell" {
+			m.shell.FocusInput()
+		}
+	}
+
+	switch strings.TrimSpace(strings.ToLower(msg.Kind)) {
+	case "cancel":
+		closePopup()
+		return nil
+	case "copy":
+		closePopup()
+		if err := clipboard.WriteAll(msg.Payload); err != nil {
+			m.appendSystem(i18n.T("tool.error.copy_error", m.state.Language, err), "error")
+			return func() tea.Msg { return nil }
+		}
+		if idx >= 0 && idx < len(m.history) {
+			m.history[idx].copiedAt = time.Now()
+		}
+		m.rebuildHistoryContent()
+		m.appendSystem(i18n.T("clipboard.copied", m.state.Language), "success")
+		return tea.Tick(1600*time.Millisecond, func(time.Time) tea.Msg { return clearCopiedMsg{idx: idx} })
+	case "download":
+		closePopup()
+		return m.handlePlanDownloadAction(idx)
+	default:
+		closePopup()
+		return nil
+	}
 }
 
 // handlePlanDownloadAction 处理计划文件下载操作
