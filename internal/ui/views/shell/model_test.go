@@ -67,6 +67,37 @@ func TestViewRendersPromptOverlayAboveStatusBar(t *testing.T) {
 	}
 }
 
+// TestProcessingShowsAnimatedSpinnerInContent verifies that while the turn is
+// in flight but no content has streamed yet, the conversation area shows an
+// animated "thinking" spinner so the user knows it isn't frozen.
+func TestProcessingShowsAnimatedSpinnerInContent(t *testing.T) {
+	s := styles.NewStyles(styles.GetTheme("dark"))
+	model := New(100, 30, s, "zh")
+	model.SetContent("历史消息")
+	model.SetProcessing(true)
+	model.statusAnim = 1
+
+	out := stripANSIForTest(model.renderInlineLive())
+	if out == "" {
+		t.Fatalf("expected an animated spinner while processing with no live content, got empty")
+	}
+	// The spinner should carry a braille glyph and the localized thinking label.
+	if !strings.ContainsAny(out[:min(len(out), 4)], "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
+		t.Fatalf("expected spinner glyph at start of inline live, got %q", out)
+	}
+}
+
+// TestNoSpinnerWhenIdle verifies the spinner disappears once processing stops.
+func TestNoSpinnerWhenIdle(t *testing.T) {
+	s := styles.NewStyles(styles.GetTheme("dark"))
+	model := New(100, 30, s, "zh")
+	model.SetContent("历史消息")
+	// Not processing, no live content → no inline live block.
+	if got := model.renderInlineLive(); got != "" {
+		t.Fatalf("expected no inline live when idle, got %q", got)
+	}
+}
+
 func TestRightKeyAcceptsPredictionOnlyWhenInputEmpty(t *testing.T) {
 	s := styles.NewStyles(styles.GetTheme("dark"))
 	model := New(100, 30, s, "zh")

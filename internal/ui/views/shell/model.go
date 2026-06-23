@@ -236,18 +236,26 @@ func (m Model) livePanelOuterHeight() int {
 }
 
 func (m Model) inlineLiveHeight() int {
-	if m.livePanelMode != 0 || strings.TrimSpace(m.live) == "" {
+	if m.livePanelMode != 0 {
 		return 0
 	}
-	maxH := min(max(m.height/3, 5), 14)
-	if maxH <= 0 {
-		return 0
+	if strings.TrimSpace(m.live) != "" {
+		maxH := min(max(m.height/3, 5), 14)
+		if maxH <= 0 {
+			return 0
+		}
+		h := m.liveHeight
+		if h <= 0 {
+			h = lipgloss.Height(m.live)
+		}
+		return min(max(h, 1), maxH)
 	}
-	h := m.liveHeight
-	if h <= 0 {
-		h = lipgloss.Height(m.live)
+	// No streamed content yet, but we're processing → reserve a line for the
+	// animated "thinking" spinner so the user sees activity, not a frozen UI.
+	if m.processing || m.thinking {
+		return 1
 	}
-	return min(max(h, 1), maxH)
+	return 0
 }
 
 func (m Model) liveReserveHeight() int {
@@ -327,11 +335,35 @@ func (m Model) renderInlineLive() string {
 	if bodyH <= 0 {
 		return ""
 	}
+	// No streamed content yet but processing → show an animated spinner so
+	// the user knows the turn is in flight, not frozen.
+	if strings.TrimSpace(m.live) == "" {
+		return m.processingSpinner()
+	}
 	body := m.live
 	if lipgloss.Height(body) > bodyH {
 		body = tailLines(body, bodyH)
 	}
 	return body
+}
+
+// processingSpinner renders a single-line animated "thinking" indicator that
+// appears in the conversation stream while the turn is in flight but no content
+// has streamed yet. It reuses the statusTickMsg-driven statusAnim frame counter
+// so it stays in sync with the status-bar animation.
+func (m Model) processingSpinner() string {
+	label := i18n.T("status.thinking_active", m.language)
+	if !m.thinking {
+		label = i18n.T("status.processing", m.language)
+	}
+	spinner := spinnerFrame(m.statusAnim)
+	return m.styles.TextInfo.Render(spinner + " " + label + animatedDots(m.statusAnim))
+}
+
+// spinnerFrame maps an animation frame index to a braille spinner glyph.
+func spinnerFrame(frame int) string {
+	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	return frames[frame%len(frames)]
 }
 
 // SetMode 设置模式
