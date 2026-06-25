@@ -16,10 +16,8 @@ func RenderInlinePermission(s *styles.Styles, lang string, req Request, selected
 		return ""
 	}
 
+	// 自适应终端宽度，不再封顶 100 列，避免宽终端右侧留大段空白。
 	panelW := width - 2
-	if panelW > 100 {
-		panelW = 100
-	}
 	if panelW < 32 {
 		panelW = 32
 	}
