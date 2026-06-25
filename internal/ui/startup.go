@@ -8,11 +8,13 @@ package ui
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/i18n"
 	sidecarclient "github.com/dreamSailing/eos/pkg/coreapi/sidecar/client"
 
@@ -87,6 +89,7 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 func tuiSidecarClientOptions(opts TUIOptions) sidecarclient.Options {
 	return sidecarclient.Options{
 		Env:              tuiOptionEnv(opts),
+		Stderr:           newSidecarStderrWriter(),
 		VerifyChecksum:   true,
 		RequireSignature: true,
 	}
@@ -98,6 +101,8 @@ func tuiOptionEnv(opts TUIOptions) map[string]string {
 	env := map[string]string{}
 	// Production TUI never inherits a fake provider selection from the parent shell.
 	env["EOS_MODEL_PROVIDER"] = ""
+	// 诊断：开启 sidecar debug 日志，配合 newSidecarStderrWriter 落盘排查 turn 恢复卡死。
+	env["EOS_LOG_LEVEL"] = "debug"
 	if storeDir := defaultRustCoreStoreDir(); storeDir != "" {
 		env["EOS_CORE_STORE_DIR"] = storeDir
 	}
@@ -133,4 +138,21 @@ func defaultRustCoreStoreDir() string {
 		return filepath.Join(dir, ".eos", "core")
 	}
 	return ""
+}
+
+// newSidecarStderrWriter 把 eos-core sidecar 的 stderr（tracing 日志与 panic）
+// 落盘到日志目录，避免被 io.Discard 吞掉导致排查无痕。打开失败时回退到丢弃，
+// 不阻断 TUI 启动。
+func newSidecarStderrWriter() io.Writer {
+	dir := filepath.Join(config.ConfiguredLogDir(), "core")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		slog.Error("ui.sidecar.stderr.log_dir.error", "error", err)
+		return io.Discard
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "eos-core.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		slog.Error("ui.sidecar.stderr.open.error", "error", err)
+		return io.Discard
+	}
+	return f
 }
