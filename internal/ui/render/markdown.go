@@ -5,7 +5,6 @@ package render
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"fmt"
 	"strings"
@@ -184,6 +183,167 @@ func (r *MarkdownRenderer) Render(text string) string {
 		return strings.TrimRight(text, "\n")
 	}
 	return strings.TrimRight(out, "\n")
+}
+
+// RenderStreaming applies a lightweight, line-by-line markdown styling that
+// is cheap enough to run on every streaming delta. It deliberately avoids the
+// full glamour AST pass (which can reflow/flicker on half-written fences or
+// tables) and only styles constructs that are safe on partial input:
+// headings, inline code, bold, italic, links, blockquotes and list markers.
+// Fenced code blocks (``` / ~~~) are rendered verbatim and get the full
+// glamour treatment once the segment completes (Render with done=true).
+func (r *MarkdownRenderer) RenderStreaming(text string) string {
+	if text == "" {
+		return ""
+	}
+	styles := r.styles
+	if styles == nil {
+		styles = NewRenderStyles()
+	}
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	lines := strings.Split(text, "\n")
+	out := make([]string, 0, len(lines))
+	inFence := false
+	for _, line := range lines {
+		trim := strings.TrimLeft(line, " \t")
+		if strings.HasPrefix(trim, "```") || strings.HasPrefix(trim, "~~~") {
+			inFence = !inFence
+			out = append(out, styles.CodeBlock.Render(line))
+			continue
+		}
+		if inFence {
+			out = append(out, styles.CodeBlock.Render(line))
+			continue
+		}
+		out = append(out, renderStreamingLine(line, styles))
+	}
+	return strings.TrimRight(strings.Join(out, "\n"), "\n")
+}
+
+// renderStreamingLine styles one non-fenced markdown line.
+func renderStreamingLine(line string, s *RenderStyles) string {
+	if h, ok := matchHeading(line); ok {
+		return s.Header.Render(h)
+	}
+	trim := strings.TrimLeft(line, " \t")
+	if strings.HasPrefix(trim, ">") {
+		rest := strings.TrimSpace(strings.TrimPrefix(trim, ">"))
+		if rest == "" {
+			return s.Quote.Render("")
+		}
+		return s.Quote.Render(renderInlineMarkdown(rest, s))
+	}
+	if len(trim) >= 2 && (trim[0] == '-' || trim[0] == '*' || trim[0] == '+') && trim[1] == ' ' {
+		return s.List.Render(string(trim[0])) + " " + renderInlineMarkdown(trim[2:], s)
+	}
+	if body, ok := matchOrderedListItem(trim); ok {
+		sep := strings.IndexAny(body, ".)")
+		return s.List.Render(body[:sep+1]) + " " + renderInlineMarkdown(body[sep+1:], s)
+	}
+	return renderInlineMarkdown(line, s)
+}
+
+func matchHeading(line string) (string, bool) {
+	trim := strings.TrimLeft(line, " \t")
+	if !strings.HasPrefix(trim, "#") {
+		return "", false
+	}
+	level := 0
+	for level < len(trim) && trim[level] == '#' && level < 6 {
+		level++
+	}
+	rest := trim[level:]
+	if rest == "" {
+		return "", false
+	}
+	if rest[0] != ' ' && rest[0] != '\t' {
+		return "", false
+	}
+	return strings.TrimSpace(rest), true
+}
+
+func matchOrderedListItem(trim string) (string, bool) {
+	i := 0
+	for i < len(trim) && trim[i] >= '0' && trim[i] <= '9' {
+		i++
+	}
+	if i == 0 || i >= len(trim) {
+		return "", false
+	}
+	if trim[i] != '.' && trim[i] != ')' {
+		return "", false
+	}
+	if i+1 >= len(trim) || trim[i+1] != ' ' {
+		return "", false
+	}
+	return trim, true
+}
+
+func renderInlineMarkdown(text string, s *RenderStyles) string {
+	if text == "" {
+		return ""
+	}
+	text = applyPaired(text, "`", func(v string) string { return s.InlineCode.Render(v) })
+	text = applyPaired(text, "**", func(v string) string { return s.Bold.Render(v) })
+	text = applyPaired(text, "__", func(v string) string { return s.Bold.Render(v) })
+	text = applyPaired(text, "*", func(v string) string { return s.Italic.Render(v) })
+	text = applyPaired(text, "_", func(v string) string { return s.Italic.Render(v) })
+	text = applyLinks(text, s)
+	return text
+}
+
+func applyPaired(text, marker string, wrap func(string) string) string {
+	if !strings.Contains(text, marker) {
+		return text
+	}
+	var b strings.Builder
+	rest := text
+	for {
+		idx := strings.Index(rest, marker)
+		if idx < 0 {
+			b.WriteString(rest)
+			break
+		}
+		b.WriteString(rest[:idx])
+		after := rest[idx+len(marker):]
+		end := strings.Index(after, marker)
+		if end < 0 {
+			b.WriteString(marker)
+			b.WriteString(after)
+			break
+		}
+		b.WriteString(wrap(after[:end]))
+		rest = after[end+len(marker):]
+	}
+	return b.String()
+}
+
+func applyLinks(text string, s *RenderStyles) string {
+	for {
+		open := strings.IndexByte(text, '[')
+		if open < 0 {
+			break
+		}
+		close := strings.IndexByte(text[open:], ']')
+		if close < 0 {
+			break
+		}
+		labelEnd := open + close
+		if labelEnd+1 >= len(text) || text[labelEnd+1] != '(' {
+			break
+		}
+		urlStart := labelEnd + 2
+		urlEnd := strings.IndexByte(text[urlStart:], ')')
+		if urlEnd < 0 {
+			break
+		}
+		label := text[open+1 : labelEnd]
+		url := text[urlStart : urlStart+urlEnd]
+		rendered := s.Link.Render(label)
+		_ = url
+		text = text[:open] + rendered + text[urlStart+urlEnd+1:]
+	}
+	return text
 }
 
 func (r *MarkdownRenderer) rebuild() {

@@ -82,10 +82,18 @@ func (r *Renderer) displayAgentName(raw string) string {
 }
 
 func (r *Renderer) maybeRenderMarkdown(content string, done bool) string {
-	if !done || !r.mdEnabled || r.md == nil {
+	if !r.mdEnabled || r.md == nil {
 		return content
 	}
-	return r.md.Render(content)
+	if done {
+		// Segment complete: full glamour pass (AST reflow, code highlighting,
+		// tables) for the final render.
+		return r.md.Render(content)
+	}
+	// Streaming (done=false): cheap line-by-line styling that is safe on
+	// partial input. Glamour is avoided mid-stream because half-written
+	// fences/tables would reflow and flicker on every delta.
+	return r.md.RenderStreaming(content)
 }
 
 func (r *Renderer) RenderUserInputAt(content string, ts time.Time) string {
@@ -107,7 +115,7 @@ func (r *Renderer) RenderAIResponseAt(content string, tokens int, duration time.
 		Label:     r.mainLabel,
 		Event:     "result",
 		IsMain:    true,
-		PreStyled: done && r.mdEnabled,
+		PreStyled: r.mdEnabled,
 		Content:   r.maybeRenderMarkdown(content, done),
 		Timestamp: ts,
 		Tokens:    tokens,
@@ -127,7 +135,7 @@ func (r *Renderer) RenderAIResponseAtWithActions(content string, tokens int, dur
 		Label:     r.mainLabel,
 		Event:     "result",
 		IsMain:    true,
-		PreStyled: done && r.mdEnabled,
+		PreStyled: r.mdEnabled,
 		Content:   r.maybeRenderMarkdown(content, done),
 		Timestamp: ts,
 		Tokens:    tokens,
