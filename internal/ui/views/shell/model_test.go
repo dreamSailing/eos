@@ -144,3 +144,60 @@ func TestTabKeyAcceptsPredictionWhenHintsHidden(t *testing.T) {
 		t.Fatalf("input=%q, want accepted prediction", got)
 	}
 }
+
+// TestEnterAcceptsSlashHintAndRestoresInputBoxPosition is a regression test
+// for the bug where accepting a slash hint via Enter hid the hints panel
+// but left the input box lifted (content area stayed shrunk) because the
+// layout was not recomputed.
+func TestEnterAcceptsSlashHintAndRestoresInputBoxPosition(t *testing.T) {
+	s := styles.NewStyles(styles.GetTheme("dark"))
+	model := New(100, 30, s, "zh")
+	baseline := model.contentH
+
+	// Typing "/" surfaces the slash command hints, which lifts the input box.
+	model.SetInputValue("/")
+	model.ShowSlashHints("")
+	if !model.IsHintsVisible() {
+		t.Fatalf("expected slash hints to be visible after ShowSlashHints")
+	}
+	if model.contentH >= baseline {
+		t.Fatalf("expected content height to shrink while hints visible: got %d, baseline %d", model.contentH, baseline)
+	}
+
+	// Accepting the hint via Enter must hide the hints AND restore the layout.
+	handled, _ := model.HandleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if !handled {
+		t.Fatalf("expected Enter to be handled while hints visible")
+	}
+	if model.IsHintsVisible() {
+		t.Fatalf("expected hints to be hidden after Enter")
+	}
+	if model.contentH != baseline {
+		t.Fatalf("expected content height to return to baseline %d after accepting hint, got %d", baseline, model.contentH)
+	}
+}
+
+// TestEscDismissesSlashHintAndRestoresInputBoxPosition covers the Esc path,
+// which must likewise recompute the layout so the input box drops back.
+func TestEscDismissesSlashHintAndRestoresInputBoxPosition(t *testing.T) {
+	s := styles.NewStyles(styles.GetTheme("dark"))
+	model := New(100, 30, s, "zh")
+	baseline := model.contentH
+
+	model.SetInputValue("/")
+	model.ShowSlashHints("")
+	if !model.IsHintsVisible() {
+		t.Fatalf("expected slash hints to be visible")
+	}
+
+	handled, _ := model.HandleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	if !handled {
+		t.Fatalf("expected Esc to be handled while hints visible")
+	}
+	if model.IsHintsVisible() {
+		t.Fatalf("expected hints to be hidden after Esc")
+	}
+	if model.contentH != baseline {
+		t.Fatalf("expected content height to return to baseline %d after Esc, got %d", baseline, model.contentH)
+	}
+}

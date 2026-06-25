@@ -955,7 +955,7 @@ func (m *Model) HandleKey(msg tea.KeyMsg) (handled bool, cmd tea.Cmd) {
 			if selected != "" {
 				m.acceptHint(selected)
 			}
-			m.hints.Hide()
+			m.HideHints()
 			m.input.Focus()
 			return true, nil
 		case "enter":
@@ -964,11 +964,11 @@ func (m *Model) HandleKey(msg tea.KeyMsg) (handled bool, cmd tea.Cmd) {
 			if selected != "" {
 				m.acceptHint(selected)
 			}
-			m.hints.Hide()
+			m.HideHints()
 			m.input.Focus()
 			return true, nil
 		case "esc":
-			m.hints.Hide()
+			m.HideHints()
 			m.input.Clear()
 			m.input.Focus()
 			return true, nil
