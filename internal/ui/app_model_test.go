@@ -104,7 +104,7 @@ func TestInitialSetupKeepsWelcomeAfterFirstModelAdded(t *testing.T) {
 		t.Fatalf("expected welcome screen without success history message, got %q", view)
 	}
 	// Redesigned welcome card shows subtitle + app version, not model/API info.
-	if !strings.Contains(view, "DreamSailing AI Assistant") {
+	if !strings.Contains(view, "AI 领航，助你破浪前行") {
 		t.Fatalf("expected welcome card subtitle to remain visible, got %q", view)
 	}
 	if !strings.Contains(view, "EOS v1.0.0-beta.1") {

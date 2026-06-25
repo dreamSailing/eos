@@ -194,7 +194,7 @@ func (w *WelcomeCard) View() string {
 
 	// 副标题行
 	lines = append(lines, "")
-	lines = append(lines, "DreamSailing AI Assistant")
+	lines = append(lines, "AI 领航，助你破浪前行")
 	lines = append(lines, version.AppName+" "+w.appVersion)
 
 	// 中间空白（填充到倒数3行）
