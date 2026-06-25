@@ -171,3 +171,133 @@ func streamContentWidth(width int) int {
 	}
 	return w
 }
+
+// toolDetailBlock 是工具调用的一行明细（参数键值或结果摘要）。
+type toolDetailBlock struct {
+	label string
+	value string
+	kind  string // "command", "path", "pattern", "meta"
+}
+
+// renderToolStream 渲染工具调用文本流，对齐 codex 的 exec/tool cell 视觉：
+//
+//	首行：状态圆点 + 工具名(加粗) + 调用摘要(inline)，running 时附 spinner 文案
+//	明细：参数键值缩进于 "  └ " 树前缀下
+//	结果：输出缩进于 "  └ " 树前缀下，dim 风格
+//	尾行：状态时长（success/error）
+//
+// 无边框、无背景填充，与 user/ai 文本流保持一致。
+func renderToolStream(s *styles.Styles, name string, params map[string]any, status, result string, duration time.Duration, width int) string {
+	w := streamContentWidth(width)
+	var b strings.Builder
+
+	// 状态圆点 + 标题词
+	var dot, title string
+	switch status {
+	case "running":
+		dot = s.StreamToolRunning.Render("●")
+		title = "Running"
+	case "success":
+		dot = s.StreamToolSuccess.Render("●")
+		title = "Ran"
+	case "error", "canceled":
+		dot = s.StreamToolErrorDot.Render("●")
+		if status == "canceled" {
+			title = "Canceled"
+		} else {
+			title = "Failed"
+		}
+	default:
+		dot = s.StreamToolRunning.Render("●")
+		title = "Tool"
+	}
+
+	toolName := s.StreamToolName.Render(displayToolName(name))
+
+	// 首行：圆点 标题 工具名  <调用摘要>
+	summary := toolInvocationSummary(name, params)
+	if summary != "" {
+		summary = truncateInline(summary, w-4)
+	}
+	headFirst := dot + " " + title + " " + toolName
+	if summary != "" {
+		headFirst += " " + s.StreamToolDetail.Render(summary)
+	}
+	b.WriteString(headFirst)
+
+	// 明细块（参数键值）
+	blocks := buildToolDetailBlocks(name, params)
+	detailPrefix := s.StreamToolDetail.Render("  └ ")
+	contPrefix := "    "
+	hasDetail := len(blocks) > 0
+	if hasDetail {
+		for _, blk := range blocks {
+			val := strings.TrimSpace(blk.value)
+			if blk.kind == "command" && !strings.Contains(val, "\n") && val != "" {
+				val = "$ " + val
+			}
+			val = truncateBlockValue(val, 800)
+			labelLine := s.StreamToolDetail.Render(blk.label + ":")
+			lines := wrapText(val, w-4)
+			if len(lines) == 0 {
+				lines = []string{""}
+			}
+			b.WriteString("\n")
+			b.WriteString(detailPrefix + labelLine + " " + lines[0])
+			for _, ln := range lines[1:] {
+				b.WriteString("\n")
+				b.WriteString(contPrefix + "  " + ln)
+			}
+		}
+	}
+
+	// 结果输出
+	if out := strings.TrimSpace(result); out != "" {
+		out = strings.ReplaceAll(out, "\r\n", "\n")
+		out = strings.ReplaceAll(out, "\r", "")
+		out = strings.ReplaceAll(out, "\t", "    ")
+		limit := 1200
+		if strings.ToLower(strings.TrimSpace(name)) == "bash" {
+			limit = 200000
+		}
+		out = truncateBlockValue(out, limit)
+		resLines := wrapText(out, w-4)
+		b.WriteString("\n")
+		b.WriteString(detailPrefix + strings.Join(resLines, "\n"+contPrefix))
+	}
+
+	// 状态尾行（完成态显示时长）
+	if status == "success" || status == "error" || status == "canceled" {
+		var tail string
+		switch status {
+		case "success":
+			tail = s.StreamToolSuccess.Render(fmt.Sprintf("✓ %s", formatDuration(duration)))
+		case "error":
+			tail = s.StreamToolErrorDot.Render(fmt.Sprintf("✗ %s", formatDuration(duration)))
+		case "canceled":
+			tail = s.StreamToolErrorDot.Render("canceled")
+		}
+		if tail != "" {
+			b.WriteString("\n")
+			b.WriteString("  " + tail)
+		}
+	}
+
+	return b.String()
+}
+
+// toolInvocationSummary 生成首行的调用摘要（如 path 或 command 的首行）。
+func toolInvocationSummary(name string, params map[string]any) string {
+	blocks := buildToolDetailBlocks(name, params)
+	for _, b := range blocks {
+		switch b.kind {
+		case "command", "path", "pattern":
+			s := strings.TrimSpace(b.value)
+			if i := strings.IndexByte(s, '\n'); i >= 0 {
+				s = s[:i]
+			}
+			return s
+		}
+	}
+	return ""
+}

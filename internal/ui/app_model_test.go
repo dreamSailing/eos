@@ -103,14 +103,12 @@ func TestInitialSetupKeepsWelcomeAfterFirstModelAdded(t *testing.T) {
 	if strings.Contains(view, "Added and switched to model: first-model") {
 		t.Fatalf("expected welcome screen without success history message, got %q", view)
 	}
-	if !strings.Contains(view, "AI Powered Development Assistant") {
-		t.Fatalf("expected welcome card to remain visible, got %q", view)
+	// Redesigned welcome card shows subtitle + app version, not model/API info.
+	if !strings.Contains(view, "DreamSailing AI Assistant") {
+		t.Fatalf("expected welcome card subtitle to remain visible, got %q", view)
 	}
-	if !strings.Contains(view, "demo-model") {
-		t.Fatalf("expected welcome card to show new model info, got %q", view)
-	}
-	if !strings.Contains(view, "https://example.com/v1") {
-		t.Fatalf("expected welcome card to show updated API info, got %q", view)
+	if !strings.Contains(view, "EOS v1.0.0-beta.1") {
+		t.Fatalf("expected welcome card to show app version, got %q", view)
 	}
 }
 

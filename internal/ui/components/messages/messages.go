@@ -128,59 +128,21 @@ type ToolCallMessage struct {
 func (m *ToolCallMessage) Type() MessageType { return MsgTypeTool }
 
 func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
-	var result strings.Builder
-	bw := bubbleWidth(width)
-	contentW := bw - 4
-	if contentW < 10 {
-		contentW = width - 4
-	}
-	toolLower := strings.ToLower(strings.TrimSpace(m.Name))
+	return renderToolStream(s, m.Name, m.Params, m.Status, m.Result, m.Duration, width)
+}
 
-	// 头部
-	icon := "🔧"
-	statusStr := ""
-	switch m.Status {
-	case "running":
-		statusStr = s.TextInfo.Render("⏳ Executing...")
-	case "success":
-		icon = "✅"
-		statusStr = s.MsgToolSuccess.Render(fmt.Sprintf("✓ Success · %s", formatDuration(m.Duration)))
-	case "error":
-		icon = "❌"
-		statusStr = s.MsgToolError.Render(fmt.Sprintf("✗ Failed · %s", formatDuration(m.Duration)))
-	}
-
-	headerLeft := s.MsgToolHeader.Render(fmt.Sprintf("%s Tool: %s", icon, displayToolName(m.Name)))
-	result.WriteString(headerLeft)
-	result.WriteString("\n")
-
-	blockStyle := s.ToolCall
-	resultStyle := s.ToolResult
-	if m.Status == "error" {
-		resultStyle = s.MsgToolError
-	}
-	dividerW := contentW
-	if dividerW > 18 {
-		dividerW = 18
-	}
-	if dividerW < 6 {
-		dividerW = 6
-	}
-	divider := s.TextMuted.Render(strings.Repeat("─", dividerW))
-
-	type detailBlock struct {
-		label string
-		value string
-		kind  string
-	}
-	var blocks []detailBlock
+// buildToolDetailBlocks 按工具类型从 params 提取要展示的明细块，
+// 返回 blocks 与已被消费的参数键集合 shown（供调用方做未识别参数回退）。
+func buildToolDetailBlocks(name string, params map[string]any) []toolDetailBlock {
+	toolLower := strings.ToLower(strings.TrimSpace(name))
+	var blocks []toolDetailBlock
 	shown := map[string]bool{}
 	getStr := func(keys ...string) string {
 		for _, k := range keys {
-			if m.Params == nil {
+			if params == nil {
 				continue
 			}
-			if v, ok := m.Params[k]; ok {
+			if v, ok := params[k]; ok {
 				if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
 					shown[k] = true
 					return s
@@ -190,10 +152,10 @@ func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
 		return ""
 	}
 	getInt := func(key string) (int, bool) {
-		if m.Params == nil {
+		if params == nil {
 			return 0, false
 		}
-		v, ok := m.Params[key]
+		v, ok := params[key]
 		if !ok {
 			return 0, false
 		}
@@ -213,10 +175,10 @@ func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
 	}
 	getStrList := func(keys ...string) string {
 		for _, k := range keys {
-			if m.Params == nil {
+			if params == nil {
 				continue
 			}
-			v, ok := m.Params[k]
+			v, ok := params[k]
 			if !ok || v == nil {
 				continue
 			}
@@ -265,183 +227,91 @@ func (m *ToolCallMessage) Render(s *styles.Styles, width int) string {
 	switch toolLower {
 	case "read", "functions.read":
 		if p := getStr("file_path", "path", "file"); p != "" {
-			blocks = append(blocks, detailBlock{label: "Path", value: p, kind: "path"})
+			blocks = append(blocks, toolDetailBlock{label: "Path", value: p, kind: "path"})
 		}
 		if off, okOff := getInt("offset"); okOff {
 			if lim, okLim := getInt("limit"); okLim {
-				blocks = append(blocks, detailBlock{label: "Range", value: fmt.Sprintf("offset=%d limit=%d", off, lim), kind: "meta"})
+				blocks = append(blocks, toolDetailBlock{label: "Range", value: fmt.Sprintf("offset=%d limit=%d", off, lim), kind: "meta"})
 			} else {
-				blocks = append(blocks, detailBlock{label: "Range", value: fmt.Sprintf("offset=%d", off), kind: "meta"})
+				blocks = append(blocks, toolDetailBlock{label: "Range", value: fmt.Sprintf("offset=%d", off), kind: "meta"})
 			}
 		} else if lim, okLim := getInt("limit"); okLim {
-			blocks = append(blocks, detailBlock{label: "Range", value: fmt.Sprintf("limit=%d", lim), kind: "meta"})
+			blocks = append(blocks, toolDetailBlock{label: "Range", value: fmt.Sprintf("limit=%d", lim), kind: "meta"})
 		}
 	case "grep", "functions.grep":
 		if pat := getStr("pattern"); pat != "" {
-			blocks = append(blocks, detailBlock{label: "Pattern", value: pat, kind: "pattern"})
+			blocks = append(blocks, toolDetailBlock{label: "Pattern", value: pat, kind: "pattern"})
 		}
 		if p := getStr("path"); p != "" {
-			blocks = append(blocks, detailBlock{label: "In", value: p, kind: "path"})
+			blocks = append(blocks, toolDetailBlock{label: "In", value: p, kind: "path"})
 		}
 		if g := getStr("glob"); g != "" {
-			blocks = append(blocks, detailBlock{label: "Glob", value: g, kind: "meta"})
+			blocks = append(blocks, toolDetailBlock{label: "Glob", value: g, kind: "meta"})
 		}
 	case "glob", "functions.glob":
 		if pat := getStr("pattern"); pat != "" {
-			blocks = append(blocks, detailBlock{label: "Pattern", value: pat, kind: "pattern"})
+			blocks = append(blocks, toolDetailBlock{label: "Pattern", value: pat, kind: "pattern"})
 		}
 		if p := getStr("path"); p != "" {
-			blocks = append(blocks, detailBlock{label: "In", value: p, kind: "path"})
+			blocks = append(blocks, toolDetailBlock{label: "In", value: p, kind: "path"})
 		}
 	case "searchcodebase", "functions.searchcodebase":
 		if req := getStr("information_request"); req != "" {
-			blocks = append(blocks, detailBlock{label: "Query", value: req, kind: "pattern"})
+			blocks = append(blocks, toolDetailBlock{label: "Query", value: req, kind: "pattern"})
 		}
 	case "runcommand", "functions.runcommand":
 		if cmd := getStr("command"); cmd != "" {
 			cmd = strings.ReplaceAll(cmd, "\r\n", "\n")
-			blocks = append(blocks, detailBlock{label: "Command", value: cmd, kind: "command"})
+			blocks = append(blocks, toolDetailBlock{label: "Command", value: cmd, kind: "command"})
 		}
 		if cwd := getStr("cwd"); cwd != "" {
-			blocks = append(blocks, detailBlock{label: "Cwd", value: cwd, kind: "path"})
+			blocks = append(blocks, toolDetailBlock{label: "Cwd", value: cwd, kind: "path"})
 		}
 		if ct := getStr("command_type"); ct != "" {
-			blocks = append(blocks, detailBlock{label: "Type", value: ct, kind: "meta"})
+			blocks = append(blocks, toolDetailBlock{label: "Type", value: ct, kind: "meta"})
 		}
-		if b, ok := m.Params["blocking"].(bool); ok {
+		if b, ok := params["blocking"].(bool); ok {
 			shown["blocking"] = true
-			blocks = append(blocks, detailBlock{label: "Blocking", value: fmt.Sprintf("%v", b), kind: "meta"})
+			blocks = append(blocks, toolDetailBlock{label: "Blocking", value: fmt.Sprintf("%v", b), kind: "meta"})
 		}
 	case "webfetch", "functions.webfetch":
 		if url := getStr("url"); url != "" {
-			blocks = append(blocks, detailBlock{label: "URL", value: url, kind: "path"})
+			blocks = append(blocks, toolDetailBlock{label: "URL", value: url, kind: "path"})
 		}
 	case "websearch", "functions.websearch":
 		if q := getStr("query"); q != "" {
-			blocks = append(blocks, detailBlock{label: "Query", value: q, kind: "pattern"})
+			blocks = append(blocks, toolDetailBlock{label: "Query", value: q, kind: "pattern"})
 		}
 	case "deletefile", "functions.deletefile":
 		if fp := getStrList("file_paths", "paths", "files"); fp != "" {
-			blocks = append(blocks, detailBlock{label: "Paths", value: fp, kind: "path"})
+			blocks = append(blocks, toolDetailBlock{label: "Paths", value: fp, kind: "path"})
 		}
 	default:
 		if cmd := getStr("command"); cmd != "" {
-			blocks = append(blocks, detailBlock{label: "Command", value: cmd, kind: "command"})
+			blocks = append(blocks, toolDetailBlock{label: "Command", value: cmd, kind: "command"})
 		} else if p := getStr("path", "file_path", "file"); p != "" {
-			blocks = append(blocks, detailBlock{label: "Path", value: p, kind: "path"})
+			blocks = append(blocks, toolDetailBlock{label: "Path", value: p, kind: "path"})
 		} else if fp := getStrList("file_paths", "paths", "files"); fp != "" {
-			blocks = append(blocks, detailBlock{label: "Paths", value: fp, kind: "path"})
+			blocks = append(blocks, toolDetailBlock{label: "Paths", value: fp, kind: "path"})
 		}
 	}
 
-	if len(blocks) > 0 {
-		var summary string
-		summaryFromLabel := ""
-		for _, b := range blocks {
-			switch b.kind {
-			case "command", "path", "pattern":
-				summary = strings.TrimSpace(b.value)
-				summaryFromLabel = b.label
-			default:
-				continue
-			}
-			if summary != "" {
-				break
-			}
-		}
-		if summary != "" {
-			summaryLine := summary
-			if i := strings.IndexByte(summaryLine, '\n'); i >= 0 {
-				summaryLine = summaryLine[:i]
-			}
-			summaryLine = truncateInline(summaryLine, 64)
-			result.WriteString(s.TextMuted.Render(summaryLine))
-			result.WriteString("\n")
-		}
-		skipBlocks := false
-		if toolLower == "fs" && summaryFromLabel == "Path" {
-			skipBlocks = true
-		}
-		if toolLower == "read" || toolLower == "functions.read" {
-			skipBlocks = true
-		}
-		needDivider := len(m.Params) > 0 || strings.TrimSpace(m.Result) != ""
-		if needDivider {
-			result.WriteString(divider)
-			result.WriteString("\n")
-		}
-		if !skipBlocks {
-			for _, b := range blocks {
-				result.WriteString(s.TextMuted.Render("• " + b.label + ":"))
-				result.WriteString("\n")
-				val := strings.TrimSpace(b.value)
-				if b.kind == "command" && !strings.Contains(val, "\n") && val != "" {
-					val = "$ " + val
-				}
-				val = truncateBlockValue(val, 800)
-				for _, line := range wrapText(val, contentW-2) {
-					result.WriteString(blockStyle.Render(line))
-					result.WriteString("\n")
-				}
-			}
-		}
-	}
-
-	// 参数
-	if len(m.Params) > 0 {
+	// 未被明细块消费的参数作为通用 meta 块追加，保证信息不丢。
+	if len(params) > 0 {
 		var keys []string
-		for k := range m.Params {
+		for k := range params {
 			if shown[k] {
 				continue
 			}
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		if len(keys) > 0 {
-			result.WriteString(s.TextMuted.Render("Parameters:"))
-			result.WriteString("\n")
-		}
 		for _, k := range keys {
-			v := m.Params[k]
-			paramLine := fmt.Sprintf("  %s: %v", k, v)
-			paramLine = truncateInline(paramLine, 240)
-			wrapped := wrapText(paramLine, contentW)
-			for _, line := range wrapped {
-				result.WriteString(line)
-				result.WriteString("\n")
-			}
+			blocks = append(blocks, toolDetailBlock{label: k, value: fmt.Sprintf("%v", params[k]), kind: "meta"})
 		}
 	}
 
-	// 结果
-	if m.Result != "" {
-		if len(blocks) > 0 || len(m.Params) > 0 {
-			result.WriteString(divider)
-			result.WriteString("\n")
-		}
-		result.WriteString(s.TextMuted.Render("Result:"))
-		result.WriteString("\n")
-		out := strings.TrimSpace(m.Result)
-		out = strings.ReplaceAll(out, "\r\n", "\n")
-		out = strings.ReplaceAll(out, "\r", "")
-		out = strings.ReplaceAll(out, "\t", "    ")
-		limit := 1200
-		if toolLower == "bash" {
-			limit = 200000
-		}
-		out = truncateBlockValue(out, limit)
-		for _, line := range wrapText(out, contentW-2) {
-			result.WriteString(resultStyle.Render(line))
-			result.WriteString("\n")
-		}
-	}
-
-	// 状态
-	if statusStr != "" {
-		result.WriteString(statusStr)
-	}
-
-	return result.String()
+	return blocks
 }
 
 func displayToolName(raw string) string {

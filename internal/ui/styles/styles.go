@@ -82,6 +82,13 @@ type Styles struct {
 	MsgToolSuccess lipgloss.Style
 	MsgToolError   lipgloss.Style
 
+	// 文本流工具调用样式（对齐 codex 的 bullet + 状态标题 + 缩进输出）
+	StreamToolName     lipgloss.Style // 工具名（accent 加粗）
+	StreamToolRunning  lipgloss.Style // running 态圆点
+	StreamToolSuccess  lipgloss.Style // success 圆点/时长
+	StreamToolErrorDot lipgloss.Style // error 圆点
+	StreamToolDetail   lipgloss.Style // 参数/结果明细（dim）
+
 	// 子Agent消息
 	MsgAgent        lipgloss.Style
 	MsgAgentHeader  lipgloss.Style
@@ -292,6 +299,23 @@ func NewStyles(theme *Theme) *Styles {
 
 	s.MsgToolError = lipgloss.NewStyle().
 		Foreground(theme.Error)
+
+	// 文本流工具调用样式
+	s.StreamToolName = lipgloss.NewStyle().
+		Foreground(theme.Accent).
+		Bold(true)
+
+	s.StreamToolRunning = lipgloss.NewStyle().
+		Foreground(theme.Warning)
+
+	s.StreamToolSuccess = lipgloss.NewStyle().
+		Foreground(theme.Success)
+
+	s.StreamToolErrorDot = lipgloss.NewStyle().
+		Foreground(theme.Error)
+
+	s.StreamToolDetail = lipgloss.NewStyle().
+		Foreground(theme.TextMuted)
 
 	// 子Agent消息
 	s.MsgAgent = lipgloss.NewStyle().
