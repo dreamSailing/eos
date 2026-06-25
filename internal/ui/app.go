@@ -554,18 +554,14 @@ func (m *AppModel) Init() tea.Cmd {
 		p.SetSize(m.width, m.height)
 	}
 
-	// 启动事件监听（使用非阻塞方式）
+	// 启动事件监听（阻塞式：parked goroutine，事件到达即返回并重武装）
+	// 之前用非阻塞 select + default 返回 nil，nil 消息不会重武装泵，
+	// 导致 Init 后泵永久死亡、流式 item.delta 事件无人消费，UI 只能等
+	// 阻塞 Invoke() 返回最终文本时一次性显示。改为阻塞 listenEvents()。
 	return tea.Batch(
 		m.shell.Init(),
 		m.ctxUsageTick(),
-		func() tea.Msg {
-			select {
-			case event := <-m.adapter.Events():
-				return event
-			default:
-				return nil
-			}
-		},
+		m.listenEvents(),
 	)
 }
 
@@ -875,11 +871,17 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.ItemType == "agent_message" || msg.ItemType == "" {
 			m.startAgentMessageItem(msg.ItemID)
 		}
+		return m, nil
 	case ItemDeltaMsg:
 		if !m.state.Processing {
 			return m, nil
 		}
 		m.handleItemDelta(msg)
+		// Early return: per-token deltas must NOT fall through to the default path,
+		// which calls updateContextUsageUI + updateBGTaskCountUI (2 synchronous
+		// JSON-RPC round-trips). With hundreds of deltas per turn that blocks the
+		// Update loop and freezes streaming until all RPCs complete.
+		return m, nil
 	case ItemCompletedMsg:
 		m.handleItemCompleted(msg)
 	case InvokeDoneMsg:
@@ -941,6 +943,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.Done {
 			cmds = append(cmds, m.shell.StatusTick())
 		}
+		return m, tea.Batch(cmds...)
 
 	case ToolCallMsg:
 		cmd := m.handleToolCall(msg)
