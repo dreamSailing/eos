@@ -97,6 +97,7 @@ var enText = map[string]string{
 	"status.mode_bash":                "Bash",
 	"status.thinking":                 "Thinking",
 	"status.thinking_active":          "Thinking",
+	"status.ready":                    "Ready",
 	"status.ctx":                      "Ctx ",
 	"status.tasks":                    "Tasks ",
 	"status.exec":                     "Exec:",

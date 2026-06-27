@@ -1059,7 +1059,11 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeView == "shell" {
 				m.shell.FocusInput()
 			}
-			return m, nil
+			// Re-arm the status animation tick: the prior turn's tick loop may
+			// have stopped while waiting for approval, so without this the
+			// spinner stays frozen even though processing resumed. Mirrors
+			// codex's "busy ⇒ keep animating" self-scheduling spinner.
+			return m, m.shell.StatusTick()
 		}
 		if strings.HasPrefix(msg.Kind, "bg_kill:") {
 			id, _ := strings.CutPrefix(msg.Kind, "bg_kill:")
@@ -1225,7 +1229,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeView = "shell"
 		}
 		m.shell.FocusInput()
-		return m, nil
+		// Re-arm the status animation tick after approval (see comment above).
+		return m, m.shell.StatusTick()
 
 	case clearCopiedMsg:
 		if msg.idx >= 0 && msg.idx < len(m.history) {
@@ -2172,7 +2177,7 @@ func (m *AppModel) sendBashCommand() tea.Cmd {
 	id := fmt.Sprintf("bash:%d", time.Now().UnixNano())
 	m.handleToolCall(ToolCallMsg{ID: id, Name: "bash", Params: map[string]any{"command": value}})
 
-	return func() tea.Msg {
+	exec := func() tea.Msg {
 		defer cancel()
 		out, err := m.adapter.ExecuteBash(ctx, value)
 		if err != nil {
@@ -2187,6 +2192,8 @@ func (m *AppModel) sendBashCommand() tea.Cmd {
 		out = strings.ReplaceAll(out, "\r", "")
 		return ToolResultMsg{ID: id, Status: "success", Output: strings.TrimRight(out, "\n")}
 	}
+	// Keep the status-bar spinner animating for the whole bash run.
+	return tea.Batch(exec, m.shell.StatusTick())
 }
 
 // refreshContextPanel 刷新上下文面板的数据

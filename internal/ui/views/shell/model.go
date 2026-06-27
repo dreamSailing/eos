@@ -893,6 +893,10 @@ func (m Model) renderStatusBar() string {
 		if m.processing || m.thinking {
 			leftParts = append(leftParts, m.styles.TextInfo.Render(i18n.T("status.thinking_active", m.language)+animatedDots(m.statusAnim)))
 		} else {
+			// Idle: show a distinct "ready" badge so the user can tell the
+			// turn finished (mirrors codex flipping to "Ready" on turn
+			// complete), followed by the thinking-toggle state.
+			leftParts = append(leftParts, m.styles.TextSuccess.Render(i18n.T("status.ready", m.language)))
 			thinkingLabel := i18n.T("status.thinking", m.language)
 			if !state.Thinking() {
 				leftParts = append(leftParts, m.styles.TextMuted.Render(thinkingLabel+":"+i18n.T("status.off", m.language)))

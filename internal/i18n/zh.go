@@ -99,6 +99,7 @@ var zhText = map[string]string{
 	"status.mode_bash":                "命令",
 	"status.thinking":                 "思考",
 	"status.thinking_active":          "思考中",
+	"status.ready":                    "就绪",
 	"status.ctx":                      "Ctx ",
 	"status.tasks":                    "任务 ",
 	"status.exec":                     "执行:",
