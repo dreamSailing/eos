@@ -881,7 +881,10 @@ func (m Model) renderStatusBar() string {
 		filled := int(math.Round(r * float64(buckets)))
 		filled = min(max(filled, 0), buckets)
 		bar := strings.Repeat("█", filled) + strings.Repeat("░", buckets-filled)
-		ctxPart = m.styles.TextMuted.Render(i18n.T("status.ctx", m.language)) + valStyle.Render(pctStr) + " " + m.styles.TextMuted.Render(bar)
+		// Show both the percentage (with progress bar) and the raw token count
+		// so the user can see absolute usage alongside the ratio.
+		tokStr := m.styles.TextMuted.Render(fmt.Sprintf("(%d)", m.ctxTokens))
+		ctxPart = m.styles.TextMuted.Render(i18n.T("status.ctx", m.language)) + valStyle.Render(pctStr) + tokStr + " " + m.styles.TextMuted.Render(bar)
 	} else if m.mode == ModeAI && m.ctxVisible && m.ctxTokens > 0 {
 		ctxPart = m.styles.TextMuted.Render(i18n.T("status.ctx", m.language) + fmt.Sprintf("%d", m.ctxTokens))
 	}
