@@ -19,7 +19,7 @@ func TestConvertEventApprovalRequired(t *testing.T) {
 		Data: map[string]any{
 			"approval_id": "req-1",
 			"message":     "准备执行高风险步骤",
-			"options":     []string{"allow_once", "allow_session", "deny"},
+			"options":     []string{"accept", "acceptForSession", "decline", "cancel"},
 		},
 	})
 
@@ -33,8 +33,8 @@ func TestConvertEventApprovalRequired(t *testing.T) {
 	if req.Question != "准备执行高风险步骤" {
 		t.Fatalf("Question=%q, want prompt message", req.Question)
 	}
-	if len(req.Options) != 3 {
-		t.Fatalf("Options=%v, want 3 choices", req.Options)
+	if len(req.Options) != 4 {
+		t.Fatalf("Options=%v, want 4 choices", req.Options)
 	}
 }
 

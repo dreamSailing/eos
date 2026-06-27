@@ -1021,7 +1021,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if len(req.Options) == 0 {
 			if req.Kind == "permission" {
-				req.Options = []string{"allow_once", "allow_session", "deny"}
+				req.Options = []string{"accept", "acceptForSession", "decline", "cancel"}
 			} else {
 				req.Options = []string{"OK"}
 			}
@@ -1043,13 +1043,19 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Kind == "permission" {
 			m.clearInlinePermission()
 			if msg.ID != "" {
-				_ = m.adapter.RespondPrompt(context.Background(), msg.ID, msg.Kind, adapter.PromptResponse{
+				if err := m.adapter.RespondPrompt(context.Background(), msg.ID, msg.Kind, adapter.PromptResponse{
 					Decision:    msg.Decision,
 					Option:      msg.Option,
 					OptionIndex: msg.OptionIndex,
 					Text:        msg.Text,
-				})
+				}); err != nil {
+					m.appendSystem(fmt.Sprintf("审批响应失败: %v", err), "error")
+				}
 			}
+			// 审批响应后 turn 恢复执行（工具重跑或继续生成），
+			// 保持“处理中”指示器直到 turn.completed，避免审批后 spinner 一闪没。
+			m.state.Processing = true
+			m.shell.SetProcessing(true)
 			if m.activeView == "shell" {
 				m.shell.FocusInput()
 			}
@@ -1199,13 +1205,18 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.ID != "" {
-			_ = m.adapter.RespondPrompt(context.Background(), msg.ID, msg.Kind, adapter.PromptResponse{
+			if err := m.adapter.RespondPrompt(context.Background(), msg.ID, msg.Kind, adapter.PromptResponse{
 				Decision:    msg.Decision,
 				Option:      msg.Option,
 				OptionIndex: msg.OptionIndex,
 				Text:        msg.Text,
-			})
+			}); err != nil {
+				m.appendSystem(fmt.Sprintf("审批响应失败: %v", err), "error")
+			}
 		}
+		// 审批响应后 turn 恢复执行，保持“处理中”直到 turn.completed。
+		m.state.Processing = true
+		m.shell.SetProcessing(true)
 		m.confirmView = nil
 		if m.prevView != "" {
 			m.activeView = m.prevView
@@ -1959,14 +1970,12 @@ func (m *AppModel) buildInlinePermissionResult(decision string) confirm.ResultMs
 	if idx >= 0 && idx < len(req.Options) {
 		option = req.Options[idx]
 	}
+	// Option keys are canonical decision values; the selected option IS the
+	// decision. Esc passes "decline" explicitly.
 	if decision == "" {
-		switch option {
-		case "allow_once":
-			decision = "allow"
-		case "allow_session":
-			decision = "session"
-		default:
-			decision = "deny"
+		decision = option
+		if decision == "" {
+			decision = "decline"
 		}
 	}
 	return confirm.ResultMsg{
@@ -1999,7 +2008,7 @@ func (m *AppModel) handleInlinePermissionKey(msg tea.KeyMsg) (bool, tea.Cmd) {
 		result := m.buildInlinePermissionResult("")
 		return true, func() tea.Msg { return result }
 	case "esc":
-		result := m.buildInlinePermissionResult("deny")
+		result := m.buildInlinePermissionResult("decline")
 		return true, func() tea.Msg { return result }
 	default:
 		if len(msg.String()) == 1 {

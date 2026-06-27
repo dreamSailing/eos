@@ -268,7 +268,7 @@ func TestPromptRequestPermissionStaysInShellWithInlineOverlay(t *testing.T) {
 		Kind:     "permission",
 		Title:    "授权",
 		Question: "是否允许执行危险操作？",
-		Options:  []string{"allow_once", "allow_session", "deny"},
+		Options:  []string{"accept", "acceptForSession", "decline", "cancel"},
 	})
 	updated := next.(*AppModel)
 
@@ -282,7 +282,7 @@ func TestPromptRequestPermissionStaysInShellWithInlineOverlay(t *testing.T) {
 		t.Fatalf("expected inline permission state to be stored")
 	}
 	view := stripANSIAppTest(updated.shell.View())
-	if !strings.Contains(view, "是否允许执行危险操作？") || !strings.Contains(view, "仅本次操作，继续执行") {
+	if !strings.Contains(view, "是否允许执行危险操作？") || !strings.Contains(view, "是，继续执行") {
 		t.Fatalf("expected shell to render inline permission overlay, got %q", view)
 	}
 }

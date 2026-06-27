@@ -106,7 +106,7 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 		case "esc":
 			if m.req.Kind == "permission" {
 				return m, func() tea.Msg {
-					return ResultMsg{ID: m.req.ID, Kind: m.req.Kind, Decision: "deny", OptionIndex: -1}
+					return ResultMsg{ID: m.req.ID, Kind: m.req.Kind, Decision: "decline", OptionIndex: -1}
 				}
 			}
 			return m, func() tea.Msg {
@@ -137,18 +137,12 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			if m.selected >= 0 && m.selected < len(m.req.Options) {
 				opt = m.req.Options[m.selected]
 			}
-			decision := ""
-			switch m.req.Kind {
-			case "permission":
-				switch opt {
-				case "allow_once":
-					decision = "allow"
-				case "allow_session":
-					decision = "session"
-				default:
-					decision = "deny"
-				}
-			default:
+			// Option keys are canonical decision values (accept /
+			// acceptForSession / decline / cancel); the selected option IS the
+			// decision. For non-permission confirms the option is the literal
+			// choice.
+			decision := opt
+			if m.req.Kind != "permission" && decision == "" {
 				decision = "confirm"
 			}
 			txt := strings.TrimSpace(m.input.Value())
@@ -217,12 +211,14 @@ func (m *Model) View() string {
 		switch m.req.Kind {
 		case "permission":
 			switch opt {
-			case "allow_once":
-				label = "1. " + i18n.T("allow.once", m.language)
-			case "allow_session":
-				label = "2. " + i18n.T("allow.session", m.language)
-			case "deny":
-				label = "3. " + i18n.T("deny", m.language)
+			case "accept":
+				label = "1. " + i18n.T("approval.accept", m.language)
+			case "acceptForSession":
+				label = "2. " + i18n.T("approval.acceptForSession", m.language)
+			case "decline":
+				label = "3. " + i18n.T("approval.decline", m.language)
+			case "cancel":
+				label = "4. " + i18n.T("approval.cancel", m.language)
 			}
 		default:
 			label = strconvItoa(i+1) + ". " + opt

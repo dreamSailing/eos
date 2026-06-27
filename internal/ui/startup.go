@@ -127,6 +127,14 @@ func tuiOptionEnv(opts TUIOptions) map[string]string {
 	if v := strings.TrimSpace(opts.SandboxMode); v != "" {
 		env["EOS_SANDBOX_MODE"] = v
 	}
+	// workspace-write 沙箱需要至少一个可写根；不透传工作区根时 sidecar 的沙箱策略
+	// workspace_root 为空，会导致工作区内所有写操作被拒（审批通过后仍拒绝并触发 turn 恢复卡死）。
+	if cwd, err := os.Getwd(); err == nil {
+		if ws := strings.TrimSpace(cwd); ws != "" {
+			env["EOS_WORKSPACE_ROOT"] = ws
+			env["EOS_SANDBOX_WORKSPACE_ROOT"] = ws
+		}
+	}
 	if opts.SkipPermissions {
 		env["EOS_SKIP_PERMISSIONS"] = "1"
 	}

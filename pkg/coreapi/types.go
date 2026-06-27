@@ -568,10 +568,29 @@ type Attachment struct {
 	Kind string `json:"kind,omitempty"`
 }
 
+// ApprovalDecision is the typed wire approval decision (camelCase on the wire),
+// mirroring eos-core's ApprovalDecision / Codex's CommandExecutionApprovalDecision
+// common variants. Command-only amendment variants are omitted: eos has no
+// execpolicy/network-amendment approval flows, so they would be dead code.
+type ApprovalDecision string
+
+const (
+	// ApprovalAccept approves the operation once.
+	ApprovalAccept ApprovalDecision = "accept"
+	// ApprovalAcceptForSession approves the operation and records a
+	// session-scoped approval so matching operations run without re-prompting.
+	ApprovalAcceptForSession ApprovalDecision = "acceptForSession"
+	// ApprovalDecline denies the operation; the agent continues the turn.
+	ApprovalDecline ApprovalDecision = "decline"
+	// ApprovalCancel denies the operation and interrupts the turn.
+	ApprovalCancel ApprovalDecision = "cancel"
+)
+
 type ApprovalResponse struct {
-	ApprovalID string `json:"approval_id"`
-	Decision   string `json:"decision"`
-	Message    string `json:"message,omitempty"`
+	ApprovalID string            `json:"approval_id"`
+	Decision   ApprovalDecision  `json:"decision"`
+	Reason     string            `json:"reason,omitempty"`
+	Metadata   map[string]any    `json:"metadata,omitempty"`
 }
 
 type InquiryResponse struct {

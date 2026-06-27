@@ -1150,15 +1150,38 @@ func (a *CoreClientAdapter) RespondPrompt(ctx context.Context, id, kind string, 
 			Text:      strings.TrimSpace(response.Text),
 		})
 	}
-	decision := strings.TrimSpace(response.Decision)
+	decision := approvalDecisionFromPrompt(strings.TrimSpace(response.Decision))
 	if decision == "" {
-		decision = strings.TrimSpace(response.Option)
+		decision = approvalDecisionFromPrompt(strings.TrimSpace(response.Option))
 	}
+	if decision == "" {
+		decision = coreapi.ApprovalDecline
+	}
+	reason := strings.TrimSpace(response.Text)
 	return a.engine.Approvals().Respond(ctx, coreapi.ApprovalResponse{
 		ApprovalID: id,
 		Decision:   decision,
-		Message:    strings.TrimSpace(response.Text),
+		Reason:     reason,
 	})
+}
+
+// approvalDecisionFromPrompt maps a confirm-UI decision/option string to the
+// canonical typed wire decision. The confirm model emits canonical values
+// (accept / acceptForSession / decline / cancel); legacy option keys are mapped
+// explicitly so the typed wire layer always receives a fixed decision.
+func approvalDecisionFromPrompt(value string) coreapi.ApprovalDecision {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "accept", "allow", "allow_once", "approve":
+		return coreapi.ApprovalAccept
+	case "acceptforsession", "allow_session", "session":
+		return coreapi.ApprovalAcceptForSession
+	case "decline", "deny":
+		return coreapi.ApprovalDecline
+	case "cancel":
+		return coreapi.ApprovalCancel
+	default:
+		return ""
+	}
 }
 
 // === Event pump ===

@@ -2196,7 +2196,7 @@ func TestEventSubscribeOverJSONRPCForwardsNotifications(t *testing.T) {
 	if subscription.ID == "" {
 		t.Fatal("subscription.ID is empty")
 	}
-	if events.seen != (coreapi.EventFilter{SessionID: "sess-1", TurnID: "turn-1", AgentID: "agent-1"}) {
+	if !reflect.DeepEqual(events.seen, coreapi.EventFilter{SessionID: "sess-1", TurnID: "turn-1", AgentID: "agent-1"}) {
 		t.Fatalf("filter=%+v, want session/turn/agent filter", events.seen)
 	}
 	if events.ctx == nil {
@@ -2267,11 +2267,11 @@ func TestApprovalRespondOverJSONRPC(t *testing.T) {
 
 	client := protocoljsonrpc.NewInProcessClient(protocoljsonrpc.InProcessServer{Router: router})
 	var out map[string]bool
-	req := coreapi.ApprovalResponse{ApprovalID: "approval-1", Decision: "allow_once", Message: "go"}
+	req := coreapi.ApprovalResponse{ApprovalID: "approval-1", Decision: coreapi.ApprovalAccept, Reason: "go"}
 	if err := client.Call(context.Background(), protocoljsonrpc.MethodApprovalRespond, req, &out); err != nil {
 		t.Fatalf("Call(approval/respond) error = %v", err)
 	}
-	if approvals.seen != req {
+	if !reflect.DeepEqual(approvals.seen, req) {
 		t.Fatalf("seen=%+v, want %+v", approvals.seen, req)
 	}
 	if !out["ok"] {

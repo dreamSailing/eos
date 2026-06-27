@@ -364,13 +364,20 @@ type EventUnsubscribeRequest struct {
 	SubscriptionID string `json:"subscription_id"`
 }
 
+type ApprovalDecision string
+
+const (
+	ApprovalAccept            ApprovalDecision = "accept"
+	ApprovalAcceptForSession  ApprovalDecision = "acceptForSession"
+	ApprovalDecline           ApprovalDecision = "decline"
+	ApprovalCancel            ApprovalDecision = "cancel"
+)
+
 type ApprovalResponse struct {
-	ApprovalID string `json:"approval_id"`
-	Decision string `json:"decision,omitempty"`
-	Message string `json:"message,omitempty"`
-	Approved bool `json:"approved"`
-	Reason string `json:"reason,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	ApprovalID string           `json:"approval_id"`
+	Decision   ApprovalDecision `json:"decision"`
+	Reason     string           `json:"reason,omitempty"`
+	Metadata   map[string]any   `json:"metadata,omitempty"`
 }
 
 type InquiryResponse struct {

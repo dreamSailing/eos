@@ -64,7 +64,7 @@ func ensureApprovalPayload(payload map[string]any, requestID, content string) {
 		payload["message"] = message
 	}
 	if _, ok := payload["options"]; !ok {
-		payload["options"] = []string{"allow_once", "allow_session", "deny"}
+		payload["options"] = []string{"accept", "acceptForSession", "decline", "cancel"}
 	}
 }
 

@@ -142,6 +142,15 @@ func execOptionEnv(opts execOptions) map[string]string {
 	if v := strings.TrimSpace(opts.Sandbox); v != "" {
 		env["EOS_SANDBOX_MODE"] = v
 	}
+	if ws := strings.TrimSpace(opts.Workspace); ws != "" {
+		env["EOS_WORKSPACE_ROOT"] = ws
+		env["EOS_SANDBOX_WORKSPACE_ROOT"] = ws
+	} else if cwd, err := os.Getwd(); err == nil {
+		if cwd := strings.TrimSpace(cwd); cwd != "" {
+			env["EOS_WORKSPACE_ROOT"] = cwd
+			env["EOS_SANDBOX_WORKSPACE_ROOT"] = cwd
+		}
+	}
 	if opts.SkipPermission {
 		env["EOS_SKIP_PERMISSIONS"] = "1"
 	}

@@ -86,12 +86,14 @@ func RenderInlinePermission(s *styles.Styles, lang string, req Request, selected
 
 func permissionOptionLabel(lang, opt string, idx int) string {
 	switch opt {
-	case "allow_once":
-		return strconvItoa(idx+1) + ". " + i18n.T("allow.once", lang)
-	case "allow_session":
-		return strconvItoa(idx+1) + ". " + i18n.T("allow.session", lang)
-	case "deny":
-		return strconvItoa(idx+1) + ". " + i18n.T("deny", lang)
+	case "accept":
+		return strconvItoa(idx+1) + ". " + i18n.T("approval.accept", lang)
+	case "acceptForSession":
+		return strconvItoa(idx+1) + ". " + i18n.T("approval.acceptForSession", lang)
+	case "decline":
+		return strconvItoa(idx+1) + ". " + i18n.T("approval.decline", lang)
+	case "cancel":
+		return strconvItoa(idx+1) + ". " + i18n.T("approval.cancel", lang)
 	default:
 		return strconvItoa(idx+1) + ". " + opt
 	}
