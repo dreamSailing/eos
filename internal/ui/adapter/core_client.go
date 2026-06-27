@@ -240,7 +240,11 @@ func (a *CoreClientAdapter) Invoke(ctx context.Context, query, executionMode str
 	var final string
 	var content string
 	startDoneCh := startDone
-	var fallbackTimer <-chan time.Time
+	// Safety net: if the core never emits a terminal event (request.completed
+	// / request.failed) the subscription would block forever. The core always
+	// publishes turn.completed (= request.completed) on turn end, so under
+	// normal operation this never fires; it only guards against a wedged core.
+	safetyTimer := time.After(15 * time.Minute)
 	for {
 		select {
 		case <-ctx.Done():
@@ -251,8 +255,10 @@ func (a *CoreClientAdapter) Invoke(ctx context.Context, query, executionMode str
 			if result.err != nil {
 				return final, result.err
 			}
-			fallbackTimer = time.After(250 * time.Millisecond)
-		case <-fallbackTimer:
+		case <-safetyTimer:
+			// Core appears wedged; interrupt and surface what we have rather
+			// than blocking the UI's Invoke goroutine indefinitely.
+			_, _ = a.interruptTurn(context.Background(), coreapi.TurnRef{SessionID: sessionID, TurnID: turnID})
 			if final == "" {
 				final = content
 			}
