@@ -1,7 +1,7 @@
 [Setup]
 AppId={{EOS-2026-UNIQUE-ID}
 AppName=EOS
-AppVersion=1.0.0-beta.1
+AppVersion=1.0.0-beta.2
 AppPublisher=DreamSailing
 AppPublisherURL=https://github.com/dreamSailing/eos
 AppSupportURL=https://github.com/dreamSailing/eos/issues
@@ -11,7 +11,7 @@ DefaultGroupName=EOS
 UsePreviousAppDir=yes
 AllowNoIcons=yes
 OutputDir=output
-OutputBaseFilename=eos-setup-1.0.0-beta.1
+OutputBaseFilename=eos-setup-1.0.0-beta.2
 SetupIconFile=eos.ico
 UninstallDisplayIcon={app}\eos.ico
 Compression=lzma2
