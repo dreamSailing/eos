@@ -135,9 +135,10 @@ func (v *ModelSetupView) updateTableColumns() {
 
 	// Model Table
 	modelColumns := []table.Column{
-		{Title: i18n.T("setup.col.model", v.language), Width: 35},
-		{Title: i18n.T("setup.col.context", v.language), Width: 12},
-		{Title: i18n.T("setup.col.tags", v.language), Width: 30},
+		{Title: i18n.T("setup.col.model", v.language), Width: 32},
+		{Title: i18n.T("setup.col.context", v.language), Width: 10},
+		{Title: i18n.T("setup.col.capability", v.language), Width: 12},
+		{Title: i18n.T("setup.col.tags", v.language), Width: 22},
 	}
 	v.modelTable.SetColumns(modelColumns)
 }
@@ -175,15 +176,48 @@ func (v *ModelSetupView) loadModels(provider *ai.ProviderConfig) {
 		if window >= 1000 {
 			ctx = fmt.Sprintf("%.1fK", float64(window)/1000)
 		}
+		caps := modelCapabilityLabel(m, v.language)
 		tags := strings.Join(m.Tags, ", ")
-		rows = append(rows, table.Row{m.Name, ctx, tags})
+		rows = append(rows, table.Row{m.Name, ctx, caps, tags})
 	}
 	// 添加"自定义"选项
-	rows = append(rows, table.Row{i18n.T("setup.custom", v.language), "-", "-"})
+	rows = append(rows, table.Row{i18n.T("setup.custom", v.language), "-", "-", "-"})
 	v.modelTable.SetRows(rows)
 	// 重置光标到首位
 	v.modelTable.SetCursor(0)
 	slog.Info("loadModels", "provider", provider.Name, "models_len", len(v.models), "inputs_len", len(v.inputs))
+}
+
+// modelCapabilityLabel 把模型能力渲染成紧凑的列单元格文本。
+// 中文用「视/理/工」，英文用「V/R/T」，按 视觉→推理→工具 顺序拼接，无能力则显示“-”。
+func modelCapabilityLabel(m *ai.ModelCatalogEntry, language string) string {
+	var parts []string
+	zh := language == "zh"
+	if m.SupportsVision {
+		if zh {
+			parts = append(parts, "视")
+		} else {
+			parts = append(parts, "V")
+		}
+	}
+	if m.SupportsReasoningEffort {
+		if zh {
+			parts = append(parts, "理")
+		} else {
+			parts = append(parts, "R")
+		}
+	}
+	if m.SupportsTools {
+		if zh {
+			parts = append(parts, "工")
+		} else {
+			parts = append(parts, "T")
+		}
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, "/")
 }
 
 // SetSize 设置大小

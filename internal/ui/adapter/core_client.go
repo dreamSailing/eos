@@ -628,6 +628,8 @@ func (a *CoreClientAdapter) ModelEntries(ctx context.Context) ([]config.ModelEnt
 			Model:                   strings.TrimSpace(item.Model),
 			Source:                  strings.TrimSpace(item.Source),
 			SupportsReasoningEffort: item.SupportsReasoningEffort,
+			SupportsVision:          item.SupportsVision,
+			SupportsTools:           item.SupportsTools,
 		})
 		if item.Active {
 			active = strings.TrimSpace(item.Name)

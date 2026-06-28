@@ -682,6 +682,8 @@ type ModelConfig struct {
 	Source string `json:"source,omitempty"`
 	Active bool `json:"active"`
 	SupportsReasoningEffort bool `json:"supports_reasoning_effort"`
+	SupportsVision bool `json:"supports_vision"`
+	SupportsTools bool `json:"supports_tools"`
 	ProviderID string `json:"provider_id,omitempty"`
 	Format string `json:"format,omitempty"`
 	PresetID string `json:"preset_id,omitempty"`
@@ -741,6 +743,9 @@ type ModelSaveRequest struct {
 	APIKey string `json:"api_key,omitempty"`
 	APIBase string `json:"api_base,omitempty"`
 	Model string `json:"model,omitempty"`
+	SupportsReasoningEffort *bool `json:"supports_reasoning_effort,omitempty"`
+	SupportsVision *bool `json:"supports_vision,omitempty"`
+	SupportsTools *bool `json:"supports_tools,omitempty"`
 }
 
 type ModelNameRequest struct {

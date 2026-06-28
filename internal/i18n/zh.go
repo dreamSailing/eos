@@ -478,6 +478,7 @@ var zhText = map[string]string{
 	"setup.col.recommend":      "推荐",
 	"setup.col.context":        "上下文",
 	"setup.col.tags":           "标签",
+	"setup.col.capability":     "能力",
 
 	// Help panel
 	"help.title":          "键盘快捷键",

@@ -384,14 +384,19 @@ type UpsertModelRequest struct {
 }
 
 type ModelSaveRequest struct {
-	OriginalName string `json:"original_name,omitempty"`
-	Mode         string `json:"mode"`
-	ProviderID   string `json:"provider_id,omitempty"`
-	PresetID     string `json:"preset_id,omitempty"`
-	Name         string `json:"name"`
-	APIKey       string `json:"api_key,omitempty"`
-	APIBase      string `json:"api_base,omitempty"`
-	Model        string `json:"model,omitempty"`
+	OriginalName            string `json:"original_name,omitempty"`
+	Mode                    string `json:"mode"`
+	ProviderID              string `json:"provider_id,omitempty"`
+	PresetID                string `json:"preset_id,omitempty"`
+	Name                    string `json:"name"`
+	APIKey                  string `json:"api_key,omitempty"`
+	APIBase                 string `json:"api_base,omitempty"`
+	Model                   string `json:"model,omitempty"`
+	// 自定义模型能力开关。指针类型，nil = 由 core 用默认值（推理+工具开、视觉关）。
+	// preset 模式下忽略，能力从 preset 继承。
+	SupportsReasoningEffort *bool `json:"supports_reasoning_effort,omitempty"`
+	SupportsVision          *bool `json:"supports_vision,omitempty"`
+	SupportsTools           *bool `json:"supports_tools,omitempty"`
 }
 
 type ModelNameRequest struct {
@@ -986,6 +991,8 @@ type ModelConfig struct {
 	Source                  string `json:"source,omitempty"`
 	Active                  bool   `json:"active"`
 	SupportsReasoningEffort bool   `json:"supports_reasoning_effort"`
+	SupportsVision          bool   `json:"supports_vision"`
+	SupportsTools           bool   `json:"supports_tools"`
 	ProviderID              string `json:"provider_id,omitempty"`
 	Format                  string `json:"format,omitempty"`
 	PresetID                string `json:"preset_id,omitempty"`

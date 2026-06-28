@@ -476,6 +476,7 @@ var enText = map[string]string{
 	"setup.col.recommend":      "Rec",
 	"setup.col.context":        "Context",
 	"setup.col.tags":           "Tags",
+	"setup.col.capability":     "Capability",
 
 	// Help panel
 	"help.title":          "Keyboard Shortcuts",
