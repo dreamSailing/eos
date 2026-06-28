@@ -73,6 +73,7 @@ type SessionService interface {
 	SetCurrent(context.Context, SetCurrentSessionRequest) error
 	Delete(context.Context, DeleteSessionRequest) error
 	Rename(context.Context, RenameSessionRequest) (Session, error)
+	SetMeta(context.Context, SetSessionMetaRequest) (Session, error)
 	LoadMessages(context.Context, LoadSessionMessagesRequest) ([]SessionMessage, error)
 	SaveMessages(context.Context, SaveSessionMessagesRequest) (Session, error)
 }
@@ -523,6 +524,8 @@ type ListSessionsRequest struct {
 	// equals this value. Sessions without a source tag are "unknown" and never
 	// match a concrete source. Empty = return all sessions.
 	Source string `json:"source,omitempty"`
+	// IncludeArchived, when true, includes archived sessions. Default false.
+	IncludeArchived bool `json:"include_archived,omitempty"`
 }
 
 // StateSnapshotRequest parameters for state/snapshot.
@@ -531,6 +534,8 @@ type StateSnapshotRequest struct {
 	// workspaces derived from them to the given client source. Empty = full
 	// snapshot (all clients).
 	Source string `json:"source,omitempty"`
+	// IncludeArchived, when true, includes archived sessions. Default false.
+	IncludeArchived bool `json:"include_archived,omitempty"`
 }
 
 // WorkspaceListRequest parameters for workspace/list.
@@ -558,6 +563,15 @@ type RenameSessionRequest struct {
 	SessionID     string `json:"session_id"`
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
 	Title         string `json:"title"`
+}
+
+// SetSessionMetaRequest updates (or deletes, when Value is nil) a single
+// metadata entry on a session. Used for soft-state flags like "archived".
+type SetSessionMetaRequest struct {
+	SessionID     string          `json:"session_id"`
+	WorkspaceRoot string          `json:"workspace_root,omitempty"`
+	Key           string          `json:"key"`
+	Value         json.RawMessage `json:"value,omitempty"`
 }
 
 type LoadSessionMessagesRequest struct {
@@ -1161,6 +1175,8 @@ type SessionSnapshot struct {
 	// Source is the originating client (e.g. "cli", "gui"); empty when the
 	// session predates source tagging. Mirrors Session.metadata["source"].
 	Source         string    `json:"source,omitempty"`
+	// Archived is true when the session is soft-hidden (metadata.archived).
+	Archived       bool      `json:"archived,omitempty"`
 	UpdatedAt      time.Time `json:"updated_at"`
 	Running        bool      `json:"running"`
 	NeedsAttention bool      `json:"needs_attention"`

@@ -111,7 +111,7 @@ func (s *testDiagnosticsService) Startup(context.Context) (coreapi.StartupDiagno
 // === Workspace ===
 type testWorkspaceService struct{ e *testEngine }
 
-func (s *testWorkspaceService) List(context.Context) ([]coreapi.Workspace, error) { return s.e.workspaceList, nil }
+func (s *testWorkspaceService) List(context.Context, coreapi.WorkspaceListRequest) ([]coreapi.Workspace, error) { return s.e.workspaceList, nil }
 func (s *testWorkspaceService) Default(context.Context) (string, error)         { return "", nil }
 func (s *testWorkspaceService) Last(context.Context) (string, error)            { return "", nil }
 func (s *testWorkspaceService) ResolveForeground(context.Context, coreapi.ResolveForegroundWorkspaceRequest) (string, error) {
@@ -178,6 +178,9 @@ func (s *testSessionService) Current(context.Context, coreapi.CurrentSessionRequ
 func (s *testSessionService) SetCurrent(context.Context, coreapi.SetCurrentSessionRequest) error { return nil }
 func (s *testSessionService) Delete(context.Context, coreapi.DeleteSessionRequest) error          { return nil }
 func (s *testSessionService) Rename(context.Context, coreapi.RenameSessionRequest) (coreapi.Session, error) {
+	return coreapi.Session{}, nil
+}
+func (s *testSessionService) SetMeta(context.Context, coreapi.SetSessionMetaRequest) (coreapi.Session, error) {
 	return coreapi.Session{}, nil
 }
 func (s *testSessionService) LoadMessages(context.Context, coreapi.LoadSessionMessagesRequest) ([]coreapi.SessionMessage, error) {
@@ -411,7 +414,7 @@ func (s *testRemoteWorkspaceService) CurrentRepo(context.Context) (coreapi.Remot
 	return coreapi.RemoteRepoState{}, false, nil
 }
 
-func (s *testStateService) Snapshot(context.Context) (coreapi.StateSnapshot, error) {
+func (s *testStateService) Snapshot(context.Context, coreapi.StateSnapshotRequest) (coreapi.StateSnapshot, error) {
 	return coreapi.StateSnapshot{}, nil
 }
 

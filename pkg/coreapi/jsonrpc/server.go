@@ -480,6 +480,23 @@ func Register(router *protocoljsonrpc.Router, engine coreapi.Engine, opts Option
 		return err
 	}
 
+	if err := router.Register(protocoljsonrpc.MethodSessionSetMeta, func(ctx context.Context, req protocoljsonrpc.Request) (any, *protocoljsonrpc.Error) {
+		var params coreapi.SetSessionMetaRequest
+		if rpcErr := decodeParams(req.Params, &params); rpcErr != nil {
+			return nil, rpcErr
+		}
+		if sessions := engine.Sessions(); sessions != nil {
+			item, err := sessions.SetMeta(ctx, params)
+			if err != nil {
+				return nil, errorFromErr(err)
+			}
+			return item, nil
+		}
+		return nil, errorFromErr(coreapi.ErrUnsupported)
+	}); err != nil {
+		return err
+	}
+
 	if err := router.Register(protocoljsonrpc.MethodSessionMessagesLoad, func(ctx context.Context, req protocoljsonrpc.Request) (any, *protocoljsonrpc.Error) {
 		var params coreapi.LoadSessionMessagesRequest
 		if rpcErr := decodeParams(req.Params, &params); rpcErr != nil {

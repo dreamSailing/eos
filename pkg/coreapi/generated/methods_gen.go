@@ -26,6 +26,7 @@ const (
 	MethodSessionSetCurrent = "session/set_current"
 	MethodSessionDelete = "session/delete"
 	MethodSessionRename = "session/rename"
+	MethodSessionSetMeta = "session/set_meta"
 	MethodSessionMessagesLoad = "session/messages/load"
 	MethodSessionMessagesSave = "session/messages/save"
 	MethodMCPList = "mcp/list"
@@ -168,6 +169,7 @@ func CoreMethods() []string {
 		MethodSessionSetCurrent,
 		MethodSessionDelete,
 		MethodSessionRename,
+		MethodSessionSetMeta,
 		MethodSessionMessagesLoad,
 		MethodSessionMessagesSave,
 		MethodMCPList,
@@ -429,6 +431,7 @@ func MethodGroups() map[string][]string {
 			MethodSessionSetCurrent,
 			MethodSessionDelete,
 			MethodSessionRename,
+			MethodSessionSetMeta,
 			MethodSessionMessagesLoad,
 			MethodSessionMessagesSave,
 		},

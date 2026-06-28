@@ -400,6 +400,14 @@ func (s remoteSessionService) Rename(ctx context.Context, req coreapi.RenameSess
 	return out, nil
 }
 
+func (s remoteSessionService) SetMeta(ctx context.Context, req coreapi.SetSessionMetaRequest) (coreapi.Session, error) {
+	var out coreapi.Session
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodSessionSetMeta, req, &out); err != nil {
+		return coreapi.Session{}, err
+	}
+	return out, nil
+}
+
 func (s remoteSessionService) LoadMessages(ctx context.Context, req coreapi.LoadSessionMessagesRequest) ([]coreapi.SessionMessage, error) {
 	var out []coreapi.SessionMessage
 	if err := s.engine.call(ctx, protocoljsonrpc.MethodSessionMessagesLoad, req, &out); err != nil {

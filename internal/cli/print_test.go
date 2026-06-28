@@ -416,7 +416,7 @@ type printTestStateService struct {
 	coreapi.StateService
 }
 
-func (printTestStateService) Snapshot(context.Context) (coreapi.StateSnapshot, error) {
+func (printTestStateService) Snapshot(context.Context, coreapi.StateSnapshotRequest) (coreapi.StateSnapshot, error) {
 	return coreapi.StateSnapshot{}, nil
 }
 

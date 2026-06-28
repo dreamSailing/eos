@@ -4,8 +4,8 @@
   "api_version": "v1",
   "target": "x86_64-pc-windows-gnu",
   "binary": "eos-core.exe",
-  "sha256": "sha256:8763dd1e4b320fe10ce099eacd1fb614b3afcbe8fd0e4dfbe2fa3ed010e55f21",
-  "signature": "ed25519:Rj5EHkUKAnMkglIJC1u4aReb8tI+0P7F0HIE+cTvKJVejOu5+x/ZWvNn9B5fRbpRaf+VoIXNAySGXWhb7OPaCg==",
+  "sha256": "sha256:e7c47cc84b8818e7c2f1de1158cf93d8ce688589b3ec29912c81c9bc3607be1c",
+  "signature": "ed25519:GKKqdYJN9p2JhjxS+fDEzHa3DtJwTeLlkGFtzUjrco1b2FYHROZLNChfOZOs7OEcpQnLGxII5sh/dYyrBnvrDw==",
   "min_cli_version": "v1.0.0-beta.1",
   "features": [
     "initialize",
@@ -31,6 +31,7 @@
     "session/set_current",
     "session/delete",
     "session/rename",
+    "session/set_meta",
     "session/messages/load",
     "session/messages/save",
     "mcp/list",

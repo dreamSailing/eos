@@ -86,7 +86,7 @@ type fakeStateService struct {
 	err      error
 }
 
-func (s fakeStateService) Snapshot(context.Context) (coreapi.StateSnapshot, error) {
+func (s fakeStateService) Snapshot(context.Context, coreapi.StateSnapshotRequest) (coreapi.StateSnapshot, error) {
 	return s.snapshot, s.err
 }
 
@@ -116,7 +116,7 @@ type fakeWorkspaceService struct {
 	removeWorktree  coreapi.RemoveWorktreeRequest
 }
 
-func (s *fakeWorkspaceService) List(context.Context) ([]coreapi.Workspace, error) {
+func (s *fakeWorkspaceService) List(context.Context, coreapi.WorkspaceListRequest) ([]coreapi.Workspace, error) {
 	return s.items, s.err
 }
 func (s *fakeWorkspaceService) Default(context.Context) (string, error) {
@@ -229,6 +229,11 @@ func (s *fakeSessionService) Delete(_ context.Context, req coreapi.DeleteSession
 
 func (s *fakeSessionService) Rename(_ context.Context, req coreapi.RenameSessionRequest) (coreapi.Session, error) {
 	s.renamed = req
+	return s.rename, s.renameErr
+}
+
+func (s *fakeSessionService) SetMeta(_ context.Context, req coreapi.SetSessionMetaRequest) (coreapi.Session, error) {
+	s.renamed = coreapi.RenameSessionRequest{SessionID: req.SessionID, Title: req.Key}
 	return s.rename, s.renameErr
 }
 
