@@ -338,9 +338,9 @@ type remoteStateService struct {
 	engine *RemoteEngine
 }
 
-func (s remoteStateService) Snapshot(ctx context.Context) (coreapi.StateSnapshot, error) {
+func (s remoteStateService) Snapshot(ctx context.Context, params coreapi.StateSnapshotRequest) (coreapi.StateSnapshot, error) {
 	var out coreapi.StateSnapshot
-	if err := s.engine.call(ctx, protocoljsonrpc.MethodStateSnapshot, nil, &out); err != nil {
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodStateSnapshot, params, &out); err != nil {
 		return coreapi.StateSnapshot{}, err
 	}
 	return out, nil
@@ -619,9 +619,9 @@ type remoteWorkspaceService struct {
 	engine *RemoteEngine
 }
 
-func (s remoteWorkspaceService) List(ctx context.Context) ([]coreapi.Workspace, error) {
+func (s remoteWorkspaceService) List(ctx context.Context, params coreapi.WorkspaceListRequest) ([]coreapi.Workspace, error) {
 	var out []coreapi.Workspace
-	if err := s.engine.call(ctx, protocoljsonrpc.MethodWorkspaceList, nil, &out); err != nil {
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodWorkspaceList, params, &out); err != nil {
 		return nil, err
 	}
 	return out, nil

@@ -354,7 +354,7 @@ func (a *CoreClientAdapter) StateSnapshot(ctx context.Context) (coreapi.StateSna
 	if a == nil || a.engine == nil {
 		return coreapi.StateSnapshot{}, errors.New("core client is not available")
 	}
-	return a.engine.State().Snapshot(ctx)
+	return a.engine.State().Snapshot(ctx, coreapi.StateSnapshotRequest{})
 }
 
 // === Workspace ===
@@ -363,7 +363,7 @@ func (a *CoreClientAdapter) Workspaces(ctx context.Context) ([]coreapi.Workspace
 	if a == nil || a.engine == nil {
 		return nil, errors.New("core client is not available")
 	}
-	return a.engine.Workspaces().List(ctx)
+	return a.engine.Workspaces().List(ctx, coreapi.WorkspaceListRequest{})
 }
 
 func (a *CoreClientAdapter) ActiveWorkspace(ctx context.Context) string {
@@ -544,6 +544,7 @@ func (a *CoreClientAdapter) ensureSessionID(ctx context.Context) (string, error)
 	session, err := a.engine.Sessions().Create(ctx, coreapi.CreateSessionRequest{
 		WorkspaceRoot: workspaceRoot,
 		Title:         "CLI session",
+		Metadata:      map[string]any{"source": "cli"},
 	})
 	if err != nil {
 		return "", err

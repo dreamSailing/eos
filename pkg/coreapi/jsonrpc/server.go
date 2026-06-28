@@ -194,7 +194,11 @@ func Register(router *protocoljsonrpc.Router, engine coreapi.Engine, opts Option
 
 	if err := router.Register(protocoljsonrpc.MethodStateSnapshot, func(ctx context.Context, req protocoljsonrpc.Request) (any, *protocoljsonrpc.Error) {
 		if state := engine.State(); state != nil {
-			snapshot, err := state.Snapshot(ctx)
+			var params coreapi.StateSnapshotRequest
+			if rpcErr := decodeParams(req.Params, &params); rpcErr != nil {
+				return nil, rpcErr
+			}
+			snapshot, err := state.Snapshot(ctx, params)
 			if err != nil {
 				return nil, errorFromErr(err)
 			}
@@ -207,7 +211,11 @@ func Register(router *protocoljsonrpc.Router, engine coreapi.Engine, opts Option
 
 	if err := router.Register(protocoljsonrpc.MethodWorkspaceList, func(ctx context.Context, req protocoljsonrpc.Request) (any, *protocoljsonrpc.Error) {
 		if workspaces := engine.Workspaces(); workspaces != nil {
-			items, err := workspaces.List(ctx)
+			var params coreapi.WorkspaceListRequest
+			if rpcErr := decodeParams(req.Params, &params); rpcErr != nil {
+				return nil, rpcErr
+			}
+			items, err := workspaces.List(ctx, params)
 			if err != nil {
 				return nil, errorFromErr(err)
 			}

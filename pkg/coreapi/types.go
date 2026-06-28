@@ -45,11 +45,11 @@ type Engine interface {
 }
 
 type StateService interface {
-	Snapshot(context.Context) (StateSnapshot, error)
+	Snapshot(context.Context, StateSnapshotRequest) (StateSnapshot, error)
 }
 
 type WorkspaceService interface {
-	List(context.Context) ([]Workspace, error)
+	List(context.Context, WorkspaceListRequest) ([]Workspace, error)
 	Default(context.Context) (string, error)
 	Last(context.Context) (string, error)
 	ResolveForeground(context.Context, ResolveForegroundWorkspaceRequest) (string, error)
@@ -519,6 +519,25 @@ type ResumeSessionRequest struct {
 
 type ListSessionsRequest struct {
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
+	// Source, when non-empty, restricts results to sessions whose metadata.source
+	// equals this value. Sessions without a source tag are "unknown" and never
+	// match a concrete source. Empty = return all sessions.
+	Source string `json:"source,omitempty"`
+}
+
+// StateSnapshotRequest parameters for state/snapshot.
+type StateSnapshotRequest struct {
+	// Source, when non-empty, restricts the snapshot's sessions and the
+	// workspaces derived from them to the given client source. Empty = full
+	// snapshot (all clients).
+	Source string `json:"source,omitempty"`
+}
+
+// WorkspaceListRequest parameters for workspace/list.
+type WorkspaceListRequest struct {
+	// Source, when non-empty, restricts workspaces to those that have at least
+	// one session of this source. Empty = all workspaces.
+	Source string `json:"source,omitempty"`
 }
 
 type CurrentSessionRequest struct {
@@ -1139,6 +1158,9 @@ type SessionSnapshot struct {
 	WorkspacePath  string    `json:"workspace_path,omitempty"`
 	Title          string    `json:"title,omitempty"`
 	Preview        string    `json:"preview,omitempty"`
+	// Source is the originating client (e.g. "cli", "gui"); empty when the
+	// session predates source tagging. Mirrors Session.metadata["source"].
+	Source         string    `json:"source,omitempty"`
 	UpdatedAt      time.Time `json:"updated_at"`
 	Running        bool      `json:"running"`
 	NeedsAttention bool      `json:"needs_attention"`

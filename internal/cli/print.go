@@ -478,6 +478,7 @@ func ensureHeadlessSession(ctx context.Context, engine coreapi.Engine) (coreapi.
 	session, err = engine.Sessions().Create(ctx, coreapi.CreateSessionRequest{
 		WorkspaceRoot: workspaceRoot,
 		Title:         "Headless session",
+		Metadata:      map[string]any{"source": "cli"},
 	})
 	if err != nil {
 		return coreapi.Session{}, fmt.Errorf("create headless session: %w", err)
@@ -490,7 +491,7 @@ func ensureHeadlessSession(ctx context.Context, engine coreapi.Engine) (coreapi.
 
 func headlessWorkspaceRoot(ctx context.Context, engine coreapi.Engine) string {
 	if engine != nil {
-		if snapshot, err := engine.State().Snapshot(ctx); err == nil {
+		if snapshot, err := engine.State().Snapshot(ctx, coreapi.StateSnapshotRequest{}); err == nil {
 			if root := strings.TrimSpace(snapshot.ForegroundWorkspace); root != "" {
 				return root
 			}
