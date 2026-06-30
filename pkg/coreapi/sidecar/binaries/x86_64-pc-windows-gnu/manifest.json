@@ -4,8 +4,8 @@
     "api_version":  "v1",
     "target":  "x86_64-pc-windows-gnu",
     "binary":  "eos-core.exe",
-    "sha256":  "sha256:91d1dd0959f19f6298612c245c79e2b1ac3b9a4119d8f6b3c97fa1143e3520a2",
-    "signature":  "ed25519:mE39bgNZvBJueCO/wI5VaG2IFUW2siTrSZ3abuqP4IdRMUJy+qlZz/4TfhqM7f5p5xL+sDV4lqnMTBQA9uQTDQ==",
+    "sha256":  "sha256:3edb6daa8385b1c95ac97fc80a77825b7b3b9effd46830c85b7c5d6e53e760d2",
+    "signature":  "ed25519:z4ugDEFS2fp3SlfkTBqt7i1exTcAYnoTDOcWdaffiJaOx9wwm8dsuOwiKFZ9I26T3cCJ0eMv6GkP4V8SUKUlCQ==",
     "min_cli_version":  "v1.0.0-beta.1",
     "features":  [
                      "initialize",
