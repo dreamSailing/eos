@@ -42,7 +42,7 @@ func newExecCmd() *cobra.Command {
 		Long:  "Execute a single prompt in headless mode without the TUI. Supports workspace, sandbox, execution-mode, output format, and timeout options.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			modes := resolveModeConfig(accessMode, approvalMode, sandbox, skipPermission, false)
+			modes := resolveModeConfig(accessMode, approvalMode, sandbox, skipPermission)
 			return runExec(cmd.Context(), execOptions{
 				Prompt:         args[0],
 				Workspace:      strings.TrimSpace(workspace),
@@ -99,7 +99,7 @@ func runExec(ctx context.Context, opts execOptions) error {
 		return err
 	}
 
-	content, err := runSingleTurn(ctx, engine, opts.Prompt, opts.Output, startedAt)
+	content, err := runSingleTurn(ctx, engine, opts.Prompt, opts.Output)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			err = fmt.Errorf("exec timed out after %s", opts.Timeout)

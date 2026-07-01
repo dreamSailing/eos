@@ -1,12 +1,21 @@
+// Package sandbox 提供 EOS 壳层（eos-cli / eos-app）与 Rust 内核之间传递
+// 沙箱策略所需的 DTO。
+//
+// 命令/写入/网络的实际裁决发生在 Rust 内核（eos-core-sandbox 的
+// EnforcementSandboxRunner.check_command 等），壳层不做本地裁决，只通过
+// sidecar RPC（sandbox/policy、sandbox/set_policy、sandbox/backend_status）
+// 透传策略配置与后端状态。历史上壳层曾有一份本地裁决实现（GuardedRunner /
+// CommandViolation / AllowsCommand 等），已作为死代码删除——裁决必须与工具
+// 执行在同进程，避免 TOCTOU。
 package sandbox
 
 import (
-	"errors"
-	"path/filepath"
 	"runtime"
 	"strings"
 )
 
+// Mode 是沙箱策略的三档模式。仅作为 DTO 在壳层与内核间传递；
+// 裁决语义由内核实现。
 type Mode string
 
 const (
@@ -15,6 +24,7 @@ const (
 	ModeDangerFullAccess Mode = "danger-full-access"
 )
 
+// NetworkPolicy 控制网络访问的总开关。仅 DTO。
 type NetworkPolicy string
 
 const (
@@ -22,6 +32,8 @@ const (
 	NetworkAllow NetworkPolicy = "allow"
 )
 
+// Policy 是经 sidecar 透传给内核的沙箱策略。字段语义由内核消费，
+// 壳层不基于这些字段做本地裁决。
 type Policy struct {
 	Mode                   Mode          `json:"mode"`
 	WorkspaceRoot          string        `json:"workspace_root,omitempty"`
@@ -30,27 +42,18 @@ type Policy struct {
 	AllowedCommandPrefixes []string      `json:"allowed_command_prefixes,omitempty"`
 }
 
+// BackendStatus 描述内核沙箱后端的当前能力与降级状态，由内核经 RPC 返回壳层。
 type BackendStatus struct {
-	GOOS                   string   `json:"goos"`
-	Backend                string   `json:"backend"`
-	Enforced               bool     `json:"enforced"`
-	Degraded               bool     `json:"degraded"`
-	Reason                 string   `json:"reason,omitempty"`
+	GOOS                    string   `json:"goos"`
+	Backend                 string   `json:"backend"`
+	Enforced                bool     `json:"enforced"`
+	Degraded                bool     `json:"degraded"`
+	Reason                  string   `json:"reason,omitempty"`
 	UnsupportedCapabilities []string `json:"unsupported_capabilities,omitempty"`
 }
 
-type Runner interface {
-	Run(command []string, policy Policy) Result
-}
-
-type Result struct {
-	Stdout   string
-	Stderr   string
-	ExitCode int
-	Err      error
-	Backend  BackendStatus
-}
-
+// NormalizeMode 把大小写/下划线变体归一化为标准 Mode 字符串。
+// 用于壳层解析用户输入（CLI flag / 配置）后传给内核之前。
 func NormalizeMode(mode string) Mode {
 	key := strings.ToLower(strings.TrimSpace(mode))
 	key = strings.ReplaceAll(key, "_", "-")
@@ -64,149 +67,50 @@ func NormalizeMode(mode string) Mode {
 	}
 }
 
-func DefaultPolicy(workspaceRoot string) Policy {
-	return Policy{
-		Mode:          ModeWorkspaceWrite,
-		WorkspaceRoot: strings.TrimSpace(workspaceRoot),
-		Network:       NetworkDeny,
-	}
-}
-
-func (p Policy) Normalized() Policy {
-	p.Mode = NormalizeMode(string(p.Mode))
-	if strings.TrimSpace(string(p.Network)) == "" {
-		p.Network = NetworkDeny
-	}
-	p.WorkspaceRoot = strings.TrimSpace(p.WorkspaceRoot)
-	p.WritableRoots = compactStrings(p.WritableRoots)
-	p.AllowedCommandPrefixes = compactStrings(p.AllowedCommandPrefixes)
-	return p
-}
-
-func (p Policy) AllowsWrite(path string) (bool, error) {
-	p = p.Normalized()
-	switch p.Mode {
-	case ModeDangerFullAccess:
-		return true, nil
-	case ModeReadOnly:
-		return false, nil
-	}
-
-	roots := append([]string(nil), p.WritableRoots...)
-	if strings.TrimSpace(p.WorkspaceRoot) != "" {
-		roots = append([]string{p.WorkspaceRoot}, roots...)
-	}
-	if len(roots) == 0 {
-		return false, errors.New("workspace-write policy requires a workspace root or writable root")
-	}
-	for _, root := range roots {
-		ok, err := pathWithin(root, path)
-		if err != nil {
-			return false, err
-		}
-		if ok {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func (p Policy) AllowsCommand(argv []string) bool {
-	p = p.Normalized()
-	if p.Mode == ModeDangerFullAccess {
-		return true
-	}
-	if len(p.AllowedCommandPrefixes) == 0 {
-		return p.Mode != ModeReadOnly
-	}
-	joined := strings.Join(argv, " ")
-	for _, prefix := range p.AllowedCommandPrefixes {
-		if commandPrefixMatches(joined, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
-func commandPrefixMatches(command string, prefix string) bool {
-	command = strings.ToLower(strings.TrimSpace(command))
-	prefix = strings.ToLower(strings.TrimSpace(prefix))
-	if command == "" || prefix == "" {
-		return false
-	}
-	return command == prefix || strings.HasPrefix(command, prefix+" ")
-}
-
-func compactStrings(items []string) []string {
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		item = strings.TrimSpace(item)
-		if item != "" {
-			out = append(out, item)
-		}
-	}
-	return out
-}
-
-func DetectBackend() BackendStatus {
-	return DetectBackendForOS(runtime.GOOS)
-}
-
+// DetectBackendForOS 返回给定 OS 的后端能力快照，用于壳层在不经内核往返时
+// 给出降级提示（例如初始化阶段）。最终裁决仍以内核 BackendStatus 为准。
 func DetectBackendForOS(goos string) BackendStatus {
 	switch goos {
 	case "linux":
 		return BackendStatus{
-			GOOS:     goos,
-			Backend:  "bubblewrap-or-landlock",
-			Enforced: false,
-			Degraded: true,
-			Reason:   "backend probing not wired yet",
+			GOOS:                    goos,
+			Backend:                 "bubblewrap-or-landlock",
+			Enforced:                false,
+			Degraded:                true,
+			Reason:                  "backend probing not wired yet",
 			UnsupportedCapabilities: []string{"seccomp-filter", "namespace-isolation"},
 		}
 	case "darwin":
 		return BackendStatus{
-			GOOS:     goos,
-			Backend:  "seatbelt",
-			Enforced: false,
-			Degraded: true,
-			Reason:   "backend probing not wired yet",
+			GOOS:                    goos,
+			Backend:                 "seatbelt",
+			Enforced:                false,
+			Degraded:                true,
+			Reason:                  "backend probing not wired yet",
 			UnsupportedCapabilities: []string{"seatbelt-profile", "filesystem-tampering-detection"},
 		}
 	case "windows":
 		return BackendStatus{
-			GOOS:     goos,
-			Backend:  "path-broker",
-			Enforced: false,
-			Degraded: true,
-			Reason:   "restricted token/job object backend not wired yet",
+			GOOS:                    goos,
+			Backend:                 "path-broker",
+			Enforced:                false,
+			Degraded:                true,
+			Reason:                  "restricted token/job object backend not wired yet",
 			UnsupportedCapabilities: []string{"restricted-token", "job-object", "path-broker-enforcement"},
 		}
 	default:
 		return BackendStatus{
-			GOOS:     goos,
-			Backend:  "none",
-			Enforced: false,
-			Degraded: true,
-			Reason:   "unsupported OS",
+			GOOS:                    goos,
+			Backend:                 "none",
+			Enforced:                false,
+			Degraded:                true,
+			Reason:                  "unsupported OS",
 			UnsupportedCapabilities: []string{"all-sandbox-capabilities"},
 		}
 	}
 }
 
-func pathWithin(root string, path string) (bool, error) {
-	rootAbs, err := filepath.Abs(strings.TrimSpace(root))
-	if err != nil {
-		return false, err
-	}
-	pathAbs, err := filepath.Abs(strings.TrimSpace(path))
-	if err != nil {
-		return false, err
-	}
-	rootClean := filepath.Clean(rootAbs)
-	pathClean := filepath.Clean(pathAbs)
-	rel, err := filepath.Rel(rootClean, pathClean)
-	if err != nil {
-		return false, err
-	}
-	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))), nil
+// DetectBackend 是 DetectBackendForOS 的便捷封装，按当前运行平台探测。
+func DetectBackend() BackendStatus {
+	return DetectBackendForOS(runtime.GOOS)
 }

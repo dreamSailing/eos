@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,11 +77,11 @@ func RunPrintMode(opts PrintOptions) error {
 	defer selected.Close()
 
 	engine := selected.Engine
-	if err := applyPrintModeEnv(ctx, engine, opts); err != nil {
-		return err
+	if applyErr := applyPrintModeEnv(ctx, engine, opts); applyErr != nil {
+		return applyErr
 	}
 
-	content, err := runSingleTurn(ctx, engine, opts.Query, opts.OutputFormat, startedAt)
+	content, err := runSingleTurn(ctx, engine, opts.Query, opts.OutputFormat)
 	if err != nil {
 		writePrintError(opts.OutputFormat, err)
 		return err
@@ -117,8 +118,8 @@ func RunPrintModeStream(ctx context.Context, query string, w io.Writer) error {
 	defer selected.Close()
 
 	engine := selected.Engine
-	if err := applyPrintModeEnv(ctx, engine, PrintOptions{}); err != nil {
-		return err
+	if applyErr := applyPrintModeEnv(ctx, engine, PrintOptions{}); applyErr != nil {
+		return applyErr
 	}
 
 	session, err := ensureHeadlessSession(ctx, engine)
@@ -212,9 +213,9 @@ func printModeEnv(opts PrintOptions) map[string]string {
 		env["EOS_WORKSPACE_ROOT"] = ws
 		env["EOS_SANDBOX_WORKSPACE_ROOT"] = ws
 	} else if cwd, err := os.Getwd(); err == nil {
-		if cwd := strings.TrimSpace(cwd); cwd != "" {
-			env["EOS_WORKSPACE_ROOT"] = cwd
-			env["EOS_SANDBOX_WORKSPACE_ROOT"] = cwd
+		if trimmedCWD := strings.TrimSpace(cwd); trimmedCWD != "" {
+			env["EOS_WORKSPACE_ROOT"] = trimmedCWD
+			env["EOS_SANDBOX_WORKSPACE_ROOT"] = trimmedCWD
 		}
 	}
 	if opts.SkipPermissions {
@@ -255,7 +256,7 @@ func emitPrintResult(format string, result PrintResult, started time.Time, usage
 		}
 		fmt.Fprintln(os.Stdout, string(bs))
 	case "stream-json":
-		events := []map[string]interface{}{
+		events := []map[string]any{
 			{"type": "start", "model": modelName, "timestamp": started.Unix()},
 			{"type": "content", "text": result.Content},
 			buildDoneEvent(time.Since(started), usage),
@@ -285,8 +286,8 @@ func emitPrintResult(format string, result PrintResult, started time.Time, usage
 
 // buildDoneEvent renders the closing "done" event for stream-json output.
 // 接受 coreapi.UsageSummary，与 TUI 路径保持一致。
-func buildDoneEvent(elapsed time.Duration, usage coreapi.UsageSummary) map[string]interface{} {
-	event := map[string]interface{}{
+func buildDoneEvent(elapsed time.Duration, usage coreapi.UsageSummary) map[string]any {
+	event := map[string]any{
 		"type":        "done",
 		"duration_ms": elapsed.Milliseconds(),
 	}
@@ -319,9 +320,7 @@ func startRustOnlyEngine(ctx context.Context, callerLabel string, env map[string
 
 func productionSidecarProcessOptions(env map[string]string) sidecar.ProcessOptions {
 	nextEnv := make(map[string]string, len(env)+1)
-	for key, value := range env {
-		nextEnv[key] = value
-	}
+	maps.Copy(nextEnv, env)
 	if value, ok := nextEnv[rustCoreStoreDirEnv]; !ok || strings.TrimSpace(value) == "" {
 		if value, ok := os.LookupEnv(rustCoreStoreDirEnv); !ok || strings.TrimSpace(value) == "" {
 			if dir := headlessRustCoreStoreDir(); dir != "" {
@@ -358,7 +357,7 @@ func headlessRustCoreStoreDir() string {
 //
 // 对 text 输出格式，每个 text_delta 实时写入 stdout（逐 chunk 涌现，对齐 codex 体验）；
 // json/stream-json 仍只在 turn 结束后输出完整结构，保持机器可读契约不变。
-func runSingleTurn(ctx context.Context, engine coreapi.Engine, query, outputFormat string, started time.Time) (string, error) {
+func runSingleTurn(ctx context.Context, engine coreapi.Engine, query, outputFormat string) (string, error) {
 	if engine == nil {
 		return "", fmt.Errorf("core engine unavailable")
 	}
