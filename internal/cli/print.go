@@ -7,12 +7,11 @@ package cli
 
 // print.go 提供 headless 一次性查询入口。
 //
-// 生产路径：eos-core --app-server --stdio 子进程，通过 pkg/coreapi/sidecar + engineprovider
-// 启动。失败时直接返回 error，不静默回退到 Go legacy runtime。legacy 仅允许
-// dev/test 通过 EOS_CORE_ALLOW_FALLBACK=1 显式启用。
+// 引擎为 Rust-only：通过 pkg/coreapi/sidecar + engineprovider 启动
+// eos-core --app-server --stdio 子进程。失败时直接返回 error，不存在
+// Go 内核回退路径。
 //
-// 旧的 pkg/core.Runtime 路径不再被 print 入口使用；它仍保留在
-// pkg/core/*_test.go 与 parity harness 中作为 fixture。
+// 旧的 pkg/core.Runtime（Eino/Go 内核）路径已整体退役删除。
 
 import (
 	"context"
@@ -302,17 +301,15 @@ func buildDoneEvent(elapsed time.Duration, usage coreapi.UsageSummary) map[strin
 
 // --- shared helpers used by print.go and exec.go ---
 
-// startRustOnlyEngine 启动一次 eos-core sidecar。production 模式：仅 Rust，
-// 不接受 legacy fallback。开发/测试可通过 env: EOS_CORE_ALLOW_FALLBACK=1
-// 临时启用 parity harness 对比；legacy core.NewRuntime() 永不作为生产回退。
+// startRustOnlyEngine 启动一次 eos-core sidecar。引擎已收敛为 Rust-only：
+// 失败即返回 error，不再有 Go 内核回退路径。
 func startRustOnlyEngine(ctx context.Context, callerLabel string, env map[string]string) (engineprovider.Selection, error) {
+	_ = callerLabel
 	processOpts := productionSidecarProcessOptions(env)
 	selection, err := engineprovider.Select(ctx, engineprovider.Options{
 		Mode:            engineprovider.ModeAuto,
 		Sidecar:         processOpts,
 		RequiredMethods: sidecarclient.RequiredMethods,
-		// AllowFallback 留 false：production 拒绝静默回退。
-		AllowFallback: printExecAllowFallback(callerLabel),
 	})
 	if err != nil {
 		return engineprovider.Selection{}, fmt.Errorf("start eos-core sidecar (rust-only): %w", err)
@@ -355,13 +352,6 @@ func headlessRustCoreStoreDir() string {
 		return filepath.Join(dir, ".eos", "core")
 	}
 	return ""
-}
-
-// printExecAllowFallback 决定 print/exec CLI 是否允许 legacy fallback。
-// 默认 production 拒绝；只有 dev/test 通过显式 env 才放行。
-func printExecAllowFallback(label string) bool {
-	_ = label
-	return strings.EqualFold(strings.TrimSpace(os.Getenv("EOS_CORE_ALLOW_FALLBACK")), "1")
 }
 
 // runSingleTurn 启动一个 turn，订阅事件流直到 request.done/failed，返回 final 文本。

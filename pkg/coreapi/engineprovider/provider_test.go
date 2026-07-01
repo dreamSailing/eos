@@ -25,7 +25,6 @@ func TestSelectAutoUsesRustWhenRequiredMethodsArePresent(t *testing.T) {
 	})
 
 	selected, err := Select(context.Background(), Options{
-		Legacy:          sidecar.NewRemoteEngine(nil),
 		RequiredMethods: []string{protocoljsonrpc.MethodStateSnapshot, protocoljsonrpc.MethodSessionList},
 		StartRemote:     staticRemote(remote, nil),
 	})
@@ -35,12 +34,9 @@ func TestSelectAutoUsesRustWhenRequiredMethodsArePresent(t *testing.T) {
 	if selected.Kind != KindRustSidecar {
 		t.Fatalf("Kind=%q, want %q", selected.Kind, KindRustSidecar)
 	}
-	if selected.FallbackUsed {
-		t.Fatalf("FallbackUsed=true, want false")
-	}
 }
 
-func TestSelectAutoPrefersRustAndDoesNotFallBackWithoutDevToggle(t *testing.T) {
+func TestSelectAutoErrorsWhenRequiredMethodsAreMissing(t *testing.T) {
 	remote := sidecar.NewRemoteEngine(fakeProviderCaller{
 		init: coreapijsonrpc.InitializeResult{
 			ServerName: "rust-core",
@@ -48,86 +44,25 @@ func TestSelectAutoPrefersRustAndDoesNotFallBackWithoutDevToggle(t *testing.T) {
 		},
 	})
 
-	// 默认 auto 模式不再静默回退，必须 AllowFallback 才能 dev-only fallback。
+	// 缺失必需方法时直接报 ErrMissingMethods，不再回退。
 	_, err := Select(context.Background(), Options{
-		Legacy:          sidecar.NewRemoteEngine(nil),
 		RequiredMethods: []string{protocoljsonrpc.MethodWorkspaceList},
 		StartRemote:     staticRemote(remote, nil),
 	})
-	if err == nil {
-		t.Fatalf("Select() expected error: auto mode should not silently fall back")
-	}
 	if !errors.Is(err, ErrMissingMethods) {
 		t.Fatalf("Select() error = %v, want ErrMissingMethods", err)
 	}
 }
 
-// TestSelectAutoWithDevToggleFallsBack 验证 dev-only 显式开启 AllowFallback 后，
-// 才能走 legacy 回退路径。production 代码不应该传 AllowFallback=true。
-func TestSelectAutoWithDevToggleFallsBack(t *testing.T) {
-	legacy := sidecar.NewRemoteEngine(nil)
-	remote := sidecar.NewRemoteEngine(fakeProviderCaller{
-		init: coreapijsonrpc.InitializeResult{
-			ServerName: "rust-core",
-			Methods:    []string{protocoljsonrpc.MethodInitialize},
-		},
-	})
-
-	selected, err := Select(context.Background(), Options{
-		Legacy:          legacy,
-		RequiredMethods: []string{protocoljsonrpc.MethodWorkspaceList},
-		StartRemote:     staticRemote(remote, nil),
-		AllowFallback:   true, // dev-only
-	})
-	if err != nil {
-		t.Fatalf("Select() error = %v", err)
-	}
-	if selected.Kind != KindLegacyGo || !selected.FallbackUsed {
-		t.Fatalf("Selection=%+v, want legacy fallback", selected)
-	}
-	if selected.Engine != legacy {
-		t.Fatalf("Engine did not use legacy fallback")
-	}
-	if selected.FallbackReason == "" {
-		t.Fatalf("FallbackReason is empty")
-	}
-	if len(selected.Missing) != 1 || selected.Missing[0] != protocoljsonrpc.MethodWorkspaceList {
-		t.Fatalf("Missing=%+v, want workspace/list", selected.Missing)
-	}
-	if selected.Initialize.ServerName != "rust-core" {
-		t.Fatalf("Initialize.ServerName=%q, want rust-core", selected.Initialize.ServerName)
-	}
-}
-
-func TestSelectAutoFailsWhenSidecarStartFailsWithoutDevToggle(t *testing.T) {
+func TestSelectAutoErrorsWhenSidecarStartFails(t *testing.T) {
 	_, err := Select(context.Background(), Options{
-		Legacy:      sidecar.NewRemoteEngine(nil),
 		StartRemote: staticRemote(nil, errors.New("sidecar missing")),
 	})
 	if err == nil {
-		t.Fatalf("Select() expected error: auto mode should fail when sidecar start fails")
+		t.Fatalf("Select() expected error when sidecar start fails")
 	}
-	if !strings.Contains(err.Error(), "auto mode") || !strings.Contains(err.Error(), "sidecar missing") {
-		t.Fatalf("Select() error = %v, want auto mode + sidecar missing", err)
-	}
-}
-
-func TestSelectRustErrorsWhenRequiredMethodsAreMissing(t *testing.T) {
-	remote := sidecar.NewRemoteEngine(fakeProviderCaller{
-		init: coreapijsonrpc.InitializeResult{
-			ServerName: "rust-core",
-			Methods:    []string{protocoljsonrpc.MethodInitialize},
-		},
-	})
-
-	_, err := Select(context.Background(), Options{
-		Mode:            ModeRust,
-		Legacy:          sidecar.NewRemoteEngine(nil),
-		RequiredMethods: []string{protocoljsonrpc.MethodWorkspaceList},
-		StartRemote:     staticRemote(remote, nil),
-	})
-	if !errors.Is(err, ErrMissingMethods) {
-		t.Fatalf("Select() error = %v, want ErrMissingMethods", err)
+	if !strings.Contains(err.Error(), "sidecar missing") {
+		t.Fatalf("Select() error = %v, want it to contain sidecar missing", err)
 	}
 }
 
@@ -145,7 +80,6 @@ func TestSelectRustPassesRequiredMethodsToSidecarResolver(t *testing.T) {
 
 	_, err := Select(context.Background(), Options{
 		Mode:            ModeRust,
-		Legacy:          sidecar.NewRemoteEngine(nil),
 		RequiredMethods: []string{protocoljsonrpc.MethodWorkspaceList},
 		StartRemote: func(_ context.Context, opts sidecar.ProcessOptions) (RemoteEngine, error) {
 			got = opts
@@ -160,62 +94,22 @@ func TestSelectRustPassesRequiredMethodsToSidecarResolver(t *testing.T) {
 	}
 }
 
-func TestSelectLegacyRequiresDevToggle(t *testing.T) {
-	legacy := sidecar.NewRemoteEngine(nil)
-
-	// 显式 ModeLegacy 但 AllowFallback=false 时必须拒绝：legacy 是 dev-only。
-	_, err := Select(context.Background(), Options{
-		Mode:   ModeLegacy,
-		Legacy: legacy,
-	})
-	if err == nil {
-		t.Fatalf("Select() expected error: legacy mode without dev toggle should fail")
-	}
-	if !errors.Is(err, ErrRustRequired) {
-		t.Fatalf("Select() error = %v, want ErrRustRequired", err)
-	}
-}
-
-func TestSelectLegacyWithDevToggleDoesNotStartRemote(t *testing.T) {
-	legacy := sidecar.NewRemoteEngine(nil)
-	var started bool
-
-	selected, err := Select(context.Background(), Options{
-		Mode:         ModeLegacy,
-		Legacy:       legacy,
-		AllowFallback: true, // dev-only
-		StartRemote: func(context.Context, sidecar.ProcessOptions) (RemoteEngine, error) {
-			started = true
-			return nil, errors.New("should not start")
-		},
-	})
-	if err != nil {
-		t.Fatalf("Select() error = %v", err)
-	}
-	if started {
-		t.Fatalf("remote was started in legacy mode")
-	}
-	if selected.Kind != KindLegacyGo || selected.Engine != legacy {
-		t.Fatalf("Selection=%+v, want legacy", selected)
-	}
-}
-
-func TestResolveModeUsesEnvironmentAliases(t *testing.T) {
-	t.Setenv(EnvCoreEngine, "sidecar")
-	mode, err := ResolveMode("")
-	if err != nil {
-		t.Fatalf("ResolveMode() error = %v", err)
-	}
-	if mode != ModeRust {
-		t.Fatalf("mode=%q, want %q", mode, ModeRust)
+func TestResolveModeOnlyAcceptsAutoAndRust(t *testing.T) {
+	for _, value := range []string{"", "auto", "rust"} {
+		mode, err := ResolveMode(value)
+		if err != nil {
+			t.Fatalf("ResolveMode(%q) error = %v", value, err)
+		}
+		if mode != ModeAuto {
+			t.Fatalf("ResolveMode(%q) = %q, want %q", value, mode, ModeAuto)
+		}
 	}
 
-	mode, err = ResolveMode("eino")
-	if err != nil {
-		t.Fatalf("ResolveMode(eino) error = %v", err)
-	}
-	if mode != ModeLegacy {
-		t.Fatalf("mode=%q, want %q", mode, ModeLegacy)
+	// 退役的 mode 字符串必须被拒绝，避免静默走老路径。
+	for _, value := range []string{"legacy", "go", "eino", "parity", "sidecar"} {
+		if _, err := ResolveMode(value); err == nil {
+			t.Fatalf("ResolveMode(%q) expected error (retired mode)", value)
+		}
 	}
 }
 

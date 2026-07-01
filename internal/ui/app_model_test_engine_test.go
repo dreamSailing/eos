@@ -10,12 +10,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/dreamSailing/eos/pkg/coreapi"
-	coreapijsonrpc "github.com/dreamSailing/eos/pkg/coreapi/jsonrpc"
 	"github.com/dreamSailing/eos/pkg/protocol"
-	protocoljsonrpc "github.com/dreamSailing/eos/pkg/protocol/jsonrpc"
 	"github.com/dreamSailing/eos/pkg/sandbox"
 )
 
@@ -28,29 +25,6 @@ func newTestEngine() *testEngine {
 		},
 		permissionSnap: coreapi.PermissionSnapshot{},
 	}
-}
-
-// testEngineCaller 保留以满足 sidecar.Caller 签名（如果未来需要再次通过
-// sidecar.RemoteEngine 注入 engine）；但本测试已切到 NewCoreClientAdapterFromEngine，
-// 此 caller 不再被 hot path 使用。
-type testEngineCaller struct {
-	mu     sync.Mutex
-	engine *testEngine
-}
-
-func (c testEngineCaller) Call(_ context.Context, method string, _ any, out any) error {
-	switch method {
-	case protocoljsonrpc.MethodInitialize:
-		if target, ok := out.(*coreapijsonrpc.InitializeResult); ok {
-			*target = coreapijsonrpc.InitializeResult{
-				ServerName:      "eos-core-test",
-				ProtocolVersion: "v1",
-				Methods:         protocoljsonrpc.AllCoreMethods(),
-			}
-		}
-		return nil
-	}
-	return coreapi.ErrUnsupported
 }
 
 // testEngine 实现 coreapi.Engine；所有 service 通过嵌入指针访问共享状态。

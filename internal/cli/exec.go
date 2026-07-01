@@ -71,9 +71,8 @@ func newExecCmd() *cobra.Command {
 
 // runExec 是 eos exec <prompt> 的生产入口。
 //
-// 生产路径：启动 eos-core sidecar（Rust-only），走 engine.Turns().Start + 事件订阅。
-// 不接受 Go legacy runtime 作为 production 回退；legacy 仅在
-// EOS_CORE_ALLOW_FALLBACK=1 显式开启时作为 dev/test fixture 出现。
+// 引擎为 Rust-only：启动 eos-core sidecar，走 engine.Turns().Start + 事件订阅。
+// 不存在 Go legacy runtime 回退路径。
 func runExec(ctx context.Context, opts execOptions) error {
 	if opts.Output == "" {
 		opts.Output = "text"

@@ -15,6 +15,7 @@ import (
 	"github.com/dreamSailing/eos/internal/pkg/filedialog"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/state"
+	"github.com/dreamSailing/eos/internal/version"
 	"github.com/dreamSailing/eos/internal/ui/components/messages"
 	"github.com/dreamSailing/eos/internal/ui/features/slash"
 	"github.com/dreamSailing/eos/internal/ui/views/setup"
@@ -107,8 +108,8 @@ func TestInitialSetupKeepsWelcomeAfterFirstModelAdded(t *testing.T) {
 	if !strings.Contains(view, "AI 领航，助你破浪前行") {
 		t.Fatalf("expected welcome card subtitle to remain visible, got %q", view)
 	}
-	if !strings.Contains(view, "EOS v1.0.0-beta.1") {
-		t.Fatalf("expected welcome card to show app version, got %q", view)
+	if !strings.Contains(view, "EOS "+version.AppVersion) {
+		t.Fatalf("expected welcome card to show app version %q, got %q", version.AppVersion, view)
 	}
 }
 

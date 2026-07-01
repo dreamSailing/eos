@@ -46,7 +46,7 @@ func TestRemoteEngineWithRealSidecar(t *testing.T) {
 		t.Fatalf("Sessions().List()=%+v, want created session", sessions)
 	}
 
-	snapshot, err := engine.State().Snapshot(ctx)
+	snapshot, err := engine.State().Snapshot(ctx, coreapi.StateSnapshotRequest{})
 	if err != nil {
 		t.Fatalf("State().Snapshot() error = %v", err)
 	}
