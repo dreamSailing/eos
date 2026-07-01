@@ -13,11 +13,10 @@ import (
 
 func TestPolicyJSONSerialization(t *testing.T) {
 	policy := Policy{
-		Mode:                   ModeWorkspaceWrite,
-		WorkspaceRoot:          "/home/user/project",
-		WritableRoots:          []string{"/tmp", "/var/cache"},
-		Network:                NetworkDeny,
-		AllowedCommandPrefixes: []string{"git status", "go test"},
+		Mode:          ModeWorkspaceWrite,
+		WorkspaceRoot: "/home/user/project",
+		WritableRoots: []string{"/tmp", "/var/cache"},
+		Network:       NetworkDeny,
 	}
 	data, err := json.Marshal(policy)
 	if err != nil {
@@ -29,7 +28,6 @@ func TestPolicyJSONSerialization(t *testing.T) {
 		`"workspace_root"`,
 		`"writable_roots"`,
 		`"network"`,
-		`"allowed_command_prefixes"`,
 	} {
 		if !strings.Contains(jsonStr, field) {
 			t.Fatalf("policy JSON missing field %s: %s", field, jsonStr)
@@ -59,7 +57,6 @@ func TestPolicyJSONOmitEmptyBehavior(t *testing.T) {
 	for _, omitted := range []string{
 		`"workspace_root"`,
 		`"writable_roots"`,
-		`"allowed_command_prefixes"`,
 	} {
 		if strings.Contains(jsonStr, omitted) {
 			t.Fatalf("omitempty field %s should be absent: %s", omitted, jsonStr)

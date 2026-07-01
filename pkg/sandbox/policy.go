@@ -35,11 +35,10 @@ const (
 // Policy 是经 sidecar 透传给内核的沙箱策略。字段语义由内核消费，
 // 壳层不基于这些字段做本地裁决。
 type Policy struct {
-	Mode                   Mode          `json:"mode"`
-	WorkspaceRoot          string        `json:"workspace_root,omitempty"`
-	WritableRoots          []string      `json:"writable_roots,omitempty"`
-	Network                NetworkPolicy `json:"network"`
-	AllowedCommandPrefixes []string      `json:"allowed_command_prefixes,omitempty"`
+	Mode          Mode          `json:"mode"`
+	WorkspaceRoot string        `json:"workspace_root,omitempty"`
+	WritableRoots []string      `json:"writable_roots,omitempty"`
+	Network       NetworkPolicy `json:"network"`
 }
 
 // BackendStatus 描述内核沙箱后端的当前能力与降级状态，由内核经 RPC 返回壳层。
