@@ -118,10 +118,69 @@ eos-core-bin → app-server → runtime → {protocol, agent, context, model, to
 
 ### 提交规范
 
-- Commit message 格式：`type(scope): 中文摘要` + 详细 body。
-- type: feat / fix / refactor / chore / ci / docs。
-- scope: 受影响的模块（sandbox / tools / mcp / orchestrator 等）。
-- body 说明改了什么、为什么改、怎么验收。
+**禁止一句话提交。** 每个 commit 必须有结构化的标题 + 详细的 body。
+
+#### 标题格式
+
+```
+type(scope): 中文摘要（不超过 50 字）
+```
+
+- **type**（必填）：
+  - `feat` — 新功能
+  - `fix` — bug 修复
+  - `refactor` — 重构（不改行为）
+  - `chore` — 构建/依赖/配置等杂项
+  - `ci` — CI/CD 变更
+  - `docs` — 文档变更
+  - `test` — 测试补充/修复
+- **scope**（必填）：受影响的模块，如 `sandbox` / `tools` / `mcp` / `orchestrator` / `runtime` / `protocol` / `model` / `cli` / `app` / 多个用 `/` 连接。
+- **摘要**：用中文简明描述"做了什么"，不用"更新了""修改了"等模糊词。
+
+#### Body 格式（必填）
+
+Body 必须分节说明，每节用空行分隔：
+
+```
+<一句话背景/动机：为什么需要这个改动>
+
+具体改动：
+- 文件1：改了什么
+- 文件2：改了什么
+- ...
+
+影响范围 / 设计决策（可选）：
+- 为什么选这个方案
+- 什么不在本次范围
+
+验收：测试数 / 构建状态 / 其他验证方式
+```
+
+#### 示例
+
+```
+feat(sandbox): TOML 驱动的命令执行策略引擎
+
+把 shell 命令裁决从硬编码升级为可声明、带自测的内置规则集。
+规则用 TOML 描述，编译期 include_str! 内嵌进二进制。
+
+具体改动：
+- rules.rs: 规则引擎（CommandDecision 三态 + PatternToken 多选 + 自测校验）。
+- default_rules.toml: 内置默认规则（108 条，覆盖 git/npm/cargo/go/docker/kubectl）。
+- lib.rs: check_command 接入规则引擎，Forbid→deny，其余→allow。
+
+不在范围：CEL 表达式求值（字段已预留，将来加 cel-interpreter 激活）。
+
+验收: sandbox 91 测试全过，workspace build 零警告。
+```
+
+#### 禁止的提交方式
+
+- ❌ `fix bug` — 没说修了什么 bug、在哪、怎么修的
+- ❌ `update files` — 没说更新了什么
+- ❌ `feat: add function` — 没说加了什么函数、为什么、在哪
+- ❌ 只有标题没有 body
+- ❌ body 只有一句话
 
 ### CI
 
@@ -139,3 +198,4 @@ eos-core-bin → app-server → runtime → {protocol, agent, context, model, to
 6. **禁止复制粘贴重复逻辑**——封装复用。
 7. **禁止不经测试就提交**——改动必须有对应测试覆盖。
 8. **禁止引入规划文档描述但代码未实现的功能声明**——文档与代码必须一致。
+9. **禁止一句话提交**——commit 必须有标准化标题（type(scope): 摘要）+ 详细 body（改了什么/为什么/怎么验收）。
