@@ -1152,7 +1152,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			fi, err := os.Stat(p)
 			if err != nil || fi == nil || !fi.IsDir() {
-				m.appendSystem("路径不是目录: "+p, "warning")
+				m.appendSystem(i18n.T("path_not_dir", m.state.Language)+p, "warning")
 				return m, nil
 			}
 			if err := m.adapter.AddWorkspace(context.Background(), p); err != nil {
@@ -1160,7 +1160,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.refreshWorkspacePanel()
-			m.appendSystem("已添加工作区: "+p, "success")
+			m.appendSystem(i18n.T("workspace.added", m.state.Language)+p, "success")
 			m.confirmView = nil
 			if m.prevView != "" {
 				m.activeView = m.prevView
@@ -1253,7 +1253,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activeView = "shell"
 		m.initialSetupFlow = false
 		m.shell.FocusInput()
-		m.appendSystem("Setup cancelled.", "warning")
+		m.appendSystem(i18n.T("setup.cancelled", m.state.Language), "warning")
 
 	case setup.ModelFormCompleteMsg:
 		// 模型表单完成
@@ -1333,7 +1333,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.appendSystem(fmt.Sprintf("工作区切换后重载失败: %v", msg.Err), "error")
 		} else {
-			m.appendSystem("工作区已切换并完成重载", "success")
+			m.appendSystem(i18n.T("workspace.switched_reloaded", m.state.Language), "success")
 		}
 		m.refreshWorkspacePanel()
 		m.refreshMemoryPanel()
@@ -1343,7 +1343,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.appendSystem(fmt.Sprintf("MCP 重载失败: %v", msg.Err), "error")
 		} else {
-			m.appendSystem("MCP 已重载", "success")
+			m.appendSystem(i18n.T("mcp.reloaded", m.state.Language), "success")
 		}
 		m.refreshMCPPanel()
 		m.refreshLSPPanel()
@@ -1352,7 +1352,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.appendSystem(fmt.Sprintf("LSP 重载失败: %v", msg.Err), "error")
 		} else {
-			m.appendSystem("LSP 已重载", "success")
+			m.appendSystem(i18n.T("lsp.reloaded", m.state.Language), "success")
 		}
 		m.refreshLSPPanel()
 
@@ -1412,7 +1412,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.appendSystem(i18n.T("cost.cleared", m.state.Language), "success")
 	case panels.CostExportMsg:
 		// TODO: 实现成本统计导出
-		m.appendSystem("Export cost stats: Not implemented yet", "info")
+		m.appendSystem(i18n.T("cost.export_nyi", m.state.Language), "info")
 	case panels.CostRefreshMsg:
 		m.refreshCostPanel()
 
@@ -1760,9 +1760,9 @@ go build -o eos
 	}
 	_ = m.adapter.PinContextDocument(context.Background(), "EOS.md", content, 20000)
 	if existed {
-		m.appendSystem("已更新 EOS.md", "success")
+		m.appendSystem(i18n.T("eosmd.updated", m.state.Language), "success")
 	} else {
-		m.appendSystem("已生成 EOS.md", "success")
+		m.appendSystem(i18n.T("eosmd.generated", m.state.Language), "success")
 	}
 	return nil
 }
@@ -1777,7 +1777,7 @@ func (m *AppModel) tryInvokeSkillSlash(skillName string, args []string) bool {
 	if !invoked {
 		return false
 	}
-	m.appendSystem("Skill 已启用: "+skillName, "success")
+	m.appendSystem(i18n.T("skill.enabled", m.state.Language)+skillName, "success")
 	return true
 }
 
@@ -1879,7 +1879,7 @@ func (m *AppModel) handleWorkspaceRemove(path string) {
 		return
 	}
 	m.refreshWorkspacePanel()
-	m.appendSystem("已移除工作区: "+path, "success")
+	m.appendSystem(i18n.T("workspace.removed", m.state.Language)+path, "success")
 }
 
 func (m *AppModel) handleWorkspaceUse(rawPath string) tea.Cmd {
@@ -1893,7 +1893,7 @@ func (m *AppModel) handleWorkspaceUse(rawPath string) tea.Cmd {
 	}
 	fi, err := os.Stat(path)
 	if err != nil || fi == nil || !fi.IsDir() {
-		m.appendSystem("路径不是目录: "+path, "warning")
+		m.appendSystem(i18n.T("path_not_dir", m.state.Language)+path, "warning")
 		return nil
 	}
 	if !m.isWorkspaceTrusted(path) {
@@ -1913,7 +1913,7 @@ func (m *AppModel) switchWorkspaceTrusted(path string) tea.Cmd {
 	_ = os.Chdir(path)
 	_, _ = m.adapter.Settings(context.Background())
 	m.refreshWorkspacePanel()
-	m.appendSystem("已切换工作区: "+path, "success")
+	m.appendSystem(i18n.T("workspace.switched", m.state.Language)+path, "success")
 	return func() tea.Msg {
 		return WorkspaceReloadDoneMsg{Err: m.adapter.Reload()}
 	}
@@ -2113,9 +2113,9 @@ func (m *AppModel) sendMessage() tea.Cmd {
 			}
 		}
 		if len(names) > 0 {
-			m.appendSystem("已附带图片: "+strings.Join(names, ", "), "info")
+			m.appendSystem(i18n.T("image.attached", m.state.Language)+strings.Join(names, ", "), "info")
 		} else {
-			m.appendSystem("已附带图片", "info")
+			m.appendSystem(i18n.T("image.attached_short", m.state.Language), "info")
 		}
 	}
 
@@ -2784,40 +2784,40 @@ func (m *AppModel) pasteClipboardImage() tea.Cmd {
 		return func() tea.Msg { return nil }
 	}
 	if m.state.Mode != "ai" {
-		m.appendSystem("Bash 模式下无法发送图片，请切换到 AI 模式", "warning")
+		m.appendSystem(i18n.T("image.bash_mode", m.state.Language), "warning")
 		return func() tea.Msg { return nil }
 	}
 	b, err := clip.ReadImage()
 	if err != nil {
 		if strings.Contains(err.Error(), "empty clipboard image") {
-			m.appendSystem("剪贴板里没有图片", "warning")
+			m.appendSystem(i18n.T("image.clipboard_empty", m.state.Language), "warning")
 		} else {
-			m.appendSystem("粘贴图片失败: "+err.Error(), "error")
+			m.appendSystem(i18n.T("image.paste_failed", m.state.Language)+err.Error(), "error")
 		}
 		return func() tea.Msg { return nil }
 	}
 	// 保存图片到 .eos/attachments 目录
 	wd, err := os.Getwd()
 	if err != nil || strings.TrimSpace(wd) == "" {
-		m.appendSystem("粘贴图片失败: 无法获取工作目录", "error")
+		m.appendSystem(i18n.T("image.paste_failed_cwd", m.state.Language), "error")
 		return func() tea.Msg { return nil }
 	}
 	dir := filepath.Join(wd, ".eos", "attachments")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		m.appendSystem("粘贴图片失败: "+err.Error(), "error")
+		m.appendSystem(i18n.T("image.paste_failed", m.state.Language)+err.Error(), "error")
 		return func() tea.Msg { return nil }
 	}
 	path := filepath.Join(dir, fmt.Sprintf("clipboard-%d.png", time.Now().UnixNano()))
 	if err := os.WriteFile(path, b, 0o600); err != nil {
-		m.appendSystem("粘贴图片失败: "+err.Error(), "error")
+		m.appendSystem(i18n.T("image.paste_failed", m.state.Language)+err.Error(), "error")
 		return func() tea.Msg { return nil }
 	}
 	m.pendingImagePaths = append(m.pendingImagePaths, path)
-	m.appendSystem("已添加图片: "+filepath.Base(path), "success")
+	m.appendSystem(i18n.T("image.added", m.state.Language)+filepath.Base(path), "success")
 	// 检查模型是否支持视觉
 	modelName, _ := m.adapter.GetModelInfo()
 	if strings.TrimSpace(modelName) != "" && !ai.SupportsVisionFromCatalog(modelName) {
-		m.appendSystem("当前模型可能不具备视觉能力，图片可能无法解析", "warning")
+		m.appendSystem(i18n.T("image.vision_warning", m.state.Language), "warning")
 	}
 	return func() tea.Msg { return nil }
 }
@@ -3234,11 +3234,11 @@ func (m *AppModel) handleModelDelete(msg panels.ModelDeleteMsg) {
 // handleModelSyncEnv 处理环境变量同步
 func (m *AppModel) handleModelSyncEnv() {
 	if err := m.adapter.SyncEnvModel(context.Background()); err != nil {
-		m.appendSystem("Failed to sync model from environment (EOS_API_BASE and EOS_API_KEY required)", "error")
+		m.appendSystem(i18n.T("model.sync_env_failed", m.state.Language), "error")
 		return
 	}
 	m.refreshModelsPanel()
-	m.appendSystem("Synced model from environment variables", "success")
+	m.appendSystem(i18n.T("model.sync_env_ok", m.state.Language), "success")
 }
 
 // handleModelFormComplete 处理模型表单完成事件
@@ -3360,7 +3360,7 @@ func (m *AppModel) handleMCPEdit(msg panels.MCPEditMsg) {
 		}
 	}
 	if entry == nil {
-		m.appendSystem("未找到 MCP 服务器: "+msg.Name, "warning")
+		m.appendSystem(i18n.T("mcp.not_found", m.state.Language)+msg.Name, "warning")
 		return
 	}
 	b, err := json.MarshalIndent(entry, "", "  ")
@@ -3514,9 +3514,9 @@ func (m *AppModel) handleRulesSave(msg panels.RulesSaveMsg) {
 	}
 
 	if scope == "global" {
-		m.appendSystem("已保存全局 Rules.md", "success")
+		m.appendSystem(i18n.T("rules.saved_global", m.state.Language), "success")
 	} else {
-		m.appendSystem("已保存项目 Rules.md", "success")
+		m.appendSystem(i18n.T("rules.saved_project", m.state.Language), "success")
 	}
 	m.refreshRulesPanel()
 }
@@ -3533,7 +3533,7 @@ func (m *AppModel) handleMemorySave(msg panels.MemorySaveMsg) {
 		m.appendSystem(fmt.Sprintf("Memory 保存失败: %v", err), "error")
 		return
 	}
-	m.appendSystem("已保存 "+scope+" memory", "success")
+	m.appendSystem(i18n.T("memory.saved", m.state.Language), "success")
 	m.refreshMemoryPanel()
 }
 
@@ -3545,7 +3545,7 @@ func (m *AppModel) handleMemoryRebuildIndex() {
 		m.appendSystem(fmt.Sprintf("Memory 索引重建失败: %v", err), "error")
 		return
 	}
-	m.appendSystem("已重建 memory 索引", "success")
+	m.appendSystem(i18n.T("memory.rebuilt", m.state.Language), "success")
 	m.refreshMemoryPanel()
 }
 
@@ -3554,7 +3554,7 @@ func (m *AppModel) handleMemoryRebuildIndex() {
 func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 	raw := strings.TrimSpace(msg.Text)
 	if raw == "" {
-		m.appendSystem("请输入 MCP 配置 JSON", "warning")
+		m.appendSystem(i18n.T("mcp.input_empty", m.state.Language), "warning")
 		return nil
 	}
 
@@ -3586,12 +3586,12 @@ func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 	if msg.Edit {
 		// 编辑模式：只支持单个 MCPEntry
 		if len(entries) != 1 {
-			m.appendSystem("编辑模式只支持一个 MCPEntry 对象", "warning")
+			m.appendSystem(i18n.T("mcp.single_entry_only", m.state.Language), "warning")
 			return nil
 		}
 		entry := entries[0]
 		if strings.TrimSpace(entry.Name) == "" {
-			m.appendSystem("缺少 name 字段", "warning")
+			m.appendSystem(i18n.T("mcp.name_required", m.state.Language), "warning")
 			return nil
 		}
 		// 处理重命名：先添加新名称，再删除旧名称
@@ -3602,13 +3602,13 @@ func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 			}
 			if err := m.adapter.DeleteMCPServer(context.Background(), msg.OriginalName); err != nil {
 				_ = m.adapter.DeleteMCPServer(context.Background(), entry.Name)
-				m.appendSystem("删除旧名称失败: "+msg.OriginalName, "error")
+				m.appendSystem(i18n.T("mcp.delete_old_failed", m.state.Language)+msg.OriginalName, "error")
 				return nil
 			}
 		} else {
 			// 直接更新
 			if err := m.adapter.UpsertMCPEntry(context.Background(), entry); err != nil {
-				m.appendSystem("更新失败: "+err.Error(), "error")
+				m.appendSystem(i18n.T("mcp.update_failed", m.state.Language)+err.Error(), "error")
 				return nil
 			}
 		}
