@@ -1731,10 +1731,10 @@ go build -o eos
 
 ## Repository Map
 
-- UI: internal/ui/
-- Bridge: internal/bridge/
-- Runtime: internal/runtime/
-- Tools: internal/tools/
+- UI: internal/ui/ (TUI 基于 Bubble Tea)
+- Engine: pkg/coreapi/sidecar/ (通过 JSON-RPC 调用 Rust 内核 eos-core)
+- CLI: internal/cli/ (cobra 子命令)
+- Config: internal/config/
 
 ## Coding Style
 
