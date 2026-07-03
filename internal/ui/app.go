@@ -1540,148 +1540,127 @@ func (m *AppModel) shouldSendMessage() (bool, tea.Cmd) {
 
 // handleSlashCommand 处理斜杠命令
 func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
-	switch cmd {
-	case "/help":
-		m.clearPrediction()
-		m.activeView = "help"
-		if m.helpView != nil {
-			m.helpView.ResetScroll()
-		}
-	case "/clear":
-		m.shell.ClearContent()
-		m.shell.ClearInput()
-		m.shell.ClearLive()
-		m.history = m.history[:0]
-		m.actionHits = nil
-	case "/exit":
-		return tea.Quit
-	case "/init":
-		m.shell.ClearInput()
-		return m.initEOSMD()
-	case "/init-verifiers":
-		return m.handleInitVerifiersSlash(args)
-	case "/history":
-		m.clearPrediction()
-		m.activeView = "panel"
-		m.activePanel = "versions"
-		m.shell.ClearInput()
-		m.refreshVersionsPanel()
-	case "/model":
-		return m.handleModelSlash(args)
-	case "/mcp":
-		m.clearPrediction()
-		m.activeView = "panel"
-		m.activePanel = "mcp"
-		m.shell.ClearInput()
-		m.refreshMCPPanel()
-	case "/context":
-		m.openContextPanel()
-	case "/memory":
-		m.openMemoryPanel()
-	case "/cost":
-		m.clearPrediction()
-		m.activeView = "panel"
-		m.activePanel = "cost"
-		m.shell.ClearInput()
-		// 刷新成本统计数据
-		m.refreshCostPanel()
-	case "/tasks":
-		m.clearPrediction()
-		m.activeView = "panel"
-		m.activePanel = "tasks"
-		m.shell.ClearInput()
-		if panel, ok := m.panels["tasks"].(*panels.TasksPanel); ok && panel != nil {
-			panel.ResetView()
-			return panel.Init()
-		}
-	case "/workspace":
-		return m.handleWorkspaceSlash(args)
-	case "/config":
-		m.openSettingsPanel()
-	case "/lsp":
-		m.clearPrediction()
-		m.activeView = "panel"
-		m.activePanel = "lsp"
-		m.shell.ClearInput()
-		m.refreshLSPPanel()
-	case "/rules":
-		m.clearPrediction()
-		m.activeView = "panel"
-		m.activePanel = "rules"
-		m.shell.ClearInput()
-		m.refreshRulesPanel()
-	case "/lang":
-		if len(args) > 0 {
-			m.state.Language = args[0]
-			// 保存配置
-			if cfg, path := config.Load(); path != "" {
-				cfg.Language = args[0]
-				if err := config.Save(cfg, path); err != nil {
-					m.appendSystem(fmt.Sprintf("Failed to save language config: %v", err), "error")
+	handler, ok := slashCommandHandler(m)[cmd]
+	if !ok {
+		// 别名查找：commands.go 的 Aliases 字段
+		for _, c := range slash.Commands {
+			for _, alias := range c.Aliases {
+				if alias == cmd && c.Name != cmd {
+					handler, ok = slashCommandHandler(m)[c.Name]
+					break
 				}
 			}
-			m.appendSystem(fmt.Sprintf("Language changed to: %s", args[0]), "success")
-			return func() tea.Msg {
-				return panels.LanguageChangeMsg{Language: args[0]}
+			if ok {
+				break
 			}
 		}
-	case "/compact":
-		if message, err := m.adapter.CompactContext(context.Background()); err != nil {
-			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("上下文压缩失败", "Context compact failed"), err), "error")
-		} else if strings.TrimSpace(message) != "" {
-			m.appendSystem(message, "success")
-		} else {
-			m.appendSystem(i18n.T("context.compacted", m.state.Language), "success")
-		}
-		m.refreshContextPanel()
-	case "/session":
-		return m.handleSessionSlash(args)
-	case "/resume":
-		return m.handleResumeSlash(args)
-	case "/permissions":
-		return m.handlePermissionsSlash(args)
-	case "/skills":
-		return m.handleSkillsSlash(args)
-	case "/plugin":
-		return m.handlePluginSlash()
-	case "/reload-plugins":
-		return m.handleReloadPluginsSlash()
-	case "/doctor":
-		return m.handleDoctorSlash()
-	case "/diff":
-		return m.handleDiffSlash(args)
-	case "/review":
-		return m.handleReviewSlash(args)
-	case "/verify":
-		return m.handleVerifySlash(args)
-	case "/plan":
-		return m.handlePlanSlash(args)
-	case "/plan-style":
-		return m.handlePlanStyleSlash(args)
-	case "/git":
-		return m.handleGitSlash(args)
-	case "/remote":
-		return m.handleRemoteSlash(args)
-	case "/status":
-		return m.handleStatusSlash()
-	case "/fast":
-		return m.handleFastSlash()
-	case "/export":
-		return m.handleExportSlash(args)
-	case "/theme":
-		return m.handleThemeSlash(args)
-	case "/stats":
-		return m.handleStatsSlash()
-	case "/rename":
-		return m.handleRenameSlash(args)
-	case "/share":
-		return m.handleShareSlash()
-	case "/_legal":
-		return m.handleHiddenLegalSlash()
-	default:
-		m.appendSystem(fmt.Sprintf("Unknown command: %s", cmd), "warning")
 	}
+	if ok {
+		return handler(args)
+	}
+	m.appendSystem(fmt.Sprintf("Unknown command: %s", cmd), "warning")
 	return nil
+}
+
+// slashCommandHandler 构建命令名→处理函数的映射表。
+// 新增命令只需在此 map 加一行，不再需要改 switch。
+func slashCommandHandler(m *AppModel) map[string]func(args []string) tea.Cmd {
+	return map[string]func(args []string) tea.Cmd{
+		"/help": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "help"
+			if m.helpView != nil {
+				m.helpView.ResetScroll()
+			}
+			return nil
+		},
+		"/clear": func(_ []string) tea.Cmd {
+			m.shell.ClearContent()
+			m.shell.ClearInput()
+			m.shell.ClearLive()
+			m.history = m.history[:0]
+			m.actionHits = nil
+			return nil
+		},
+		"/exit":            func(_ []string) tea.Cmd { return tea.Quit },
+		"/init":            func(_ []string) tea.Cmd { m.shell.ClearInput(); return m.initEOSMD() },
+		"/init-verifiers":  m.handleInitVerifiersSlash,
+		"/history": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "panel"
+			m.activePanel = "versions"
+			m.shell.ClearInput()
+			m.refreshVersionsPanel()
+			return nil
+		},
+		"/model":           m.handleModelSlash,
+		"/mcp":             func(_ []string) tea.Cmd { m.clearPrediction(); m.activeView = "panel"; m.activePanel = "mcp"; m.shell.ClearInput(); m.refreshMCPPanel(); return nil },
+		"/context":         func(_ []string) tea.Cmd { m.openContextPanel(); return nil },
+		"/memory":          func(_ []string) tea.Cmd { m.openMemoryPanel(); return nil },
+		"/cost":            func(_ []string) tea.Cmd { m.clearPrediction(); m.activeView = "panel"; m.activePanel = "cost"; m.shell.ClearInput(); m.refreshCostPanel(); return nil },
+		"/tasks": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "panel"
+			m.activePanel = "tasks"
+			m.shell.ClearInput()
+			if panel, ok := m.panels["tasks"].(*panels.TasksPanel); ok && panel != nil {
+				panel.ResetView()
+				return panel.Init()
+			}
+			return nil
+		},
+		"/workspace":      m.handleWorkspaceSlash,
+		"/config":          func(_ []string) tea.Cmd { m.openSettingsPanel(); return nil },
+		"/lsp":             func(_ []string) tea.Cmd { m.clearPrediction(); m.activeView = "panel"; m.activePanel = "lsp"; m.shell.ClearInput(); m.refreshLSPPanel(); return nil },
+		"/rules":           func(_ []string) tea.Cmd { m.clearPrediction(); m.activeView = "panel"; m.activePanel = "rules"; m.shell.ClearInput(); m.refreshRulesPanel(); return nil },
+		"/lang": func(args []string) tea.Cmd {
+			if len(args) > 0 {
+				m.state.Language = args[0]
+				if cfg, path := config.Load(); path != "" {
+					cfg.Language = args[0]
+					if err := config.Save(cfg, path); err != nil {
+						m.appendSystem(fmt.Sprintf("Failed to save language config: %v", err), "error")
+					}
+				}
+				m.appendSystem(fmt.Sprintf("Language changed to: %s", args[0]), "success")
+				return func() tea.Msg { return panels.LanguageChangeMsg{Language: args[0]} }
+			}
+			return nil
+		},
+		"/compact": func(_ []string) tea.Cmd {
+			if message, err := m.adapter.CompactContext(context.Background()); err != nil {
+				m.appendSystem(fmt.Sprintf("%s: %v", m.localize("上下文压缩失败", "Context compact failed"), err), "error")
+			} else if strings.TrimSpace(message) != "" {
+				m.appendSystem(message, "success")
+			} else {
+				m.appendSystem(i18n.T("context.compacted", m.state.Language), "success")
+			}
+			m.refreshContextPanel()
+			return nil
+		},
+		"/session":        m.handleSessionSlash,
+		"/resume":          m.handleResumeSlash,
+		"/permissions":     m.handlePermissionsSlash,
+		"/skills":          m.handleSkillsSlash,
+		"/plugin":          func(_ []string) tea.Cmd { return m.handlePluginSlash() },
+		"/reload-plugins":  func(_ []string) tea.Cmd { return m.handleReloadPluginsSlash() },
+		"/doctor":          func(_ []string) tea.Cmd { return m.handleDoctorSlash() },
+		"/diff":            m.handleDiffSlash,
+		"/review":          m.handleReviewSlash,
+		"/verify":          m.handleVerifySlash,
+		"/plan":            m.handlePlanSlash,
+		"/plan-style":      m.handlePlanStyleSlash,
+		"/git":             m.handleGitSlash,
+		"/remote":          m.handleRemoteSlash,
+		"/status":          func(_ []string) tea.Cmd { return m.handleStatusSlash() },
+		"/fast":            func(_ []string) tea.Cmd { return m.handleFastSlash() },
+		"/export":          m.handleExportSlash,
+		"/theme":           m.handleThemeSlash,
+		"/stats":           func(_ []string) tea.Cmd { return m.handleStatsSlash() },
+		"/rename":          m.handleRenameSlash,
+		"/share":           func(_ []string) tea.Cmd { return m.handleShareSlash() },
+		"/_legal":          func(_ []string) tea.Cmd { return m.handleHiddenLegalSlash() },
+	}
 }
 
 func (m *AppModel) initEOSMD() tea.Cmd {
