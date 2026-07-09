@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -408,14 +409,19 @@ func decodeAPIError(respBody []byte, fallback error) error {
 }
 
 func downloadGeneratedMedia(mediaURL string) ([]byte, string, error) {
-	req, err := http.NewRequest(http.MethodGet, mediaURL, nil)
+	parsed, err := validateGeneratedMediaURL(context.Background(), mediaURL)
 	if err != nil {
 		return nil, "", err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, parsed.String(), nil)
 	if err != nil {
 		return nil, "", err
 	}
+	result := utils.DoHTTPRetryWithClient(context.Background(), newGeneratedMediaHTTPClient(), req, utils.DefaultRetryPolicy)
+	if result.Error != nil {
+		return nil, "", result.Error
+	}
+	resp := result.Response
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -425,8 +431,86 @@ func downloadGeneratedMedia(mediaURL string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	contentType := firstNonEmptyString(resp.Header.Get("Content-Type"), detectMIMEFromURL(mediaURL), http.DetectContentType(bs))
+	contentType := firstNonEmptyString(resp.Header.Get("Content-Type"), detectMIMEFromURL(parsed.String()), http.DetectContentType(bs))
 	return bs, contentType, nil
+}
+
+func newGeneratedMediaHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	dialer := &net.Dialer{Timeout: 15 * time.Second}
+	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateGeneratedMediaHost(ctx, host); err != nil {
+			return nil, err
+		}
+		return dialer.DialContext(ctx, network, net.JoinHostPort(host, port))
+	}
+	return &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 3 {
+				return fmt.Errorf("too many redirects")
+			}
+			_, err := validateGeneratedMediaURL(req.Context(), req.URL.String())
+			return err
+		},
+	}
+}
+
+func validateGeneratedMediaURL(ctx context.Context, rawURL string) (*url.URL, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return nil, fmt.Errorf("invalid media URL: %w", err)
+	}
+	if parsed == nil || !parsed.IsAbs() {
+		return nil, fmt.Errorf("invalid media URL: absolute URL required")
+	}
+	switch parsed.Scheme {
+	case "http", "https":
+	default:
+		return nil, fmt.Errorf("invalid media URL scheme: %s", parsed.Scheme)
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" {
+		return nil, fmt.Errorf("invalid media URL: missing host")
+	}
+	if parsed.User != nil {
+		return nil, fmt.Errorf("invalid media URL: user info is not allowed")
+	}
+	if err := validateGeneratedMediaHost(ctx, host); err != nil {
+		return nil, err
+	}
+	return parsed, nil
+}
+
+func validateGeneratedMediaHost(ctx context.Context, host string) error {
+	if ip := net.ParseIP(strings.TrimSpace(host)); ip != nil {
+		if isDisallowedGeneratedMediaIP(ip) {
+			return fmt.Errorf("media URL points to a disallowed address")
+		}
+		return nil
+	}
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return fmt.Errorf("resolve media URL host: %w", err)
+	}
+	if len(addrs) == 0 {
+		return fmt.Errorf("resolve media URL host: no addresses found")
+	}
+	for _, addr := range addrs {
+		if isDisallowedGeneratedMediaIP(addr.IP) {
+			return fmt.Errorf("media URL points to a disallowed address")
+		}
+	}
+	return nil
+}
+
+func isDisallowedGeneratedMediaIP(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()
 }
 
 func multimodalEndpointCandidates(base string, suffixes ...string) []string {

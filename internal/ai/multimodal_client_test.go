@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -79,4 +82,49 @@ func TestParseGeneratedVideoResult_CompletedPayload(t *testing.T) {
 	if string(got.Bytes) != string(want) {
 		t.Fatalf("bytes = %q, want %q", string(got.Bytes), string(want))
 	}
+}
+
+func TestValidateGeneratedMediaURLRejectsLocalAddresses(t *testing.T) {
+	t.Parallel()
+
+	for _, rawURL := range []string{
+		"http://127.0.0.1/image.png",
+		"http://[::1]/image.png",
+		"http://169.254.169.254/latest/meta-data/",
+	} {
+		if _, err := validateGeneratedMediaURL(context.Background(), rawURL); err == nil {
+			t.Fatalf("validateGeneratedMediaURL(%q) error = nil, want rejection", rawURL)
+		}
+	}
+}
+
+func TestValidateGeneratedMediaURLRejectsUnsupportedSchemes(t *testing.T) {
+	t.Parallel()
+
+	if _, err := validateGeneratedMediaURL(context.Background(), "file:///tmp/test.png"); err == nil {
+		t.Fatal("validateGeneratedMediaURL() error = nil, want invalid scheme")
+	}
+}
+
+func TestGeneratedMediaHTTPClientRejectsBadRedirects(t *testing.T) {
+	t.Parallel()
+
+	client := newGeneratedMediaHTTPClient()
+	if err := client.CheckRedirect(&http.Request{URL: mustParseURL(t, "http://127.0.0.1/redirect")}, []*http.Request{{}}); err == nil {
+		t.Fatal("CheckRedirect() error = nil, want disallowed address rejection")
+	}
+	via := []*http.Request{{}, {}, {}}
+	err := client.CheckRedirect(&http.Request{URL: mustParseURL(t, "https://example.com/image.png")}, via)
+	if err == nil || !strings.Contains(err.Error(), "too many redirects") {
+		t.Fatalf("CheckRedirect() error = %v, want too many redirects", err)
+	}
+}
+
+func mustParseURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("url.Parse(%q) error = %v", raw, err)
+	}
+	return parsed
 }

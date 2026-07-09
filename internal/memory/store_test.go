@@ -3,7 +3,9 @@ package memory
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -79,6 +81,60 @@ func TestStoreUpsertRoutesDedupesAndBuildsIndex(t *testing.T) {
 	indexText := string(indexContent)
 	if !strings.Contains(indexText, "## global") || !strings.Contains(indexText, "## project") {
 		t.Fatalf("memory index missing expected sections: %s", indexText)
+	}
+}
+
+func TestStoreUpsertConcurrentPreservesEntries(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	root := filepath.Join(tmp, "workspace")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	setMemoryTestHome(t, home)
+
+	store := NewStore(root)
+	const writers = 16
+
+	start := make(chan struct{})
+	errCh := make(chan error, writers)
+	var wg sync.WaitGroup
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			_, err := store.Upsert(MemoryEntry{
+				Type:    MemoryTypeProject,
+				Section: "并发写入",
+				Content: "entry-" + strconv.Itoa(i),
+			})
+			errCh <- err
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("Upsert() error = %v", err)
+		}
+	}
+
+	content, err := os.ReadFile(ProjectMemoryPath(root))
+	if err != nil {
+		t.Fatalf("read project memory failed: %v", err)
+	}
+	text := string(content)
+	for i := 0; i < writers; i++ {
+		want := "entry-" + strconv.Itoa(i)
+		if !strings.Contains(text, want) {
+			t.Fatalf("project memory missing %q after concurrent upserts: %s", want, text)
+		}
 	}
 }
 
