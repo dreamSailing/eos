@@ -225,12 +225,18 @@ func (a *CoreClientAdapter) Invoke(ctx context.Context, query, executionMode str
 		err  error
 	}, 1)
 	go func() {
-		turn, err := a.engine.Turns().Start(ctx, coreapi.StartTurnRequest{
+		req := coreapi.StartTurnRequest{
 			SessionID:  sessionID,
 			TurnID:     turnID,
 			Input:      query,
 			ImagePaths: append([]string(nil), imagePaths...),
-		})
+		}
+		// Map the global execution_mode ("plan") to the per-turn
+		// collaboration_mode, mirroring Codex's turn/start.collaborationMode.
+		if strings.TrimSpace(strings.ToLower(executionMode)) == "plan" {
+			req.CollaborationMode = &coreapi.CollaborationMode{Mode: coreapi.ModePlan}
+		}
+		turn, err := a.engine.Turns().Start(ctx, req)
 		startDone <- struct {
 			turn coreapi.Turn
 			err  error
@@ -1366,14 +1372,15 @@ func firstEventText(data map[string]any, fallback string, keys ...string) string
 }
 
 // itemCompletedText extracts the text from an item.completed event's payload,
-// which nests the TurnItem under payload.item. Only AgentMessage items carry
-// displayable text.
+// which nests the TurnItem under payload.item. AgentMessage and Plan items
+// carry displayable text; tool_call items do not.
 func itemCompletedText(data map[string]any) string {
 	item, ok := data["item"].(map[string]any)
 	if !ok {
 		return ""
 	}
-	if kind, _ := item["kind"].(string); kind != "agent_message" {
+	kind, _ := item["kind"].(string)
+	if kind != "agent_message" && kind != "plan" {
 		return ""
 	}
 	text, _ := item["text"].(string)

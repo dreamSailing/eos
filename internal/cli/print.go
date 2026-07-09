@@ -168,9 +168,9 @@ func RunPrintModeStream(ctx context.Context, query string, w io.Writer) error {
 				content += text
 				fmt.Fprint(w, text)
 			case protocol.EventTypeItemCompleted:
-				// AgentMessage completion carries full text; use it if non-empty.
+				// AgentMessage and Plan completion carry full text; use it if non-empty.
 				if item, ok := payload["item"].(map[string]any); ok {
-					if k, _ := item["kind"].(string); k == "agent_message" {
+					if k, _ := item["kind"].(string); k == "agent_message" || k == "plan" {
 						if text, _ := item["text"].(string); text != "" {
 							content = text
 						}

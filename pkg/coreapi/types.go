@@ -590,13 +590,45 @@ type SaveSessionMessagesRequest struct {
 	Messages      []SessionMessage `json:"messages,omitempty"`
 }
 
+// ModeKind is the per-turn collaboration mode, mirroring eos-core's
+// ModeKind (snake_case on the wire). Only "plan" and "default" are
+// user-visible — the same set Codex exposes.
+type ModeKind string
+
+const (
+	// ModePlan is read-only planning mode: mutating tools are blocked by
+	// prompt contract, todo_write is rejected at runtime, and
+	// request_user_input becomes available.
+	ModePlan ModeKind = "plan"
+	// ModeDefault is normal execution mode.
+	ModeDefault ModeKind = "default"
+)
+
+// CollaborationModeSettings carries tunable per-mode settings. Mirrors
+// eos-core's CollaborationModeSettings.
+type CollaborationModeSettings struct {
+	Model                 string `json:"model,omitempty"`
+	ReasoningEffort       string `json:"reasoning_effort,omitempty"`
+	DeveloperInstructions string `json:"developer_instructions,omitempty"`
+}
+
+// CollaborationMode is a complete per-turn mode selection, sent by the
+// client on turn/start. Mirrors eos-core's CollaborationMode and Codex's
+// turn/start.collaborationMode. Takes precedence over model/reasoning in
+// options.
+type CollaborationMode struct {
+	Mode     ModeKind                  `json:"mode"`
+	Settings CollaborationModeSettings `json:"settings,omitempty"`
+}
+
 type StartTurnRequest struct {
-	SessionID   string          `json:"session_id"`
-	TurnID      string          `json:"turn_id,omitempty"`
-	Input       string          `json:"input"`
-	ImagePaths  []string        `json:"image_paths,omitempty"`
-	Attachments []Attachment    `json:"attachments,omitempty"`
-	Options     json.RawMessage `json:"options,omitempty"`
+	SessionID          string              `json:"session_id"`
+	TurnID             string              `json:"turn_id,omitempty"`
+	Input              string              `json:"input"`
+	ImagePaths         []string            `json:"image_paths,omitempty"`
+	Attachments        []Attachment        `json:"attachments,omitempty"`
+	Options            json.RawMessage     `json:"options,omitempty"`
+	CollaborationMode  *CollaborationMode  `json:"collaboration_mode,omitempty"`
 }
 
 type Attachment struct {
@@ -635,6 +667,44 @@ type InquiryResponse struct {
 	InquiryID string `json:"inquiry_id"`
 	Option    string `json:"option,omitempty"`
 	Text      string `json:"text,omitempty"`
+}
+
+// RequestUserInputQuestionOption is one selectable option of a question.
+// Mirrors eos-core's RequestUserInputQuestionOption.
+type RequestUserInputQuestionOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+// RequestUserInputQuestion is a single structured question. Mirrors
+// eos-core's RequestUserInputQuestion.
+type RequestUserInputQuestion struct {
+	ID       string                         `json:"id"`
+	Header   string                         `json:"header"`
+	Question string                         `json:"question"`
+	Options  []RequestUserInputQuestionOption `json:"options,omitempty"`
+}
+
+// RequestUserInputEvent is the payload of the turn.request_user_input event,
+// published when the request_user_input tool suspends the turn. Mirrors
+// eos-core's RequestUserInputEvent.
+type RequestUserInputEvent struct {
+	CallID           string                    `json:"call_id"`
+	TurnID           string                    `json:"turn_id,omitempty"`
+	Questions        []RequestUserInputQuestion `json:"questions"`
+	AutoResolutionMs int64                     `json:"autoResolutionMs,omitempty"`
+}
+
+// RequestUserInputResponse is the answer payload sent back via
+// approval/respond (decision="accept", reason=JSON(this)). Mirrors
+// eos-core's RequestUserInputResponse.
+type RequestUserInputResponse struct {
+	Answers map[string]RequestUserInputAnswer `json:"answers"`
+}
+
+// RequestUserInputAnswer holds the selected option labels for one question.
+type RequestUserInputAnswer struct {
+	Answers []string `json:"answers"`
 }
 
 type SpawnAgentRequest struct {
