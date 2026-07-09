@@ -577,10 +577,15 @@ func (l *Loader) GetStats() map[string]any {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
+	names := make([]string, 0, len(l.skills))
+	for name := range l.skills {
+		names = append(names, name)
+	}
+
 	return map[string]any{
 		"total_skills": len(l.skills),
-		"scan_dirs":    l.skillsDirs,
-		"names":        l.GetNames(),
+		"scan_dirs":    append([]string(nil), l.skillsDirs...),
+		"names":        names,
 	}
 }
 

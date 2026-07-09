@@ -5,7 +5,6 @@ package skills
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"os"
 	"path/filepath"
@@ -74,4 +73,48 @@ func TestLoaderUserOverridesProjectForSameName(t *testing.T) {
 	if s.Description != "user" {
 		t.Fatalf("expected user override, got %q", s.Description)
 	}
+}
+
+func TestLoaderGetStatsIncludesNamesWithoutAliasing(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, filepath.Join(root, "skill-a"), "skill-a", "a")
+	writeSkill(t, filepath.Join(root, "skill-b"), "skill-b", "b")
+
+	l := NewLoader()
+	l.SetSkillsDirs([]string{root})
+	if err := l.Scan(); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+
+	stats := l.GetStats()
+	total, ok := stats["total_skills"].(int)
+	if !ok || total < 2 {
+		t.Fatalf("total_skills = %v, want at least 2", stats["total_skills"])
+	}
+	names, ok := stats["names"].([]string)
+	if !ok || len(names) < 2 {
+		t.Fatalf("names = %#v, want at least 2 names", stats["names"])
+	}
+	if !containsString(names, "skill-a") || !containsString(names, "skill-b") {
+		t.Fatalf("names = %#v, want skill-a and skill-b", names)
+	}
+	scanDirs, ok := stats["scan_dirs"].([]string)
+	if !ok || len(scanDirs) != 1 || scanDirs[0] != root {
+		t.Fatalf("scan_dirs = %#v, want [%q]", stats["scan_dirs"], root)
+	}
+
+	scanDirs[0] = "mutated"
+	gotDirs := l.GetSkillsDirs()
+	if len(gotDirs) != 1 || gotDirs[0] != root {
+		t.Fatalf("GetSkillsDirs() = %#v, want [%q]", gotDirs, root)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
