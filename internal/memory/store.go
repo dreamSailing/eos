@@ -5,10 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Store struct {
+	mu      sync.Mutex
 	rootDir string
 	index   *MemoryIndex
 }
@@ -23,18 +25,18 @@ type WriteResult struct {
 }
 
 type Snapshot struct {
-	GlobalPath       string
-	GlobalContent    string
-	GlobalExists     bool
-	ProjectPath      string
-	ProjectContent   string
-	ProjectExists    bool
-	SessionPath      string
-	SessionContent   string
-	SessionExists    bool
-	IndexPath        string
-	IndexContent     string
-	IndexExists      bool
+	GlobalPath     string
+	GlobalContent  string
+	GlobalExists   bool
+	ProjectPath    string
+	ProjectContent string
+	ProjectExists  bool
+	SessionPath    string
+	SessionContent string
+	SessionExists  bool
+	IndexPath      string
+	IndexContent   string
+	IndexExists    bool
 }
 
 func NewStore(rootDir string) *Store {
@@ -67,6 +69,10 @@ func (s *Store) Upsert(entry MemoryEntry) (WriteResult, error) {
 	if strings.TrimSpace(path) == "" {
 		path = entry.Type.DefaultPath(s.rootDir)
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if err := ensureFileWithTemplate(path, entry.Type); err != nil {
 		return WriteResult{}, err
 	}
@@ -85,7 +91,7 @@ func (s *Store) Upsert(entry MemoryEntry) (WriteResult, error) {
 	}
 
 	updated := upsertSectionContent(existingText, entry.Section, entry.Content)
-	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+	if err := writeFileAtomic(path, []byte(updated), 0o644); err != nil {
 		return WriteResult{}, err
 	}
 	if err := s.rebuildIndex(); err != nil {
@@ -156,7 +162,7 @@ func ensureFileWithTemplate(path string, memType MemoryType) error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	return os.WriteFile(path, []byte(defaultTemplate(memType)), 0o644)
+	return writeFileAtomic(path, []byte(defaultTemplate(memType)), 0o644)
 }
 
 func containsNormalizedEntry(content string, candidate string) bool {
@@ -202,4 +208,33 @@ func upsertSectionContent(content string, section string, entry string) string {
 
 	lines = append(lines[:insertAt], append([]string{"- " + entry}, lines[insertAt:]...)...)
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
+}
+
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
