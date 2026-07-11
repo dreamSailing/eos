@@ -1078,6 +1078,13 @@ type ProviderEndpoint struct {
 	APIBase string `json:"api_base,omitempty"`
 }
 
+// PlanModel 套餐类 preset 内可选的模型项（如方舟 Agent Plan 含多厂商模型）。
+type PlanModel struct {
+	ModelID       string `json:"model_id"`
+	Label         string `json:"label,omitempty"`
+	ContextWindow int64  `json:"context_window,omitempty"`
+}
+
 type ModelProviderOption struct {
 	ID            string             `json:"id"`
 	Name          string             `json:"name,omitempty"`
@@ -1101,8 +1108,9 @@ type ModelPresetOption struct {
 	SupportsVision          bool     `json:"supports_vision"`
 	SupportsImageGeneration bool     `json:"supports_image_generation"`
 	SupportsVideoGeneration bool     `json:"supports_video_generation"`
-	SupportsSpeechSynthesis bool     `json:"supports_speech_synthesis"`
-	SupportsTools           bool     `json:"supports_tools"`
+	SupportsSpeechSynthesis bool       `json:"supports_speech_synthesis"`
+	SupportsTools           bool       `json:"supports_tools"`
+	PlanModels              []PlanModel `json:"plan_models,omitempty"`
 }
 
 type ModelCatalogState struct {
