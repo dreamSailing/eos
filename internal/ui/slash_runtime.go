@@ -807,29 +807,158 @@ func (m *AppModel) restoreSessionHistory(id string) {
 		return
 	}
 
-	for _, msg := range messages {
-		content := strings.TrimSpace(msg.Content)
-		if content == "" {
-			continue
+	// 按 metadata.turn_id 分组重建历史。内核把一个 turn 的多个 TurnItem 存成多条
+	// SessionMessage（每条带 metadata.turn_id + metadata.kind）。同一 turn 的
+	// assistant 消息合并成一个 ai entry（正文+思考），tool 消息作为 tool entry。
+	// 无 turn_id 的消息（user/system）各成独立 entry。
+	var pendingTurnID string
+	var pendingTexts []string
+	var pendingTime time.Time
+
+	flushPending := func() {
+		if len(pendingTexts) == 0 {
+			pendingTurnID = ""
+			return
 		}
 		entry := historyEntry{
-			content:   content,
-			timestamp: time.Now(),
+			kind:      "ai",
+			content:   strings.Join(pendingTexts, "\n\n"),
+			timestamp: pendingTime,
 		}
-		if !msg.Time.IsZero() {
-			entry.timestamp = msg.Time
-		}
-		switch strings.ToLower(strings.TrimSpace(msg.Role)) {
-		case "assistant":
-			entry.kind = "ai"
-		case "system", "tool":
-			entry.kind = "system"
-			entry.level = "info"
-		default:
-			entry.kind = "user"
+		if entry.timestamp.IsZero() {
+			entry.timestamp = time.Now()
 		}
 		m.appendHistory(entry)
+		pendingTexts = pendingTexts[:0]
+		pendingTurnID = ""
 	}
+
+	for _, msg := range messages {
+		turnID := sessionMessageTurnID(msg.Metadata)
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
+
+		if turnID == "" {
+			// 无 turn_id：user/system 独立 entry（和旧行为一致）。
+			flushPending()
+			content := strings.TrimSpace(msg.Content)
+			if content == "" {
+				continue
+			}
+			entry := historyEntry{content: content, timestamp: msg.Time}
+			if entry.timestamp.IsZero() {
+				entry.timestamp = time.Now()
+			}
+			switch role {
+			case "assistant":
+				entry.kind = "ai"
+			case "system", "tool":
+				entry.kind = "system"
+				entry.level = "info"
+			default:
+				entry.kind = "user"
+			}
+			m.appendHistory(entry)
+			continue
+		}
+
+		if turnID != pendingTurnID {
+			flushPending()
+			pendingTurnID = turnID
+			pendingTime = msg.Time
+		}
+
+		kind := sessionMessageKind(msg.Metadata)
+		switch {
+		case role == "tool":
+			// tool 结果：作为 tool entry 跟在 ai entry 后面。
+			content := strings.TrimSpace(msg.Content)
+			if content == "" {
+				continue
+			}
+			toolName := sessionMessageToolName(msg.Metadata)
+			entry := historyEntry{
+				kind:      "tool",
+				content:   content,
+				toolName:  toolName,
+				timestamp: msg.Time,
+			}
+			if entry.timestamp.IsZero() {
+				entry.timestamp = time.Now()
+			}
+			m.appendHistory(entry)
+		case kind == "reasoning":
+			// 思考内容：跳过（TUI 不渲染折叠思考块，避免历史噪音）。
+			continue
+		case kind == "status":
+			// 状态提示（取消/失败等）：作为 system entry。
+			content := strings.TrimSpace(msg.Content)
+			if content == "" {
+				continue
+			}
+			entry := historyEntry{
+				kind:      "system",
+				content:   content,
+				timestamp: msg.Time,
+			}
+			if entry.timestamp.IsZero() {
+				entry.timestamp = time.Now()
+			}
+			m.appendHistory(entry)
+		case kind == "plan":
+			// 计划文本：并入 ai entry。
+			if content := strings.TrimSpace(msg.Content); content != "" {
+				pendingTexts = append(pendingTexts, content)
+			}
+		default:
+			// agent_message（无 kind）或 tool_call 的 assistant 占位消息。
+			// tool_call 的 content 为空（工具名在 metadata.tool_call），跳过空 content。
+			if content := strings.TrimSpace(msg.Content); content != "" {
+				pendingTexts = append(pendingTexts, content)
+			}
+		}
+	}
+	flushPending()
+}
+
+// sessionMessageTurnID 从 SessionMessage.metadata 提取 turn_id。
+func sessionMessageTurnID(metadata map[string]any) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	if v, ok := metadata["turn_id"]; ok {
+		if s, ok := v.(string); ok {
+			return strings.TrimSpace(s)
+		}
+	}
+	return ""
+}
+
+// sessionMessageKind 从 SessionMessage.metadata 提取 kind（reasoning/plan/status）。
+func sessionMessageKind(metadata map[string]any) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	if v, ok := metadata["kind"]; ok {
+		if s, ok := v.(string); ok {
+			return strings.TrimSpace(strings.ToLower(s))
+		}
+	}
+	return ""
+}
+
+// sessionMessageToolName 从 SessionMessage.metadata.tool_call 提取工具名。
+func sessionMessageToolName(metadata map[string]any) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	tc, ok := metadata["tool_call"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	if name, ok := tc["name"].(string); ok {
+		return strings.TrimSpace(name)
+	}
+	return ""
 }
 
 func (m *AppModel) executionModeLabel(mode string) string {
