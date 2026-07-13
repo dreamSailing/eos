@@ -29,43 +29,45 @@ func newTestEngine() *testEngine {
 
 // testEngine 实现 coreapi.Engine；所有 service 通过嵌入指针访问共享状态。
 type testEngine struct {
-	settings          coreapi.Settings
-	permissionSnap    coreapi.PermissionSnapshot
-	lastSettingsSave  any
-	workspaceList     []coreapi.Workspace
-	models            []coreapi.ModelConfig
-	activeModel       string
+	settings         coreapi.Settings
+	permissionSnap   coreapi.PermissionSnapshot
+	lastSettingsSave any
+	workspaceList    []coreapi.Workspace
+	models           []coreapi.ModelConfig
+	activeModel      string
 }
 
-func (e *testEngine) State() coreapi.StateService                              { return &testStateService{} }
-func (e *testEngine) Workspaces() coreapi.WorkspaceService                     { return &testWorkspaceService{e: e} }
-func (e *testEngine) Sessions() coreapi.SessionService                         { return &testSessionService{e: e} }
-func (e *testEngine) MCP() coreapi.MCPService                                   { return &testMCPService{} }
-func (e *testEngine) LSP() coreapi.LSPService                                   { return nil }
-func (e *testEngine) Config() coreapi.ConfigService                             { return &testConfigService{e: e} }
-func (e *testEngine) Permissions() coreapi.PermissionService                   { return &testPermissionService{e: e} }
-func (e *testEngine) Extensions() coreapi.ExtensionService                     { return &testExtensionService{} }
-func (e *testEngine) Context() coreapi.ContextService                           { return &testContextService{} }
-func (e *testEngine) Usage() coreapi.UsageService                               { return nil }
-func (e *testEngine) Versions() coreapi.VersionService                         { return nil }
-func (e *testEngine) Tasks() coreapi.TaskService                               { return &testTaskService{} }
-func (e *testEngine) Modes() coreapi.ModeService                               { return &testModeService{} }
-func (e *testEngine) Models() coreapi.ModelService                             { return &testModelService{e: e} }
-func (e *testEngine) RemoteWorkspaces() coreapi.RemoteWorkspaceService         { return &testRemoteWorkspaceService{} }
-func (e *testEngine) Git() coreapi.GitService                                   { return nil }
-func (e *testEngine) Insights() coreapi.InsightService                         { return nil }
-func (e *testEngine) Memory() coreapi.MemoryService                             { return nil }
-func (e *testEngine) Roles() coreapi.RoleService                               { return nil }
-func (e *testEngine) Turns() coreapi.TurnService                               { return nil }
-func (e *testEngine) Approvals() coreapi.ApprovalService                       { return nil }
-func (e *testEngine) Inquiries() coreapi.InquiryService                         { return nil }
-func (e *testEngine) Agents() coreapi.AgentService                             { return nil }
-func (e *testEngine) Tools() coreapi.ToolExecutor                              { return nil }
-func (e *testEngine) ToolCatalog() coreapi.ToolCatalogService                   { return nil }
-func (e *testEngine) ToolTelemetry() coreapi.ToolTelemetryService               { return nil }
-func (e *testEngine) Events() coreapi.EventSubscriber                          { return &testEventSubscriber{} }
-func (e *testEngine) Sandbox() coreapi.SandboxService                           { return &testSandboxService{} }
-func (e *testEngine) Diagnostics() coreapi.DiagnosticsService                  { return &testDiagnosticsService{} }
+func (e *testEngine) State() coreapi.StateService            { return &testStateService{} }
+func (e *testEngine) Workspaces() coreapi.WorkspaceService   { return &testWorkspaceService{e: e} }
+func (e *testEngine) Sessions() coreapi.SessionService       { return &testSessionService{e: e} }
+func (e *testEngine) MCP() coreapi.MCPService                { return &testMCPService{} }
+func (e *testEngine) LSP() coreapi.LSPService                { return nil }
+func (e *testEngine) Config() coreapi.ConfigService          { return &testConfigService{e: e} }
+func (e *testEngine) Permissions() coreapi.PermissionService { return &testPermissionService{e: e} }
+func (e *testEngine) Extensions() coreapi.ExtensionService   { return &testExtensionService{} }
+func (e *testEngine) Context() coreapi.ContextService        { return &testContextService{} }
+func (e *testEngine) Usage() coreapi.UsageService            { return nil }
+func (e *testEngine) Versions() coreapi.VersionService       { return nil }
+func (e *testEngine) Tasks() coreapi.TaskService             { return &testTaskService{} }
+func (e *testEngine) Modes() coreapi.ModeService             { return &testModeService{} }
+func (e *testEngine) Models() coreapi.ModelService           { return &testModelService{e: e} }
+func (e *testEngine) RemoteWorkspaces() coreapi.RemoteWorkspaceService {
+	return &testRemoteWorkspaceService{}
+}
+func (e *testEngine) Git() coreapi.GitService                     { return nil }
+func (e *testEngine) Insights() coreapi.InsightService            { return nil }
+func (e *testEngine) Memory() coreapi.MemoryService               { return nil }
+func (e *testEngine) Roles() coreapi.RoleService                  { return nil }
+func (e *testEngine) Turns() coreapi.TurnService                  { return nil }
+func (e *testEngine) Approvals() coreapi.ApprovalService          { return nil }
+func (e *testEngine) Inquiries() coreapi.InquiryService           { return nil }
+func (e *testEngine) Agents() coreapi.AgentService                { return nil }
+func (e *testEngine) Tools() coreapi.ToolExecutor                 { return nil }
+func (e *testEngine) ToolCatalog() coreapi.ToolCatalogService     { return nil }
+func (e *testEngine) ToolTelemetry() coreapi.ToolTelemetryService { return nil }
+func (e *testEngine) Events() coreapi.EventSubscriber             { return &testEventSubscriber{} }
+func (e *testEngine) Sandbox() coreapi.SandboxService             { return &testSandboxService{} }
+func (e *testEngine) Diagnostics() coreapi.DiagnosticsService     { return &testDiagnosticsService{} }
 
 // === Diagnostics ===
 //
@@ -85,16 +87,20 @@ func (s *testDiagnosticsService) Startup(context.Context) (coreapi.StartupDiagno
 // === Workspace ===
 type testWorkspaceService struct{ e *testEngine }
 
-func (s *testWorkspaceService) List(context.Context, coreapi.WorkspaceListRequest) ([]coreapi.Workspace, error) { return s.e.workspaceList, nil }
-func (s *testWorkspaceService) Default(context.Context) (string, error)         { return "", nil }
-func (s *testWorkspaceService) Last(context.Context) (string, error)            { return "", nil }
+func (s *testWorkspaceService) List(context.Context, coreapi.WorkspaceListRequest) ([]coreapi.Workspace, error) {
+	return s.e.workspaceList, nil
+}
+func (s *testWorkspaceService) Default(context.Context) (string, error) { return "", nil }
+func (s *testWorkspaceService) Last(context.Context) (string, error)    { return "", nil }
 func (s *testWorkspaceService) ResolveForeground(context.Context, coreapi.ResolveForegroundWorkspaceRequest) (string, error) {
 	return "", nil
 }
 func (s *testWorkspaceService) Remember(context.Context, coreapi.RememberWorkspaceRequest) error {
 	return nil
 }
-func (s *testWorkspaceService) Forget(context.Context, coreapi.WorkspacePathRequest) error { return nil }
+func (s *testWorkspaceService) Forget(context.Context, coreapi.WorkspacePathRequest) error {
+	return nil
+}
 func (s *testWorkspaceService) Add(_ context.Context, req coreapi.WorkspacePathRequest) error {
 	s.e.workspaceList = append(s.e.workspaceList, coreapi.Workspace{Path: req.Path, Active: true})
 	return nil
@@ -149,8 +155,10 @@ func (s *testSessionService) List(context.Context, coreapi.ListSessionsRequest) 
 func (s *testSessionService) Current(context.Context, coreapi.CurrentSessionRequest) (coreapi.Session, error) {
 	return coreapi.Session{ID: "test-session"}, nil
 }
-func (s *testSessionService) SetCurrent(context.Context, coreapi.SetCurrentSessionRequest) error { return nil }
-func (s *testSessionService) Delete(context.Context, coreapi.DeleteSessionRequest) error          { return nil }
+func (s *testSessionService) SetCurrent(context.Context, coreapi.SetCurrentSessionRequest) error {
+	return nil
+}
+func (s *testSessionService) Delete(context.Context, coreapi.DeleteSessionRequest) error { return nil }
 func (s *testSessionService) Rename(context.Context, coreapi.RenameSessionRequest) (coreapi.Session, error) {
 	return coreapi.Session{}, nil
 }
@@ -176,7 +184,7 @@ func (s *testConfigService) RulesSnapshot(context.Context) (coreapi.RulesSnapsho
 	return coreapi.RulesSnapshot{}, nil
 }
 func (s *testConfigService) SaveRules(context.Context, coreapi.SaveRulesRequest) error { return nil }
-func (s *testConfigService) ResetRules(context.Context) error                            { return nil }
+func (s *testConfigService) ResetRules(context.Context) error                          { return nil }
 func (s *testConfigService) GetSettings(context.Context) (coreapi.Settings, error) {
 	return s.e.settings, nil
 }
@@ -188,11 +196,11 @@ func (s *testConfigService) SaveSettings(_ context.Context, settings coreapi.Set
 	if err := os.MkdirAll(dir, 0o755); err == nil {
 		path := filepath.Join(dir, "settings.json")
 		doc := map[string]any{
-			"plan_prompt_style":      settings.PlanPromptStyle,
-			"plan_bubble":            settings.PlanBubbleColor,
-			"watch_mode":             settings.WatchMode,
-			"language":               settings.Language,
-			"theme":                  settings.Theme,
+			"plan_prompt_style": settings.PlanPromptStyle,
+			"plan_bubble":       settings.PlanBubbleColor,
+			"watch_mode":        settings.WatchMode,
+			"language":          settings.Language,
+			"theme":             settings.Theme,
 		}
 		if data, err := json.MarshalIndent(doc, "", "  "); err == nil {
 			_ = os.WriteFile(path, data, 0o644)
@@ -265,19 +273,19 @@ func (s *testModelService) List(context.Context) ([]coreapi.ModelConfig, error) 
 func (s *testModelService) Catalog(context.Context) (coreapi.ModelCatalogState, error) {
 	return coreapi.ModelCatalogState{
 		Providers: []coreapi.ModelProviderOption{{
-				ID:            "openai",
-				Name:          "OpenAI",
-				Endpoints:     []coreapi.ProviderEndpoint{{Plan: "api", Format: "openai_chat", APIBase: "https://api.openai.com/v1"}},
-				DefaultModels: []string{"gpt-5-codex"},
-			}},
-			Presets: []coreapi.ModelPresetOption{{
-				ID:            "gpt-5-codex",
-				Name:          "GPT-5-Codex",
-				ProviderID:    "openai",
-				ModelName:     "gpt-5-codex",
-				Plan:          "api",
-				Format:        "openai_chat",
-				ContextWindow: 400000,
+			ID:            "openai",
+			Name:          "OpenAI",
+			Endpoints:     []coreapi.ProviderEndpoint{{Plan: "api", Format: "openai_chat", APIBase: "https://api.openai.com/v1"}},
+			DefaultModels: []string{"gpt-5-codex"},
+		}},
+		Presets: []coreapi.ModelPresetOption{{
+			ID:            "gpt-5-codex",
+			Name:          "GPT-5-Codex",
+			ProviderID:    "openai",
+			ModelName:     "gpt-5-codex",
+			Plan:          "api",
+			Format:        "openai_chat",
+			ContextWindow: 400000,
 			Tags:          []string{"推荐", "编程"},
 			SupportsTools: true,
 		}},
@@ -300,7 +308,7 @@ func (s *testModelService) Upsert(_ context.Context, req coreapi.UpsertModelRequ
 	})
 	return nil
 }
-func (s *testModelService) Save(context.Context, coreapi.ModelSaveRequest) error         { return nil }
+func (s *testModelService) Save(context.Context, coreapi.ModelSaveRequest) error { return nil }
 func (s *testModelService) Delete(_ context.Context, req coreapi.ModelNameRequest) error {
 	out := s.e.models[:0]
 	for _, m := range s.e.models {
@@ -340,7 +348,9 @@ func (s *testModelService) ClearSession(context.Context, coreapi.ClearSessionMod
 // === Mode ===
 type testModeService struct{}
 
-func (s *testModeService) Snapshot(context.Context) (coreapi.ModeSnapshot, error) { return coreapi.ModeSnapshot{}, nil }
+func (s *testModeService) Snapshot(context.Context) (coreapi.ModeSnapshot, error) {
+	return coreapi.ModeSnapshot{}, nil
+}
 func (s *testModeService) SetExecutionMode(context.Context, coreapi.SetModeRequest) error {
 	return nil
 }
@@ -418,12 +428,12 @@ func (s *testExtensionService) BrowserStatus(context.Context) (coreapi.BrowserSt
 // === MCP ===
 type testMCPService struct{}
 
-func (s *testMCPService) List(context.Context) ([]coreapi.MCPServer, error)     { return nil, nil }
+func (s *testMCPService) List(context.Context) ([]coreapi.MCPServer, error)      { return nil, nil }
 func (s *testMCPService) Upsert(context.Context, coreapi.UpsertMCPRequest) error { return nil }
 func (s *testMCPService) ImportJSON(context.Context, coreapi.ImportMCPJSONRequest) error {
 	return nil
 }
-func (s *testMCPService) Delete(context.Context, coreapi.MCPNameRequest) error   { return nil }
+func (s *testMCPService) Delete(context.Context, coreapi.MCPNameRequest) error { return nil }
 func (s *testMCPService) SetEnabled(context.Context, coreapi.SetMCPEnabledRequest) error {
 	return nil
 }
