@@ -44,8 +44,8 @@ type ModelEntry struct {
 	ThinkingEnabled         bool   `json:"thinking_enabled,omitempty"`          // 是否为该模型启用思考
 	ThinkingCapability      string `json:"thinking_capability,omitempty"`       // "none", "low", "medium", "high"
 	SupportsReasoningEffort bool   `json:"supports_reasoning_effort,omitempty"` // 是否支持 ReasoningEffort 参数
-	SupportsVision          bool   `json:"supports_vision,omitempty"`          // 是否支持视觉/多模态输入
-	SupportsTools           bool   `json:"supports_tools,omitempty"`           // 是否支持工具调用
+	SupportsVision          bool   `json:"supports_vision,omitempty"`           // 是否支持视觉/多模态输入
+	SupportsTools           bool   `json:"supports_tools,omitempty"`            // 是否支持工具调用
 	SupportsImageGeneration bool   `json:"supports_image_generation,omitempty"`
 	SupportsVideoGeneration bool   `json:"supports_video_generation,omitempty"`
 	SupportsSpeechSynthesis bool   `json:"supports_speech_synthesis,omitempty"`

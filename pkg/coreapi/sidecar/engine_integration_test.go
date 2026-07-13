@@ -313,12 +313,12 @@ func TestRemoteEngineModelCatalogWithVendoredSidecar(t *testing.T) {
 		}
 	}
 	for id, found := range map[string]*bool{
-		"dashscope":  &hasDashscope,
-		"zhipu":      &hasZhipu,
-		"minimax":    &hasMinimax,
-		"mimo":       &hasMimo,
-		"openai":     &hasOpenai,
-		"anthropic":  &hasAnthropic,
+		"dashscope": &hasDashscope,
+		"zhipu":     &hasZhipu,
+		"minimax":   &hasMinimax,
+		"mimo":      &hasMimo,
+		"openai":    &hasOpenai,
+		"anthropic": &hasAnthropic,
 	} {
 		if !*found {
 			t.Errorf("catalog providers missing %s", id)

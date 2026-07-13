@@ -26,10 +26,10 @@ type CheckResult struct {
 }
 
 type githubRelease struct {
-	TagName     string         `json:"tag_name"`
-	Body        string         `json:"body"`
-	HTMLURL     string         `json:"html_url"`
-	Assets      []githubAsset  `json:"assets"`
+	TagName string        `json:"tag_name"`
+	Body    string        `json:"body"`
+	HTMLURL string        `json:"html_url"`
+	Assets  []githubAsset `json:"assets"`
 }
 
 type githubAsset struct {

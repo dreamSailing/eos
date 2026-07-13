@@ -152,8 +152,8 @@ func TestFileStore_JSONRoundtrip(t *testing.T) {
 	fs := NewFileStore("test", dir)
 
 	type record struct {
-		ID      string            `json:"id"`
-		Tags    []string          `json:"tags,omitempty"`
+		ID      string             `json:"id"`
+		Tags    []string           `json:"tags,omitempty"`
 		Metrics map[string]float64 `json:"metrics,omitempty"`
 	}
 

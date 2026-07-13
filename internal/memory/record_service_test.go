@@ -387,10 +387,10 @@ func TestService_PreservesExistingTimestamps(t *testing.T) {
 	ctx := context.Background()
 
 	rec, err := svc.Add(ctx, &MemoryRecord{
-		Scope:     "global",
-		Content:   "timestamp test",
+		Scope:         "global",
+		Content:       "timestamp test",
 		WorkspaceRoot: "/tmp/ws",
-		SessionID: "sess-1",
+		SessionID:     "sess-1",
 	})
 	if err != nil {
 		t.Fatalf("Add: %v", err)

@@ -37,14 +37,14 @@ func TestBuiltinRolesLoadAndResolve(t *testing.T) {
 	}
 
 	keywords := map[string][]string{
-		"planner":     {"核心目标", "实施计划", "验证方案"},
-		"senior-dev":  {"效率优先", "精准定位", "安全优先"},
-		"tester":      {"测试结果", "明确结论"},
+		"planner":      {"核心目标", "实施计划", "验证方案"},
+		"senior-dev":   {"效率优先", "精准定位", "安全优先"},
+		"tester":       {"测试结果", "明确结论"},
 		"verification": {"VERDICT", "对抗式验收", "验证重点"},
-		"reviewer":    {"代码质量", "任务完成度"},
-		"explore":     {"探索", "代码库"},
-		"security":    {"安全", "OWASP"},
-		"architect":   {"执行路径", "调度中心"},
+		"reviewer":     {"代码质量", "任务完成度"},
+		"explore":      {"探索", "代码库"},
+		"security":     {"安全", "OWASP"},
+		"architect":    {"执行路径", "调度中心"},
 	}
 	for roleID, expected := range keywords {
 		role, _ := registry.Resolve(roleID)

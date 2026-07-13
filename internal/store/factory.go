@@ -14,8 +14,8 @@ const (
 )
 
 type FactoryOption struct {
-	Name   string
-	Root   string
+	Name    string
+	Root    string
 	Backend string
 }
 

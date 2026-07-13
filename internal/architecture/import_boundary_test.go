@@ -52,12 +52,12 @@ func TestUIDirectRuntimeCouplingDoesNotSpread(t *testing.T) {
 			return err
 		}
 		pkg := modulePath + "/" + filepath.ToSlash(rel)
-			for _, imp := range file.Imports {
-				importPath := strings.Trim(imp.Path.Value, `"`)
-				if isForbiddenUIImport(importPath) {
-					violations[pkg] = append(violations[pkg], importPath)
-				}
+		for _, imp := range file.Imports {
+			importPath := strings.Trim(imp.Path.Value, `"`)
+			if isForbiddenUIImport(importPath) {
+				violations[pkg] = append(violations[pkg], importPath)
 			}
+		}
 		return nil
 	})
 	if err != nil {

@@ -5,7 +5,6 @@ package memory
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"crypto/sha1"
 	"encoding/hex"
@@ -27,15 +26,15 @@ const (
 
 // MemoryEntry represents a typed memory record
 type MemoryEntry struct {
-	ID        string     `json:"id"`
-	Type      MemoryType `json:"type"`
-	Content   string     `json:"content"`
-	File      string     `json:"file"`
-	Section   string     `json:"section,omitempty"`
-	Source    string     `json:"source,omitempty"`
-	Fingerprint string   `json:"fingerprint,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at,omitempty"`
+	ID          string     `json:"id"`
+	Type        MemoryType `json:"type"`
+	Content     string     `json:"content"`
+	File        string     `json:"file"`
+	Section     string     `json:"section,omitempty"`
+	Source      string     `json:"source,omitempty"`
+	Fingerprint string     `json:"fingerprint,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at,omitempty"`
 }
 
 // Validate checks if a MemoryEntry is valid

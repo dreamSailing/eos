@@ -131,9 +131,9 @@ func downloadFile(dst *os.File, url string) error {
 }
 
 type progressWriter struct {
-	total    int64
-	written  int64
-	lastPct  int
+	total   int64
+	written int64
+	lastPct int
 }
 
 func (p *progressWriter) Write(data []byte) (int, error) {

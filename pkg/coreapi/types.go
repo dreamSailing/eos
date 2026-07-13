@@ -384,14 +384,14 @@ type UpsertModelRequest struct {
 }
 
 type ModelSaveRequest struct {
-	OriginalName            string `json:"original_name,omitempty"`
-	Mode                    string `json:"mode"`
-	ProviderID              string `json:"provider_id,omitempty"`
-	PresetID                string `json:"preset_id,omitempty"`
-	Name                    string `json:"name"`
-	APIKey                  string `json:"api_key,omitempty"`
-	APIBase                 string `json:"api_base,omitempty"`
-	Model                   string `json:"model,omitempty"`
+	OriginalName string `json:"original_name,omitempty"`
+	Mode         string `json:"mode"`
+	ProviderID   string `json:"provider_id,omitempty"`
+	PresetID     string `json:"preset_id,omitempty"`
+	Name         string `json:"name"`
+	APIKey       string `json:"api_key,omitempty"`
+	APIBase      string `json:"api_base,omitempty"`
+	Model        string `json:"model,omitempty"`
 	// 自定义模型能力开关。指针类型，nil = 由 core 用默认值（推理+工具开、视觉关）。
 	// preset 模式下忽略，能力从 preset 继承。
 	SupportsReasoningEffort *bool `json:"supports_reasoning_effort,omitempty"`
@@ -622,13 +622,13 @@ type CollaborationMode struct {
 }
 
 type StartTurnRequest struct {
-	SessionID          string              `json:"session_id"`
-	TurnID             string              `json:"turn_id,omitempty"`
-	Input              string              `json:"input"`
-	ImagePaths         []string            `json:"image_paths,omitempty"`
-	Attachments        []Attachment        `json:"attachments,omitempty"`
-	Options            json.RawMessage     `json:"options,omitempty"`
-	CollaborationMode  *CollaborationMode  `json:"collaboration_mode,omitempty"`
+	SessionID         string             `json:"session_id"`
+	TurnID            string             `json:"turn_id,omitempty"`
+	Input             string             `json:"input"`
+	ImagePaths        []string           `json:"image_paths,omitempty"`
+	Attachments       []Attachment       `json:"attachments,omitempty"`
+	Options           json.RawMessage    `json:"options,omitempty"`
+	CollaborationMode *CollaborationMode `json:"collaboration_mode,omitempty"`
 }
 
 type Attachment struct {
@@ -657,10 +657,10 @@ const (
 )
 
 type ApprovalResponse struct {
-	ApprovalID string            `json:"approval_id"`
-	Decision   ApprovalDecision  `json:"decision"`
-	Reason     string            `json:"reason,omitempty"`
-	Metadata   map[string]any    `json:"metadata,omitempty"`
+	ApprovalID string           `json:"approval_id"`
+	Decision   ApprovalDecision `json:"decision"`
+	Reason     string           `json:"reason,omitempty"`
+	Metadata   map[string]any   `json:"metadata,omitempty"`
 }
 
 type InquiryResponse struct {
@@ -679,9 +679,9 @@ type RequestUserInputQuestionOption struct {
 // RequestUserInputQuestion is a single structured question. Mirrors
 // eos-core's RequestUserInputQuestion.
 type RequestUserInputQuestion struct {
-	ID       string                         `json:"id"`
-	Header   string                         `json:"header"`
-	Question string                         `json:"question"`
+	ID       string                           `json:"id"`
+	Header   string                           `json:"header"`
+	Question string                           `json:"question"`
 	Options  []RequestUserInputQuestionOption `json:"options,omitempty"`
 }
 
@@ -689,10 +689,10 @@ type RequestUserInputQuestion struct {
 // published when the request_user_input tool suspends the turn. Mirrors
 // eos-core's RequestUserInputEvent.
 type RequestUserInputEvent struct {
-	CallID           string                    `json:"call_id"`
-	TurnID           string                    `json:"turn_id,omitempty"`
+	CallID           string                     `json:"call_id"`
+	TurnID           string                     `json:"turn_id,omitempty"`
 	Questions        []RequestUserInputQuestion `json:"questions"`
-	AutoResolutionMs int64                     `json:"autoResolutionMs,omitempty"`
+	AutoResolutionMs int64                      `json:"autoResolutionMs,omitempty"`
 }
 
 // RequestUserInputResponse is the answer payload sent back via
@@ -1095,21 +1095,21 @@ type ModelProviderOption struct {
 }
 
 type ModelPresetOption struct {
-	ID                      string   `json:"id"`
-	Name                    string   `json:"name,omitempty"`
-	ProviderID              string   `json:"provider_id,omitempty"`
-	ModelName               string   `json:"model_name,omitempty"`
-	Plan                    string   `json:"plan,omitempty"`
-	Format                  string   `json:"format,omitempty"`
-	ContextWindow           int      `json:"context_window,omitempty"`
-	Tags                    []string `json:"tags,omitempty"`
-	Description             string   `json:"description,omitempty"`
-	SupportsReasoningEffort bool     `json:"supports_reasoning_effort"`
-	SupportsVision          bool     `json:"supports_vision"`
-	SupportsImageGeneration bool     `json:"supports_image_generation"`
-	SupportsVideoGeneration bool     `json:"supports_video_generation"`
-	SupportsSpeechSynthesis bool       `json:"supports_speech_synthesis"`
-	SupportsTools           bool       `json:"supports_tools"`
+	ID                      string      `json:"id"`
+	Name                    string      `json:"name,omitempty"`
+	ProviderID              string      `json:"provider_id,omitempty"`
+	ModelName               string      `json:"model_name,omitempty"`
+	Plan                    string      `json:"plan,omitempty"`
+	Format                  string      `json:"format,omitempty"`
+	ContextWindow           int         `json:"context_window,omitempty"`
+	Tags                    []string    `json:"tags,omitempty"`
+	Description             string      `json:"description,omitempty"`
+	SupportsReasoningEffort bool        `json:"supports_reasoning_effort"`
+	SupportsVision          bool        `json:"supports_vision"`
+	SupportsImageGeneration bool        `json:"supports_image_generation"`
+	SupportsVideoGeneration bool        `json:"supports_video_generation"`
+	SupportsSpeechSynthesis bool        `json:"supports_speech_synthesis"`
+	SupportsTools           bool        `json:"supports_tools"`
 	PlanModels              []PlanModel `json:"plan_models,omitempty"`
 }
 
@@ -1253,13 +1253,13 @@ type WorkspaceSnapshot struct {
 }
 
 type SessionSnapshot struct {
-	ID             string    `json:"id"`
-	WorkspacePath  string    `json:"workspace_path,omitempty"`
-	Title          string    `json:"title,omitempty"`
-	Preview        string    `json:"preview,omitempty"`
+	ID            string `json:"id"`
+	WorkspacePath string `json:"workspace_path,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Preview       string `json:"preview,omitempty"`
 	// Source is the originating client (e.g. "cli", "gui"); empty when the
 	// session predates source tagging. Mirrors Session.metadata["source"].
-	Source         string    `json:"source,omitempty"`
+	Source string `json:"source,omitempty"`
 	// Archived is true when the session is soft-hidden (metadata.archived).
 	Archived       bool      `json:"archived,omitempty"`
 	UpdatedAt      time.Time `json:"updated_at"`

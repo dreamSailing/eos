@@ -56,7 +56,7 @@ func TestAttachWrapsEngine(t *testing.T) {
 
 func TestStartFailsWhenBinaryNotFound(t *testing.T) {
 	_, err := Start(context.Background(), Options{
-		BinaryPath:         "C:/definitely/does/not/exist/eos-core.exe",
+		BinaryPath:          "C:/definitely/does/not/exist/eos-core.exe",
 		AllowDevPlaceholder: true,
 	})
 	if err == nil {
@@ -68,7 +68,7 @@ func TestStartContextCancelPropagates(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := Start(ctx, Options{
-		BinaryPath:         "C:/definitely/does/not/exist/eos-core.exe",
+		BinaryPath:          "C:/definitely/does/not/exist/eos-core.exe",
 		AllowDevPlaceholder: true,
 	})
 	if err == nil {

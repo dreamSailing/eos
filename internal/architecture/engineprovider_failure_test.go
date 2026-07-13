@@ -202,9 +202,9 @@ func TestEngineProviderRejectsBadSignature(t *testing.T) {
 		t.Fatalf("write binary: %v", err)
 	}
 	manifestPath := writeTestManifest(t, dir, sidecarManifestOptions{
-		Binary:           binaryName,
-		Target:           currentTargetTriple(t),
-		Features:         []string{"initialize", "session/list"},
+		Binary:            binaryName,
+		Target:            currentTargetTriple(t),
+		Features:          []string{"initialize", "session/list"},
 		OverrideSignature: "ed25519:" + randomBase64Signature(t),
 		RequireSignature:  true,
 	})

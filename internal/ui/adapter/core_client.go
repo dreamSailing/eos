@@ -1434,7 +1434,6 @@ func runtimeEventFromEnvelope(envelope protocol.Envelope) RuntimeEvent {
 	}
 }
 
-
 // Reload 触发 core 配置热重载（MethodConfigReload）。
 // protocol 层已定义此方法，eos-core 收到后会重新加载 .eos 配置。
 func (a *CoreClientAdapter) Reload() error {

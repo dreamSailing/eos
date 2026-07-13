@@ -67,13 +67,13 @@ func TestResolveBinaryFromManifestRoot(t *testing.T) {
 	}
 
 	resolved, err := ResolveBinary(ResolveOptions{
-		RootDir:            root,
-		GOOS:               "linux",
-		GOARCH:             "amd64",
-		VerifyChecksum:     true,
-		RequireSignature:   true,
+		RootDir:             root,
+		GOOS:                "linux",
+		GOARCH:              "amd64",
+		VerifyChecksum:      true,
+		RequireSignature:    true,
 		AllowDevPlaceholder: true,
-		RequiredFeatures:   []string{"initialize", "session/list"},
+		RequiredFeatures:    []string{"initialize", "session/list"},
 	})
 	if err != nil {
 		t.Fatalf("ResolveBinary() error = %v", err)

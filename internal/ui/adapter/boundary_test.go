@@ -60,14 +60,14 @@ func TestImportBoundary(t *testing.T) {
 
 func TestAllowedImports(t *testing.T) {
 	allowed := map[string]bool{
-		"github.com/dreamSailing/eos/internal/config":                          true,
-		"github.com/dreamSailing/eos/internal/pkg/settings":                    true,
-		"github.com/dreamSailing/eos/pkg/coreapi":                              true,
-		"github.com/dreamSailing/eos/pkg/coreapi/jsonrpc":                      true,
-		"github.com/dreamSailing/eos/pkg/coreapi/sidecar":                      true,
-		"github.com/dreamSailing/eos/pkg/coreapi/sidecar/client":               true,
-		"github.com/dreamSailing/eos/pkg/protocol":                             true,
-		"github.com/dreamSailing/eos/pkg/protocol/jsonrpc":                     true,
+		"github.com/dreamSailing/eos/internal/config":            true,
+		"github.com/dreamSailing/eos/internal/pkg/settings":      true,
+		"github.com/dreamSailing/eos/pkg/coreapi":                true,
+		"github.com/dreamSailing/eos/pkg/coreapi/jsonrpc":        true,
+		"github.com/dreamSailing/eos/pkg/coreapi/sidecar":        true,
+		"github.com/dreamSailing/eos/pkg/coreapi/sidecar/client": true,
+		"github.com/dreamSailing/eos/pkg/protocol":               true,
+		"github.com/dreamSailing/eos/pkg/protocol/jsonrpc":       true,
 	}
 
 	wd, err := os.Getwd()
@@ -101,11 +101,11 @@ func TestAllowedImports(t *testing.T) {
 
 func TestCoreFallbackContraction(t *testing.T) {
 	migratedChecks := []struct {
-		methodName     string
-		primaryToken   string
-		fallbackToken  string
-		primaryBefore  string
-		msg            string
+		methodName    string
+		primaryToken  string
+		fallbackToken string
+		primaryBefore string
+		msg           string
 	}{
 		{
 			methodName: "GetModelInfo", primaryToken: "a.engine.Models().List(",

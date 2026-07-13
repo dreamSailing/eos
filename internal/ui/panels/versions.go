@@ -5,7 +5,6 @@ package panels
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"fmt"
 	"strings"
@@ -21,11 +20,11 @@ import (
 // VersionsPanel 版本历史面板
 type VersionsPanel struct {
 	BasePanel
-	styles  *styles.Styles
+	styles   *styles.Styles
 	language string
-	files   list.Model
+	files    list.Model
 	versions list.Model
-	mode    string // "files" or "versions"
+	mode     string // "files" or "versions"
 }
 
 // FileItem 文件列表项
