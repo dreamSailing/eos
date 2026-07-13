@@ -136,6 +136,10 @@ func convertItemStarted(e uiadapter.RuntimeEvent) Msg {
 		name, _ := item["name"].(string)
 		args, _ := item["arguments"].(string)
 		return ToolCallMsg{ID: id, Name: name, Params: parseToolParams(args)}
+	case "reasoning":
+		// Reasoning item: a dedicated thinking block. Routed to its own
+		// branch in AppModel so it isn't mistaken for an agent_message.
+		return ItemStartedMsg{ItemID: id, ItemType: "reasoning", RID: e.RID}
 	default:
 		// agent_message (or unknown): start a new text segment.
 		return ItemStartedMsg{ItemID: id, ItemType: kind, RID: e.RID}
@@ -162,6 +166,11 @@ func convertItemCompleted(e uiadapter.RuntimeEvent) Msg {
 			output, _ = result["error"].(string)
 		}
 		return ToolResultMsg{ID: id, Name: name, Status: status, Output: output}
+	case "reasoning":
+		// Reasoning content ships as a Vec<String> under "content"; join it
+		// into a single string so the shell can archive the thinking block.
+		reasoning := strings.Join(eventStringSlice(item, "content"), "\n")
+		return ItemCompletedMsg{ItemID: id, ItemType: "reasoning", Reasoning: reasoning, RID: e.RID}
 	default:
 		text, _ := item["text"].(string)
 		reasoning, _ := item["reasoning"].(string)
@@ -506,9 +515,9 @@ func (KeyMsg) msgType()              {}
 func (MouseMsg) msgType()            {}
 func (AIRequestMsg) msgType()        {}
 func (AIResponseMsg) msgType()       {}
-func (ItemStartedMsg) msgType()     {}
-func (ItemDeltaMsg) msgType()       {}
-func (ItemCompletedMsg) msgType()   {}
+func (ItemStartedMsg) msgType()      {}
+func (ItemDeltaMsg) msgType()        {}
+func (ItemCompletedMsg) msgType()    {}
 func (InvokeDoneMsg) msgType()       {}
 func (PredictionUpdateMsg) msgType() {}
 func (ThinkingMsg) msgType()         {}

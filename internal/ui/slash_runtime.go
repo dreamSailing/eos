@@ -887,8 +887,22 @@ func (m *AppModel) restoreSessionHistory(id string) {
 			}
 			m.appendHistory(entry)
 		case kind == "reasoning":
-			// 思考内容：跳过（TUI 不渲染折叠思考块，避免历史噪音）。
-			continue
+			// 思考内容：归档为暗色摘要一行（与实时完成归档一致，对齐
+			// codex/eos-app 的「思考过程」折叠块）。renderHistoryEntry 会把
+			// reasoning kind 渲染成 "💭 Thinking · Xs" + 末行摘要。
+			content := strings.TrimSpace(msg.Content)
+			if content == "" {
+				continue
+			}
+			entry := historyEntry{
+				kind:      "reasoning",
+				content:   content,
+				timestamp: msg.Time,
+			}
+			if entry.timestamp.IsZero() {
+				entry.timestamp = time.Now()
+			}
+			m.appendHistory(entry)
 		case kind == "status":
 			// 状态提示（取消/失败等）：作为 system entry。
 			content := strings.TrimSpace(msg.Content)

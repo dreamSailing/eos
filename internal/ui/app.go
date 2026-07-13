@@ -84,7 +84,8 @@ type AppModel struct {
 	aiLive             strings.Builder
 	thinkingLive       strings.Builder
 	thinkingExpanded   bool
-	activeItemID       string // current AgentMessage item being streamed
+	reasoningStartTime time.Time // 当前推理块开始时间，用于该块耗时统计
+	activeItemID       string    // current AgentMessage item being streamed
 	toolInflight       map[string]toolTrack
 	history            []historyEntry
 	delegatedThisRound bool
@@ -868,8 +869,13 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ItemStartedMsg:
 		// A new AgentMessage text segment begins. Create a fresh history entry
 		// and reset the live buffer so each round renders as its own paragraph.
-		if msg.ItemType == "agent_message" || msg.ItemType == "" {
+		switch msg.ItemType {
+		case "agent_message", "":
 			m.startAgentMessageItem(msg.ItemID)
+		case "reasoning":
+			// A reasoning item begins: archive any in-progress text segment and
+			// reset the thinking buffer so this block streams on its own.
+			m.startReasoningItem(msg.ItemID)
 		}
 		return m, nil
 	case ItemDeltaMsg:
@@ -1582,9 +1588,9 @@ func slashCommandHandler(m *AppModel) map[string]func(args []string) tea.Cmd {
 			m.actionHits = nil
 			return nil
 		},
-		"/exit":            func(_ []string) tea.Cmd { return tea.Quit },
-		"/init":            func(_ []string) tea.Cmd { m.shell.ClearInput(); return m.initEOSMD() },
-		"/init-verifiers":  m.handleInitVerifiersSlash,
+		"/exit":           func(_ []string) tea.Cmd { return tea.Quit },
+		"/init":           func(_ []string) tea.Cmd { m.shell.ClearInput(); return m.initEOSMD() },
+		"/init-verifiers": m.handleInitVerifiersSlash,
 		"/history": func(_ []string) tea.Cmd {
 			m.clearPrediction()
 			m.activeView = "panel"
@@ -1593,11 +1599,25 @@ func slashCommandHandler(m *AppModel) map[string]func(args []string) tea.Cmd {
 			m.refreshVersionsPanel()
 			return nil
 		},
-		"/model":           m.handleModelSlash,
-		"/mcp":             func(_ []string) tea.Cmd { m.clearPrediction(); m.activeView = "panel"; m.activePanel = "mcp"; m.shell.ClearInput(); m.refreshMCPPanel(); return nil },
-		"/context":         func(_ []string) tea.Cmd { m.openContextPanel(); return nil },
-		"/memory":          func(_ []string) tea.Cmd { m.openMemoryPanel(); return nil },
-		"/cost":            func(_ []string) tea.Cmd { m.clearPrediction(); m.activeView = "panel"; m.activePanel = "cost"; m.shell.ClearInput(); m.refreshCostPanel(); return nil },
+		"/model": m.handleModelSlash,
+		"/mcp": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "panel"
+			m.activePanel = "mcp"
+			m.shell.ClearInput()
+			m.refreshMCPPanel()
+			return nil
+		},
+		"/context": func(_ []string) tea.Cmd { m.openContextPanel(); return nil },
+		"/memory":  func(_ []string) tea.Cmd { m.openMemoryPanel(); return nil },
+		"/cost": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "panel"
+			m.activePanel = "cost"
+			m.shell.ClearInput()
+			m.refreshCostPanel()
+			return nil
+		},
 		"/tasks": func(_ []string) tea.Cmd {
 			m.clearPrediction()
 			m.activeView = "panel"
@@ -1609,10 +1629,24 @@ func slashCommandHandler(m *AppModel) map[string]func(args []string) tea.Cmd {
 			}
 			return nil
 		},
-		"/workspace":      m.handleWorkspaceSlash,
-		"/config":          func(_ []string) tea.Cmd { m.openSettingsPanel(); return nil },
-		"/lsp":             func(_ []string) tea.Cmd { m.clearPrediction(); m.activeView = "panel"; m.activePanel = "lsp"; m.shell.ClearInput(); m.refreshLSPPanel(); return nil },
-		"/rules":           func(_ []string) tea.Cmd { m.clearPrediction(); m.activeView = "panel"; m.activePanel = "rules"; m.shell.ClearInput(); m.refreshRulesPanel(); return nil },
+		"/workspace": m.handleWorkspaceSlash,
+		"/config":    func(_ []string) tea.Cmd { m.openSettingsPanel(); return nil },
+		"/lsp": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "panel"
+			m.activePanel = "lsp"
+			m.shell.ClearInput()
+			m.refreshLSPPanel()
+			return nil
+		},
+		"/rules": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "panel"
+			m.activePanel = "rules"
+			m.shell.ClearInput()
+			m.refreshRulesPanel()
+			return nil
+		},
 		"/lang": func(args []string) tea.Cmd {
 			if len(args) > 0 {
 				m.state.Language = args[0]
@@ -1639,27 +1673,27 @@ func slashCommandHandler(m *AppModel) map[string]func(args []string) tea.Cmd {
 			return nil
 		},
 		"/session":        m.handleSessionSlash,
-		"/resume":          m.handleResumeSlash,
-		"/permissions":     m.handlePermissionsSlash,
-		"/skills":          m.handleSkillsSlash,
-		"/plugin":          func(_ []string) tea.Cmd { return m.handlePluginSlash() },
-		"/reload-plugins":  func(_ []string) tea.Cmd { return m.handleReloadPluginsSlash() },
-		"/doctor":          func(_ []string) tea.Cmd { return m.handleDoctorSlash() },
-		"/diff":            m.handleDiffSlash,
-		"/review":          m.handleReviewSlash,
-		"/verify":          m.handleVerifySlash,
-		"/plan":            m.handlePlanSlash,
-		"/plan-style":      m.handlePlanStyleSlash,
-		"/git":             m.handleGitSlash,
-		"/remote":          m.handleRemoteSlash,
-		"/status":          func(_ []string) tea.Cmd { return m.handleStatusSlash() },
-		"/fast":            func(_ []string) tea.Cmd { return m.handleFastSlash() },
-		"/export":          m.handleExportSlash,
-		"/theme":           m.handleThemeSlash,
-		"/stats":           func(_ []string) tea.Cmd { return m.handleStatsSlash() },
-		"/rename":          m.handleRenameSlash,
-		"/share":           func(_ []string) tea.Cmd { return m.handleShareSlash() },
-		"/_legal":          func(_ []string) tea.Cmd { return m.handleHiddenLegalSlash() },
+		"/resume":         m.handleResumeSlash,
+		"/permissions":    m.handlePermissionsSlash,
+		"/skills":         m.handleSkillsSlash,
+		"/plugin":         func(_ []string) tea.Cmd { return m.handlePluginSlash() },
+		"/reload-plugins": func(_ []string) tea.Cmd { return m.handleReloadPluginsSlash() },
+		"/doctor":         func(_ []string) tea.Cmd { return m.handleDoctorSlash() },
+		"/diff":           m.handleDiffSlash,
+		"/review":         m.handleReviewSlash,
+		"/verify":         m.handleVerifySlash,
+		"/plan":           m.handlePlanSlash,
+		"/plan-style":     m.handlePlanStyleSlash,
+		"/git":            m.handleGitSlash,
+		"/remote":         m.handleRemoteSlash,
+		"/status":         func(_ []string) tea.Cmd { return m.handleStatusSlash() },
+		"/fast":           func(_ []string) tea.Cmd { return m.handleFastSlash() },
+		"/export":         m.handleExportSlash,
+		"/theme":          m.handleThemeSlash,
+		"/stats":          func(_ []string) tea.Cmd { return m.handleStatsSlash() },
+		"/rename":         m.handleRenameSlash,
+		"/share":          func(_ []string) tea.Cmd { return m.handleShareSlash() },
+		"/_legal":         func(_ []string) tea.Cmd { return m.handleHiddenLegalSlash() },
 	}
 }
 
@@ -2422,6 +2456,11 @@ func (m *AppModel) renderHistoryEntry(e historyEntry) string {
 			return e.toolOutput
 		case "agent.final":
 			return e.content
+		case "reasoning":
+			// Archived thinking block: render as a dim one-line summary (the
+			// last non-empty line, truncated). Matches codex's persisted
+			// reasoning summary and the eos-app collapsed "思考过程" block.
+			return messages.LastNonEmptyLine(e.content)
 		default:
 			return e.content
 		}
@@ -2450,6 +2489,11 @@ func (m *AppModel) renderHistoryEntry(e historyEntry) string {
 		return m.msgRenderer.RenderAgentFinalAtWithActions(e.agentName, e.agentID, e.sourceAgent, e.sourceAgentID, e.agentEvent, e.content, e.timestamp, m.bubbleActionsForEntry(e))
 	case "system":
 		return m.msgRenderer.RenderSystem(e.content, e.level)
+	case "reasoning":
+		// Archived thinking block, collapsed: a header line ("💭 Thinking · Xs")
+		// followed by a single dim summary line (last non-empty line, truncated
+		// to 160 chars). Mirrors the live block's collapsed state.
+		return m.msgRenderer.RenderThinkingWithHint(e.content, e.duration, false, nil, "")
 	default:
 		return e.content
 	}
@@ -3051,18 +3095,73 @@ func (m *AppModel) archiveAgentMessage() {
 // handleItemDelta appends an incremental chunk to the current item's live
 // buffer and refreshes the display.
 func (m *AppModel) handleItemDelta(msg ItemDeltaMsg) {
-	if msg.DeltaType == "text" || msg.DeltaType == "" {
+	switch msg.DeltaType {
+	case "text", "":
 		m.clearPrediction()
 		m.aiLive.WriteString(msg.Delta)
 		m.currentAITokens += len(msg.Delta) / 4
 		m.refreshAILive()
+	case "reasoning":
+		// Reasoning deltas stream into the collapsible thinking block. This
+		// mirrors the legacy ThinkingMsg path: light up the live thinking
+		// region (rendered by ThinkingMessage via refreshAILive).
+		m.state.Thinking = true
+		m.thinkingLive.WriteString(msg.Delta)
+		if m.shell != nil {
+			m.shell.SetThinking(true, "")
+		}
+		m.refreshAILive()
 	}
+}
+
+// startReasoningItem begins a new reasoning (thinking) block. It archives any
+// in-progress text segment and resets the thinking buffer + per-block timer so
+// each reasoning block streams and is timed independently. A turn may interleave
+// reasoning → tool → reasoning, so we cannot reuse currentAIStartTime.
+func (m *AppModel) startReasoningItem(itemID string) {
+	m.archiveAgentMessage()
+	m.aiLive.Reset()
+	m.activeItemID = itemID
+	m.thinkingLive.Reset()
+	m.thinkingExpanded = false
+	m.state.Thinking = true
+	m.reasoningStartTime = time.Now()
+}
+
+// handleReasoningCompleted finalizes a reasoning item: archive the thinking
+// block as a history entry (rendered as a dim one-line summary by
+// renderHistoryEntry), then clear the live thinking state.
+func (m *AppModel) handleReasoningCompleted(msg ItemCompletedMsg) {
+	content := strings.TrimSpace(msg.Reasoning)
+	if content == "" {
+		content = strings.TrimSpace(m.thinkingLive.String())
+	}
+	if content != "" {
+		duration := time.Since(m.reasoningStartTime)
+		if m.reasoningStartTime.IsZero() {
+			duration = time.Since(m.currentAIStartTime)
+		}
+		m.appendHistory(historyEntry{
+			kind:      "reasoning",
+			content:   content,
+			duration:  duration,
+			timestamp: time.Now(),
+		})
+	}
+	m.clearCurrentThinking()
+	m.activeItemID = ""
 }
 
 // handleItemCompleted finalizes an AgentMessage item: archive the live text
 // into a history entry and clear the buffer for the next segment.
 func (m *AppModel) handleItemCompleted(msg ItemCompletedMsg) {
-	if msg.ItemType != "agent_message" && msg.ItemType != "" {
+	switch msg.ItemType {
+	case "reasoning":
+		m.handleReasoningCompleted(msg)
+		return
+	case "agent_message", "":
+		// fall through to AgentMessage finalization below.
+	default:
 		return
 	}
 	// If the completed event carries full text, prefer it over the buffer.

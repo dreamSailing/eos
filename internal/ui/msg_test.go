@@ -341,3 +341,69 @@ func TestConvertEventAgentFailedMapsToAgentFinal(t *testing.T) {
 		t.Fatalf("Content=%q, want 校验失败", final.Content)
 	}
 }
+
+func TestConvertEventReasoningStartedRoutesToReasoningItemType(t *testing.T) {
+	// item.started with a reasoning item must surface as a typed ItemStartedMsg
+	// (ItemType "reasoning"), so AppModel routes it to startReasoningItem instead
+	// of treating it as an agent_message text segment.
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
+		Type: string(protocol.EventTypeItemStarted),
+		RID:  "turn-1",
+		Data: map[string]any{
+			"item": map[string]any{
+				"kind":    "reasoning",
+				"id":      "rs_1",
+				"summary": []string{},
+				"content": []string{},
+			},
+		},
+	})
+
+	started, ok := msg.(ItemStartedMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want ItemStartedMsg", msg)
+	}
+	if started.ItemType != "reasoning" {
+		t.Fatalf("ItemType=%q, want reasoning", started.ItemType)
+	}
+	if started.ItemID != "rs_1" {
+		t.Fatalf("ItemID=%q, want rs_1", started.ItemID)
+	}
+}
+
+func TestConvertEventReasoningCompletedJoinsContentVec(t *testing.T) {
+	// item.completed with a reasoning item carries the full chain-of-thought as
+	// a Vec<String> under "content". convertItemCompleted must join it into a
+	// single string so the shell can archive the thinking block.
+	msg := ConvertEvent(uiadapter.RuntimeEvent{
+		Type: string(protocol.EventTypeItemCompleted),
+		RID:  "turn-1",
+		Data: map[string]any{
+			"item": map[string]any{
+				"kind": "reasoning",
+				"id":   "rs_1",
+				"summary": []any{
+					"先分析请求",
+				},
+				"content": []any{
+					"先分析请求",
+					"再拆解步骤",
+				},
+			},
+		},
+	})
+
+	completed, ok := msg.(ItemCompletedMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want ItemCompletedMsg", msg)
+	}
+	if completed.ItemType != "reasoning" {
+		t.Fatalf("ItemType=%q, want reasoning", completed.ItemType)
+	}
+	if completed.Reasoning != "先分析请求\n再拆解步骤" {
+		t.Fatalf("Reasoning=%q, want joined content", completed.Reasoning)
+	}
+	if completed.Text != "" {
+		t.Fatalf("Text=%q, want empty for reasoning items", completed.Text)
+	}
+}
