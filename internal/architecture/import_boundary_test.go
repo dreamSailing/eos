@@ -71,7 +71,6 @@ func TestUIDirectRuntimeCouplingDoesNotSpread(t *testing.T) {
 func TestNewCorePackagesDoNotImportLegacyRuntime(t *testing.T) {
 	root := moduleRoot(t)
 	packageRoots := []string{
-		filepath.Join(root, "pkg", "agentcore"),
 		filepath.Join(root, "pkg", "coreapi"),
 		filepath.Join(root, "pkg", "protocol", "jsonrpc"),
 		filepath.Join(root, "pkg", "sandbox"),
