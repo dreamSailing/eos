@@ -245,6 +245,29 @@ func packagePath(root, dir string) (string, error) {
 // dependency boundary. That package was removed together with the rest of
 // the Go gateway layer, so the guard is no longer applicable.
 
+// TestDeletedPackagesStayDeleted asserts that Go packages superseded by the
+// Rust kernel are not re-introduced. Each listed directory was a full Go
+// reimplementation of functionality the Rust core already provides
+// (context indexing, memory store, skill loader, agent orchestrator, etc).
+// Re-creating them would re-introduce duplicate business logic in the shell
+// layer, violating the "shell does not do business adjudication" rule.
+func TestDeletedPackagesStayDeleted(t *testing.T) {
+	root := moduleRoot(t)
+	deletedPackages := []string{
+		"internal/context",
+		"internal/memory",
+		"internal/store",
+		"internal/skills",
+		"pkg/agentcore",
+	}
+	for _, pkg := range deletedPackages {
+		dir := filepath.Join(root, filepath.FromSlash(pkg))
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			t.Errorf("deleted package %s has been re-created; this functionality now lives in the Rust kernel", pkg)
+		}
+	}
+}
+
 func moduleRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
