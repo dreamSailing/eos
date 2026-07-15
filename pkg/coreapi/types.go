@@ -1271,12 +1271,83 @@ type SessionSnapshot struct {
 }
 
 type SessionMessage struct {
-	Role       string         `json:"role"`
-	Type       string         `json:"type,omitempty"`
-	Content    string         `json:"content,omitempty"`
-	Time       time.Time      `json:"time,omitempty"`
-	ImagePaths []string       `json:"image_paths,omitempty"`
-	Metadata   map[string]any `json:"metadata,omitempty"`
+	Role       string             `json:"role"`
+	Type       string             `json:"type,omitempty"`
+	Content    string             `json:"content,omitempty"`
+	Time       time.Time          `json:"time,omitempty"`
+	ImagePaths []string           `json:"image_paths,omitempty"`
+	Metadata   map[string]any     `json:"metadata,omitempty"`
+	ChangeSet  *MessageChangeSet  `json:"changeSet,omitempty"`
+	Rollback   *TurnRollback      `json:"rollback,omitempty"`
+}
+
+// ChangedFile describes a single workspace file change (git status + diff).
+type ChangedFile struct {
+	Path      string `json:"path"`
+	Status    string `json:"status,omitempty"`
+	Additions int64  `json:"additions"`
+	Deletions int64  `json:"deletions"`
+	Diff      string `json:"diff"`
+	Truncated bool   `json:"truncated"`
+}
+
+// MessageChangeSet aggregates file changes for a user/assistant message turn.
+type MessageChangeSet struct {
+	ID            string        `json:"id,omitempty"`
+	WorkspacePath string        `json:"workspacePath,omitempty"`
+	CreatedAt     string        `json:"createdAt,omitempty"`
+	Summary       string        `json:"summary,omitempty"`
+	Additions     int64         `json:"additions"`
+	Deletions     int64         `json:"deletions"`
+	Truncated     bool          `json:"truncated"`
+	Files         []ChangedFile `json:"files,omitempty"`
+}
+
+// RollbackFileSnapshot is a pre-turn file snapshot for rollback.
+type RollbackFileSnapshot struct {
+	Path              string `json:"path"`
+	ExistedBefore     bool   `json:"existedBefore"`
+	ContentBase64     string `json:"contentBase64,omitempty"`
+	ContentHash       string `json:"contentHash,omitempty"`
+	PostHash          string `json:"postHash,omitempty"`
+	UnsupportedReason string `json:"unsupportedReason,omitempty"`
+}
+
+// TurnRollback is the full rollback descriptor for a single assistant turn.
+type TurnRollback struct {
+	UserMessageID      string                 `json:"userMessageId,omitempty"`
+	AssistantMessageID string                 `json:"assistantMessageId,omitempty"`
+	WorkspacePath      string                 `json:"workspacePath,omitempty"`
+	CreatedAt          string                 `json:"createdAt,omitempty"`
+	Unsupported        bool                   `json:"unsupported"`
+	UnsupportedReason  string                 `json:"unsupportedReason,omitempty"`
+	Files              []RollbackFileSnapshot `json:"files,omitempty"`
+}
+
+// RunningBaseline is the running-turn baseline state for rollback build.
+type RunningBaseline struct {
+	WorkspacePath         string                       `json:"workspacePath,omitempty"`
+	BaselineFileSnapshots map[string]RollbackFileSnapshot `json:"baselineFileSnapshots,omitempty"`
+}
+
+// WorkspaceChangesRequest is the request for workspace/changes.
+type WorkspaceChangesRequest struct {
+	WorkspaceRoot string `json:"workspaceRoot,omitempty"`
+}
+
+// BuildRollbackRequest is the request for workspace/rollback/build.
+type BuildRollbackRequest struct {
+	WorkspaceRoot      string           `json:"workspaceRoot,omitempty"`
+	UserMessageID      string           `json:"userMessageId,omitempty"`
+	AssistantMessageID string           `json:"assistantMessageId,omitempty"`
+	ChangeSet          MessageChangeSet `json:"changeSet"`
+	RunningBaseline    *RunningBaseline `json:"runningBaseline,omitempty"`
+}
+
+// ApplyRollbackRequest is the request for workspace/rollback/apply.
+type ApplyRollbackRequest struct {
+	WorkspaceRoot string         `json:"workspaceRoot,omitempty"`
+	Rollbacks     []TurnRollback `json:"rollbacks"`
 }
 
 type TaskSnapshot struct {
