@@ -11,6 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install system dependencies
+        # golang.design/x/clipboard 在 Linux 通过 cgo 绑定 X11 剪贴板，
+        # 编译需要 X11 头文件；eos-cli 虽仅 Windows 分发，但 Linux job
+        # 仍跑 go build/vet/test 验证编译，必须装 libx11-dev。
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
