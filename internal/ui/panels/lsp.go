@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dreamSailing/eos/internal/i18n"
 	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -225,7 +226,7 @@ func (p *LSPPanel) View() string {
 	if p.viewing {
 		b.WriteString(p.detail.View())
 		b.WriteString("\n\n")
-		b.WriteString(p.styles.TextMuted.Render("Esc 返回 · R 刷新"))
+		b.WriteString(p.styles.TextMuted.Render(i18n.T("lsp.footer.detail", p.language)))
 		return p.RenderBorder(b.String(), "LSP Panel")
 	}
 
@@ -247,7 +248,7 @@ func (p *LSPPanel) View() string {
 		b.WriteString("\n\n")
 	}
 
-	b.WriteString(p.styles.TextMuted.Render("Enter 详情 · R 刷新 · Esc 返回"))
+	b.WriteString(p.styles.TextMuted.Render(i18n.T("lsp.footer.list", p.language)))
 	return p.RenderBorder(b.String(), "LSP Panel")
 }
 

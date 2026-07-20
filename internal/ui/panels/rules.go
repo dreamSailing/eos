@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dreamSailing/eos/internal/i18n"
 	uinput "github.com/dreamSailing/eos/internal/ui/components/input"
 	"github.com/dreamSailing/eos/internal/ui/styles"
 
@@ -226,11 +227,11 @@ func (p *RulesPanel) View() string {
 	if p.editing {
 		b.WriteString(p.editor.View())
 		b.WriteString("\n\n")
-		b.WriteString(p.styles.TextMuted.Render("Ctrl+S 保存 · Esc 取消编辑 · Tab 切换范围"))
+		b.WriteString(p.styles.TextMuted.Render(i18n.T("rules.footer.editing", p.language)))
 	} else {
 		b.WriteString(p.view.View())
 		b.WriteString("\n\n")
-		b.WriteString(p.styles.TextMuted.Render("Tab 切换范围 · E 编辑 · R 刷新 · Esc 返回"))
+		b.WriteString(p.styles.TextMuted.Render(i18n.T("rules.footer.browse", p.language)))
 	}
 
 	return p.RenderBorder(b.String(), "Rules Panel")

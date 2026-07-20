@@ -151,11 +151,21 @@ func (v *ModelSetupView) loadProviders() {
 		if len(p.DefaultModels) > 0 {
 			recommended = "★"
 		}
-		rows = append(rows, table.Row{p.Name, p.Website, p.APIKeyEnv, recommended})
+		rows = append(rows, table.Row{providerDisplayName(p, v.language), p.Website, p.APIKeyEnv, recommended})
 	}
 	// 添加"自定义"选项
 	rows = append(rows, table.Row{i18n.T("setup.custom", v.language), "-", "-", ""})
 	v.providerTable.SetRows(rows)
+}
+
+// providerDisplayName 把 ID 为 "custom" 的内置 provider 显示为当前语言的"自定义"标签，
+// 其余 provider 直接用其原始名称。rust_catalog 在 ai 包没有 language 上下文，
+// 只能在这里按当前语言渲染。
+func providerDisplayName(p *ai.ProviderConfig, language string) string {
+	if p != nil && p.ID == "custom" {
+		return i18n.T("setup.custom", language)
+	}
+	return p.Name
 }
 
 // loadModels 加载指定服务商的模型列表
@@ -600,7 +610,7 @@ func (v *ModelSetupView) View() string {
 		title = i18n.T("setup.step.provider", v.language)
 	case ModelSetupStepModel:
 		if v.selectedProvider != nil {
-			title = fmt.Sprintf(i18n.T("setup.step.model", v.language), v.selectedProvider.Name)
+			title = fmt.Sprintf(i18n.T("setup.step.model", v.language), providerDisplayName(v.selectedProvider, v.language))
 		} else {
 			title = i18n.T("setup.step.provider", v.language)
 		}
@@ -627,7 +637,7 @@ func (v *ModelSetupView) View() string {
 
 	case ModelSetupStepModel:
 		if v.selectedProvider != nil {
-			content.WriteString(v.styles.Text.Render(fmt.Sprintf(i18n.T("setup.model.select", v.language), v.selectedProvider.Name)))
+			content.WriteString(v.styles.Text.Render(fmt.Sprintf(i18n.T("setup.model.select", v.language), providerDisplayName(v.selectedProvider, v.language))))
 			content.WriteString("\n\n")
 			content.WriteString(v.modelTable.View())
 		} else {
