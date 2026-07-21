@@ -35,6 +35,7 @@ type SettingsPanel struct {
 	editInput   textinput.Model
 	editKey     string
 	editValue   string
+	rowKeys     []string // 与 table 行同步的稳定字段 ID，供 saveEditValue 匹配
 
 	globalPredictionEnabled bool
 }
@@ -145,25 +146,32 @@ func defaultPanelSettings() *settings.Settings {
 // updateTable 更新表格内容
 func (p *SettingsPanel) updateTable() {
 	rows := make([]table.Row, 0)
+	p.rowKeys = make([]string, 0)
 
 	if p.settings == nil {
 		rows = append(rows, table.Row{i18n.T("settings.empty", p.language), ""})
 	} else {
 		s := p.settings
-		rows = append(rows, table.Row{"自动上下文", fmt.Sprintf("%v", s.AutoContext)})
+		rows = append(rows, table.Row{i18n.T("settings.row.auto_context", p.language), fmt.Sprintf("%v", s.AutoContext)})
+		p.rowKeys = append(p.rowKeys, "AutoContext")
 		desktopNotifications := true
 		if s.DesktopNotifications != nil {
 			desktopNotifications = *s.DesktopNotifications
 		}
-		rows = append(rows, table.Row{"桌面通知", fmt.Sprintf("%v", desktopNotifications)})
-		rows = append(rows, table.Row{"上下文上限(KB)", fmt.Sprintf("%d", s.MaxInjectKB)})
-		rows = append(rows, table.Row{"语言", s.Language})
-		rows = append(rows, table.Row{"主题", s.Theme})
+		rows = append(rows, table.Row{i18n.T("settings.row.desktop_notifications", p.language), fmt.Sprintf("%v", desktopNotifications)})
+		p.rowKeys = append(p.rowKeys, "DesktopNotifications")
+		rows = append(rows, table.Row{i18n.T("settings.row.context_limit_kb", p.language), fmt.Sprintf("%d", s.MaxInjectKB)})
+		p.rowKeys = append(p.rowKeys, "MaxInjectKB")
+		rows = append(rows, table.Row{i18n.T("settings.row.language", p.language), s.Language})
+		p.rowKeys = append(p.rowKeys, "Language")
+		rows = append(rows, table.Row{i18n.T("settings.row.theme", p.language), s.Theme})
+		p.rowKeys = append(p.rowKeys, "Theme")
 		planPromptStyle := strings.TrimSpace(s.PlanPromptStyle)
 		if planPromptStyle == "" {
 			planPromptStyle = "concise"
 		}
-		rows = append(rows, table.Row{"计划详略", planPromptStyle})
+		rows = append(rows, table.Row{i18n.T("settings.row.plan_prompt_style", p.language), planPromptStyle})
+		p.rowKeys = append(p.rowKeys, "PlanPromptStyle")
 	}
 	p.table.SetRows(rows)
 }
@@ -176,14 +184,34 @@ func (p *SettingsPanel) GetCurrentAction() string {
 	return ""
 }
 
-// GetSelectedSetting 获取选中的设置项
+// GetSelectedSetting 获取选中的设置项（返回稳定字段 ID + 当前值）
 func (p *SettingsPanel) GetSelectedSetting() (string, string) {
 	i := p.table.Cursor()
 	rows := p.table.Rows()
-	if i >= 0 && i < len(rows) {
-		return rows[i][0], rows[i][1]
+	if i >= 0 && i < len(rows) && i < len(p.rowKeys) {
+		return p.rowKeys[i], rows[i][1]
 	}
 	return "", ""
+}
+
+// editKeyLabel 把稳定字段 ID 映射回当前语言的显示标签，供编辑模式顶部展示。
+func (p *SettingsPanel) editKeyLabel() string {
+	switch p.editKey {
+	case "AutoContext":
+		return i18n.T("settings.row.auto_context", p.language)
+	case "DesktopNotifications":
+		return i18n.T("settings.row.desktop_notifications", p.language)
+	case "MaxInjectKB":
+		return i18n.T("settings.row.context_limit_kb", p.language)
+	case "Language":
+		return i18n.T("settings.row.language", p.language)
+	case "Theme":
+		return i18n.T("settings.row.theme", p.language)
+	case "PlanPromptStyle":
+		return i18n.T("settings.row.plan_prompt_style", p.language)
+	default:
+		return p.editKey
+	}
 }
 
 // Init 初始化
@@ -325,12 +353,12 @@ func (p *SettingsPanel) saveEditValue() {
 
 	value := p.editInput.Value()
 	switch p.editKey {
-	case "AutoContext", "自动上下文":
+	case "AutoContext":
 		p.settings.AutoContext = value == "true" || value == "True" || value == "1"
-	case "DesktopNotifications", "桌面通知":
+	case "DesktopNotifications":
 		v := value == "true" || value == "True" || value == "1"
 		p.settings.DesktopNotifications = &v
-	case "MaxInjectKB", "上下文上限(KB)":
+	case "MaxInjectKB":
 		if v, err := strconv.Atoi(value); err == nil {
 			p.settings.MaxInjectKB = v
 		}
@@ -342,13 +370,13 @@ func (p *SettingsPanel) saveEditValue() {
 		if v, err := strconv.Atoi(value); err == nil {
 			p.settings.PollIntervalSec = v
 		}
-	case "Language", "语言":
+	case "Language":
 		p.settings.Language = value
-	case "Theme", "主题":
+	case "Theme":
 		p.settings.Theme = value
 	case "NextMessagePrediction(Global)":
 		p.globalPredictionEnabled = value == "true" || value == "True" || value == "1"
-	case "PlanPromptStyle", "计划详略":
+	case "PlanPromptStyle":
 		p.settings.PlanPromptStyle = value
 	case "PlanBubbleColor":
 		p.settings.PlanBubbleColor = value
@@ -422,7 +450,7 @@ func (p *SettingsPanel) viewEditMode() string {
 
 	content.WriteString(fmt.Sprintf("%s: %s\n\n",
 		i18n.T("settings.col.name", p.language),
-		p.styles.TextInfo.Render(p.editKey)))
+		p.styles.TextInfo.Render(p.editKeyLabel())))
 
 	content.WriteString(p.editInput.View())
 	content.WriteString("\n\n")

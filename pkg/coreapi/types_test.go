@@ -28,21 +28,21 @@ func (compileTimeEngine) Models() ModelService           { return nil }
 func (compileTimeEngine) RemoteWorkspaces() RemoteWorkspaceService {
 	return nil
 }
-func (compileTimeEngine) Git() GitService            { return nil }
-func (compileTimeEngine) Insights() InsightService   { return nil }
-func (compileTimeEngine) Memory() MemoryService      { return nil }
-func (compileTimeEngine) Roles() RoleService         { return nil }
-func (compileTimeEngine) Turns() TurnService         { return nil }
-func (compileTimeEngine) Approvals() ApprovalService { return nil }
-func (compileTimeEngine) Inquiries() InquiryService  { return nil }
-func (compileTimeEngine) Agents() AgentService       { return nil }
-func (compileTimeEngine) Tools() ToolExecutor        { return nil }
+func (compileTimeEngine) Git() GitService                 { return nil }
+func (compileTimeEngine) Insights() InsightService        { return nil }
+func (compileTimeEngine) Memory() MemoryService           { return nil }
+func (compileTimeEngine) Roles() RoleService              { return nil }
+func (compileTimeEngine) Turns() TurnService              { return nil }
+func (compileTimeEngine) Approvals() ApprovalService      { return nil }
+func (compileTimeEngine) Inquiries() InquiryService       { return nil }
+func (compileTimeEngine) Agents() AgentService            { return nil }
+func (compileTimeEngine) Tools() ToolExecutor             { return nil }
 func (compileTimeEngine) ToolCatalog() ToolCatalogService { return nil }
 func (compileTimeEngine) ToolTelemetry() ToolTelemetryService {
 	return nil
 }
-func (compileTimeEngine) Events() EventSubscriber { return nil }
-func (compileTimeEngine) Sandbox() SandboxService { return nil }
+func (compileTimeEngine) Events() EventSubscriber         { return nil }
+func (compileTimeEngine) Sandbox() SandboxService         { return nil }
 func (compileTimeEngine) Diagnostics() DiagnosticsService { return nil }
 
 type compileTimeSandbox struct{}
@@ -74,15 +74,17 @@ func (compileTimeToolCatalog) List(context.Context, ListToolCatalogRequest) ([]T
 
 type compileTimeState struct{}
 
-func (compileTimeState) Snapshot(context.Context) (StateSnapshot, error) {
+func (compileTimeState) Snapshot(context.Context, StateSnapshotRequest) (StateSnapshot, error) {
 	return StateSnapshot{}, nil
 }
 
 type compileTimeWorkspaces struct{}
 
-func (compileTimeWorkspaces) List(context.Context) ([]Workspace, error) { return nil, nil }
-func (compileTimeWorkspaces) Default(context.Context) (string, error)   { return "", nil }
-func (compileTimeWorkspaces) Last(context.Context) (string, error)      { return "", nil }
+func (compileTimeWorkspaces) List(context.Context, WorkspaceListRequest) ([]Workspace, error) {
+	return nil, nil
+}
+func (compileTimeWorkspaces) Default(context.Context) (string, error) { return "", nil }
+func (compileTimeWorkspaces) Last(context.Context) (string, error)    { return "", nil }
 func (compileTimeWorkspaces) ResolveForeground(context.Context, ResolveForegroundWorkspaceRequest) (string, error) {
 	return "", nil
 }
@@ -116,6 +118,9 @@ func (compileTimeSessions) Current(context.Context, CurrentSessionRequest) (Sess
 func (compileTimeSessions) SetCurrent(context.Context, SetCurrentSessionRequest) error { return nil }
 func (compileTimeSessions) Delete(context.Context, DeleteSessionRequest) error         { return nil }
 func (compileTimeSessions) Rename(context.Context, RenameSessionRequest) (Session, error) {
+	return Session{}, nil
+}
+func (compileTimeSessions) SetMeta(context.Context, SetSessionMetaRequest) (Session, error) {
 	return Session{}, nil
 }
 func (compileTimeSessions) LoadMessages(context.Context, LoadSessionMessagesRequest) ([]SessionMessage, error) {

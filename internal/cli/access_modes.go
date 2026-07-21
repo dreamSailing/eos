@@ -9,7 +9,7 @@ type resolvedModeConfig struct {
 	SkipAllChecks bool
 }
 
-func resolveModeConfig(accessMode string, approvalMode string, sandboxMode string, skipPermissions bool, requireApprovalDigest bool) resolvedModeConfig {
+func resolveModeConfig(accessMode string, approvalMode string, sandboxMode string, skipPermissions bool) resolvedModeConfig {
 	if skipPermissions {
 		return resolvedModeConfig{
 			AccessMode:    "danger-full-access",

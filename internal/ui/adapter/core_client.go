@@ -225,12 +225,18 @@ func (a *CoreClientAdapter) Invoke(ctx context.Context, query, executionMode str
 		err  error
 	}, 1)
 	go func() {
-		turn, err := a.engine.Turns().Start(ctx, coreapi.StartTurnRequest{
+		req := coreapi.StartTurnRequest{
 			SessionID:  sessionID,
 			TurnID:     turnID,
 			Input:      query,
 			ImagePaths: append([]string(nil), imagePaths...),
-		})
+		}
+		// Map the global execution_mode ("plan") to the per-turn
+		// collaboration_mode, mirroring Codex's turn/start.collaborationMode.
+		if strings.TrimSpace(strings.ToLower(executionMode)) == "plan" {
+			req.CollaborationMode = &coreapi.CollaborationMode{Mode: coreapi.ModePlan}
+		}
+		turn, err := a.engine.Turns().Start(ctx, req)
 		startDone <- struct {
 			turn coreapi.Turn
 			err  error
@@ -354,7 +360,7 @@ func (a *CoreClientAdapter) StateSnapshot(ctx context.Context) (coreapi.StateSna
 	if a == nil || a.engine == nil {
 		return coreapi.StateSnapshot{}, errors.New("core client is not available")
 	}
-	return a.engine.State().Snapshot(ctx)
+	return a.engine.State().Snapshot(ctx, coreapi.StateSnapshotRequest{})
 }
 
 // === Workspace ===
@@ -363,7 +369,7 @@ func (a *CoreClientAdapter) Workspaces(ctx context.Context) ([]coreapi.Workspace
 	if a == nil || a.engine == nil {
 		return nil, errors.New("core client is not available")
 	}
-	return a.engine.Workspaces().List(ctx)
+	return a.engine.Workspaces().List(ctx, coreapi.WorkspaceListRequest{})
 }
 
 func (a *CoreClientAdapter) ActiveWorkspace(ctx context.Context) string {
@@ -544,6 +550,7 @@ func (a *CoreClientAdapter) ensureSessionID(ctx context.Context) (string, error)
 	session, err := a.engine.Sessions().Create(ctx, coreapi.CreateSessionRequest{
 		WorkspaceRoot: workspaceRoot,
 		Title:         "CLI session",
+		Metadata:      map[string]any{"source": "cli"},
 	})
 	if err != nil {
 		return "", err
@@ -627,6 +634,8 @@ func (a *CoreClientAdapter) ModelEntries(ctx context.Context) ([]config.ModelEnt
 			Model:                   strings.TrimSpace(item.Model),
 			Source:                  strings.TrimSpace(item.Source),
 			SupportsReasoningEffort: item.SupportsReasoningEffort,
+			SupportsVision:          item.SupportsVision,
+			SupportsTools:           item.SupportsTools,
 		})
 		if item.Active {
 			active = strings.TrimSpace(item.Name)
@@ -1363,14 +1372,15 @@ func firstEventText(data map[string]any, fallback string, keys ...string) string
 }
 
 // itemCompletedText extracts the text from an item.completed event's payload,
-// which nests the TurnItem under payload.item. Only AgentMessage items carry
-// displayable text.
+// which nests the TurnItem under payload.item. AgentMessage and Plan items
+// carry displayable text; tool_call items do not.
 func itemCompletedText(data map[string]any) string {
 	item, ok := data["item"].(map[string]any)
 	if !ok {
 		return ""
 	}
-	if kind, _ := item["kind"].(string); kind != "agent_message" {
+	kind, _ := item["kind"].(string)
+	if kind != "agent_message" && kind != "plan" {
 		return ""
 	}
 	text, _ := item["text"].(string)
@@ -1423,7 +1433,6 @@ func runtimeEventFromEnvelope(envelope protocol.Envelope) RuntimeEvent {
 		Data:    data,
 	}
 }
-
 
 // Reload 触发 core 配置热重载（MethodConfigReload）。
 // protocol 层已定义此方法，eos-core 收到后会重新加载 .eos 配置。

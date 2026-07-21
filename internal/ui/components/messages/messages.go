@@ -495,6 +495,13 @@ func (m *ThinkingMessage) Render(s *styles.Styles, width int) string {
 	return result.String()
 }
 
+// LastNonEmptyLine returns the last non-empty, non-whitespace line of text.
+// Exported so other packages (e.g. the shell's history renderer) can reuse the
+// same summary logic used by the collapsed ThinkingMessage.
+func LastNonEmptyLine(text string) string {
+	return lastNonEmptyLine(text)
+}
+
 func lastNonEmptyLine(text string) string {
 	lines := strings.Split(strings.TrimSpace(text), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {

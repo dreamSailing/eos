@@ -46,7 +46,7 @@ func TestRemoteEngineWithRealSidecar(t *testing.T) {
 		t.Fatalf("Sessions().List()=%+v, want created session", sessions)
 	}
 
-	snapshot, err := engine.State().Snapshot(ctx)
+	snapshot, err := engine.State().Snapshot(ctx, coreapi.StateSnapshotRequest{})
 	if err != nil {
 		t.Fatalf("State().Snapshot() error = %v", err)
 	}
@@ -119,6 +119,15 @@ func TestRemoteEngineWithVendoredSidecar(t *testing.T) {
 }
 
 func TestRemoteEngineAgentRunPersistsSessionTurnWithVendoredSidecar(t *testing.T) {
+	// 这个测试驱动 agent 真实跑一轮（Spawn → SendInput → Run），需要内核连上
+	// 真实 model provider 才能产出 completed 状态的 turn。CI 上没有 model 凭据，
+	// agent run 会因无可用 provider 直接 failed。默认 skip，本地或带了 model
+	// 凭据的环境显式设 EOS_TEST_LIVE_MODEL=1 才跑，与 TestRemoteEngineWithRealSidecar
+	// 用 EOS_CORE_PATH gate 的模式一致。
+	if os.Getenv("EOS_TEST_LIVE_MODEL") != "1" {
+		t.Skipf("skipping live-model integration test; set EOS_TEST_LIVE_MODEL=1 with model credentials to run")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -313,12 +322,12 @@ func TestRemoteEngineModelCatalogWithVendoredSidecar(t *testing.T) {
 		}
 	}
 	for id, found := range map[string]*bool{
-		"dashscope":  &hasDashscope,
-		"zhipu":      &hasZhipu,
-		"minimax":    &hasMinimax,
-		"mimo":       &hasMimo,
-		"openai":     &hasOpenai,
-		"anthropic":  &hasAnthropic,
+		"dashscope": &hasDashscope,
+		"zhipu":     &hasZhipu,
+		"minimax":   &hasMinimax,
+		"mimo":      &hasMimo,
+		"openai":    &hasOpenai,
+		"anthropic": &hasAnthropic,
 	} {
 		if !*found {
 			t.Errorf("catalog providers missing %s", id)

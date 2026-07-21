@@ -5,12 +5,38 @@ package ai
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"testing"
 
 	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/pkg/coreapi"
 )
+
+// applyTestCatalog 注入一个最小测试 catalog，让 o1/o1-mini/o1-preview 被识别为
+// 支持推理与思考、gpt-4o 不支持。模拟生产环境内核推送目录后的状态。
+// 测试结束后恢复空 catalog，避免污染其它测试。
+func applyTestCatalog(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		globalRegistry = NewProviderRegistry()
+		globalCatalog = NewModelCatalog()
+	})
+	ApplyCoreModelCatalog(coreapi.ModelCatalogState{
+		Providers: []coreapi.ModelProviderOption{{
+			ID:        "openai",
+			Name:      "OpenAI",
+			Endpoints: []coreapi.ProviderEndpoint{ep("api", "openai_chat", "https://api.openai.com/v1")},
+		}},
+		Presets: []coreapi.ModelPresetOption{
+			{ID: "o1", Name: "o1", ProviderID: "openai", ModelName: "o1", Plan: "api", Format: "openai_chat", SupportsReasoningEffort: true, SupportsTools: true},
+			{ID: "o1-mini", Name: "o1-mini", ProviderID: "openai", ModelName: "o1-mini", Plan: "api", Format: "openai_chat", SupportsReasoningEffort: true, SupportsTools: true},
+			{ID: "o1-preview", Name: "o1-preview", ProviderID: "openai", ModelName: "o1-preview", Plan: "api", Format: "openai_chat", SupportsReasoningEffort: true, SupportsTools: true},
+			{ID: "gpt-4o", Name: "gpt-4o", ProviderID: "openai", ModelName: "gpt-4o", Plan: "api", Format: "openai_chat", SupportsTools: true},
+		},
+		AllowCustomProvider: true,
+		AllowCustomModel:    true,
+	})
+}
 
 func TestDetectThinkingCapability(t *testing.T) {
 	tests := []struct {
@@ -151,6 +177,7 @@ func TestShouldEnableThinkingForModel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			applyTestCatalog(t)
 			got := ShouldEnableThinkingForModel(tt.model, tt.cfg)
 			if got != tt.want {
 				t.Errorf("ShouldEnableThinkingForModel(%q, cfg) = %v, want %v", tt.model, got, tt.want)
@@ -220,6 +247,7 @@ func TestGetReasoningEffortLevel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			applyTestCatalog(t)
 			got := GetReasoningEffortLevel(tt.model, tt.cfg)
 			if got != tt.want {
 				t.Errorf("GetReasoningEffortLevel(%q, cfg) = %q, want %q", tt.model, got, tt.want)

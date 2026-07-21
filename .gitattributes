@@ -1,0 +1,32 @@
+# 统一行尾符：所有文本源码统一为 LF，杜绝 autocrlf 导致的 CRLF/LF 混乱。
+# Windows 开发者应配合 `git config --global core.autocrlf false` 使用。
+* text=auto eol=lf
+
+# Go 源码、测试一律 LF。
+*.go   text eol=lf
+
+# Go 模块文件 LF。
+go.mod text eol=lf
+go.sum text eol=lf
+go.work text eol=lf
+go.work.sum text eol=lf
+
+# 脚本与配置类文本 LF。
+*.sh   text eol=lf
+*.ps1  text eol=crlf
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+
+# Windows 批处理保留 CRLF。
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# 二进制内核 sidecar 与签名产物：禁止 git 做任何行尾/内容转换。
+*.exe  binary
+*.dll  binary
+*.so   binary
+*.dylib binary
+*.pem  binary

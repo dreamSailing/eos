@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dreamSailing/eos/internal/i18n"
 	"github.com/dreamSailing/eos/internal/ui/styles"
 	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/version"
@@ -25,6 +26,7 @@ type WelcomeCard struct {
 	width      int
 	height     int
 	styles     *styles.Styles
+	language   string
 	modelName  string
 	apiInfo    string
 	workDir    string
@@ -48,12 +50,13 @@ type particle struct {
 }
 
 // NewWelcomeCard 创建新的欢迎卡片
-func NewWelcomeCard(s *styles.Styles) *WelcomeCard {
+func NewWelcomeCard(s *styles.Styles, lang string) *WelcomeCard {
 	wd, _ := os.Getwd()
 	w := &WelcomeCard{
 		width:      80,
 		height:     24,
 		styles:     s,
+		language:   lang,
 		modelName:  "AI Assistant",
 		apiInfo:    "Ready",
 		workDir:    wd,
@@ -61,6 +64,11 @@ func NewWelcomeCard(s *styles.Styles) *WelcomeCard {
 	}
 	w.initParticles()
 	return w
+}
+
+// SetLanguage 设置欢迎卡片语言
+func (w *WelcomeCard) SetLanguage(lang string) {
+	w.language = lang
 }
 
 // initParticles 初始化粒子系统
@@ -194,7 +202,7 @@ func (w *WelcomeCard) View() string {
 
 	// 副标题行
 	lines = append(lines, "")
-	lines = append(lines, "AI 领航，助你破浪前行")
+	lines = append(lines, i18n.T("welcome.tagline", w.language))
 	lines = append(lines, version.AppName+" "+w.appVersion)
 
 	// 中间空白（填充到倒数3行）
@@ -203,10 +211,10 @@ func (w *WelcomeCard) View() string {
 	}
 
 	// 提示行
-	lines = append(lines, "● 提示  运行 /help 查看帮助  运行 /config 配置模型")
+	lines = append(lines, i18n.T("welcome.tip", w.language))
 
 	// 快捷键行
-	lines = append(lines, "tab 切换模式  / 命令提示  ? 帮助")
+	lines = append(lines, i18n.T("welcome.hotkeys", w.language))
 
 	// 补齐到 contentHeight
 	for len(lines) < contentHeight {

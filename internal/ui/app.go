@@ -84,7 +84,8 @@ type AppModel struct {
 	aiLive             strings.Builder
 	thinkingLive       strings.Builder
 	thinkingExpanded   bool
-	activeItemID       string // current AgentMessage item being streamed
+	reasoningStartTime time.Time // 当前推理块开始时间，用于该块耗时统计
+	activeItemID       string    // current AgentMessage item being streamed
 	toolInflight       map[string]toolTrack
 	history            []historyEntry
 	delegatedThisRound bool
@@ -868,8 +869,13 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ItemStartedMsg:
 		// A new AgentMessage text segment begins. Create a fresh history entry
 		// and reset the live buffer so each round renders as its own paragraph.
-		if msg.ItemType == "agent_message" || msg.ItemType == "" {
+		switch msg.ItemType {
+		case "agent_message", "":
 			m.startAgentMessageItem(msg.ItemID)
+		case "reasoning":
+			// A reasoning item begins: archive any in-progress text segment and
+			// reset the thinking buffer so this block streams on its own.
+			m.startReasoningItem(msg.ItemID)
 		}
 		return m, nil
 	case ItemDeltaMsg:
@@ -1049,7 +1055,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					OptionIndex: msg.OptionIndex,
 					Text:        msg.Text,
 				}); err != nil {
-					m.appendSystem(fmt.Sprintf("审批响应失败: %v", err), "error")
+					m.appendSystem(fmt.Sprintf(i18n.T("toast.approval_failed", m.state.Language), err), "error")
 				}
 			}
 			// 审批响应后 turn 恢复执行（工具重跑或继续生成），
@@ -1070,9 +1076,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			id = strings.TrimSpace(id)
 			if msg.Decision == "confirm" && id != "" {
 				if err := m.adapter.KillTask(context.Background(), id); err != nil {
-					m.appendSystem(fmt.Sprintf("终止后台任务失败: %v", err), "error")
+					m.appendSystem(fmt.Sprintf(i18n.T("toast.stop_task_failed", m.state.Language), err), "error")
 				} else {
-					m.appendSystem(fmt.Sprintf("已终止后台任务: %s", id), "warning")
+					m.appendSystem(fmt.Sprintf(i18n.T("toast.task_stopped", m.state.Language), id), "warning")
 				}
 			}
 			m.confirmView = nil
@@ -1095,11 +1101,11 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			if err := m.addTrustedWorkspace(path); err != nil {
-				m.appendSystem(fmt.Sprintf("信任工作区失败: %v", err), "error")
+				m.appendSystem(fmt.Sprintf(i18n.T("toast.trust_failed", m.state.Language), err), "error")
 				return m, nil
 			}
 			if err := m.adapter.TrustWorkspace(context.Background(), path); err != nil {
-				m.appendSystem(fmt.Sprintf("信任工作区已保存，但同步到核心失败: %v", err), "warning")
+				m.appendSystem(fmt.Sprintf(i18n.T("toast.trust_saved_sync_failed", m.state.Language), err), "warning")
 			}
 			m.trustPendingPath = ""
 			m.trustPendingAction = ""
@@ -1145,14 +1151,14 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			raw := strings.TrimSpace(msg.Text)
-			p, err := resolveWorkspaceInputPath(raw)
+			p, err := resolveWorkspaceInputPath(raw, m.state.Language)
 			if err != nil {
 				m.appendSystem(err.Error(), "warning")
 				return m, nil
 			}
 			fi, err := os.Stat(p)
 			if err != nil || fi == nil || !fi.IsDir() {
-				m.appendSystem("路径不是目录: "+p, "warning")
+				m.appendSystem(i18n.T("path_not_dir", m.state.Language)+p, "warning")
 				return m, nil
 			}
 			if err := m.adapter.AddWorkspace(context.Background(), p); err != nil {
@@ -1160,7 +1166,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.refreshWorkspacePanel()
-			m.appendSystem("已添加工作区: "+p, "success")
+			m.appendSystem(i18n.T("workspace.added", m.state.Language)+p, "success")
 			m.confirmView = nil
 			if m.prevView != "" {
 				m.activeView = m.prevView
@@ -1215,7 +1221,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				OptionIndex: msg.OptionIndex,
 				Text:        msg.Text,
 			}); err != nil {
-				m.appendSystem(fmt.Sprintf("审批响应失败: %v", err), "error")
+				m.appendSystem(fmt.Sprintf(i18n.T("toast.approval_failed", m.state.Language), err), "error")
 			}
 		}
 		// 审批响应后 turn 恢复执行，保持“处理中”直到 turn.completed。
@@ -1253,7 +1259,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activeView = "shell"
 		m.initialSetupFlow = false
 		m.shell.FocusInput()
-		m.appendSystem("Setup cancelled.", "warning")
+		m.appendSystem(i18n.T("setup.cancelled", m.state.Language), "warning")
 
 	case setup.ModelFormCompleteMsg:
 		// 模型表单完成
@@ -1331,9 +1337,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case WorkspaceReloadDoneMsg:
 		if msg.Err != nil {
-			m.appendSystem(fmt.Sprintf("工作区切换后重载失败: %v", msg.Err), "error")
+			m.appendSystem(fmt.Sprintf(i18n.T("toast.workspace_reload_failed", m.state.Language), msg.Err), "error")
 		} else {
-			m.appendSystem("工作区已切换并完成重载", "success")
+			m.appendSystem(i18n.T("workspace.switched_reloaded", m.state.Language), "success")
 		}
 		m.refreshWorkspacePanel()
 		m.refreshMemoryPanel()
@@ -1341,18 +1347,18 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case MCPReloadDoneMsg:
 		if msg.Err != nil {
-			m.appendSystem(fmt.Sprintf("MCP 重载失败: %v", msg.Err), "error")
+			m.appendSystem(fmt.Sprintf(i18n.T("toast.mcp_reload_failed", m.state.Language), msg.Err), "error")
 		} else {
-			m.appendSystem("MCP 已重载", "success")
+			m.appendSystem(i18n.T("mcp.reloaded", m.state.Language), "success")
 		}
 		m.refreshMCPPanel()
 		m.refreshLSPPanel()
 
 	case LSPReloadDoneMsg:
 		if msg.Err != nil {
-			m.appendSystem(fmt.Sprintf("LSP 重载失败: %v", msg.Err), "error")
+			m.appendSystem(fmt.Sprintf(i18n.T("toast.lsp_reload_failed", m.state.Language), msg.Err), "error")
 		} else {
-			m.appendSystem("LSP 已重载", "success")
+			m.appendSystem(i18n.T("lsp.reloaded", m.state.Language), "success")
 		}
 		m.refreshLSPPanel()
 
@@ -1412,7 +1418,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.appendSystem(i18n.T("cost.cleared", m.state.Language), "success")
 	case panels.CostExportMsg:
 		// TODO: 实现成本统计导出
-		m.appendSystem("Export cost stats: Not implemented yet", "info")
+		m.appendSystem(i18n.T("cost.export_nyi", m.state.Language), "info")
 	case panels.CostRefreshMsg:
 		m.refreshCostPanel()
 
@@ -1540,148 +1546,155 @@ func (m *AppModel) shouldSendMessage() (bool, tea.Cmd) {
 
 // handleSlashCommand 处理斜杠命令
 func (m *AppModel) handleSlashCommand(cmd string, args []string) tea.Cmd {
-	switch cmd {
-	case "/help":
-		m.clearPrediction()
-		m.activeView = "help"
-		if m.helpView != nil {
-			m.helpView.ResetScroll()
-		}
-	case "/clear":
-		m.shell.ClearContent()
-		m.shell.ClearInput()
-		m.shell.ClearLive()
-		m.history = m.history[:0]
-		m.actionHits = nil
-	case "/exit":
-		return tea.Quit
-	case "/init":
-		m.shell.ClearInput()
-		return m.initEOSMD()
-	case "/init-verifiers":
-		return m.handleInitVerifiersSlash(args)
-	case "/history":
-		m.clearPrediction()
-		m.activeView = "panel"
-		m.activePanel = "versions"
-		m.shell.ClearInput()
-		m.refreshVersionsPanel()
-	case "/model":
-		return m.handleModelSlash(args)
-	case "/mcp":
-		m.clearPrediction()
-		m.activeView = "panel"
-		m.activePanel = "mcp"
-		m.shell.ClearInput()
-		m.refreshMCPPanel()
-	case "/context":
-		m.openContextPanel()
-	case "/memory":
-		m.openMemoryPanel()
-	case "/cost":
-		m.clearPrediction()
-		m.activeView = "panel"
-		m.activePanel = "cost"
-		m.shell.ClearInput()
-		// 刷新成本统计数据
-		m.refreshCostPanel()
-	case "/tasks":
-		m.clearPrediction()
-		m.activeView = "panel"
-		m.activePanel = "tasks"
-		m.shell.ClearInput()
-		if panel, ok := m.panels["tasks"].(*panels.TasksPanel); ok && panel != nil {
-			panel.ResetView()
-			return panel.Init()
-		}
-	case "/workspace":
-		return m.handleWorkspaceSlash(args)
-	case "/config":
-		m.openSettingsPanel()
-	case "/lsp":
-		m.clearPrediction()
-		m.activeView = "panel"
-		m.activePanel = "lsp"
-		m.shell.ClearInput()
-		m.refreshLSPPanel()
-	case "/rules":
-		m.clearPrediction()
-		m.activeView = "panel"
-		m.activePanel = "rules"
-		m.shell.ClearInput()
-		m.refreshRulesPanel()
-	case "/lang":
-		if len(args) > 0 {
-			m.state.Language = args[0]
-			// 保存配置
-			if cfg, path := config.Load(); path != "" {
-				cfg.Language = args[0]
-				if err := config.Save(cfg, path); err != nil {
-					m.appendSystem(fmt.Sprintf("Failed to save language config: %v", err), "error")
+	handler, ok := slashCommandHandler(m)[cmd]
+	if !ok {
+		// 别名查找：commands.go 的 Aliases 字段
+		for _, c := range slash.Commands {
+			for _, alias := range c.Aliases {
+				if alias == cmd && c.Name != cmd {
+					handler, ok = slashCommandHandler(m)[c.Name]
+					break
 				}
 			}
-			m.appendSystem(fmt.Sprintf("Language changed to: %s", args[0]), "success")
-			return func() tea.Msg {
-				return panels.LanguageChangeMsg{Language: args[0]}
+			if ok {
+				break
 			}
 		}
-	case "/compact":
-		if message, err := m.adapter.CompactContext(context.Background()); err != nil {
-			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("上下文压缩失败", "Context compact failed"), err), "error")
-		} else if strings.TrimSpace(message) != "" {
-			m.appendSystem(message, "success")
-		} else {
-			m.appendSystem(i18n.T("context.compacted", m.state.Language), "success")
-		}
-		m.refreshContextPanel()
-	case "/session":
-		return m.handleSessionSlash(args)
-	case "/resume":
-		return m.handleResumeSlash(args)
-	case "/permissions":
-		return m.handlePermissionsSlash(args)
-	case "/skills":
-		return m.handleSkillsSlash(args)
-	case "/plugin":
-		return m.handlePluginSlash()
-	case "/reload-plugins":
-		return m.handleReloadPluginsSlash()
-	case "/doctor":
-		return m.handleDoctorSlash()
-	case "/diff":
-		return m.handleDiffSlash(args)
-	case "/review":
-		return m.handleReviewSlash(args)
-	case "/verify":
-		return m.handleVerifySlash(args)
-	case "/plan":
-		return m.handlePlanSlash(args)
-	case "/plan-style":
-		return m.handlePlanStyleSlash(args)
-	case "/git":
-		return m.handleGitSlash(args)
-	case "/remote":
-		return m.handleRemoteSlash(args)
-	case "/status":
-		return m.handleStatusSlash()
-	case "/fast":
-		return m.handleFastSlash()
-	case "/export":
-		return m.handleExportSlash(args)
-	case "/theme":
-		return m.handleThemeSlash(args)
-	case "/stats":
-		return m.handleStatsSlash()
-	case "/rename":
-		return m.handleRenameSlash(args)
-	case "/share":
-		return m.handleShareSlash()
-	case "/_legal":
-		return m.handleHiddenLegalSlash()
-	default:
-		m.appendSystem(fmt.Sprintf("Unknown command: %s", cmd), "warning")
 	}
+	if ok {
+		return handler(args)
+	}
+	m.appendSystem(fmt.Sprintf("Unknown command: %s", cmd), "warning")
 	return nil
+}
+
+// slashCommandHandler 构建命令名→处理函数的映射表。
+// 新增命令只需在此 map 加一行，不再需要改 switch。
+func slashCommandHandler(m *AppModel) map[string]func(args []string) tea.Cmd {
+	return map[string]func(args []string) tea.Cmd{
+		"/help": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "help"
+			if m.helpView != nil {
+				m.helpView.ResetScroll()
+			}
+			return nil
+		},
+		"/clear": func(_ []string) tea.Cmd {
+			m.shell.ClearContent()
+			m.shell.ClearInput()
+			m.shell.ClearLive()
+			m.history = m.history[:0]
+			m.actionHits = nil
+			return nil
+		},
+		"/exit":           func(_ []string) tea.Cmd { return tea.Quit },
+		"/init":           func(_ []string) tea.Cmd { m.shell.ClearInput(); return m.initEOSMD() },
+		"/init-verifiers": m.handleInitVerifiersSlash,
+		"/history": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "panel"
+			m.activePanel = "versions"
+			m.shell.ClearInput()
+			m.refreshVersionsPanel()
+			return nil
+		},
+		"/model": m.handleModelSlash,
+		"/mcp": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "panel"
+			m.activePanel = "mcp"
+			m.shell.ClearInput()
+			m.refreshMCPPanel()
+			return nil
+		},
+		"/context": func(_ []string) tea.Cmd { m.openContextPanel(); return nil },
+		"/memory":  func(_ []string) tea.Cmd { m.openMemoryPanel(); return nil },
+		"/cost": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "panel"
+			m.activePanel = "cost"
+			m.shell.ClearInput()
+			m.refreshCostPanel()
+			return nil
+		},
+		"/tasks": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "panel"
+			m.activePanel = "tasks"
+			m.shell.ClearInput()
+			if panel, ok := m.panels["tasks"].(*panels.TasksPanel); ok && panel != nil {
+				panel.ResetView()
+				return panel.Init()
+			}
+			return nil
+		},
+		"/workspace": m.handleWorkspaceSlash,
+		"/config":    func(_ []string) tea.Cmd { m.openSettingsPanel(); return nil },
+		"/lsp": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "panel"
+			m.activePanel = "lsp"
+			m.shell.ClearInput()
+			m.refreshLSPPanel()
+			return nil
+		},
+		"/rules": func(_ []string) tea.Cmd {
+			m.clearPrediction()
+			m.activeView = "panel"
+			m.activePanel = "rules"
+			m.shell.ClearInput()
+			m.refreshRulesPanel()
+			return nil
+		},
+		"/lang": func(args []string) tea.Cmd {
+			if len(args) > 0 {
+				m.state.Language = args[0]
+				if cfg, path := config.Load(); path != "" {
+					cfg.Language = args[0]
+					if err := config.Save(cfg, path); err != nil {
+						m.appendSystem(fmt.Sprintf("Failed to save language config: %v", err), "error")
+					}
+				}
+				m.appendSystem(fmt.Sprintf("Language changed to: %s", args[0]), "success")
+				return func() tea.Msg { return panels.LanguageChangeMsg{Language: args[0]} }
+			}
+			return nil
+		},
+		"/compact": func(_ []string) tea.Cmd {
+			if message, err := m.adapter.CompactContext(context.Background()); err != nil {
+				m.appendSystem(fmt.Sprintf("%s: %v", m.localize("上下文压缩失败", "Context compact failed"), err), "error")
+			} else if strings.TrimSpace(message) != "" {
+				m.appendSystem(message, "success")
+			} else {
+				m.appendSystem(i18n.T("context.compacted", m.state.Language), "success")
+			}
+			m.refreshContextPanel()
+			return nil
+		},
+		"/session":        m.handleSessionSlash,
+		"/resume":         m.handleResumeSlash,
+		"/permissions":    m.handlePermissionsSlash,
+		"/skills":         m.handleSkillsSlash,
+		"/plugin":         func(_ []string) tea.Cmd { return m.handlePluginSlash() },
+		"/reload-plugins": func(_ []string) tea.Cmd { return m.handleReloadPluginsSlash() },
+		"/doctor":         func(_ []string) tea.Cmd { return m.handleDoctorSlash() },
+		"/diff":           m.handleDiffSlash,
+		"/review":         m.handleReviewSlash,
+		"/verify":         m.handleVerifySlash,
+		"/plan":           m.handlePlanSlash,
+		"/plan-style":     m.handlePlanStyleSlash,
+		"/git":            m.handleGitSlash,
+		"/remote":         m.handleRemoteSlash,
+		"/status":         func(_ []string) tea.Cmd { return m.handleStatusSlash() },
+		"/fast":           func(_ []string) tea.Cmd { return m.handleFastSlash() },
+		"/export":         m.handleExportSlash,
+		"/theme":          m.handleThemeSlash,
+		"/stats":          func(_ []string) tea.Cmd { return m.handleStatsSlash() },
+		"/rename":         m.handleRenameSlash,
+		"/share":          func(_ []string) tea.Cmd { return m.handleShareSlash() },
+		"/_legal":         func(_ []string) tea.Cmd { return m.handleHiddenLegalSlash() },
+	}
 }
 
 func (m *AppModel) initEOSMD() tea.Cmd {
@@ -1692,7 +1705,7 @@ func (m *AppModel) initEOSMD() tea.Cmd {
 	if root == "" {
 		wd, err := os.Getwd()
 		if err != nil {
-			m.appendSystem(fmt.Sprintf("初始化失败: %v", err), "error")
+			m.appendSystem(fmt.Sprintf(i18n.T("toast.init_failed", m.state.Language), err), "error")
 			return nil
 		}
 		root = wd
@@ -1731,10 +1744,10 @@ go build -o eos
 
 ## Repository Map
 
-- UI: internal/ui/
-- Bridge: internal/bridge/
-- Runtime: internal/runtime/
-- Tools: internal/tools/
+- UI: internal/ui/ (TUI 基于 Bubble Tea)
+- Engine: pkg/coreapi/sidecar/ (通过 JSON-RPC 调用 Rust 内核 eos-core)
+- CLI: internal/cli/ (cobra 子命令)
+- Config: internal/config/
 
 ## Coding Style
 
@@ -1776,14 +1789,14 @@ go build -o eos
 	content := mergeEOS(existing)
 
 	if err := os.WriteFile(dst, []byte(content), 0o644); err != nil {
-		m.appendSystem(fmt.Sprintf("EOS.md 写入失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.eosmd_write_failed", m.state.Language), err), "error")
 		return nil
 	}
 	_ = m.adapter.PinContextDocument(context.Background(), "EOS.md", content, 20000)
 	if existed {
-		m.appendSystem("已更新 EOS.md", "success")
+		m.appendSystem(i18n.T("eosmd.updated", m.state.Language), "success")
 	} else {
-		m.appendSystem("已生成 EOS.md", "success")
+		m.appendSystem(i18n.T("eosmd.generated", m.state.Language), "success")
 	}
 	return nil
 }
@@ -1792,13 +1805,13 @@ func (m *AppModel) tryInvokeSkillSlash(skillName string, args []string) bool {
 	arguments := strings.TrimSpace(strings.Join(args, " "))
 	invoked, err := m.adapter.InvokeSkill(context.Background(), skillName, arguments)
 	if err != nil {
-		m.appendSystem(fmt.Sprintf("Skill 启用失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.skill_enable_failed", m.state.Language), err), "error")
 		return true
 	}
 	if !invoked {
 		return false
 	}
-	m.appendSystem("Skill 已启用: "+skillName, "success")
+	m.appendSystem(i18n.T("skill.enabled", m.state.Language)+skillName, "success")
 	return true
 }
 
@@ -1900,21 +1913,21 @@ func (m *AppModel) handleWorkspaceRemove(path string) {
 		return
 	}
 	m.refreshWorkspacePanel()
-	m.appendSystem("已移除工作区: "+path, "success")
+	m.appendSystem(i18n.T("workspace.removed", m.state.Language)+path, "success")
 }
 
 func (m *AppModel) handleWorkspaceUse(rawPath string) tea.Cmd {
 	if rawPath == "" {
 		return nil
 	}
-	path, err := resolveWorkspaceInputPath(rawPath)
+	path, err := resolveWorkspaceInputPath(rawPath, m.state.Language)
 	if err != nil {
 		m.appendSystem(err.Error(), "error")
 		return nil
 	}
 	fi, err := os.Stat(path)
 	if err != nil || fi == nil || !fi.IsDir() {
-		m.appendSystem("路径不是目录: "+path, "warning")
+		m.appendSystem(i18n.T("path_not_dir", m.state.Language)+path, "warning")
 		return nil
 	}
 	if !m.isWorkspaceTrusted(path) {
@@ -1928,13 +1941,13 @@ func (m *AppModel) handleWorkspaceUse(rawPath string) tea.Cmd {
 
 func (m *AppModel) switchWorkspaceTrusted(path string) tea.Cmd {
 	if err := m.adapter.UseWorkspace(context.Background(), path); err != nil {
-		m.appendSystem(fmt.Sprintf("工作区切换失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.workspace_switch_failed", m.state.Language), err), "error")
 		return nil
 	}
 	_ = os.Chdir(path)
 	_, _ = m.adapter.Settings(context.Background())
 	m.refreshWorkspacePanel()
-	m.appendSystem("已切换工作区: "+path, "success")
+	m.appendSystem(i18n.T("workspace.switched", m.state.Language)+path, "success")
 	return func() tea.Msg {
 		return WorkspaceReloadDoneMsg{Err: m.adapter.Reload()}
 	}
@@ -2060,15 +2073,15 @@ func (m *AppModel) addTrustedWorkspace(path string) error {
 	return config.TrustWorkspaceLocal(path)
 }
 
-func resolveWorkspaceInputPath(raw string) (string, error) {
+func resolveWorkspaceInputPath(raw string, lang string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", fmt.Errorf("请输入工作区路径")
+		return "", fmt.Errorf("%s", i18n.T("error.workspace_path_required", lang))
 	}
 	if raw == "~" || strings.HasPrefix(raw, "~"+string(os.PathSeparator)) || strings.HasPrefix(raw, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil || strings.TrimSpace(home) == "" {
-			return "", fmt.Errorf("无法解析 ~")
+			return "", fmt.Errorf("%s", i18n.T("error.tilde_unresolvable", lang))
 		}
 		rest := strings.TrimPrefix(raw, "~")
 		rest = strings.TrimPrefix(rest, "/")
@@ -2077,7 +2090,7 @@ func resolveWorkspaceInputPath(raw string) (string, error) {
 	}
 	abs, err := filepath.Abs(raw)
 	if err != nil {
-		return "", fmt.Errorf("路径解析失败: %v", err)
+		return "", fmt.Errorf(i18n.T("error.path_resolve_failed", lang), err)
 	}
 	return config.NormalizeWorkspacePath(abs), nil
 }
@@ -2134,9 +2147,9 @@ func (m *AppModel) sendMessage() tea.Cmd {
 			}
 		}
 		if len(names) > 0 {
-			m.appendSystem("已附带图片: "+strings.Join(names, ", "), "info")
+			m.appendSystem(i18n.T("image.attached", m.state.Language)+strings.Join(names, ", "), "info")
 		} else {
-			m.appendSystem("已附带图片", "info")
+			m.appendSystem(i18n.T("image.attached_short", m.state.Language), "info")
 		}
 	}
 
@@ -2443,6 +2456,11 @@ func (m *AppModel) renderHistoryEntry(e historyEntry) string {
 			return e.toolOutput
 		case "agent.final":
 			return e.content
+		case "reasoning":
+			// Archived thinking block: render as a dim one-line summary (the
+			// last non-empty line, truncated). Matches codex's persisted
+			// reasoning summary and the eos-app collapsed "思考过程" block.
+			return messages.LastNonEmptyLine(e.content)
 		default:
 			return e.content
 		}
@@ -2471,6 +2489,11 @@ func (m *AppModel) renderHistoryEntry(e historyEntry) string {
 		return m.msgRenderer.RenderAgentFinalAtWithActions(e.agentName, e.agentID, e.sourceAgent, e.sourceAgentID, e.agentEvent, e.content, e.timestamp, m.bubbleActionsForEntry(e))
 	case "system":
 		return m.msgRenderer.RenderSystem(e.content, e.level)
+	case "reasoning":
+		// Archived thinking block, collapsed: a header line ("💭 Thinking · Xs")
+		// followed by a single dim summary line (last non-empty line, truncated
+		// to 160 chars). Mirrors the live block's collapsed state.
+		return m.msgRenderer.RenderThinkingWithHint(e.content, e.duration, false, nil, "")
 	default:
 		return e.content
 	}
@@ -2719,7 +2742,7 @@ func (m *AppModel) savePlanHistoryEntryToDir(idx int, rawDir string) (string, er
 	if !ok {
 		return "", fmt.Errorf("%s", i18n.T("plan.download.unavailable", m.state.Language))
 	}
-	dir, err := resolveWorkspaceInputPath(rawDir)
+	dir, err := resolveWorkspaceInputPath(rawDir, m.state.Language)
 	if err != nil {
 		return "", err
 	}
@@ -2805,40 +2828,40 @@ func (m *AppModel) pasteClipboardImage() tea.Cmd {
 		return func() tea.Msg { return nil }
 	}
 	if m.state.Mode != "ai" {
-		m.appendSystem("Bash 模式下无法发送图片，请切换到 AI 模式", "warning")
+		m.appendSystem(i18n.T("image.bash_mode", m.state.Language), "warning")
 		return func() tea.Msg { return nil }
 	}
 	b, err := clip.ReadImage()
 	if err != nil {
 		if strings.Contains(err.Error(), "empty clipboard image") {
-			m.appendSystem("剪贴板里没有图片", "warning")
+			m.appendSystem(i18n.T("image.clipboard_empty", m.state.Language), "warning")
 		} else {
-			m.appendSystem("粘贴图片失败: "+err.Error(), "error")
+			m.appendSystem(i18n.T("image.paste_failed", m.state.Language)+err.Error(), "error")
 		}
 		return func() tea.Msg { return nil }
 	}
 	// 保存图片到 .eos/attachments 目录
 	wd, err := os.Getwd()
 	if err != nil || strings.TrimSpace(wd) == "" {
-		m.appendSystem("粘贴图片失败: 无法获取工作目录", "error")
+		m.appendSystem(i18n.T("image.paste_failed_cwd", m.state.Language), "error")
 		return func() tea.Msg { return nil }
 	}
 	dir := filepath.Join(wd, ".eos", "attachments")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		m.appendSystem("粘贴图片失败: "+err.Error(), "error")
+		m.appendSystem(i18n.T("image.paste_failed", m.state.Language)+err.Error(), "error")
 		return func() tea.Msg { return nil }
 	}
 	path := filepath.Join(dir, fmt.Sprintf("clipboard-%d.png", time.Now().UnixNano()))
 	if err := os.WriteFile(path, b, 0o600); err != nil {
-		m.appendSystem("粘贴图片失败: "+err.Error(), "error")
+		m.appendSystem(i18n.T("image.paste_failed", m.state.Language)+err.Error(), "error")
 		return func() tea.Msg { return nil }
 	}
 	m.pendingImagePaths = append(m.pendingImagePaths, path)
-	m.appendSystem("已添加图片: "+filepath.Base(path), "success")
+	m.appendSystem(i18n.T("image.added", m.state.Language)+filepath.Base(path), "success")
 	// 检查模型是否支持视觉
 	modelName, _ := m.adapter.GetModelInfo()
 	if strings.TrimSpace(modelName) != "" && !ai.SupportsVisionFromCatalog(modelName) {
-		m.appendSystem("当前模型可能不具备视觉能力，图片可能无法解析", "warning")
+		m.appendSystem(i18n.T("image.vision_warning", m.state.Language), "warning")
 	}
 	return func() tea.Msg { return nil }
 }
@@ -3072,18 +3095,73 @@ func (m *AppModel) archiveAgentMessage() {
 // handleItemDelta appends an incremental chunk to the current item's live
 // buffer and refreshes the display.
 func (m *AppModel) handleItemDelta(msg ItemDeltaMsg) {
-	if msg.DeltaType == "text" || msg.DeltaType == "" {
+	switch msg.DeltaType {
+	case "text", "":
 		m.clearPrediction()
 		m.aiLive.WriteString(msg.Delta)
 		m.currentAITokens += len(msg.Delta) / 4
 		m.refreshAILive()
+	case "reasoning":
+		// Reasoning deltas stream into the collapsible thinking block. This
+		// mirrors the legacy ThinkingMsg path: light up the live thinking
+		// region (rendered by ThinkingMessage via refreshAILive).
+		m.state.Thinking = true
+		m.thinkingLive.WriteString(msg.Delta)
+		if m.shell != nil {
+			m.shell.SetThinking(true, "")
+		}
+		m.refreshAILive()
 	}
+}
+
+// startReasoningItem begins a new reasoning (thinking) block. It archives any
+// in-progress text segment and resets the thinking buffer + per-block timer so
+// each reasoning block streams and is timed independently. A turn may interleave
+// reasoning → tool → reasoning, so we cannot reuse currentAIStartTime.
+func (m *AppModel) startReasoningItem(itemID string) {
+	m.archiveAgentMessage()
+	m.aiLive.Reset()
+	m.activeItemID = itemID
+	m.thinkingLive.Reset()
+	m.thinkingExpanded = false
+	m.state.Thinking = true
+	m.reasoningStartTime = time.Now()
+}
+
+// handleReasoningCompleted finalizes a reasoning item: archive the thinking
+// block as a history entry (rendered as a dim one-line summary by
+// renderHistoryEntry), then clear the live thinking state.
+func (m *AppModel) handleReasoningCompleted(msg ItemCompletedMsg) {
+	content := strings.TrimSpace(msg.Reasoning)
+	if content == "" {
+		content = strings.TrimSpace(m.thinkingLive.String())
+	}
+	if content != "" {
+		duration := time.Since(m.reasoningStartTime)
+		if m.reasoningStartTime.IsZero() {
+			duration = time.Since(m.currentAIStartTime)
+		}
+		m.appendHistory(historyEntry{
+			kind:      "reasoning",
+			content:   content,
+			duration:  duration,
+			timestamp: time.Now(),
+		})
+	}
+	m.clearCurrentThinking()
+	m.activeItemID = ""
 }
 
 // handleItemCompleted finalizes an AgentMessage item: archive the live text
 // into a history entry and clear the buffer for the next segment.
 func (m *AppModel) handleItemCompleted(msg ItemCompletedMsg) {
-	if msg.ItemType != "agent_message" && msg.ItemType != "" {
+	switch msg.ItemType {
+	case "reasoning":
+		m.handleReasoningCompleted(msg)
+		return
+	case "agent_message", "":
+		// fall through to AgentMessage finalization below.
+	default:
 		return
 	}
 	// If the completed event carries full text, prefer it over the buffer.
@@ -3255,11 +3333,11 @@ func (m *AppModel) handleModelDelete(msg panels.ModelDeleteMsg) {
 // handleModelSyncEnv 处理环境变量同步
 func (m *AppModel) handleModelSyncEnv() {
 	if err := m.adapter.SyncEnvModel(context.Background()); err != nil {
-		m.appendSystem("Failed to sync model from environment (EOS_API_BASE and EOS_API_KEY required)", "error")
+		m.appendSystem(i18n.T("model.sync_env_failed", m.state.Language), "error")
 		return
 	}
 	m.refreshModelsPanel()
-	m.appendSystem("Synced model from environment variables", "success")
+	m.appendSystem(i18n.T("model.sync_env_ok", m.state.Language), "success")
 }
 
 // handleModelFormComplete 处理模型表单完成事件
@@ -3370,7 +3448,7 @@ func (m *AppModel) handleMCPEdit(msg panels.MCPEditMsg) {
 	var entry *config.MCPEntry
 	entries, err := m.adapter.MCPServers(context.Background())
 	if err != nil {
-		m.appendSystem(fmt.Sprintf("加载 MCP 配置失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.mcp_load_failed", m.state.Language), err), "error")
 		return
 	}
 	for _, e := range entries {
@@ -3381,12 +3459,12 @@ func (m *AppModel) handleMCPEdit(msg panels.MCPEditMsg) {
 		}
 	}
 	if entry == nil {
-		m.appendSystem("未找到 MCP 服务器: "+msg.Name, "warning")
+		m.appendSystem(i18n.T("mcp.not_found", m.state.Language)+msg.Name, "warning")
 		return
 	}
 	b, err := json.MarshalIndent(entry, "", "  ")
 	if err != nil {
-		m.appendSystem(fmt.Sprintf("序列化 MCP 配置失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.mcp_serialize_failed", m.state.Language), err), "error")
 		return
 	}
 	m.activeView = "setup"
@@ -3530,14 +3608,14 @@ func (m *AppModel) handleRulesSave(msg panels.RulesSaveMsg) {
 		scope = "project"
 	}
 	if err := m.adapter.SaveRules(context.Background(), scope, msg.Content); err != nil {
-		m.appendSystem(fmt.Sprintf("Rules.md 保存失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.rules_save_failed", m.state.Language), err), "error")
 		return
 	}
 
 	if scope == "global" {
-		m.appendSystem("已保存全局 Rules.md", "success")
+		m.appendSystem(i18n.T("rules.saved_global", m.state.Language), "success")
 	} else {
-		m.appendSystem("已保存项目 Rules.md", "success")
+		m.appendSystem(i18n.T("rules.saved_project", m.state.Language), "success")
 	}
 	m.refreshRulesPanel()
 }
@@ -3551,10 +3629,10 @@ func (m *AppModel) handleMemorySave(msg panels.MemorySaveMsg) {
 		scope = "project"
 	}
 	if err := m.adapter.SaveMemory(context.Background(), scope, msg.Content); err != nil {
-		m.appendSystem(fmt.Sprintf("Memory 保存失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.memory_save_failed", m.state.Language), err), "error")
 		return
 	}
-	m.appendSystem("已保存 "+scope+" memory", "success")
+	m.appendSystem(i18n.T("memory.saved", m.state.Language), "success")
 	m.refreshMemoryPanel()
 }
 
@@ -3563,10 +3641,10 @@ func (m *AppModel) handleMemoryRebuildIndex() {
 		return
 	}
 	if err := m.adapter.RebuildMemoryIndex(context.Background()); err != nil {
-		m.appendSystem(fmt.Sprintf("Memory 索引重建失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.memory_rebuild_failed", m.state.Language), err), "error")
 		return
 	}
-	m.appendSystem("已重建 memory 索引", "success")
+	m.appendSystem(i18n.T("memory.rebuilt", m.state.Language), "success")
 	m.refreshMemoryPanel()
 }
 
@@ -3575,7 +3653,7 @@ func (m *AppModel) handleMemoryRebuildIndex() {
 func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 	raw := strings.TrimSpace(msg.Text)
 	if raw == "" {
-		m.appendSystem("请输入 MCP 配置 JSON", "warning")
+		m.appendSystem(i18n.T("mcp.input_empty", m.state.Language), "warning")
 		return nil
 	}
 
@@ -3600,43 +3678,43 @@ func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 
 	entries, err := parseEntries(raw)
 	if err != nil {
-		m.appendSystem(fmt.Sprintf("JSON 解析失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.json_parse_failed", m.state.Language), err), "error")
 		return nil
 	}
 
 	if msg.Edit {
 		// 编辑模式：只支持单个 MCPEntry
 		if len(entries) != 1 {
-			m.appendSystem("编辑模式只支持一个 MCPEntry 对象", "warning")
+			m.appendSystem(i18n.T("mcp.single_entry_only", m.state.Language), "warning")
 			return nil
 		}
 		entry := entries[0]
 		if strings.TrimSpace(entry.Name) == "" {
-			m.appendSystem("缺少 name 字段", "warning")
+			m.appendSystem(i18n.T("mcp.name_required", m.state.Language), "warning")
 			return nil
 		}
 		// 处理重命名：先添加新名称，再删除旧名称
 		if msg.OriginalName != "" && entry.Name != msg.OriginalName {
 			if err := m.adapter.AddMCPEntries(context.Background(), []config.MCPEntry{entry}); err != nil {
-				m.appendSystem(fmt.Sprintf("新增（用于重命名）失败: %v", err), "error")
+				m.appendSystem(fmt.Sprintf(i18n.T("toast.create_for_rename_failed", m.state.Language), err), "error")
 				return nil
 			}
 			if err := m.adapter.DeleteMCPServer(context.Background(), msg.OriginalName); err != nil {
 				_ = m.adapter.DeleteMCPServer(context.Background(), entry.Name)
-				m.appendSystem("删除旧名称失败: "+msg.OriginalName, "error")
+				m.appendSystem(i18n.T("mcp.delete_old_failed", m.state.Language)+msg.OriginalName, "error")
 				return nil
 			}
 		} else {
 			// 直接更新
 			if err := m.adapter.UpsertMCPEntry(context.Background(), entry); err != nil {
-				m.appendSystem("更新失败: "+err.Error(), "error")
+				m.appendSystem(i18n.T("mcp.update_failed", m.state.Language)+err.Error(), "error")
 				return nil
 			}
 		}
 	} else {
 		// 添加模式
 		if err := m.adapter.AddMCPEntries(context.Background(), entries); err != nil {
-			m.appendSystem(fmt.Sprintf("新增失败: %v", err), "error")
+			m.appendSystem(fmt.Sprintf(i18n.T("toast.create_failed", m.state.Language), err), "error")
 			return nil
 		}
 	}

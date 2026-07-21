@@ -67,7 +67,7 @@ var rootCmd = &cobra.Command{
 
 		// Handle --print mode
 		if printQuery != "" {
-			modes := resolveModeConfig(cliAccessMode, cliApprovalMode, cliSandboxMode, cliSkipPermissions, true)
+			modes := resolveModeConfig(cliAccessMode, cliApprovalMode, cliSandboxMode, cliSkipPermissions)
 			if err := RunPrintMode(PrintOptions{
 				Query:           printQuery,
 				OutputFormat:    outputFormat,

@@ -18,6 +18,7 @@ import (
 	"github.com/dreamSailing/eos/internal/ui/components/messages"
 	"github.com/dreamSailing/eos/internal/ui/features/slash"
 	"github.com/dreamSailing/eos/internal/ui/views/setup"
+	"github.com/dreamSailing/eos/internal/version"
 	"github.com/dreamSailing/eos/pkg/coreapi"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -107,8 +108,8 @@ func TestInitialSetupKeepsWelcomeAfterFirstModelAdded(t *testing.T) {
 	if !strings.Contains(view, "AI 领航，助你破浪前行") {
 		t.Fatalf("expected welcome card subtitle to remain visible, got %q", view)
 	}
-	if !strings.Contains(view, "EOS v1.0.0-beta.1") {
-		t.Fatalf("expected welcome card to show app version, got %q", view)
+	if !strings.Contains(view, "EOS "+version.AppVersion) {
+		t.Fatalf("expected welcome card to show app version %q, got %q", version.AppVersion, view)
 	}
 }
 
@@ -591,6 +592,95 @@ func TestRenderHistoryEntryShowsDownloadActionOnlyForPlanMessages(t *testing.T) 
 	}
 	if hasAction(autoActions, "download") {
 		t.Fatalf("did not expect download action for auto entry, got %v", autoActions)
+	}
+}
+
+func TestHandleItemDeltaReasoningStreamsIntoLiveThinkingBlock(t *testing.T) {
+	setTestHome(t)
+	state.SetThinking(true)
+	t.Cleanup(func() { state.SetThinking(true) })
+
+	app := newTestAppModel(t)
+	app.state.Processing = true
+	app.shell.SetProcessing(true)
+	app.currentAIStartTime = time.Now()
+
+	// A reasoning delta must stream into the live thinking block (mirroring the
+	// legacy ThinkingMsg path) instead of being silently dropped.
+	app.handleItemDelta(ItemDeltaMsg{ItemID: "rs_1", DeltaType: "reasoning", Delta: "第一步分析\n第二步推理"})
+
+	if app.thinkingLive.String() != "第一步分析\n第二步推理" {
+		t.Fatalf("thinkingLive=%q, want streamed reasoning delta", app.thinkingLive.String())
+	}
+	if !app.state.Thinking {
+		t.Fatalf("state.Thinking should be true while reasoning streams")
+	}
+	view := stripANSIAppTest(app.shell.View())
+	if !strings.Contains(view, "Thinking") {
+		t.Fatalf("expected live thinking block to render, got %q", view)
+	}
+	if !strings.Contains(view, "第二步推理") {
+		t.Fatalf("expected collapsed thinking summary (last non-empty line) to be visible, got %q", view)
+	}
+}
+
+func TestHandleItemCompletedReasoningArchivesDimSummaryEntry(t *testing.T) {
+	setTestHome(t)
+	state.SetThinking(true)
+	t.Cleanup(func() { state.SetThinking(true) })
+
+	app := newTestAppModel(t)
+	app.state.Processing = true
+	app.currentAIStartTime = time.Now()
+	app.startReasoningItem("rs_1")
+	app.handleItemDelta(ItemDeltaMsg{ItemID: "rs_1", DeltaType: "reasoning", Delta: "前导内容\n最终结论"})
+
+	historyBefore := len(app.history)
+	app.handleItemCompleted(ItemCompletedMsg{
+		ItemID:    "rs_1",
+		ItemType:  "reasoning",
+		Reasoning: "前导内容\n最终结论",
+	})
+
+	if len(app.history) != historyBefore+1 {
+		t.Fatalf("expected one reasoning history entry, got history len %d want %d", len(app.history), historyBefore+1)
+	}
+	entry := app.history[len(app.history)-1]
+	if entry.kind != "reasoning" {
+		t.Fatalf("archived kind=%q, want reasoning", entry.kind)
+	}
+	if entry.content != "前导内容\n最终结论" {
+		t.Fatalf("archived content=%q, want full reasoning text", entry.content)
+	}
+	// Live thinking state is cleared after archiving.
+	if app.thinkingLive.Len() != 0 {
+		t.Fatalf("thinkingLive should be cleared after completion, got %q", app.thinkingLive.String())
+	}
+	if app.state.Thinking {
+		t.Fatalf("state.Thinking should be false after reasoning completes")
+	}
+}
+
+func TestRenderHistoryEntryReasoningRendersCollapsedSummary(t *testing.T) {
+	setTestHome(t)
+	app := newTestAppModel(t)
+
+	rendered := app.renderHistoryEntry(historyEntry{
+		kind:      "reasoning",
+		content:   "第一段推理\n最终结论摘要",
+		duration:  2 * time.Second,
+		timestamp: time.Now(),
+	})
+	plain := stripANSIAppTest(rendered)
+	if !strings.Contains(plain, "Thinking") {
+		t.Fatalf("expected reasoning header in history render, got %q", plain)
+	}
+	// Collapsed state shows only the last non-empty line as a dim summary.
+	if !strings.Contains(plain, "最终结论摘要") {
+		t.Fatalf("expected collapsed summary (last line) in history render, got %q", plain)
+	}
+	if strings.Contains(plain, "第一段推理") {
+		t.Fatalf("collapsed reasoning must not show full content, got %q", plain)
 	}
 }
 

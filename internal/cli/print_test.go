@@ -160,7 +160,7 @@ func TestRunSingleTurnConsumesTurnEventsBeforeStartReturns(t *testing.T) {
 	var content string
 	var err error
 	go func() {
-		content, err = runSingleTurn(context.Background(), engine, "hello", "json", time.Now())
+		content, err = runSingleTurn(context.Background(), engine, "hello", "json")
 		close(done)
 	}()
 
@@ -291,28 +291,12 @@ func TestStartRustOnlyEngineFailsOnRequiredMethodsMismatch(t *testing.T) {
 	// 通过 StartRemote 注入：返回的 caller declare 了空 methods 列表。
 	dir := t.TempDir()
 	t.Setenv("EOS_CORE_PATH", filepath.Join(dir, "no-such-binary"))
-	t.Setenv("EOS_CORE_ALLOW_FALLBACK", "")
 
 	// 由于 startRustOnlyEngine 用的是默认 StartRemote（无覆盖），这里只验证
 	// 缺 binary 的情况；methods mismatch 走不到 StartRemote。
 	_, err := startRustOnlyEngine(context.Background(), "print-test", nil)
 	if err == nil {
 		t.Fatal("startRustOnlyEngine succeeded with missing binary; expected error")
-	}
-}
-
-// TestPrintExecAllowFallback_DefaultsToFalse 验证默认 production 不允许 legacy fallback。
-func TestPrintExecAllowFallback_DefaultsToFalse(t *testing.T) {
-	t.Setenv("EOS_CORE_ALLOW_FALLBACK", "")
-	if printExecAllowFallback("print") {
-		t.Fatal("printExecAllowFallback(\"print\") = true with empty env; want false (production)")
-	}
-	if printExecAllowFallback("exec") {
-		t.Fatal("printExecAllowFallback(\"exec\") = true with empty env; want false (production)")
-	}
-	t.Setenv("EOS_CORE_ALLOW_FALLBACK", "1")
-	if !printExecAllowFallback("print") {
-		t.Fatal("printExecAllowFallback(\"print\") = false with env=1; want true (dev override)")
 	}
 }
 
@@ -416,7 +400,7 @@ type printTestStateService struct {
 	coreapi.StateService
 }
 
-func (printTestStateService) Snapshot(context.Context) (coreapi.StateSnapshot, error) {
+func (printTestStateService) Snapshot(context.Context, coreapi.StateSnapshotRequest) (coreapi.StateSnapshot, error) {
 	return coreapi.StateSnapshot{}, nil
 }
 

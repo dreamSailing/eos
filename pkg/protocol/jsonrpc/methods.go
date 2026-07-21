@@ -17,6 +17,9 @@ const (
 	MethodWorkspaceWorktreeList      = "workspace/worktree/list"
 	MethodWorkspaceWorktreeCreate    = "workspace/worktree/create"
 	MethodWorkspaceWorktreeRemove    = "workspace/worktree/remove"
+	MethodWorkspaceChanges           = "workspace/changes"
+	MethodWorkspaceRollbackBuild     = "workspace/rollback/build"
+	MethodWorkspaceRollbackApply     = "workspace/rollback/apply"
 	MethodSessionCreate              = "session/create"
 	MethodSessionResume              = "session/resume"
 	MethodSessionList                = "session/list"
@@ -24,6 +27,7 @@ const (
 	MethodSessionSetCurrent          = "session/set_current"
 	MethodSessionDelete              = "session/delete"
 	MethodSessionRename              = "session/rename"
+	MethodSessionSetMeta             = "session/set_meta"
 	MethodSessionMessagesLoad        = "session/messages/load"
 	MethodSessionMessagesSave        = "session/messages/save"
 	MethodMCPList                    = "mcp/list"
@@ -172,6 +176,7 @@ func AllCoreMethods() []string {
 		MethodSessionSetCurrent,
 		MethodSessionDelete,
 		MethodSessionRename,
+		MethodSessionSetMeta,
 		MethodSessionMessagesLoad,
 		MethodSessionMessagesSave,
 		MethodMCPList,

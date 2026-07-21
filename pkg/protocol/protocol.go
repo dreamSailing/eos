@@ -33,12 +33,12 @@ const (
 type EventType string
 
 const (
-	EventTypeItemStarted     EventType = "item.started"
-	EventTypeItemDelta       EventType = "item.delta"
-	EventTypeItemCompleted   EventType = "item.completed"
-	EventTypeTextFinal       EventType = "text.final"
-	EventTypeTextReasoning   EventType = "text.reasoning"
-	EventTypeApprovalReq     EventType = "approval.required"
+	EventTypeItemStarted      EventType = "item.started"
+	EventTypeItemDelta        EventType = "item.delta"
+	EventTypeItemCompleted    EventType = "item.completed"
+	EventTypeTextFinal        EventType = "text.final"
+	EventTypeTextReasoning    EventType = "text.reasoning"
+	EventTypeApprovalReq      EventType = "approval.required"
 	EventTypeApprovalDone     EventType = "approval.resolved"
 	EventTypeInquiryReq       EventType = "inquiry.required"
 	EventTypeInquiryDone      EventType = "inquiry.resolved"

@@ -69,7 +69,7 @@ func TestRemoteEngineSupportedMethodsCallSidecar(t *testing.T) {
 	}
 	engine := NewRemoteEngine(caller)
 
-	snapshot, err := engine.State().Snapshot(context.Background())
+	snapshot, err := engine.State().Snapshot(context.Background(), coreapi.StateSnapshotRequest{})
 	if err != nil {
 		t.Fatalf("State().Snapshot() error = %v", err)
 	}
@@ -77,7 +77,7 @@ func TestRemoteEngineSupportedMethodsCallSidecar(t *testing.T) {
 		t.Fatalf("ForegroundWorkspace=%q, want C:/work", snapshot.ForegroundWorkspace)
 	}
 
-	workspaces, err := engine.Workspaces().List(context.Background())
+	workspaces, err := engine.Workspaces().List(context.Background(), coreapi.WorkspaceListRequest{})
 	if err != nil {
 		t.Fatalf("Workspaces().List() error = %v", err)
 	}
@@ -484,7 +484,7 @@ func TestRemoteEngineAgentServiceUsesAgentControl(t *testing.T) {
 func TestRemoteEngineNilCallerReturnsCallerUnavailable(t *testing.T) {
 	engine := NewRemoteEngine(nil)
 
-	_, err := engine.State().Snapshot(context.Background())
+	_, err := engine.State().Snapshot(context.Background(), coreapi.StateSnapshotRequest{})
 	if !errors.Is(err, ErrCallerUnavailable) {
 		t.Fatalf("State().Snapshot() error = %v, want ErrCallerUnavailable", err)
 	}

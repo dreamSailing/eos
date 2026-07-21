@@ -42,7 +42,7 @@ func newExecCmd() *cobra.Command {
 		Long:  "Execute a single prompt in headless mode without the TUI. Supports workspace, sandbox, execution-mode, output format, and timeout options.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			modes := resolveModeConfig(accessMode, approvalMode, sandbox, skipPermission, false)
+			modes := resolveModeConfig(accessMode, approvalMode, sandbox, skipPermission)
 			return runExec(cmd.Context(), execOptions{
 				Prompt:         args[0],
 				Workspace:      strings.TrimSpace(workspace),
@@ -71,9 +71,8 @@ func newExecCmd() *cobra.Command {
 
 // runExec 是 eos exec <prompt> 的生产入口。
 //
-// 生产路径：启动 eos-core sidecar（Rust-only），走 engine.Turns().Start + 事件订阅。
-// 不接受 Go legacy runtime 作为 production 回退；legacy 仅在
-// EOS_CORE_ALLOW_FALLBACK=1 显式开启时作为 dev/test fixture 出现。
+// 引擎为 Rust-only：启动 eos-core sidecar，走 engine.Turns().Start + 事件订阅。
+// 不存在 Go legacy runtime 回退路径。
 func runExec(ctx context.Context, opts execOptions) error {
 	if opts.Output == "" {
 		opts.Output = "text"
@@ -100,7 +99,7 @@ func runExec(ctx context.Context, opts execOptions) error {
 		return err
 	}
 
-	content, err := runSingleTurn(ctx, engine, opts.Prompt, opts.Output, startedAt)
+	content, err := runSingleTurn(ctx, engine, opts.Prompt, opts.Output)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			err = fmt.Errorf("exec timed out after %s", opts.Timeout)

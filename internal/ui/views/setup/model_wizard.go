@@ -5,7 +5,6 @@ package setup
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"fmt"
 	"log/slog"
@@ -135,9 +134,10 @@ func (v *ModelSetupView) updateTableColumns() {
 
 	// Model Table
 	modelColumns := []table.Column{
-		{Title: i18n.T("setup.col.model", v.language), Width: 35},
-		{Title: i18n.T("setup.col.context", v.language), Width: 12},
-		{Title: i18n.T("setup.col.tags", v.language), Width: 30},
+		{Title: i18n.T("setup.col.model", v.language), Width: 32},
+		{Title: i18n.T("setup.col.context", v.language), Width: 10},
+		{Title: i18n.T("setup.col.capability", v.language), Width: 12},
+		{Title: i18n.T("setup.col.tags", v.language), Width: 22},
 	}
 	v.modelTable.SetColumns(modelColumns)
 }
@@ -151,11 +151,21 @@ func (v *ModelSetupView) loadProviders() {
 		if len(p.DefaultModels) > 0 {
 			recommended = "★"
 		}
-		rows = append(rows, table.Row{p.Name, p.Website, p.APIKeyEnv, recommended})
+		rows = append(rows, table.Row{providerDisplayName(p, v.language), p.Website, p.APIKeyEnv, recommended})
 	}
 	// 添加"自定义"选项
 	rows = append(rows, table.Row{i18n.T("setup.custom", v.language), "-", "-", ""})
 	v.providerTable.SetRows(rows)
+}
+
+// providerDisplayName 把 ID 为 "custom" 的内置 provider 显示为当前语言的"自定义"标签，
+// 其余 provider 直接用其原始名称。rust_catalog 在 ai 包没有 language 上下文，
+// 只能在这里按当前语言渲染。
+func providerDisplayName(p *ai.ProviderConfig, language string) string {
+	if p != nil && p.ID == "custom" {
+		return i18n.T("setup.custom", language)
+	}
+	return p.Name
 }
 
 // loadModels 加载指定服务商的模型列表
@@ -175,15 +185,48 @@ func (v *ModelSetupView) loadModels(provider *ai.ProviderConfig) {
 		if window >= 1000 {
 			ctx = fmt.Sprintf("%.1fK", float64(window)/1000)
 		}
+		caps := modelCapabilityLabel(m, v.language)
 		tags := strings.Join(m.Tags, ", ")
-		rows = append(rows, table.Row{m.Name, ctx, tags})
+		rows = append(rows, table.Row{m.Name, ctx, caps, tags})
 	}
 	// 添加"自定义"选项
-	rows = append(rows, table.Row{i18n.T("setup.custom", v.language), "-", "-"})
+	rows = append(rows, table.Row{i18n.T("setup.custom", v.language), "-", "-", "-"})
 	v.modelTable.SetRows(rows)
 	// 重置光标到首位
 	v.modelTable.SetCursor(0)
 	slog.Info("loadModels", "provider", provider.Name, "models_len", len(v.models), "inputs_len", len(v.inputs))
+}
+
+// modelCapabilityLabel 把模型能力渲染成紧凑的列单元格文本。
+// 中文用「视/理/工」，英文用「V/R/T」，按 视觉→推理→工具 顺序拼接，无能力则显示“-”。
+func modelCapabilityLabel(m *ai.ModelCatalogEntry, language string) string {
+	var parts []string
+	zh := language == "zh"
+	if m.SupportsVision {
+		if zh {
+			parts = append(parts, "视")
+		} else {
+			parts = append(parts, "V")
+		}
+	}
+	if m.SupportsReasoningEffort {
+		if zh {
+			parts = append(parts, "理")
+		} else {
+			parts = append(parts, "R")
+		}
+	}
+	if m.SupportsTools {
+		if zh {
+			parts = append(parts, "工")
+		} else {
+			parts = append(parts, "T")
+		}
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, "/")
 }
 
 // SetSize 设置大小
@@ -567,7 +610,7 @@ func (v *ModelSetupView) View() string {
 		title = i18n.T("setup.step.provider", v.language)
 	case ModelSetupStepModel:
 		if v.selectedProvider != nil {
-			title = fmt.Sprintf(i18n.T("setup.step.model", v.language), v.selectedProvider.Name)
+			title = fmt.Sprintf(i18n.T("setup.step.model", v.language), providerDisplayName(v.selectedProvider, v.language))
 		} else {
 			title = i18n.T("setup.step.provider", v.language)
 		}
@@ -594,7 +637,7 @@ func (v *ModelSetupView) View() string {
 
 	case ModelSetupStepModel:
 		if v.selectedProvider != nil {
-			content.WriteString(v.styles.Text.Render(fmt.Sprintf(i18n.T("setup.model.select", v.language), v.selectedProvider.Name)))
+			content.WriteString(v.styles.Text.Render(fmt.Sprintf(i18n.T("setup.model.select", v.language), providerDisplayName(v.selectedProvider, v.language))))
 			content.WriteString("\n\n")
 			content.WriteString(v.modelTable.View())
 		} else {

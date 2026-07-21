@@ -4,8 +4,8 @@ import "testing"
 
 func TestAllCoreMethodsFreezesMigrationSurface(t *testing.T) {
 	methods := AllCoreMethods()
-	if len(methods) != 138 {
-		t.Fatalf("AllCoreMethods() len=%d, want 138", len(methods))
+	if len(methods) != 139 {
+		t.Fatalf("AllCoreMethods() len=%d, want 139", len(methods))
 	}
 
 	seen := make(map[string]bool, len(methods))

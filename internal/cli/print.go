@@ -7,18 +7,18 @@ package cli
 
 // print.go 提供 headless 一次性查询入口。
 //
-// 生产路径：eos-core --app-server --stdio 子进程，通过 pkg/coreapi/sidecar + engineprovider
-// 启动。失败时直接返回 error，不静默回退到 Go legacy runtime。legacy 仅允许
-// dev/test 通过 EOS_CORE_ALLOW_FALLBACK=1 显式启用。
+// 引擎为 Rust-only：通过 pkg/coreapi/sidecar + engineprovider 启动
+// eos-core --app-server --stdio 子进程。失败时直接返回 error，不存在
+// Go 内核回退路径。
 //
-// 旧的 pkg/core.Runtime 路径不再被 print 入口使用；它仍保留在
-// pkg/core/*_test.go 与 parity harness 中作为 fixture。
+// 旧的 pkg/core.Runtime（Eino/Go 内核）路径已整体退役删除。
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,11 +77,11 @@ func RunPrintMode(opts PrintOptions) error {
 	defer selected.Close()
 
 	engine := selected.Engine
-	if err := applyPrintModeEnv(ctx, engine, opts); err != nil {
-		return err
+	if applyErr := applyPrintModeEnv(ctx, engine, opts); applyErr != nil {
+		return applyErr
 	}
 
-	content, err := runSingleTurn(ctx, engine, opts.Query, opts.OutputFormat, startedAt)
+	content, err := runSingleTurn(ctx, engine, opts.Query, opts.OutputFormat)
 	if err != nil {
 		writePrintError(opts.OutputFormat, err)
 		return err
@@ -118,8 +118,8 @@ func RunPrintModeStream(ctx context.Context, query string, w io.Writer) error {
 	defer selected.Close()
 
 	engine := selected.Engine
-	if err := applyPrintModeEnv(ctx, engine, PrintOptions{}); err != nil {
-		return err
+	if applyErr := applyPrintModeEnv(ctx, engine, PrintOptions{}); applyErr != nil {
+		return applyErr
 	}
 
 	session, err := ensureHeadlessSession(ctx, engine)
@@ -168,9 +168,9 @@ func RunPrintModeStream(ctx context.Context, query string, w io.Writer) error {
 				content += text
 				fmt.Fprint(w, text)
 			case protocol.EventTypeItemCompleted:
-				// AgentMessage completion carries full text; use it if non-empty.
+				// AgentMessage and Plan completion carry full text; use it if non-empty.
 				if item, ok := payload["item"].(map[string]any); ok {
-					if k, _ := item["kind"].(string); k == "agent_message" {
+					if k, _ := item["kind"].(string); k == "agent_message" || k == "plan" {
 						if text, _ := item["text"].(string); text != "" {
 							content = text
 						}
@@ -213,9 +213,9 @@ func printModeEnv(opts PrintOptions) map[string]string {
 		env["EOS_WORKSPACE_ROOT"] = ws
 		env["EOS_SANDBOX_WORKSPACE_ROOT"] = ws
 	} else if cwd, err := os.Getwd(); err == nil {
-		if cwd := strings.TrimSpace(cwd); cwd != "" {
-			env["EOS_WORKSPACE_ROOT"] = cwd
-			env["EOS_SANDBOX_WORKSPACE_ROOT"] = cwd
+		if trimmedCWD := strings.TrimSpace(cwd); trimmedCWD != "" {
+			env["EOS_WORKSPACE_ROOT"] = trimmedCWD
+			env["EOS_SANDBOX_WORKSPACE_ROOT"] = trimmedCWD
 		}
 	}
 	if opts.SkipPermissions {
@@ -256,7 +256,7 @@ func emitPrintResult(format string, result PrintResult, started time.Time, usage
 		}
 		fmt.Fprintln(os.Stdout, string(bs))
 	case "stream-json":
-		events := []map[string]interface{}{
+		events := []map[string]any{
 			{"type": "start", "model": modelName, "timestamp": started.Unix()},
 			{"type": "content", "text": result.Content},
 			buildDoneEvent(time.Since(started), usage),
@@ -286,8 +286,8 @@ func emitPrintResult(format string, result PrintResult, started time.Time, usage
 
 // buildDoneEvent renders the closing "done" event for stream-json output.
 // 接受 coreapi.UsageSummary，与 TUI 路径保持一致。
-func buildDoneEvent(elapsed time.Duration, usage coreapi.UsageSummary) map[string]interface{} {
-	event := map[string]interface{}{
+func buildDoneEvent(elapsed time.Duration, usage coreapi.UsageSummary) map[string]any {
+	event := map[string]any{
 		"type":        "done",
 		"duration_ms": elapsed.Milliseconds(),
 	}
@@ -302,17 +302,15 @@ func buildDoneEvent(elapsed time.Duration, usage coreapi.UsageSummary) map[strin
 
 // --- shared helpers used by print.go and exec.go ---
 
-// startRustOnlyEngine 启动一次 eos-core sidecar。production 模式：仅 Rust，
-// 不接受 legacy fallback。开发/测试可通过 env: EOS_CORE_ALLOW_FALLBACK=1
-// 临时启用 parity harness 对比；legacy core.NewRuntime() 永不作为生产回退。
+// startRustOnlyEngine 启动一次 eos-core sidecar。引擎已收敛为 Rust-only：
+// 失败即返回 error，不再有 Go 内核回退路径。
 func startRustOnlyEngine(ctx context.Context, callerLabel string, env map[string]string) (engineprovider.Selection, error) {
+	_ = callerLabel
 	processOpts := productionSidecarProcessOptions(env)
 	selection, err := engineprovider.Select(ctx, engineprovider.Options{
 		Mode:            engineprovider.ModeAuto,
 		Sidecar:         processOpts,
 		RequiredMethods: sidecarclient.RequiredMethods,
-		// AllowFallback 留 false：production 拒绝静默回退。
-		AllowFallback: printExecAllowFallback(callerLabel),
 	})
 	if err != nil {
 		return engineprovider.Selection{}, fmt.Errorf("start eos-core sidecar (rust-only): %w", err)
@@ -322,9 +320,7 @@ func startRustOnlyEngine(ctx context.Context, callerLabel string, env map[string
 
 func productionSidecarProcessOptions(env map[string]string) sidecar.ProcessOptions {
 	nextEnv := make(map[string]string, len(env)+1)
-	for key, value := range env {
-		nextEnv[key] = value
-	}
+	maps.Copy(nextEnv, env)
 	if value, ok := nextEnv[rustCoreStoreDirEnv]; !ok || strings.TrimSpace(value) == "" {
 		if value, ok := os.LookupEnv(rustCoreStoreDirEnv); !ok || strings.TrimSpace(value) == "" {
 			if dir := headlessRustCoreStoreDir(); dir != "" {
@@ -357,18 +353,11 @@ func headlessRustCoreStoreDir() string {
 	return ""
 }
 
-// printExecAllowFallback 决定 print/exec CLI 是否允许 legacy fallback。
-// 默认 production 拒绝；只有 dev/test 通过显式 env 才放行。
-func printExecAllowFallback(label string) bool {
-	_ = label
-	return strings.EqualFold(strings.TrimSpace(os.Getenv("EOS_CORE_ALLOW_FALLBACK")), "1")
-}
-
 // runSingleTurn 启动一个 turn，订阅事件流直到 request.done/failed，返回 final 文本。
 //
 // 对 text 输出格式，每个 text_delta 实时写入 stdout（逐 chunk 涌现，对齐 codex 体验）；
 // json/stream-json 仍只在 turn 结束后输出完整结构，保持机器可读契约不变。
-func runSingleTurn(ctx context.Context, engine coreapi.Engine, query, outputFormat string, started time.Time) (string, error) {
+func runSingleTurn(ctx context.Context, engine coreapi.Engine, query, outputFormat string) (string, error) {
 	if engine == nil {
 		return "", fmt.Errorf("core engine unavailable")
 	}
@@ -478,6 +467,7 @@ func ensureHeadlessSession(ctx context.Context, engine coreapi.Engine) (coreapi.
 	session, err = engine.Sessions().Create(ctx, coreapi.CreateSessionRequest{
 		WorkspaceRoot: workspaceRoot,
 		Title:         "Headless session",
+		Metadata:      map[string]any{"source": "cli"},
 	})
 	if err != nil {
 		return coreapi.Session{}, fmt.Errorf("create headless session: %w", err)
@@ -490,7 +480,7 @@ func ensureHeadlessSession(ctx context.Context, engine coreapi.Engine) (coreapi.
 
 func headlessWorkspaceRoot(ctx context.Context, engine coreapi.Engine) string {
 	if engine != nil {
-		if snapshot, err := engine.State().Snapshot(ctx); err == nil {
+		if snapshot, err := engine.State().Snapshot(ctx, coreapi.StateSnapshotRequest{}); err == nil {
 			if root := strings.TrimSpace(snapshot.ForegroundWorkspace); root != "" {
 				return root
 			}

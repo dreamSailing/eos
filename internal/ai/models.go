@@ -7,6 +7,16 @@ package ai
 
 import "strings"
 
+// 模型能力的权威来源是 Rust 内核 model_catalog.rs（运行时通过 model/catalog
+// 推送，见 rust_catalog.go::ApplyCoreModelCatalog）。本文件只保留：
+//   - ThinkingCapability 枚举（ModelCatalogEntry.ThinkingCap / config 字段在用）
+//   - ModelInfo 能力视图（catalog entry 的投影，供能力查询 API 使用）
+//   - SupportsThinking / SupportsReasoningEffort / GetThinkingCapability：只查 catalog，
+//     不再维护本地写死的模型表，也不留 fallback 兜底——内核未推送 catalog 时即空，
+//     让问题暴露而非用过期的本地表掩盖。
+// 自定义模型（不在 catalog 中）的思考能力由 detection.go::DetectThinkingCapability
+// 按模型名启发式推断，那是处理 catalog 未覆盖场景的正当路径，不是兼容兜底。
+
 // ThinkingCapability 定义模型支持思考的能力等级
 type ThinkingCapability int
 
@@ -31,7 +41,7 @@ func (tc ThinkingCapability) String() string {
 	}
 }
 
-// ParseThinkingCapability 从字符串解析思考能力
+// ParseThinkingCapability 从字符串解析思考能力（大小写不敏感）
 func ParseThinkingCapability(s string) ThinkingCapability {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "low":
@@ -45,7 +55,8 @@ func ParseThinkingCapability(s string) ThinkingCapability {
 	}
 }
 
-// ModelInfo 包含模型能力的元数据
+// ModelInfo 是模型能力元数据的只读视图，由 catalog entry 投影而来
+// （见 model_catalog.go::CatalogEntryToModelInfo）。不再有本地写死的模型表。
 type ModelInfo struct {
 	Name                    string             // 模型名称
 	Aliases                 []string           // 别名列表
@@ -54,257 +65,21 @@ type ModelInfo struct {
 	Provider                string             // 提供商 (openai, anthropic, etc.)
 }
 
-// builtinModels 内置模型字典
-// 包含常见模型的思考能力信息
-var builtinModels = []ModelInfo{
-	// OpenAI o1 系列 - 支持推理
-	{
-		Name:                    "o1",
-		Aliases:                 []string{"o1-2024-12-17"},
-		Thinking:                ThinkingHigh,
-		SupportsReasoningEffort: true,
-		Provider:                "openai",
-	},
-	{
-		Name:                    "o1-mini",
-		Aliases:                 []string{"o1-mini-2024-09-12"},
-		Thinking:                ThinkingMedium,
-		SupportsReasoningEffort: true,
-		Provider:                "openai",
-	},
-	{
-		Name:                    "o1-preview",
-		Aliases:                 []string{"o1-preview-2024-09-12"},
-		Thinking:                ThinkingMedium,
-		SupportsReasoningEffort: true,
-		Provider:                "openai",
-	},
-
-	// OpenAI GPT 系列 - 不支持原生思考
-	{
-		Name:                    "gpt-5.5",
-		Aliases:                 []string{"gpt-5.5-2026-04-23"},
-		Thinking:                ThinkingHigh,
-		SupportsReasoningEffort: true,
-		Provider:                "openai",
-	},
-	{
-		Name:                    "gpt-5-codex",
-		Aliases:                 []string{"gpt-5", "gpt-5.1-codex"},
-		Thinking:                ThinkingHigh,
-		SupportsReasoningEffort: true,
-		Provider:                "openai",
-	},
-	{
-		Name:     "gpt-4o",
-		Aliases:  []string{"gpt-4o-2024-08-06", "gpt-4o-2024-05-13"},
-		Thinking: ThinkingNone,
-		Provider: "openai",
-	},
-	{
-		Name:     "gpt-4o-mini",
-		Aliases:  []string{"gpt-4o-mini-2024-07-18"},
-		Thinking: ThinkingNone,
-		Provider: "openai",
-	},
-	{
-		Name:     "gpt-4-turbo",
-		Aliases:  []string{"gpt-4-turbo-2024-04-09", "gpt-4-0125-preview", "gpt-4-1106-preview"},
-		Thinking: ThinkingNone,
-		Provider: "openai",
-	},
-	{
-		Name:     "gpt-4",
-		Aliases:  []string{"gpt-4-0613"},
-		Thinking: ThinkingNone,
-		Provider: "openai",
-	},
-
-	// Claude 系列
-	{
-		Name:     "claude-sonnet-4-6",
-		Aliases:  []string{"claude-sonnet-4-5", "claude-3-5-sonnet", "claude-3-5-sonnet-20241022", "claude-3.5-sonnet"},
-		Thinking: ThinkingMedium,
-		Provider: "anthropic",
-	},
-	{
-		Name:     "claude-opus-4-7",
-		Aliases:  []string{"claude-opus-4-6", "claude-3-opus", "claude-3-opus-20240229"},
-		Thinking: ThinkingHigh,
-		Provider: "anthropic",
-	},
-	{
-		Name:     "claude-haiku-4-5",
-		Aliases:  []string{"claude-3-sonnet", "claude-3-sonnet-20240229", "claude-3-5-haiku"},
-		Thinking: ThinkingLow,
-		Provider: "anthropic",
-	},
-
-	// Moonshot Kimi 系列
-	{
-		Name:     "kimi-k2.6",
-		Aliases:  []string{"kimi-k2-6"},
-		Thinking: ThinkingHigh,
-		Provider: "moonshot",
-	},
-	{
-		Name:     "kimi-k2.5",
-		Aliases:  []string{"kimi-k2-5"},
-		Thinking: ThinkingMedium,
-		Provider: "moonshot",
-	},
-
-	// Zhipu GLM 系列
-	{
-		Name:     "glm-5",
-		Aliases:  []string{"glm-5-turbo"},
-		Thinking: ThinkingHigh,
-		Provider: "zhipu",
-	},
-	{
-		Name:     "glm-4.7",
-		Aliases:  []string{"glm-4.7-flash"},
-		Thinking: ThinkingHigh,
-		Provider: "zhipu",
-	},
-	{
-		Name:     "glm-4.6",
-		Aliases:  []string{"glm-4.6v"},
-		Thinking: ThinkingMedium,
-		Provider: "zhipu",
-	},
-
-	// DeepSeek Reasoning 系列
-	{
-		Name:                    "deepseek-v4-pro",
-		Aliases:                 []string{"deepseek-v4"},
-		Thinking:                ThinkingHigh,
-		SupportsReasoningEffort: false,
-		Provider:                "deepseek",
-	},
-	{
-		Name:                    "deepseek-v4-flash",
-		Aliases:                 []string{"deepseek-v4-flash-preview"},
-		Thinking:                ThinkingMedium,
-		SupportsReasoningEffort: false,
-		Provider:                "deepseek",
-	},
-	{
-		Name:                    "deepseek-reasoner",
-		Aliases:                 []string{"deepseek-r1"},
-		Thinking:                ThinkingHigh,
-		SupportsReasoningEffort: false, // DeepSeek 使用自己的推理格式
-		Provider:                "deepseek",
-	},
-
-	// Qwen 3.5 系列
-	{
-		Name:                    "qwen3.6-plus",
-		Aliases:                 []string{"qwen3.6", "qwen3.6-plus-2026-02-15", "qwen3.5-plus", "qwen3.5"},
-		Thinking:                ThinkingHigh,
-		SupportsReasoningEffort: false,
-		Provider:                "dashscope",
-	},
-	{
-		Name:                    "qwen3.6-max-preview",
-		Aliases:                 []string{"qwen3.6-max"},
-		Thinking:                ThinkingHigh,
-		SupportsReasoningEffort: false,
-		Provider:                "dashscope",
-	},
-
-	// MiniMax M 系列
-	{
-		Name:     "minimax-m2.7",
-		Aliases:  []string{"codex-minimax-m2.7", "minimax-m2.5", "codex-minimax-m2.5"},
-		Thinking: ThinkingHigh,
-		Provider: "minimax",
-	},
-
-	// Xiaomi MiMo 系列
-	{
-		Name:     "mimo-v2.5-pro",
-		Aliases:  []string{"mimo-v2-pro", "MiMo-V2.5-Pro", "MiMo-V2-Pro"},
-		Thinking: ThinkingHigh,
-		Provider: "mimo",
-	},
-	{
-		Name:     "mimo-v2.5",
-		Aliases:  []string{"mimo-v2-omni", "MiMo-V2.5", "MiMo-V2-Omni"},
-		Thinking: ThinkingHigh,
-		Provider: "mimo",
-	},
-	{
-		Name:     "gemini-3.1-pro-preview",
-		Aliases:  []string{"gemini-3-pro-preview", "gemini-3.1-pro-preview-customtools"},
-		Thinking: ThinkingHigh,
-		Provider: "gemini",
-	},
-	{
-		Name:     "gemini-3-flash-preview",
-		Aliases:  []string{"gemini-3-flash"},
-		Thinking: ThinkingHigh,
-		Provider: "gemini",
-	},
-	{
-		Name:     "gemini-3.1-flash-lite-preview",
-		Aliases:  []string{"gemini-3.1-flash-lite"},
-		Thinking: ThinkingMedium,
-		Provider: "gemini",
-	},
-}
-
-// GetModelInfo 根据模型名称获取模型信息（不区分大小写）
-func GetModelInfo(modelName string) (ModelInfo, bool) {
-	name := strings.ToLower(strings.TrimSpace(modelName))
-	for _, m := range builtinModels {
-		if strings.ToLower(m.Name) == name {
-			return m, true
-		}
-		for _, alias := range m.Aliases {
-			if strings.ToLower(alias) == name {
-				return m, true
-			}
-		}
-	}
-	return ModelInfo{}, false
-}
-
-// SupportsThinking 返回模型是否支持思考模式
+// SupportsThinking 返回模型是否支持思考模式。
+// 唯一来源：Rust 内核推送的模型目录。目录未覆盖（自定义模型）时返回 false，
+// 由调用方按需叠加 detection.go 的启发式推断。
 func SupportsThinking(modelName string) bool {
-	// 优先使用新模型目录
-	if BuiltinSupportsThinking(modelName) {
-		return true
-	}
-	// 回退到旧列表
-	if info, ok := GetModelInfo(modelName); ok {
-		return info.Thinking > ThinkingNone
-	}
-	return false
+	return BuiltinSupportsThinking(modelName)
 }
 
-// SupportsReasoningEffort 返回模型是否支持 ReasoningEffort 参数
+// SupportsReasoningEffort 返回模型是否支持 ReasoningEffort 参数。
+// 唯一来源：Rust 内核推送的模型目录。
 func SupportsReasoningEffort(modelName string) bool {
-	// 优先使用新模型目录
-	if BuiltinSupportsReasoningEffort(modelName) {
-		return true
-	}
-	// 回退到旧列表
-	if info, ok := GetModelInfo(modelName); ok {
-		return info.SupportsReasoningEffort
-	}
-	return false
+	return BuiltinSupportsReasoningEffort(modelName)
 }
 
-// GetThinkingCapability 获取模型的思考能力等级
+// GetThinkingCapability 获取模型的思考能力等级。
+// 唯一来源：Rust 内核推送的模型目录；目录未覆盖返回 ThinkingNone。
 func GetThinkingCapability(modelName string) ThinkingCapability {
-	// 优先使用新模型目录
-	if cap := BuiltinGetThinkingCapability(modelName); cap != ThinkingNone {
-		return cap
-	}
-	// 回退到旧列表
-	if info, ok := GetModelInfo(modelName); ok {
-		return info.Thinking
-	}
-	return ThinkingNone
+	return BuiltinGetThinkingCapability(modelName)
 }

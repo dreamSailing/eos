@@ -169,15 +169,13 @@ func CatalogEntryToModelInfo(entry ModelCatalogEntry) ModelInfo {
 	}
 }
 
-// GetBuiltinModelInfo 返回合并后的内置模型信息
-// 首先从目录中查找，如果没有则从旧的 builtinModels 中查找
+// GetBuiltinModelInfo 返回模型目录中模型的能力视图。
+// 唯一来源：Rust 内核推送的模型目录。目录未覆盖返回 ok=false，不再回退到本地写死表。
 func GetBuiltinModelInfo(modelName string) (ModelInfo, bool) {
-	// 先从新目录查找
 	if entry := GetModelEntry(modelName); entry != nil {
 		return CatalogEntryToModelInfo(*entry), true
 	}
-	// 再从旧列表查找
-	return GetModelInfo(modelName)
+	return ModelInfo{}, false
 }
 
 // BuiltinSupportsThinking 返回模型是否支持思考模式（优先使用目录）

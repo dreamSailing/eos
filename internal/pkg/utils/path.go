@@ -5,7 +5,6 @@ package utils
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"log/slog"
 	"os"
@@ -73,7 +72,7 @@ func ResolvePathUnder(rootDir string, path string) PathResolutionResult {
 	if runtime.GOOS == "windows" {
 		// 在 Windows 上，如果路径以 / 或 \ 开头但不是绝对路径（没有盘符），
 		// 我们将其视为相对于当前驱动器根目录的路径。
-		// 但由于我们希望更兼容 POSIX 风格的输入（例如 /home/vb-coding 对应 C:\home\vb-coding），
+		// 但由于我们希望更兼容 POSIX 风格的输入（例如 /home/eos 对应 C:\home\eos），
 		// 我们将 / 开头的路径视为相对于当前工作目录所在的驱动器根目录。
 
 		// filepath.IsAbs 在 Windows 上只有带盘符或 UNC 路径才返回 true。

@@ -138,10 +138,10 @@ func LoadPrivateKeyFromPEM(data []byte) (ed25519.PrivateKey, error) {
 // Smoke-test key — re-generated alongside the vendored eos-core.exe manifest.
 // The release pipeline MUST override this with the production signing key
 // before shipping. Override paths (in order of precedence):
-//   1. EOS_SIGNATURE_PUBLIC_KEY env var pointing at a PEM file
-//   2. ResolveOptions.PublicKeyPath passed to ResolveBinary
-//   3. defaultPublicKeyPEM (this constant)
-	const defaultPublicKeyPEM = `-----BEGIN PUBLIC KEY-----
+//  1. EOS_SIGNATURE_PUBLIC_KEY env var pointing at a PEM file
+//  2. ResolveOptions.PublicKeyPath passed to ResolveBinary
+//  3. defaultPublicKeyPEM (this constant)
+const defaultPublicKeyPEM = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAfqyEzw3DhXSGPRvxfaZnhgNnb+YN8S7Ti8JJAUex0xI=
 -----END PUBLIC KEY-----`
 

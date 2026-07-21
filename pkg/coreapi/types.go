@@ -45,11 +45,11 @@ type Engine interface {
 }
 
 type StateService interface {
-	Snapshot(context.Context) (StateSnapshot, error)
+	Snapshot(context.Context, StateSnapshotRequest) (StateSnapshot, error)
 }
 
 type WorkspaceService interface {
-	List(context.Context) ([]Workspace, error)
+	List(context.Context, WorkspaceListRequest) ([]Workspace, error)
 	Default(context.Context) (string, error)
 	Last(context.Context) (string, error)
 	ResolveForeground(context.Context, ResolveForegroundWorkspaceRequest) (string, error)
@@ -73,6 +73,7 @@ type SessionService interface {
 	SetCurrent(context.Context, SetCurrentSessionRequest) error
 	Delete(context.Context, DeleteSessionRequest) error
 	Rename(context.Context, RenameSessionRequest) (Session, error)
+	SetMeta(context.Context, SetSessionMetaRequest) (Session, error)
 	LoadMessages(context.Context, LoadSessionMessagesRequest) ([]SessionMessage, error)
 	SaveMessages(context.Context, SaveSessionMessagesRequest) (Session, error)
 }
@@ -391,6 +392,11 @@ type ModelSaveRequest struct {
 	APIKey       string `json:"api_key,omitempty"`
 	APIBase      string `json:"api_base,omitempty"`
 	Model        string `json:"model,omitempty"`
+	// 自定义模型能力开关。指针类型，nil = 由 core 用默认值（推理+工具开、视觉关）。
+	// preset 模式下忽略，能力从 preset 继承。
+	SupportsReasoningEffort *bool `json:"supports_reasoning_effort,omitempty"`
+	SupportsVision          *bool `json:"supports_vision,omitempty"`
+	SupportsTools           *bool `json:"supports_tools,omitempty"`
 }
 
 type ModelNameRequest struct {
@@ -519,6 +525,29 @@ type ResumeSessionRequest struct {
 
 type ListSessionsRequest struct {
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
+	// Source, when non-empty, restricts results to sessions whose metadata.source
+	// equals this value. Sessions without a source tag are "unknown" and never
+	// match a concrete source. Empty = return all sessions.
+	Source string `json:"source,omitempty"`
+	// IncludeArchived, when true, includes archived sessions. Default false.
+	IncludeArchived bool `json:"include_archived,omitempty"`
+}
+
+// StateSnapshotRequest parameters for state/snapshot.
+type StateSnapshotRequest struct {
+	// Source, when non-empty, restricts the snapshot's sessions and the
+	// workspaces derived from them to the given client source. Empty = full
+	// snapshot (all clients).
+	Source string `json:"source,omitempty"`
+	// IncludeArchived, when true, includes archived sessions. Default false.
+	IncludeArchived bool `json:"include_archived,omitempty"`
+}
+
+// WorkspaceListRequest parameters for workspace/list.
+type WorkspaceListRequest struct {
+	// Source, when non-empty, restricts workspaces to those that have at least
+	// one session of this source. Empty = all workspaces.
+	Source string `json:"source,omitempty"`
 }
 
 type CurrentSessionRequest struct {
@@ -541,6 +570,15 @@ type RenameSessionRequest struct {
 	Title         string `json:"title"`
 }
 
+// SetSessionMetaRequest updates (or deletes, when Value is nil) a single
+// metadata entry on a session. Used for soft-state flags like "archived".
+type SetSessionMetaRequest struct {
+	SessionID     string          `json:"session_id"`
+	WorkspaceRoot string          `json:"workspace_root,omitempty"`
+	Key           string          `json:"key"`
+	Value         json.RawMessage `json:"value,omitempty"`
+}
+
 type LoadSessionMessagesRequest struct {
 	SessionID     string `json:"session_id"`
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
@@ -552,13 +590,45 @@ type SaveSessionMessagesRequest struct {
 	Messages      []SessionMessage `json:"messages,omitempty"`
 }
 
+// ModeKind is the per-turn collaboration mode, mirroring eos-core's
+// ModeKind (snake_case on the wire). Only "plan" and "default" are
+// user-visible — the same set Codex exposes.
+type ModeKind string
+
+const (
+	// ModePlan is read-only planning mode: mutating tools are blocked by
+	// prompt contract, todo_write is rejected at runtime, and
+	// request_user_input becomes available.
+	ModePlan ModeKind = "plan"
+	// ModeDefault is normal execution mode.
+	ModeDefault ModeKind = "default"
+)
+
+// CollaborationModeSettings carries tunable per-mode settings. Mirrors
+// eos-core's CollaborationModeSettings.
+type CollaborationModeSettings struct {
+	Model                 string `json:"model,omitempty"`
+	ReasoningEffort       string `json:"reasoning_effort,omitempty"`
+	DeveloperInstructions string `json:"developer_instructions,omitempty"`
+}
+
+// CollaborationMode is a complete per-turn mode selection, sent by the
+// client on turn/start. Mirrors eos-core's CollaborationMode and Codex's
+// turn/start.collaborationMode. Takes precedence over model/reasoning in
+// options.
+type CollaborationMode struct {
+	Mode     ModeKind                  `json:"mode"`
+	Settings CollaborationModeSettings `json:"settings,omitempty"`
+}
+
 type StartTurnRequest struct {
-	SessionID   string          `json:"session_id"`
-	TurnID      string          `json:"turn_id,omitempty"`
-	Input       string          `json:"input"`
-	ImagePaths  []string        `json:"image_paths,omitempty"`
-	Attachments []Attachment    `json:"attachments,omitempty"`
-	Options     json.RawMessage `json:"options,omitempty"`
+	SessionID         string             `json:"session_id"`
+	TurnID            string             `json:"turn_id,omitempty"`
+	Input             string             `json:"input"`
+	ImagePaths        []string           `json:"image_paths,omitempty"`
+	Attachments       []Attachment       `json:"attachments,omitempty"`
+	Options           json.RawMessage    `json:"options,omitempty"`
+	CollaborationMode *CollaborationMode `json:"collaboration_mode,omitempty"`
 }
 
 type Attachment struct {
@@ -587,16 +657,54 @@ const (
 )
 
 type ApprovalResponse struct {
-	ApprovalID string            `json:"approval_id"`
-	Decision   ApprovalDecision  `json:"decision"`
-	Reason     string            `json:"reason,omitempty"`
-	Metadata   map[string]any    `json:"metadata,omitempty"`
+	ApprovalID string           `json:"approval_id"`
+	Decision   ApprovalDecision `json:"decision"`
+	Reason     string           `json:"reason,omitempty"`
+	Metadata   map[string]any   `json:"metadata,omitempty"`
 }
 
 type InquiryResponse struct {
 	InquiryID string `json:"inquiry_id"`
 	Option    string `json:"option,omitempty"`
 	Text      string `json:"text,omitempty"`
+}
+
+// RequestUserInputQuestionOption is one selectable option of a question.
+// Mirrors eos-core's RequestUserInputQuestionOption.
+type RequestUserInputQuestionOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+// RequestUserInputQuestion is a single structured question. Mirrors
+// eos-core's RequestUserInputQuestion.
+type RequestUserInputQuestion struct {
+	ID       string                           `json:"id"`
+	Header   string                           `json:"header"`
+	Question string                           `json:"question"`
+	Options  []RequestUserInputQuestionOption `json:"options,omitempty"`
+}
+
+// RequestUserInputEvent is the payload of the turn.request_user_input event,
+// published when the request_user_input tool suspends the turn. Mirrors
+// eos-core's RequestUserInputEvent.
+type RequestUserInputEvent struct {
+	CallID           string                     `json:"call_id"`
+	TurnID           string                     `json:"turn_id,omitempty"`
+	Questions        []RequestUserInputQuestion `json:"questions"`
+	AutoResolutionMs int64                      `json:"autoResolutionMs,omitempty"`
+}
+
+// RequestUserInputResponse is the answer payload sent back via
+// approval/respond (decision="accept", reason=JSON(this)). Mirrors
+// eos-core's RequestUserInputResponse.
+type RequestUserInputResponse struct {
+	Answers map[string]RequestUserInputAnswer `json:"answers"`
+}
+
+// RequestUserInputAnswer holds the selected option labels for one question.
+type RequestUserInputAnswer struct {
+	Answers []string `json:"answers"`
 }
 
 type SpawnAgentRequest struct {
@@ -953,6 +1061,8 @@ type ModelConfig struct {
 	Source                  string `json:"source,omitempty"`
 	Active                  bool   `json:"active"`
 	SupportsReasoningEffort bool   `json:"supports_reasoning_effort"`
+	SupportsVision          bool   `json:"supports_vision"`
+	SupportsTools           bool   `json:"supports_tools"`
 	ProviderID              string `json:"provider_id,omitempty"`
 	Format                  string `json:"format,omitempty"`
 	PresetID                string `json:"preset_id,omitempty"`
@@ -968,6 +1078,13 @@ type ProviderEndpoint struct {
 	APIBase string `json:"api_base,omitempty"`
 }
 
+// PlanModel 套餐类 preset 内可选的模型项（如方舟 Agent Plan 含多厂商模型）。
+type PlanModel struct {
+	ModelID       string `json:"model_id"`
+	Label         string `json:"label,omitempty"`
+	ContextWindow int64  `json:"context_window,omitempty"`
+}
+
 type ModelProviderOption struct {
 	ID            string             `json:"id"`
 	Name          string             `json:"name,omitempty"`
@@ -978,21 +1095,22 @@ type ModelProviderOption struct {
 }
 
 type ModelPresetOption struct {
-	ID                      string   `json:"id"`
-	Name                    string   `json:"name,omitempty"`
-	ProviderID              string   `json:"provider_id,omitempty"`
-	ModelName               string   `json:"model_name,omitempty"`
-	Plan                    string   `json:"plan,omitempty"`
-	Format                  string   `json:"format,omitempty"`
-	ContextWindow           int      `json:"context_window,omitempty"`
-	Tags                    []string `json:"tags,omitempty"`
-	Description             string   `json:"description,omitempty"`
-	SupportsReasoningEffort bool     `json:"supports_reasoning_effort"`
-	SupportsVision          bool     `json:"supports_vision"`
-	SupportsImageGeneration bool     `json:"supports_image_generation"`
-	SupportsVideoGeneration bool     `json:"supports_video_generation"`
-	SupportsSpeechSynthesis bool     `json:"supports_speech_synthesis"`
-	SupportsTools           bool     `json:"supports_tools"`
+	ID                      string      `json:"id"`
+	Name                    string      `json:"name,omitempty"`
+	ProviderID              string      `json:"provider_id,omitempty"`
+	ModelName               string      `json:"model_name,omitempty"`
+	Plan                    string      `json:"plan,omitempty"`
+	Format                  string      `json:"format,omitempty"`
+	ContextWindow           int         `json:"context_window,omitempty"`
+	Tags                    []string    `json:"tags,omitempty"`
+	Description             string      `json:"description,omitempty"`
+	SupportsReasoningEffort bool        `json:"supports_reasoning_effort"`
+	SupportsVision          bool        `json:"supports_vision"`
+	SupportsImageGeneration bool        `json:"supports_image_generation"`
+	SupportsVideoGeneration bool        `json:"supports_video_generation"`
+	SupportsSpeechSynthesis bool        `json:"supports_speech_synthesis"`
+	SupportsTools           bool        `json:"supports_tools"`
+	PlanModels              []PlanModel `json:"plan_models,omitempty"`
 }
 
 type ModelCatalogState struct {
@@ -1135,10 +1253,15 @@ type WorkspaceSnapshot struct {
 }
 
 type SessionSnapshot struct {
-	ID             string    `json:"id"`
-	WorkspacePath  string    `json:"workspace_path,omitempty"`
-	Title          string    `json:"title,omitempty"`
-	Preview        string    `json:"preview,omitempty"`
+	ID            string `json:"id"`
+	WorkspacePath string `json:"workspace_path,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Preview       string `json:"preview,omitempty"`
+	// Source is the originating client (e.g. "cli", "gui"); empty when the
+	// session predates source tagging. Mirrors Session.metadata["source"].
+	Source string `json:"source,omitempty"`
+	// Archived is true when the session is soft-hidden (metadata.archived).
+	Archived       bool      `json:"archived,omitempty"`
 	UpdatedAt      time.Time `json:"updated_at"`
 	Running        bool      `json:"running"`
 	NeedsAttention bool      `json:"needs_attention"`
@@ -1148,12 +1271,83 @@ type SessionSnapshot struct {
 }
 
 type SessionMessage struct {
-	Role       string         `json:"role"`
-	Type       string         `json:"type,omitempty"`
-	Content    string         `json:"content,omitempty"`
-	Time       time.Time      `json:"time,omitempty"`
-	ImagePaths []string       `json:"image_paths,omitempty"`
-	Metadata   map[string]any `json:"metadata,omitempty"`
+	Role       string             `json:"role"`
+	Type       string             `json:"type,omitempty"`
+	Content    string             `json:"content,omitempty"`
+	Time       time.Time          `json:"time,omitempty"`
+	ImagePaths []string           `json:"image_paths,omitempty"`
+	Metadata   map[string]any     `json:"metadata,omitempty"`
+	ChangeSet  *MessageChangeSet  `json:"changeSet,omitempty"`
+	Rollback   *TurnRollback      `json:"rollback,omitempty"`
+}
+
+// ChangedFile describes a single workspace file change (git status + diff).
+type ChangedFile struct {
+	Path      string `json:"path"`
+	Status    string `json:"status,omitempty"`
+	Additions int64  `json:"additions"`
+	Deletions int64  `json:"deletions"`
+	Diff      string `json:"diff"`
+	Truncated bool   `json:"truncated"`
+}
+
+// MessageChangeSet aggregates file changes for a user/assistant message turn.
+type MessageChangeSet struct {
+	ID            string        `json:"id,omitempty"`
+	WorkspacePath string        `json:"workspacePath,omitempty"`
+	CreatedAt     string        `json:"createdAt,omitempty"`
+	Summary       string        `json:"summary,omitempty"`
+	Additions     int64         `json:"additions"`
+	Deletions     int64         `json:"deletions"`
+	Truncated     bool          `json:"truncated"`
+	Files         []ChangedFile `json:"files,omitempty"`
+}
+
+// RollbackFileSnapshot is a pre-turn file snapshot for rollback.
+type RollbackFileSnapshot struct {
+	Path              string `json:"path"`
+	ExistedBefore     bool   `json:"existedBefore"`
+	ContentBase64     string `json:"contentBase64,omitempty"`
+	ContentHash       string `json:"contentHash,omitempty"`
+	PostHash          string `json:"postHash,omitempty"`
+	UnsupportedReason string `json:"unsupportedReason,omitempty"`
+}
+
+// TurnRollback is the full rollback descriptor for a single assistant turn.
+type TurnRollback struct {
+	UserMessageID      string                 `json:"userMessageId,omitempty"`
+	AssistantMessageID string                 `json:"assistantMessageId,omitempty"`
+	WorkspacePath      string                 `json:"workspacePath,omitempty"`
+	CreatedAt          string                 `json:"createdAt,omitempty"`
+	Unsupported        bool                   `json:"unsupported"`
+	UnsupportedReason  string                 `json:"unsupportedReason,omitempty"`
+	Files              []RollbackFileSnapshot `json:"files,omitempty"`
+}
+
+// RunningBaseline is the running-turn baseline state for rollback build.
+type RunningBaseline struct {
+	WorkspacePath         string                       `json:"workspacePath,omitempty"`
+	BaselineFileSnapshots map[string]RollbackFileSnapshot `json:"baselineFileSnapshots,omitempty"`
+}
+
+// WorkspaceChangesRequest is the request for workspace/changes.
+type WorkspaceChangesRequest struct {
+	WorkspaceRoot string `json:"workspaceRoot,omitempty"`
+}
+
+// BuildRollbackRequest is the request for workspace/rollback/build.
+type BuildRollbackRequest struct {
+	WorkspaceRoot      string           `json:"workspaceRoot,omitempty"`
+	UserMessageID      string           `json:"userMessageId,omitempty"`
+	AssistantMessageID string           `json:"assistantMessageId,omitempty"`
+	ChangeSet          MessageChangeSet `json:"changeSet"`
+	RunningBaseline    *RunningBaseline `json:"runningBaseline,omitempty"`
+}
+
+// ApplyRollbackRequest is the request for workspace/rollback/apply.
+type ApplyRollbackRequest struct {
+	WorkspaceRoot string         `json:"workspaceRoot,omitempty"`
+	Rollbacks     []TurnRollback `json:"rollbacks"`
 }
 
 type TaskSnapshot struct {

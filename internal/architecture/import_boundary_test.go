@@ -1,25 +1,13 @@
-// Package architecture 守护 EOS 架构边界，防止迁移过程中耦合回退。
+// Package architecture 守护 EOS 架构边界，防止旧 Go 内核（已退役删除）的耦合回退。
 //
-// 本文件定义了三层导入边界守卫：
+// 引擎已收敛为 Rust-only：UI/TUI/CLI 只能通过 pkg/coreapi/sidecar/client + coreapi.Engine
+// 访问运行时。本文件守住三条边界，防止被删除的 internal/bridge、internal/runtime、
+// internal/tools、pkg/core 被重新引入：
 //
-//  1. TestUIDirectRuntimeCouplingDoesNotSpread — 阻止 internal/ui 下所有包（含 adapter）
-//     导入 internal/bridge、internal/runtime、internal/tools、pkg/core。
-//     adapter 不再是兼容性孤岛；唯一允许的 core 入口是 pkg/coreapi/sidecar/client facade。
-//
-//  2. TestNewCorePackagesDoNotImportLegacyRuntime — 阻止新核心包（pkg/agentcore、pkg/coreapi、
-//     pkg/protocol/jsonrpc、pkg/sandbox）导入 internal/* 或遗留的 pkg/core facade。
-//     新核心包必须通过 coreapi.Engine 接口访问运行时，不得依赖 UI/bridge/runtime 实现细节。
-//
-//  3. TestToolAPIImplDependencyBoundary — 确保 toolapi/impl 中的 executor.go、tasks.go、
-//     bridge.go、services.go 不直接依赖 internal/tools 或 internal/runtime。
-//     所有遗留依赖集中在 legacy_bridge.go（legacy adapter）中，便于未来替换。
-//
-// 维护指南：
-//   - 不要重新引入 knownUICoupling 白名单。
-//   - 添加新 UI 子包时，确保它不导入 forbiddenUIImports 中的任何包。
-//   - 添加新核心包时，确保它不导入 internal/* 或 pkg/core。
-//   - TUI 接入 core 只能通过 pkg/coreapi/sidecar/client + coreapi.Engine。
-//   - toolapi/impl 中只有 legacy_bridge.go 允许导入 internal/tools 和 internal/runtime。
+//  1. TestUIDirectRuntimeCouplingDoesNotSpread — internal/ui 不得导入已退役包。
+//  2. TestNewCorePackagesDoNotImportLegacyRuntime — 新核心包不得导入 internal/* 或 pkg/core。
+//  3. TestCLIHeadlessNoBridgeImport / TestCLIProductionPathsForbidLegacyGoCore — CLI
+//     不得直接耦合 legacy runtime。
 package architecture
 
 import (
@@ -34,11 +22,8 @@ import (
 
 const modulePath = "github.com/dreamSailing/eos"
 
-// knownUICoupling 是历史遗留白名单，目前为空。
-// 历史注释：曾允许 internal/ui/adapter 临时 import forbiddenUIImports，
-// 迁移完成后已清空，不应再被引用。
-var knownUICoupling = map[string]bool{}
-
+// forbiddenUIImports 列出已退役删除的包路径。守卫仍保留：防止任何人重新引入
+// internal/bridge / internal/runtime / internal/tools / pkg/core（旧 Go/Eino 内核）。
 var forbiddenUIImports = []string{
 	"github.com/dreamSailing/eos/internal/bridge",
 	"github.com/dreamSailing/eos/internal/runtime",
@@ -69,7 +54,7 @@ func TestUIDirectRuntimeCouplingDoesNotSpread(t *testing.T) {
 		pkg := modulePath + "/" + filepath.ToSlash(rel)
 		for _, imp := range file.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
-			if isForbiddenUIImport(importPath) && !knownUICoupling[pkg] {
+			if isForbiddenUIImport(importPath) {
 				violations[pkg] = append(violations[pkg], importPath)
 			}
 		}
@@ -86,7 +71,6 @@ func TestUIDirectRuntimeCouplingDoesNotSpread(t *testing.T) {
 func TestNewCorePackagesDoNotImportLegacyRuntime(t *testing.T) {
 	root := moduleRoot(t)
 	packageRoots := []string{
-		filepath.Join(root, "pkg", "agentcore"),
 		filepath.Join(root, "pkg", "coreapi"),
 		filepath.Join(root, "pkg", "protocol", "jsonrpc"),
 		filepath.Join(root, "pkg", "sandbox"),
@@ -140,17 +124,8 @@ var forbiddenCLIImports = []string{
 	"github.com/dreamSailing/eos/internal/session",
 }
 
-// cliLegacyCoreExceptions 列出了 internal/cli 中允许 import pkg/core (sharedcore) 的文件。
-// 当前只有 app_server.go：在 parity mode (--core-engine=parity) 或 EOS_CORE_ALLOW_FALLBACK=1
-// 时 legacy 仅作 dev/test fixture。其它生产入口（print / exec / bridge / serve / daemon）一律
-// 不允许回退到 sharedcore.Runtime / bridge.RuntimeCore。
-var cliLegacyCoreExceptions = map[string]bool{
-	"app_server.go": true,
-}
-
-// cliForbiddenProductionImports 是 production CLI 命令（非 app_server）必须遵守的禁列。
-// 任何新 CLI 命令若想 import sharedcore / bridge.RuntimeCore / eino runtime，
-// 必须先把它加入 cliLegacyCoreExceptions 并在注释里说明理由。
+// cliForbiddenProductionImports 是所有 CLI 命令必须遵守的禁列。
+// 这些包（旧 Go/Eino 内核）已被删除，守卫保留以防止重新引入。
 var cliForbiddenProductionImports = []string{
 	"github.com/dreamSailing/eos/pkg/core",
 	"github.com/dreamSailing/eos/internal/bridge",
@@ -204,14 +179,9 @@ func isForbiddenCLIImport(importPath string) bool {
 	return false
 }
 
-// TestCLIProductionPathsForbidLegacyGoCore 守护 production CLI 入口（除 app_server）不直接
-// import sharedcore（pkg/core）或 internal/bridge / internal/runtime / internal/tools。
-//
-// app_server 是 parity / dev-only 入口，其默认启动路径走 Rust sidecar；legacy 路径
-// 只在 parity 模式或 EOS_CORE_ALLOW_FALLBACK=1 时由 cliLegacyCoreExceptions 放行。
-//
-// 新 CLI 命令若需要用到 legacy fixture，必须先在 cliLegacyCoreExceptions 加白并写明理由，
-// 避免悄悄把 Go core/runtime 重新接回 production 路径。
+// TestCLIProductionPathsForbidLegacyGoCore 守护所有 CLI 入口不直接 import 已退役的
+// 旧 Go 内核（pkg/core / internal/bridge / internal/runtime / internal/tools）。
+// 这些包已删除；守卫保留以防止被重新接回 CLI 路径。
 func TestCLIProductionPathsForbidLegacyGoCore(t *testing.T) {
 	root := moduleRoot(t)
 	cliRoot := filepath.Join(root, "internal", "cli")
@@ -225,9 +195,6 @@ func TestCLIProductionPathsForbidLegacyGoCore(t *testing.T) {
 			return nil
 		}
 		basename := filepath.Base(path)
-		if cliLegacyCoreExceptions[basename] {
-			return nil
-		}
 		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
 		if err != nil {
 			return err
@@ -250,7 +217,7 @@ func TestCLIProductionPathsForbidLegacyGoCore(t *testing.T) {
 		t.Fatalf("walk cli imports: %v", err)
 	}
 	if len(violations) > 0 {
-		t.Fatalf("production CLI path imports legacy Go core (pkg/core / bridge / runtime / tools); use pkg/coreapi/sidecar + engineprovider instead:\n%#v", violations)
+		t.Fatalf("CLI path imports legacy Go core (pkg/core / bridge / runtime / tools); use pkg/coreapi/sidecar + engineprovider instead:\n%#v", violations)
 	}
 }
 
@@ -277,6 +244,29 @@ func packagePath(root, dir string) (string, error) {
 // TestToolAPIImplDependencyBoundary guarded the internal/toolapi/impl
 // dependency boundary. That package was removed together with the rest of
 // the Go gateway layer, so the guard is no longer applicable.
+
+// TestDeletedPackagesStayDeleted asserts that Go packages superseded by the
+// Rust kernel are not re-introduced. Each listed directory was a full Go
+// reimplementation of functionality the Rust core already provides
+// (context indexing, memory store, skill loader, agent orchestrator, etc).
+// Re-creating them would re-introduce duplicate business logic in the shell
+// layer, violating the "shell does not do business adjudication" rule.
+func TestDeletedPackagesStayDeleted(t *testing.T) {
+	root := moduleRoot(t)
+	deletedPackages := []string{
+		"internal/context",
+		"internal/memory",
+		"internal/store",
+		"internal/skills",
+		"pkg/agentcore",
+	}
+	for _, pkg := range deletedPackages {
+		dir := filepath.Join(root, filepath.FromSlash(pkg))
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			t.Errorf("deleted package %s has been re-created; this functionality now lives in the Rust kernel", pkg)
+		}
+	}
+}
 
 func moduleRoot(t *testing.T) string {
 	t.Helper()

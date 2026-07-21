@@ -5,26 +5,26 @@ package generated
 import "encoding/json"
 
 type InitializeResult struct {
-	ServerName string `json:"server_name"`
-	ProtocolVersion string `json:"protocol_version"`
-	Methods []string `json:"methods"`
-	Capabilities map[string]any `json:"capabilities,omitempty"`
+	ServerName      string         `json:"server_name"`
+	ProtocolVersion string         `json:"protocol_version"`
+	Methods         []string       `json:"methods"`
+	Capabilities    map[string]any `json:"capabilities,omitempty"`
 }
 
 type StateSnapshot struct {
-	ForegroundWorkspace string `json:"foreground_workspace,omitempty"`
-	Workspaces []WorkspaceSnapshot `json:"workspaces,omitempty"`
-	Sessions []SessionSnapshot `json:"sessions,omitempty"`
-	CurrentSession *SessionSnapshot `json:"current_session,omitempty"`
-	Messages []SessionMessage `json:"messages,omitempty"`
-	Tasks []TaskSnapshot `json:"tasks,omitempty"`
-	Agents []Agent `json:"agents,omitempty"`
+	ForegroundWorkspace string              `json:"foreground_workspace,omitempty"`
+	Workspaces          []WorkspaceSnapshot `json:"workspaces,omitempty"`
+	Sessions            []SessionSnapshot   `json:"sessions,omitempty"`
+	CurrentSession      *SessionSnapshot    `json:"current_session,omitempty"`
+	Messages            []SessionMessage    `json:"messages,omitempty"`
+	Tasks               []TaskSnapshot      `json:"tasks,omitempty"`
+	Agents              []Agent             `json:"agents,omitempty"`
 }
 
 type Workspace struct {
-	Path string `json:"path"`
-	Trusted bool `json:"trusted"`
-	Active bool `json:"active"`
+	Path    string `json:"path"`
+	Trusted bool   `json:"trusted"`
+	Active  bool   `json:"active"`
 }
 
 type WorkspacePathRequest struct {
@@ -32,8 +32,8 @@ type WorkspacePathRequest struct {
 }
 
 type RememberWorkspaceRequest struct {
-	Path string `json:"path"`
-	Foreground bool `json:"foreground"`
+	Path       string `json:"path"`
+	Foreground bool   `json:"foreground"`
 }
 
 type ResolveForegroundWorkspaceRequest struct {
@@ -41,11 +41,11 @@ type ResolveForegroundWorkspaceRequest struct {
 }
 
 type WorkspaceSnapshot struct {
-	Path string `json:"path"`
-	Name string `json:"name,omitempty"`
-	Trusted bool `json:"trusted"`
-	Active bool `json:"active"`
-	SessionCount int `json:"session_count"`
+	Path             string `json:"path"`
+	Name             string `json:"name,omitempty"`
+	Trusted          bool   `json:"trusted"`
+	Active           bool   `json:"active"`
+	SessionCount     int    `json:"session_count"`
 	CurrentSessionID string `json:"current_session_id,omitempty"`
 }
 
@@ -54,67 +54,67 @@ type CreateWorktreeRequest struct {
 }
 
 type RemoveWorktreeRequest struct {
-	Path string `json:"path"`
-	Force bool `json:"force"`
+	Path  string `json:"path"`
+	Force bool   `json:"force"`
 }
 
 type Worktree struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-	Branch string `json:"branch,omitempty"`
-	Head string `json:"head,omitempty"`
-	Active bool `json:"active"`
-	Removable bool `json:"removable"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Branch    string `json:"branch,omitempty"`
+	Head      string `json:"head,omitempty"`
+	Active    bool   `json:"active"`
+	Removable bool   `json:"removable"`
 }
 
 type SessionSnapshot struct {
-	ID string `json:"id"`
-	WorkspacePath string `json:"workspace_path,omitempty"`
-	Title string `json:"title,omitempty"`
-	Preview string `json:"preview,omitempty"`
-	UpdatedAt string `json:"updated_at"`
-	Running bool `json:"running"`
-	NeedsAttention bool `json:"needs_attention"`
-	MessageCount int `json:"message_count"`
-	PendingPrompts int `json:"pending_prompts"`
-	Active bool `json:"active"`
+	ID             string `json:"id"`
+	WorkspacePath  string `json:"workspace_path,omitempty"`
+	Title          string `json:"title,omitempty"`
+	Preview        string `json:"preview,omitempty"`
+	UpdatedAt      string `json:"updated_at"`
+	Running        bool   `json:"running"`
+	NeedsAttention bool   `json:"needs_attention"`
+	MessageCount   int    `json:"message_count"`
+	PendingPrompts int    `json:"pending_prompts"`
+	Active         bool   `json:"active"`
 }
 
 type SessionMessage struct {
-	Role string `json:"role"`
-	Type string `json:"type,omitempty"`
-	Content string `json:"content,omitempty"`
-	Time string `json:"time,omitempty"`
-	ImagePaths []string `json:"image_paths,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Role       string         `json:"role"`
+	Type       string         `json:"type,omitempty"`
+	Content    string         `json:"content,omitempty"`
+	Time       string         `json:"time,omitempty"`
+	ImagePaths []string       `json:"image_paths,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
 }
 
 type TaskSnapshot struct {
-	ID string `json:"id"`
-	Kind string `json:"kind,omitempty"`
-	Status string `json:"status"`
+	ID        string `json:"id"`
+	Kind      string `json:"kind,omitempty"`
+	Status    string `json:"status"`
 	StartedAt string `json:"started_at"`
 	UpdatedAt string `json:"updated_at,omitempty"`
-	Label string `json:"label,omitempty"`
+	Label     string `json:"label,omitempty"`
 }
 
 type Session struct {
-	ID string `json:"id"`
-	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID            string         `json:"id"`
+	WorkspaceRoot string         `json:"workspace_root,omitempty"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
+	CreatedAt     string         `json:"created_at"`
+	UpdatedAt     string         `json:"updated_at"`
 }
 
 type CreateSessionRequest struct {
-	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	Title string `json:"title,omitempty"`
-	Messages []SessionMessage `json:"messages,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	WorkspaceRoot string           `json:"workspace_root,omitempty"`
+	Title         string           `json:"title,omitempty"`
+	Messages      []SessionMessage `json:"messages,omitempty"`
+	Metadata      map[string]any   `json:"metadata,omitempty"`
 }
 
 type ResumeSessionRequest struct {
-	SessionID string `json:"session_id"`
+	SessionID     string `json:"session_id"`
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
 }
 
@@ -127,39 +127,39 @@ type CurrentSessionRequest struct {
 }
 
 type SetCurrentSessionRequest struct {
-	SessionID string `json:"session_id"`
+	SessionID     string `json:"session_id"`
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
 }
 
 type DeleteSessionRequest struct {
-	SessionID string `json:"session_id"`
+	SessionID     string `json:"session_id"`
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
 }
 
 type RenameSessionRequest struct {
-	SessionID string `json:"session_id"`
+	SessionID     string `json:"session_id"`
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	Title string `json:"title"`
+	Title         string `json:"title"`
 }
 
 type LoadSessionMessagesRequest struct {
-	SessionID string `json:"session_id"`
+	SessionID     string `json:"session_id"`
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
 }
 
 type SaveSessionMessagesRequest struct {
-	SessionID string `json:"session_id,omitempty"`
-	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	Messages []SessionMessage `json:"messages,omitempty"`
+	SessionID     string           `json:"session_id,omitempty"`
+	WorkspaceRoot string           `json:"workspace_root,omitempty"`
+	Messages      []SessionMessage `json:"messages,omitempty"`
 }
 
 type StartTurnRequest struct {
-	SessionID string `json:"session_id"`
-	TurnID string `json:"turn_id,omitempty"`
-	Input string `json:"input"`
-	ImagePaths []string `json:"image_paths,omitempty"`
-	Attachments []Attachment `json:"attachments,omitempty"`
-	Options json.RawMessage `json:"options,omitempty"`
+	SessionID   string          `json:"session_id"`
+	TurnID      string          `json:"turn_id,omitempty"`
+	Input       string          `json:"input"`
+	ImagePaths  []string        `json:"image_paths,omitempty"`
+	Attachments []Attachment    `json:"attachments,omitempty"`
+	Options     json.RawMessage `json:"options,omitempty"`
 }
 
 type Attachment struct {
@@ -171,50 +171,50 @@ type Attachment struct {
 
 type TurnRef struct {
 	SessionID string `json:"session_id"`
-	TurnID string `json:"turn_id"`
+	TurnID    string `json:"turn_id"`
 }
 
 type Turn struct {
-	ID string `json:"id"`
+	ID        string `json:"id"`
 	SessionID string `json:"session_id"`
-	Status string `json:"status"`
+	Status    string `json:"status"`
 	StartedAt string `json:"started_at"`
 	UpdatedAt string `json:"updated_at"`
 }
 
 type Agent struct {
-	ID string `json:"id"`
+	ID            string `json:"id"`
 	ParentAgentID string `json:"parent_agent_id,omitempty"`
-	RoleID string `json:"role_id"`
-	Task string `json:"task,omitempty"`
-	Status string `json:"status"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	RoleID        string `json:"role_id"`
+	Task          string `json:"task,omitempty"`
+	Status        string `json:"status"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 type RoleConfig struct {
-	ID string `json:"id"`
-	Description string `json:"description,omitempty"`
-	SystemPrompt string `json:"system_prompt,omitempty"`
-	PromptFile string `json:"prompt_file,omitempty"`
-	AllowedTools []string `json:"allowed_tools,omitempty"`
-	ContextStrategy string `json:"context_strategy,omitempty"`
-	Model string `json:"model,omitempty"`
-	ReasoningEffort string `json:"reasoning_effort,omitempty"`
-	LegacyAliases []string `json:"legacy_aliases,omitempty"`
+	ID              string   `json:"id"`
+	Description     string   `json:"description,omitempty"`
+	SystemPrompt    string   `json:"system_prompt,omitempty"`
+	PromptFile      string   `json:"prompt_file,omitempty"`
+	AllowedTools    []string `json:"allowed_tools,omitempty"`
+	ContextStrategy string   `json:"context_strategy,omitempty"`
+	Model           string   `json:"model,omitempty"`
+	ReasoningEffort string   `json:"reasoning_effort,omitempty"`
+	LegacyAliases   []string `json:"legacy_aliases,omitempty"`
 }
 
 type SpawnAgentRequest struct {
-	ParentAgentID string `json:"parent_agent_id,omitempty"`
-	RoleID string `json:"role_id,omitempty"`
-	Task string `json:"task"`
-	ForkContextMode string `json:"fork_context_mode,omitempty"`
-	Options json.RawMessage `json:"options,omitempty"`
+	ParentAgentID   string          `json:"parent_agent_id,omitempty"`
+	RoleID          string          `json:"role_id,omitempty"`
+	Task            string          `json:"task"`
+	ForkContextMode string          `json:"fork_context_mode,omitempty"`
+	Options         json.RawMessage `json:"options,omitempty"`
 }
 
 type AgentInput struct {
 	AgentID string `json:"agent_id"`
-	Input string `json:"input"`
+	Input   string `json:"input"`
 }
 
 type AgentRef struct {
@@ -222,27 +222,27 @@ type AgentRef struct {
 }
 
 type AgentControlRequest struct {
-	AgentID string `json:"agent_id,omitempty"`
-	Action string `json:"action"`
-	RoleID string `json:"role_id,omitempty"`
-	ParentAgentID string `json:"parent_agent_id,omitempty"`
-	Task string `json:"task,omitempty"`
-	Reason string `json:"reason,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	AgentID       string         `json:"agent_id,omitempty"`
+	Action        string         `json:"action"`
+	RoleID        string         `json:"role_id,omitempty"`
+	ParentAgentID string         `json:"parent_agent_id,omitempty"`
+	Task          string         `json:"task,omitempty"`
+	Reason        string         `json:"reason,omitempty"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
 }
 
 type AgentControlResponse struct {
-	AgentID string `json:"agent_id,omitempty"`
-	Status string `json:"status,omitempty"`
-	PreviousStatus string `json:"previous_status,omitempty"`
-	Agents []Agent `json:"agents,omitempty"`
+	AgentID        string  `json:"agent_id,omitempty"`
+	Status         string  `json:"status,omitempty"`
+	PreviousStatus string  `json:"previous_status,omitempty"`
+	Agents         []Agent `json:"agents,omitempty"`
 }
 
 type AgentInputRequest struct {
-	AgentID string `json:"agent_id"`
-	Input string `json:"input"`
-	FromAgentID string `json:"from_agent_id,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	AgentID     string         `json:"agent_id"`
+	Input       string         `json:"input"`
+	FromAgentID string         `json:"from_agent_id,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
 type AgentInputResponse struct {
@@ -250,37 +250,37 @@ type AgentInputResponse struct {
 }
 
 type AgentRunRequest struct {
-	AgentID string `json:"agent_id"`
-	SessionID string `json:"session_id,omitempty"`
-	Options json.RawMessage `json:"options,omitempty"`
+	AgentID   string          `json:"agent_id"`
+	SessionID string          `json:"session_id,omitempty"`
+	Options   json.RawMessage `json:"options,omitempty"`
 }
 
 type AgentRunResponse struct {
-	Agent Agent `json:"agent"`
-	Output string `json:"output,omitempty"`
+	Agent    Agent               `json:"agent"`
+	Output   string              `json:"output,omitempty"`
 	Messages []AgentMailboxEntry `json:"messages,omitempty"`
-	Role RoleConfig `json:"role,omitempty"`
+	Role     RoleConfig          `json:"role,omitempty"`
 }
 
 type AgentMailboxEntry struct {
 	FromAgentID string `json:"from_agent_id,omitempty"`
-	Body string `json:"body,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
+	Body        string `json:"body,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
 }
 
 type AgentToolRequest struct {
-	AgentID string `json:"agent_id"`
-	SessionID string `json:"session_id,omitempty"`
-	TurnID string `json:"turn_id,omitempty"`
-	Name string `json:"name"`
-	Args json.RawMessage `json:"args,omitempty"`
+	AgentID   string          `json:"agent_id"`
+	SessionID string          `json:"session_id,omitempty"`
+	TurnID    string          `json:"turn_id,omitempty"`
+	Name      string          `json:"name"`
+	Args      json.RawMessage `json:"args,omitempty"`
 }
 
 type AgentToolResult struct {
-	Name string `json:"name"`
-	Display string `json:"display,omitempty"`
-	Output json.RawMessage `json:"output,omitempty"`
-	Error string `json:"error,omitempty"`
+	Name    string          `json:"name"`
+	Display string          `json:"display,omitempty"`
+	Output  json.RawMessage `json:"output,omitempty"`
+	Error   string          `json:"error,omitempty"`
 }
 
 type ListAgentsRequest struct {
@@ -288,76 +288,76 @@ type ListAgentsRequest struct {
 }
 
 type ToolRequest struct {
-	SessionID string `json:"session_id,omitempty"`
-	TurnID string `json:"turn_id,omitempty"`
-	RequestID string `json:"request_id,omitempty"`
-	AgentID string `json:"agent_id,omitempty"`
-	Name string `json:"name"`
-	Args json.RawMessage `json:"args,omitempty"`
-	TimeoutMs int64 `json:"timeout_ms,omitempty"`
-	WorkspaceRoot string `json:"workspace_root,omitempty"`
+	SessionID     string          `json:"session_id,omitempty"`
+	TurnID        string          `json:"turn_id,omitempty"`
+	RequestID     string          `json:"request_id,omitempty"`
+	AgentID       string          `json:"agent_id,omitempty"`
+	Name          string          `json:"name"`
+	Args          json.RawMessage `json:"args,omitempty"`
+	TimeoutMs     int64           `json:"timeout_ms,omitempty"`
+	WorkspaceRoot string          `json:"workspace_root,omitempty"`
 }
 
 type ToolResult struct {
-	Name string `json:"name"`
-	RequestID string `json:"request_id,omitempty"`
-	Status string `json:"status,omitempty"`
-	Display string `json:"display,omitempty"`
-	Output json.RawMessage `json:"output,omitempty"`
-	Error string `json:"error,omitempty"`
-	DurationMs int64 `json:"duration_ms,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Name       string          `json:"name"`
+	RequestID  string          `json:"request_id,omitempty"`
+	Status     string          `json:"status,omitempty"`
+	Display    string          `json:"display,omitempty"`
+	Output     json.RawMessage `json:"output,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	DurationMs int64           `json:"duration_ms,omitempty"`
+	Metadata   map[string]any  `json:"metadata,omitempty"`
 }
 
 type ListToolCatalogRequest struct {
-	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	IncludeTools []string `json:"include_tools,omitempty"`
-	AllowedTools []string `json:"allowed_tools,omitempty"`
+	WorkspaceRoot string   `json:"workspace_root,omitempty"`
+	IncludeTools  []string `json:"include_tools,omitempty"`
+	AllowedTools  []string `json:"allowed_tools,omitempty"`
 }
 
 type ToolDefinition struct {
-	Name string `json:"name"`
-	Description string `json:"description,omitempty"`
-	RiskLevel string `json:"risk_level,omitempty"`
-	Source string `json:"source,omitempty"`
-	Category string `json:"category,omitempty"`
-	ReadOnly bool `json:"read_only"`
-	Invocable bool `json:"invocable"`
-	RequiresFullAccess bool `json:"requires_full_access"`
-	Tags []string `json:"tags,omitempty"`
-	ParamsSchema json.RawMessage `json:"params_schema,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Name               string          `json:"name"`
+	Description        string          `json:"description,omitempty"`
+	RiskLevel          string          `json:"risk_level,omitempty"`
+	Source             string          `json:"source,omitempty"`
+	Category           string          `json:"category,omitempty"`
+	ReadOnly           bool            `json:"read_only"`
+	Invocable          bool            `json:"invocable"`
+	RequiresFullAccess bool            `json:"requires_full_access"`
+	Tags               []string        `json:"tags,omitempty"`
+	ParamsSchema       json.RawMessage `json:"params_schema,omitempty"`
+	Metadata           map[string]any  `json:"metadata,omitempty"`
 }
 
 type Envelope struct {
-	EventType string `json:"event_type"`
-	RequestID string `json:"request_id,omitempty"`
-	Source string `json:"source,omitempty"`
-	Payload json.RawMessage `json:"payload,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	TurnID string `json:"turn_id,omitempty"`
-	AgentID string `json:"agent_id,omitempty"`
+	EventType string          `json:"event_type"`
+	RequestID string          `json:"request_id,omitempty"`
+	Source    string          `json:"source,omitempty"`
+	Payload   json.RawMessage `json:"payload,omitempty"`
+	SessionID string          `json:"session_id,omitempty"`
+	TurnID    string          `json:"turn_id,omitempty"`
+	AgentID   string          `json:"agent_id,omitempty"`
 }
 
 type EventFilter struct {
 	SessionID string `json:"session_id,omitempty"`
-	TurnID string `json:"turn_id,omitempty"`
-	AgentID string `json:"agent_id,omitempty"`
+	TurnID    string `json:"turn_id,omitempty"`
+	AgentID   string `json:"agent_id,omitempty"`
 }
 
 type EventSubscribeRequest struct {
-	EventTypes []string `json:"event_types,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	TurnID string `json:"turn_id,omitempty"`
-	AgentID string `json:"agent_id,omitempty"`
-	Filter json.RawMessage `json:"filter,omitempty"`
+	EventTypes []string        `json:"event_types,omitempty"`
+	SessionID  string          `json:"session_id,omitempty"`
+	TurnID     string          `json:"turn_id,omitempty"`
+	AgentID    string          `json:"agent_id,omitempty"`
+	Filter     json.RawMessage `json:"filter,omitempty"`
 }
 
 type EventSubscription struct {
-	SubscriptionID string `json:"subscription_id"`
-	EventTypes []string `json:"event_types,omitempty"`
-	Active bool `json:"active"`
-	CreatedAt string `json:"created_at,omitempty"`
+	SubscriptionID string   `json:"subscription_id"`
+	EventTypes     []string `json:"event_types,omitempty"`
+	Active         bool     `json:"active"`
+	CreatedAt      string   `json:"created_at,omitempty"`
 }
 
 type EventUnsubscribeRequest struct {
@@ -367,10 +367,10 @@ type EventUnsubscribeRequest struct {
 type ApprovalDecision string
 
 const (
-	ApprovalAccept            ApprovalDecision = "accept"
-	ApprovalAcceptForSession  ApprovalDecision = "acceptForSession"
-	ApprovalDecline           ApprovalDecision = "decline"
-	ApprovalCancel            ApprovalDecision = "cancel"
+	ApprovalAccept           ApprovalDecision = "accept"
+	ApprovalAcceptForSession ApprovalDecision = "acceptForSession"
+	ApprovalDecline          ApprovalDecision = "decline"
+	ApprovalCancel           ApprovalDecision = "cancel"
 )
 
 type ApprovalResponse struct {
@@ -381,109 +381,109 @@ type ApprovalResponse struct {
 }
 
 type InquiryResponse struct {
-	InquiryID string `json:"inquiry_id"`
-	Option string `json:"option,omitempty"`
-	Text string `json:"text,omitempty"`
-	Response string `json:"response,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	InquiryID string         `json:"inquiry_id"`
+	Option    string         `json:"option,omitempty"`
+	Text      string         `json:"text,omitempty"`
+	Response  string         `json:"response,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
 type OrchestratorStartRequest struct {
-	SessionID string `json:"session_id"`
-	UserInput string `json:"user_input"`
-	Images []string `json:"images,omitempty"`
-	PlanPreference string `json:"plan_preference,omitempty"`
+	SessionID      string   `json:"session_id"`
+	UserInput      string   `json:"user_input"`
+	Images         []string `json:"images,omitempty"`
+	PlanPreference string   `json:"plan_preference,omitempty"`
 }
 
 type OrchestratorStartResponse struct {
 	DispatchDecision string `json:"dispatch_decision"`
-	PrimaryAgentID string `json:"primary_agent_id"`
+	PrimaryAgentID   string `json:"primary_agent_id"`
 }
 
 type OrchestratorEvent struct {
-	EventType string `json:"event_type"`
-	AgentID string `json:"agent_id,omitempty"`
-	Payload json.RawMessage `json:"payload,omitempty"`
+	EventType string          `json:"event_type"`
+	AgentID   string          `json:"agent_id,omitempty"`
+	Payload   json.RawMessage `json:"payload,omitempty"`
 }
 
 type ConfigReloadRequest struct {
-	Paths []string `json:"paths,omitempty"`
-	DryRun bool `json:"dry_run"`
+	Paths  []string `json:"paths,omitempty"`
+	DryRun bool     `json:"dry_run"`
 }
 
 type ConfigReloadResult struct {
 	Reloaded []string `json:"reloaded,omitempty"`
-	Errors []string `json:"errors,omitempty"`
-	DryRun bool `json:"dry_run"`
+	Errors   []string `json:"errors,omitempty"`
+	DryRun   bool     `json:"dry_run"`
 }
 
 type Settings struct {
-	PlanPromptStyle string `json:"plan_prompt_style,omitempty"`
-	PlanBubble string `json:"plan_bubble,omitempty"`
-	AutoContext bool `json:"auto_context,omitempty"`
-	DesktopNotifications bool `json:"desktop_notifications,omitempty"`
-	MaxInjectKB int64 `json:"max_inject_kb"`
-	WatchMode string `json:"watch_mode,omitempty"`
-	WatchDebounceMs int64 `json:"watch_debounce_ms"`
-	PollIntervalSec int64 `json:"poll_interval_sec"`
-	Language string `json:"language,omitempty"`
-	Theme string `json:"theme,omitempty"`
-	Trusted bool `json:"trusted,omitempty"`
-	MaxTurnTokens int64 `json:"max_turn_tokens"`
-	MaxSessionTokens int64 `json:"max_session_tokens"`
-	MidRiskConfirm bool `json:"mid_risk_confirm"`
+	PlanPromptStyle      string `json:"plan_prompt_style,omitempty"`
+	PlanBubble           string `json:"plan_bubble,omitempty"`
+	AutoContext          bool   `json:"auto_context,omitempty"`
+	DesktopNotifications bool   `json:"desktop_notifications,omitempty"`
+	MaxInjectKB          int64  `json:"max_inject_kb"`
+	WatchMode            string `json:"watch_mode,omitempty"`
+	WatchDebounceMs      int64  `json:"watch_debounce_ms"`
+	PollIntervalSec      int64  `json:"poll_interval_sec"`
+	Language             string `json:"language,omitempty"`
+	Theme                string `json:"theme,omitempty"`
+	Trusted              bool   `json:"trusted,omitempty"`
+	MaxTurnTokens        int64  `json:"max_turn_tokens"`
+	MaxSessionTokens     int64  `json:"max_session_tokens"`
+	MidRiskConfirm       bool   `json:"mid_risk_confirm"`
 }
 
 type RuleDocument struct {
-	Scope string `json:"scope,omitempty"`
-	Path string `json:"path,omitempty"`
-	Content string `json:"content,omitempty"`
-	Exists bool `json:"exists"`
+	Scope     string `json:"scope,omitempty"`
+	Path      string `json:"path,omitempty"`
+	Content   string `json:"content,omitempty"`
+	Exists    bool   `json:"exists"`
 	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 type RulesSnapshot struct {
-	ActiveRoot string `json:"active_root,omitempty"`
-	Documents []RuleDocument `json:"documents,omitempty"`
+	ActiveRoot string         `json:"active_root,omitempty"`
+	Documents  []RuleDocument `json:"documents,omitempty"`
 }
 
 type SaveRulesRequest struct {
-	Scope string `json:"scope,omitempty"`
+	Scope   string `json:"scope,omitempty"`
 	Content string `json:"content"`
 }
 
 type McpServerConfig struct {
-	Name string `json:"name"`
-	Type string `json:"type,omitempty"`
-	Target string `json:"target,omitempty"`
-	Command string `json:"command,omitempty"`
-	Args []string `json:"args,omitempty"`
-	Envs map[string]string `json:"envs,omitempty"`
-	BaseURL string `json:"base_url,omitempty"`
-	Enabled bool `json:"enabled"`
-	Auth *McpAuth `json:"auth,omitempty"`
-	ApprovalMode string `json:"approval_mode,omitempty"`
+	Name                 string            `json:"name"`
+	Type                 string            `json:"type,omitempty"`
+	Target               string            `json:"target,omitempty"`
+	Command              string            `json:"command,omitempty"`
+	Args                 []string          `json:"args,omitempty"`
+	Envs                 map[string]string `json:"envs,omitempty"`
+	BaseURL              string            `json:"base_url,omitempty"`
+	Enabled              bool              `json:"enabled"`
+	Auth                 *McpAuth          `json:"auth,omitempty"`
+	ApprovalMode         string            `json:"approval_mode,omitempty"`
 	ToolApprovalOverride map[string]string `json:"tool_approval_override,omitempty"`
 }
 
 type McpAuth struct {
-	Type string `json:"type,omitempty"`
-	Token string `json:"token,omitempty"`
-	Headers map[string]string `json:"headers,omitempty"`
+	Type       string            `json:"type,omitempty"`
+	Token      string            `json:"token,omitempty"`
+	Headers    map[string]string `json:"headers,omitempty"`
 	HeadersEnv map[string]string `json:"headers_env,omitempty"`
 }
 
 type UpsertMcpRequest struct {
-	Name string `json:"name"`
-	Type string `json:"type,omitempty"`
-	Target string `json:"target,omitempty"`
-	Command string `json:"command,omitempty"`
-	Args []string `json:"args,omitempty"`
-	Envs map[string]string `json:"envs,omitempty"`
-	BaseURL string `json:"base_url,omitempty"`
-	Enabled bool `json:"enabled"`
-	Auth *McpAuth `json:"auth,omitempty"`
-	ApprovalMode string `json:"approval_mode,omitempty"`
+	Name                 string            `json:"name"`
+	Type                 string            `json:"type,omitempty"`
+	Target               string            `json:"target,omitempty"`
+	Command              string            `json:"command,omitempty"`
+	Args                 []string          `json:"args,omitempty"`
+	Envs                 map[string]string `json:"envs,omitempty"`
+	BaseURL              string            `json:"base_url,omitempty"`
+	Enabled              bool              `json:"enabled"`
+	Auth                 *McpAuth          `json:"auth,omitempty"`
+	ApprovalMode         string            `json:"approval_mode,omitempty"`
 	ToolApprovalOverride map[string]string `json:"tool_approval_override,omitempty"`
 }
 
@@ -496,14 +496,14 @@ type McpNameRequest struct {
 }
 
 type SetMcpEnabledRequest struct {
-	Name string `json:"name"`
-	Enabled bool `json:"enabled"`
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
 }
 
 type LspServer struct {
 	Language string `json:"language"`
-	Status string `json:"status,omitempty"`
-	Command string `json:"command,omitempty"`
+	Status   string `json:"status,omitempty"`
+	Command  string `json:"command,omitempty"`
 }
 
 type LspLanguageRequest struct {
@@ -511,103 +511,103 @@ type LspLanguageRequest struct {
 }
 
 type LspDiagnosticItem struct {
-	File string `json:"file"`
-	Line int64 `json:"line"`
-	EndLine int64 `json:"end_line"`
+	File     string `json:"file"`
+	Line     int64  `json:"line"`
+	EndLine  int64  `json:"end_line"`
 	Severity string `json:"severity"`
-	Message string `json:"message"`
-	Source string `json:"source,omitempty"`
-	Code string `json:"code,omitempty"`
+	Message  string `json:"message"`
+	Source   string `json:"source,omitempty"`
+	Code     string `json:"code,omitempty"`
 }
 
 type LspDiagnosticsSummary struct {
-	Files int `json:"files"`
-	Errors int `json:"errors"`
-	Warnings int `json:"warnings"`
-	Infos int `json:"infos"`
-	Items []LspDiagnosticItem `json:"items,omitempty"`
+	Files    int                 `json:"files"`
+	Errors   int                 `json:"errors"`
+	Warnings int                 `json:"warnings"`
+	Infos    int                 `json:"infos"`
+	Items    []LspDiagnosticItem `json:"items,omitempty"`
 }
 
 type PermissionSnapshot struct {
-	ExecutionMode string `json:"execution_mode,omitempty"`
-	AccessMode string `json:"access_mode,omitempty"`
-	ApprovalMode string `json:"approval_mode,omitempty"`
-	SandboxMode string `json:"sandbox_mode,omitempty"`
-	AllowAll bool `json:"allow_all"`
-	AllowedCategories []string `json:"allowed_categories,omitempty"`
-	HasPendingDiff bool `json:"has_pending_diff"`
-	PendingDiffPath string `json:"pending_diff_path,omitempty"`
-	LastAuthorization string `json:"last_authorization,omitempty"`
-	LastAuthorizationAt string `json:"last_authorization_at,omitempty"`
-	LastAuthorizationKind string `json:"last_authorization_kind,omitempty"`
-	LastAuthorizationNote string `json:"last_authorization_note,omitempty"`
-	LastAuthorizationTarget string `json:"last_authorization_target,omitempty"`
+	ExecutionMode           string   `json:"execution_mode,omitempty"`
+	AccessMode              string   `json:"access_mode,omitempty"`
+	ApprovalMode            string   `json:"approval_mode,omitempty"`
+	SandboxMode             string   `json:"sandbox_mode,omitempty"`
+	AllowAll                bool     `json:"allow_all"`
+	AllowedCategories       []string `json:"allowed_categories,omitempty"`
+	HasPendingDiff          bool     `json:"has_pending_diff"`
+	PendingDiffPath         string   `json:"pending_diff_path,omitempty"`
+	LastAuthorization       string   `json:"last_authorization,omitempty"`
+	LastAuthorizationAt     string   `json:"last_authorization_at,omitempty"`
+	LastAuthorizationKind   string   `json:"last_authorization_kind,omitempty"`
+	LastAuthorizationNote   string   `json:"last_authorization_note,omitempty"`
+	LastAuthorizationTarget string   `json:"last_authorization_target,omitempty"`
 }
 
 type PendingReview struct {
-	Path string `json:"path,omitempty"`
-	Diff string `json:"diff,omitempty"`
-	HasDiff bool `json:"has_diff"`
+	Path    string `json:"path,omitempty"`
+	Diff    string `json:"diff,omitempty"`
+	HasDiff bool   `json:"has_diff"`
 }
 
 type SkillInfo struct {
-	Name string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Source string `json:"source,omitempty"`
-	ArgumentHint string `json:"argument_hint,omitempty"`
-	Location string `json:"location,omitempty"`
-	BaseDir string `json:"base_dir,omitempty"`
-	AllowedTools []string `json:"allowed_tools,omitempty"`
-	Enabled bool `json:"enabled"`
-	Active bool `json:"active"`
-	DisableModelInvocation bool `json:"disable_model_invocation"`
-	UserInvocable bool `json:"user_invocable"`
-	UserInvocableDefined bool `json:"user_invocable_defined"`
+	Name                   string   `json:"name"`
+	Description            string   `json:"description,omitempty"`
+	Source                 string   `json:"source,omitempty"`
+	ArgumentHint           string   `json:"argument_hint,omitempty"`
+	Location               string   `json:"location,omitempty"`
+	BaseDir                string   `json:"base_dir,omitempty"`
+	AllowedTools           []string `json:"allowed_tools,omitempty"`
+	Enabled                bool     `json:"enabled"`
+	Active                 bool     `json:"active"`
+	DisableModelInvocation bool     `json:"disable_model_invocation"`
+	UserInvocable          bool     `json:"user_invocable"`
+	UserInvocableDefined   bool     `json:"user_invocable_defined"`
 }
 
 type InvokeSkillRequest struct {
-	Name string `json:"name"`
+	Name      string `json:"name"`
 	Arguments string `json:"arguments,omitempty"`
 }
 
 type InvokeSkillResult struct {
-	Name string `json:"name,omitempty"`
-	Invoked bool `json:"invoked"`
+	Name    string `json:"name,omitempty"`
+	Invoked bool   `json:"invoked"`
 }
 
 type PluginInfo struct {
-	Name string `json:"name"`
+	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-	Source string `json:"source,omitempty"`
-	Command string `json:"command,omitempty"`
-	Enabled bool `json:"enabled"`
+	Source      string `json:"source,omitempty"`
+	Command     string `json:"command,omitempty"`
+	Enabled     bool   `json:"enabled"`
 }
 
 type SetExtensionEnabledRequest struct {
-	Name string `json:"name"`
-	Enabled bool `json:"enabled"`
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
 }
 
 type BrowserStatus struct {
-	ServerName string `json:"server_name,omitempty"`
-	Configured bool `json:"configured"`
-	Enabled bool `json:"enabled"`
-	Loaded bool `json:"loaded"`
-	Tools int `json:"tools"`
-	LastError string `json:"last_error,omitempty"`
-	Command string `json:"command,omitempty"`
+	ServerName  string `json:"server_name,omitempty"`
+	Configured  bool   `json:"configured"`
+	Enabled     bool   `json:"enabled"`
+	Loaded      bool   `json:"loaded"`
+	Tools       int    `json:"tools"`
+	LastError   string `json:"last_error,omitempty"`
+	Command     string `json:"command,omitempty"`
 	InstallHint string `json:"install_hint,omitempty"`
 }
 
 type ContextStats struct {
 	MessageCount int64 `json:"message_count"`
-	Estimated int64 `json:"estimated"`
+	Estimated    int64 `json:"estimated"`
 }
 
 type PinDocumentRequest struct {
-	ID string `json:"id"`
-	Content string `json:"content"`
-	TokenBudget int64 `json:"token_budget"`
+	ID          string `json:"id"`
+	Content     string `json:"content"`
+	TokenBudget int64  `json:"token_budget"`
 }
 
 type ExportContextRequest struct {
@@ -615,33 +615,33 @@ type ExportContextRequest struct {
 }
 
 type UsageSummary struct {
-	Rounds int64 `json:"rounds"`
-	InputTokens int64 `json:"input_tokens,omitempty"`
-	ReplyTokens int64 `json:"reply_tokens,omitempty"`
-	CachedInputTokens int64 `json:"cached_input_tokens,omitempty"`
-	TotalTokens int64 `json:"total_tokens,omitempty"`
-	CostUSD float64 `json:"cost_usd,omitempty"`
-	UnknownUsageRounds int64 `json:"unknown_usage_rounds"`
-	UnknownCostRounds int64 `json:"unknown_cost_rounds"`
+	Rounds             int64   `json:"rounds"`
+	InputTokens        int64   `json:"input_tokens,omitempty"`
+	ReplyTokens        int64   `json:"reply_tokens,omitempty"`
+	CachedInputTokens  int64   `json:"cached_input_tokens,omitempty"`
+	TotalTokens        int64   `json:"total_tokens,omitempty"`
+	CostUSD            float64 `json:"cost_usd,omitempty"`
+	UnknownUsageRounds int64   `json:"unknown_usage_rounds"`
+	UnknownCostRounds  int64   `json:"unknown_cost_rounds"`
 }
 
 type CostItem struct {
-	Time string `json:"time,omitempty"`
-	Model string `json:"model,omitempty"`
-	InputTokens int64 `json:"input_tokens,omitempty"`
-	ReplyTokens int64 `json:"reply_tokens,omitempty"`
-	CachedInputTokens int64 `json:"cached_input_tokens,omitempty"`
-	TotalTokens int64 `json:"total_tokens,omitempty"`
-	CostUSD float64 `json:"cost_usd,omitempty"`
-	UsageKnown bool `json:"usage_known"`
-	CostKnown bool `json:"cost_known"`
+	Time              string  `json:"time,omitempty"`
+	Model             string  `json:"model,omitempty"`
+	InputTokens       int64   `json:"input_tokens,omitempty"`
+	ReplyTokens       int64   `json:"reply_tokens,omitempty"`
+	CachedInputTokens int64   `json:"cached_input_tokens,omitempty"`
+	TotalTokens       int64   `json:"total_tokens,omitempty"`
+	CostUSD           float64 `json:"cost_usd,omitempty"`
+	UsageKnown        bool    `json:"usage_known"`
+	CostKnown         bool    `json:"cost_known"`
 }
 
 type VersionItem struct {
-	ID string `json:"id"`
-	File string `json:"file,omitempty"`
+	ID        string `json:"id"`
+	File      string `json:"file,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
-	Summary string `json:"summary,omitempty"`
+	Summary   string `json:"summary,omitempty"`
 }
 
 type VersionIDRequest struct {
@@ -653,11 +653,11 @@ type VersionFileRequest struct {
 }
 
 type TodoItem struct {
-	ID string `json:"id,omitempty"`
-	Content string `json:"content,omitempty"`
-	Status string `json:"status,omitempty"`
-	Priority json.RawMessage `json:"priority,omitempty"`
-	UpdatedAt string `json:"updated_at,omitempty"`
+	ID        string          `json:"id,omitempty"`
+	Content   string          `json:"content,omitempty"`
+	Status    string          `json:"status,omitempty"`
+	Priority  json.RawMessage `json:"priority,omitempty"`
+	UpdatedAt string          `json:"updated_at,omitempty"`
 }
 
 type TaskIDRequest struct {
@@ -665,8 +665,8 @@ type TaskIDRequest struct {
 }
 
 type ModeSnapshot struct {
-	ExecutionMode string `json:"execution_mode,omitempty"`
-	SandboxMode string `json:"sandbox_mode,omitempty"`
+	ExecutionMode  string `json:"execution_mode,omitempty"`
+	SandboxMode    string `json:"sandbox_mode,omitempty"`
 	ReasoningLevel string `json:"reasoning_level,omitempty"`
 }
 
@@ -675,72 +675,77 @@ type SetModeRequest struct {
 }
 
 type ModelConfig struct {
-	Name string `json:"name"`
-	APIBase string `json:"api_base,omitempty"`
-	APIKeyMasked string `json:"api_key_masked,omitempty"`
-	Model string `json:"model,omitempty"`
-	Source string `json:"source,omitempty"`
-	Active bool `json:"active"`
-	SupportsReasoningEffort bool `json:"supports_reasoning_effort"`
-	ProviderID string `json:"provider_id,omitempty"`
-	Format string `json:"format,omitempty"`
-	PresetID string `json:"preset_id,omitempty"`
-	EditKind string `json:"edit_kind,omitempty"`
-	CanEdit bool `json:"can_edit"`
-	CanDelete bool `json:"can_delete"`
+	Name                    string `json:"name"`
+	APIBase                 string `json:"api_base,omitempty"`
+	APIKeyMasked            string `json:"api_key_masked,omitempty"`
+	Model                   string `json:"model,omitempty"`
+	Source                  string `json:"source,omitempty"`
+	Active                  bool   `json:"active"`
+	SupportsReasoningEffort bool   `json:"supports_reasoning_effort"`
+	SupportsVision          bool   `json:"supports_vision"`
+	SupportsTools           bool   `json:"supports_tools"`
+	ProviderID              string `json:"provider_id,omitempty"`
+	Format                  string `json:"format,omitempty"`
+	PresetID                string `json:"preset_id,omitempty"`
+	EditKind                string `json:"edit_kind,omitempty"`
+	CanEdit                 bool   `json:"can_edit"`
+	CanDelete               bool   `json:"can_delete"`
 }
 
 type ProviderEndpoint struct {
-	Plan string `json:"plan,omitempty"`
-	Format string `json:"format,omitempty"`
+	Plan    string `json:"plan,omitempty"`
+	Format  string `json:"format,omitempty"`
 	APIBase string `json:"api_base,omitempty"`
 }
 
 type ModelProviderOption struct {
-	ID string `json:"id"`
-	Name string `json:"name,omitempty"`
-	Website string `json:"website,omitempty"`
-	APIKeyEnv string `json:"api_key_env,omitempty"`
-	Endpoints []ProviderEndpoint `json:"endpoints,omitempty"`
-	DefaultModels []string `json:"default_models,omitempty"`
+	ID            string             `json:"id"`
+	Name          string             `json:"name,omitempty"`
+	Website       string             `json:"website,omitempty"`
+	APIKeyEnv     string             `json:"api_key_env,omitempty"`
+	Endpoints     []ProviderEndpoint `json:"endpoints,omitempty"`
+	DefaultModels []string           `json:"default_models,omitempty"`
 }
 
 type ModelPresetOption struct {
-	ID string `json:"id"`
-	Name string `json:"name,omitempty"`
-	ProviderID string `json:"provider_id,omitempty"`
-	ModelName string `json:"model_name,omitempty"`
-	Plan string `json:"plan,omitempty"`
-	Format string `json:"format,omitempty"`
-	ContextWindow int64 `json:"context_window"`
-	Tags []string `json:"tags,omitempty"`
-	Description string `json:"description,omitempty"`
-	SupportsReasoningEffort bool `json:"supports_reasoning_effort"`
+	ID                      string   `json:"id"`
+	Name                    string   `json:"name,omitempty"`
+	ProviderID              string   `json:"provider_id,omitempty"`
+	ModelName               string   `json:"model_name,omitempty"`
+	Plan                    string   `json:"plan,omitempty"`
+	Format                  string   `json:"format,omitempty"`
+	ContextWindow           int64    `json:"context_window"`
+	Tags                    []string `json:"tags,omitempty"`
+	Description             string   `json:"description,omitempty"`
+	SupportsReasoningEffort bool     `json:"supports_reasoning_effort"`
 }
 
 type ModelCatalogState struct {
-	Providers []ModelProviderOption `json:"providers,omitempty"`
-	Presets []ModelPresetOption `json:"presets,omitempty"`
-	AllowCustomProvider bool `json:"allow_custom_provider"`
-	AllowCustomModel bool `json:"allow_custom_model"`
+	Providers           []ModelProviderOption `json:"providers,omitempty"`
+	Presets             []ModelPresetOption   `json:"presets,omitempty"`
+	AllowCustomProvider bool                  `json:"allow_custom_provider"`
+	AllowCustomModel    bool                  `json:"allow_custom_model"`
 }
 
 type UpsertModelRequest struct {
-	Name string `json:"name"`
+	Name    string `json:"name"`
 	APIBase string `json:"api_base,omitempty"`
-	APIKey string `json:"api_key,omitempty"`
-	Model string `json:"model"`
+	APIKey  string `json:"api_key,omitempty"`
+	Model   string `json:"model"`
 }
 
 type ModelSaveRequest struct {
-	OriginalName string `json:"original_name,omitempty"`
-	Mode string `json:"mode"`
-	ProviderID string `json:"provider_id,omitempty"`
-	PresetID string `json:"preset_id,omitempty"`
-	Name string `json:"name,omitempty"`
-	APIKey string `json:"api_key,omitempty"`
-	APIBase string `json:"api_base,omitempty"`
-	Model string `json:"model,omitempty"`
+	OriginalName            string `json:"original_name,omitempty"`
+	Mode                    string `json:"mode"`
+	ProviderID              string `json:"provider_id,omitempty"`
+	PresetID                string `json:"preset_id,omitempty"`
+	Name                    string `json:"name,omitempty"`
+	APIKey                  string `json:"api_key,omitempty"`
+	APIBase                 string `json:"api_base,omitempty"`
+	Model                   string `json:"model,omitempty"`
+	SupportsReasoningEffort *bool  `json:"supports_reasoning_effort,omitempty"`
+	SupportsVision          *bool  `json:"supports_vision,omitempty"`
+	SupportsTools           *bool  `json:"supports_tools,omitempty"`
 }
 
 type ModelNameRequest struct {
@@ -749,22 +754,22 @@ type ModelNameRequest struct {
 
 type ModelContextRequest struct {
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
+	SessionID     string `json:"session_id,omitempty"`
 }
 
 type ModelContextSnapshot struct {
-	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	GlobalDefaultName string `json:"global_default_name,omitempty"`
+	WorkspaceRoot      string `json:"workspace_root,omitempty"`
+	SessionID          string `json:"session_id,omitempty"`
+	GlobalDefaultName  string `json:"global_default_name,omitempty"`
 	WorkspaceModelName string `json:"workspace_model_name,omitempty"`
-	SessionModelName string `json:"session_model_name,omitempty"`
-	ResolvedModelName string `json:"resolved_model_name,omitempty"`
-	ResolvedScope string `json:"resolved_scope,omitempty"`
+	SessionModelName   string `json:"session_model_name,omitempty"`
+	ResolvedModelName  string `json:"resolved_model_name,omitempty"`
+	ResolvedScope      string `json:"resolved_scope,omitempty"`
 }
 
 type SetWorkspaceModelRequest struct {
 	WorkspaceRoot string `json:"workspace_root"`
-	ModelName string `json:"model_name"`
+	ModelName     string `json:"model_name"`
 }
 
 type ClearWorkspaceModelRequest struct {
@@ -781,19 +786,19 @@ type ClearSessionModelRequest struct {
 }
 
 type RemoteWorkspace struct {
-	ID string `json:"id"`
-	Kind string `json:"kind,omitempty"`
-	Platform string `json:"platform,omitempty"`
-	RepoURL string `json:"repo_url,omitempty"`
-	Owner string `json:"owner,omitempty"`
-	Repo string `json:"repo,omitempty"`
+	ID            string `json:"id"`
+	Kind          string `json:"kind,omitempty"`
+	Platform      string `json:"platform,omitempty"`
+	RepoURL       string `json:"repo_url,omitempty"`
+	Owner         string `json:"owner,omitempty"`
+	Repo          string `json:"repo,omitempty"`
 	DefaultBranch string `json:"default_branch,omitempty"`
-	Branch string `json:"branch,omitempty"`
-	Account string `json:"account,omitempty"`
-	LocalPath string `json:"local_path,omitempty"`
-	Active bool `json:"active"`
-	Exists bool `json:"exists"`
-	LastUsedAt string `json:"last_used_at,omitempty"`
+	Branch        string `json:"branch,omitempty"`
+	Account       string `json:"account,omitempty"`
+	LocalPath     string `json:"local_path,omitempty"`
+	Active        bool   `json:"active"`
+	Exists        bool   `json:"exists"`
+	LastUsedAt    string `json:"last_used_at,omitempty"`
 }
 
 type RemoteWorkspaceRef struct {
@@ -801,17 +806,17 @@ type RemoteWorkspaceRef struct {
 }
 
 type RemoteRepoState struct {
-	Mode string `json:"mode,omitempty"`
-	Platform string `json:"platform,omitempty"`
-	RepoURL string `json:"repo_url,omitempty"`
-	Owner string `json:"owner,omitempty"`
-	Repo string `json:"repo,omitempty"`
+	Mode          string `json:"mode,omitempty"`
+	Platform      string `json:"platform,omitempty"`
+	RepoURL       string `json:"repo_url,omitempty"`
+	Owner         string `json:"owner,omitempty"`
+	Repo          string `json:"repo,omitempty"`
 	DefaultBranch string `json:"default_branch,omitempty"`
 	WorkingBranch string `json:"working_branch,omitempty"`
-	LocalPath string `json:"local_path,omitempty"`
-	AccountLogin string `json:"account_login,omitempty"`
-	AccountName string `json:"account_name,omitempty"`
-	UpdatedAt string `json:"updated_at,omitempty"`
+	LocalPath     string `json:"local_path,omitempty"`
+	AccountLogin  string `json:"account_login,omitempty"`
+	AccountName   string `json:"account_name,omitempty"`
+	UpdatedAt     string `json:"updated_at,omitempty"`
 }
 
 type GitStatusRequest struct {
@@ -819,13 +824,13 @@ type GitStatusRequest struct {
 }
 
 type GitChange struct {
-	Path string `json:"path"`
+	Path  string `json:"path"`
 	State string `json:"state"`
 }
 
 type GitDiffRequest struct {
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	Path string `json:"path,omitempty"`
+	Path          string `json:"path,omitempty"`
 }
 
 type GitTextResult struct {
@@ -837,40 +842,40 @@ type GitBranchesRequest struct {
 }
 
 type GitBranchesResult struct {
-	Current string `json:"current,omitempty"`
+	Current  string   `json:"current,omitempty"`
 	Branches []string `json:"branches,omitempty"`
 }
 
 type GitLogRequest struct {
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	Limit int64 `json:"limit"`
-	Oneline bool `json:"oneline"`
-	Graph bool `json:"graph"`
-	All bool `json:"all"`
-	Path string `json:"path,omitempty"`
+	Limit         int64  `json:"limit"`
+	Oneline       bool   `json:"oneline"`
+	Graph         bool   `json:"graph"`
+	All           bool   `json:"all"`
+	Path          string `json:"path,omitempty"`
 }
 
 type GitLogEntry struct {
-	Hash string `json:"hash,omitempty"`
+	Hash    string `json:"hash,omitempty"`
 	Message string `json:"message,omitempty"`
 }
 
 type GitLogResult struct {
-	Branch string `json:"branch,omitempty"`
+	Branch  string        `json:"branch,omitempty"`
 	Entries []GitLogEntry `json:"entries,omitempty"`
-	Text string `json:"text"`
+	Text    string        `json:"text"`
 }
 
 type GitShowRequest struct {
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	Revision string `json:"revision,omitempty"`
-	Path string `json:"path,omitempty"`
+	Revision      string `json:"revision,omitempty"`
+	Path          string `json:"path,omitempty"`
 }
 
 type GitShowResult struct {
-	Branch string `json:"branch,omitempty"`
+	Branch   string `json:"branch,omitempty"`
 	Revision string `json:"revision,omitempty"`
-	Text string `json:"text"`
+	Text     string `json:"text"`
 }
 
 type PredictNextUserMessageRequest struct {
@@ -878,20 +883,20 @@ type PredictNextUserMessageRequest struct {
 }
 
 type PlanSnapshot struct {
-	HasPlan bool `json:"has_plan"`
-	Content string `json:"content,omitempty"`
+	HasPlan          bool   `json:"has_plan"`
+	Content          string `json:"content,omitempty"`
 	WorkspaceCurrent string `json:"workspace_current,omitempty"`
-	UserLatest string `json:"user_latest,omitempty"`
-	UserSnapshot string `json:"user_snapshot,omitempty"`
-	UpdatedAt string `json:"updated_at,omitempty"`
+	UserLatest       string `json:"user_latest,omitempty"`
+	UserSnapshot     string `json:"user_snapshot,omitempty"`
+	UpdatedAt        string `json:"updated_at,omitempty"`
 }
 
 type MemoryDocument struct {
-	Scope string `json:"scope,omitempty"`
-	Path string `json:"path,omitempty"`
-	Exists bool `json:"exists"`
-	Content string `json:"content,omitempty"`
-	Summary string `json:"summary,omitempty"`
+	Scope     string `json:"scope,omitempty"`
+	Path      string `json:"path,omitempty"`
+	Exists    bool   `json:"exists"`
+	Content   string `json:"content,omitempty"`
+	Summary   string `json:"summary,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
@@ -900,44 +905,44 @@ type MemorySnapshot struct {
 }
 
 type SaveMemoryRequest struct {
-	Scope string `json:"scope,omitempty"`
+	Scope   string `json:"scope,omitempty"`
 	Content string `json:"content"`
 }
 
 type MemoryRecord struct {
-	ID string `json:"id"`
-	Scope string `json:"scope"`
-	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	Kind string `json:"kind,omitempty"`
-	Content string `json:"content"`
-	Tags []string `json:"tags,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
-	UpdatedAt string `json:"updated_at,omitempty"`
-	Source string `json:"source,omitempty"`
+	ID            string   `json:"id"`
+	Scope         string   `json:"scope"`
+	WorkspaceRoot string   `json:"workspace_root,omitempty"`
+	SessionID     string   `json:"session_id,omitempty"`
+	Kind          string   `json:"kind,omitempty"`
+	Content       string   `json:"content"`
+	Tags          []string `json:"tags,omitempty"`
+	CreatedAt     string   `json:"created_at,omitempty"`
+	UpdatedAt     string   `json:"updated_at,omitempty"`
+	Source        string   `json:"source,omitempty"`
 }
 
 type AddMemoryRecordRequest struct {
-	Scope string `json:"scope"`
-	Kind string `json:"kind,omitempty"`
-	Content string `json:"content"`
-	Tags []string `json:"tags,omitempty"`
-	Source string `json:"source,omitempty"`
-	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
+	Scope         string   `json:"scope"`
+	Kind          string   `json:"kind,omitempty"`
+	Content       string   `json:"content"`
+	Tags          []string `json:"tags,omitempty"`
+	Source        string   `json:"source,omitempty"`
+	WorkspaceRoot string   `json:"workspace_root,omitempty"`
+	SessionID     string   `json:"session_id,omitempty"`
 }
 
 type ListMemoryRecordsRequest struct {
-	Scope string `json:"scope,omitempty"`
-	Kind string `json:"kind,omitempty"`
-	Tags []string `json:"tags,omitempty"`
+	Scope string   `json:"scope,omitempty"`
+	Kind  string   `json:"kind,omitempty"`
+	Tags  []string `json:"tags,omitempty"`
 }
 
 type SearchMemoryRecordsRequest struct {
 	Keywords []string `json:"keywords,omitempty"`
-	Tags []string `json:"tags,omitempty"`
-	Scope string `json:"scope,omitempty"`
-	Kind string `json:"kind,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
+	Scope    string   `json:"scope,omitempty"`
+	Kind     string   `json:"kind,omitempty"`
 }
 
 type DeleteMemoryRecordRequest struct {
@@ -951,4 +956,3 @@ type RoleRef struct {
 type SessionRef struct {
 	SessionID string `json:"session_id,omitempty"`
 }
-

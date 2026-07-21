@@ -5,7 +5,6 @@ package ai
 // 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
 // 商业使用请联系版权人获得商业授权。
 
-
 import (
 	"strings"
 
@@ -68,10 +67,10 @@ func DetectThinkingCapability(modelName string) ThinkingCapability {
 }
 
 // ShouldEnableThinkingForModel 决定是否为指定模型启用思考模式
-// 优先级: 模型配置 > 全局配置 > 字典 > 动态检测
+// 优先级: 模型配置 > 全局配置 > 模型目录 > 动态检测
 func ShouldEnableThinkingForModel(modelName string, cfg *config.Config) bool {
 	if cfg == nil {
-		// 无配置时，仅检查字典
+		// 无配置时，仅检查模型目录
 		return SupportsThinking(modelName)
 	}
 
@@ -95,12 +94,12 @@ func ShouldEnableThinkingForModel(modelName string, cfg *config.Config) bool {
 		}
 	}
 
-	// 3. 检查字典
-	if info, ok := GetModelInfo(modelName); ok {
+	// 3. 检查模型目录（Rust 内核推送）
+	if info, ok := GetBuiltinModelInfo(modelName); ok {
 		return info.Thinking > ThinkingNone
 	}
 
-	// 4. 动态检测
+	// 4. 动态检测（catalog 未覆盖的自定义模型，按模型名启发式推断）
 	if cfg.Thinking.AutoDetect {
 		return DetectThinkingCapability(modelName) > ThinkingNone
 	}
@@ -134,15 +133,15 @@ func GetReasoningEffortLevel(modelName string, cfg *config.Config) string {
 // GetModelCapabilitySummary 获取模型能力的完整摘要
 // 用于调试和日志记录
 func GetModelCapabilitySummary(modelName string, cfg *config.Config) map[string]interface{} {
-	info, inDict := GetModelInfo(modelName)
+	info, inCatalog := GetBuiltinModelInfo(modelName)
 	detected := DetectThinkingCapability(modelName)
 	enabled := ShouldEnableThinkingForModel(modelName, cfg)
 	reasoningLevel := GetReasoningEffortLevel(modelName, cfg)
 
 	return map[string]interface{}{
 		"model":                     modelName,
-		"in_dict":                   inDict,
-		"dict_capability":           info.Thinking.String(),
+		"in_catalog":                inCatalog,
+		"catalog_capability":        info.Thinking.String(),
 		"detected_capability":       detected.String(),
 		"thinking_enabled":          enabled,
 		"supports_reasoning_effort": info.SupportsReasoningEffort,
