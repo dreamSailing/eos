@@ -1055,7 +1055,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					OptionIndex: msg.OptionIndex,
 					Text:        msg.Text,
 				}); err != nil {
-					m.appendSystem(fmt.Sprintf("审批响应失败: %v", err), "error")
+					m.appendSystem(fmt.Sprintf(i18n.T("toast.approval_failed", m.state.Language), err), "error")
 				}
 			}
 			// 审批响应后 turn 恢复执行（工具重跑或继续生成），
@@ -1076,9 +1076,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			id = strings.TrimSpace(id)
 			if msg.Decision == "confirm" && id != "" {
 				if err := m.adapter.KillTask(context.Background(), id); err != nil {
-					m.appendSystem(fmt.Sprintf("终止后台任务失败: %v", err), "error")
+					m.appendSystem(fmt.Sprintf(i18n.T("toast.stop_task_failed", m.state.Language), err), "error")
 				} else {
-					m.appendSystem(fmt.Sprintf("已终止后台任务: %s", id), "warning")
+					m.appendSystem(fmt.Sprintf(i18n.T("toast.task_stopped", m.state.Language), id), "warning")
 				}
 			}
 			m.confirmView = nil
@@ -1101,11 +1101,11 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			if err := m.addTrustedWorkspace(path); err != nil {
-				m.appendSystem(fmt.Sprintf("信任工作区失败: %v", err), "error")
+				m.appendSystem(fmt.Sprintf(i18n.T("toast.trust_failed", m.state.Language), err), "error")
 				return m, nil
 			}
 			if err := m.adapter.TrustWorkspace(context.Background(), path); err != nil {
-				m.appendSystem(fmt.Sprintf("信任工作区已保存，但同步到核心失败: %v", err), "warning")
+				m.appendSystem(fmt.Sprintf(i18n.T("toast.trust_saved_sync_failed", m.state.Language), err), "warning")
 			}
 			m.trustPendingPath = ""
 			m.trustPendingAction = ""
@@ -1151,7 +1151,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			raw := strings.TrimSpace(msg.Text)
-			p, err := resolveWorkspaceInputPath(raw)
+			p, err := resolveWorkspaceInputPath(raw, m.state.Language)
 			if err != nil {
 				m.appendSystem(err.Error(), "warning")
 				return m, nil
@@ -1221,7 +1221,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				OptionIndex: msg.OptionIndex,
 				Text:        msg.Text,
 			}); err != nil {
-				m.appendSystem(fmt.Sprintf("审批响应失败: %v", err), "error")
+				m.appendSystem(fmt.Sprintf(i18n.T("toast.approval_failed", m.state.Language), err), "error")
 			}
 		}
 		// 审批响应后 turn 恢复执行，保持“处理中”直到 turn.completed。
@@ -1337,7 +1337,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case WorkspaceReloadDoneMsg:
 		if msg.Err != nil {
-			m.appendSystem(fmt.Sprintf("工作区切换后重载失败: %v", msg.Err), "error")
+			m.appendSystem(fmt.Sprintf(i18n.T("toast.workspace_reload_failed", m.state.Language), msg.Err), "error")
 		} else {
 			m.appendSystem(i18n.T("workspace.switched_reloaded", m.state.Language), "success")
 		}
@@ -1347,7 +1347,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case MCPReloadDoneMsg:
 		if msg.Err != nil {
-			m.appendSystem(fmt.Sprintf("MCP 重载失败: %v", msg.Err), "error")
+			m.appendSystem(fmt.Sprintf(i18n.T("toast.mcp_reload_failed", m.state.Language), msg.Err), "error")
 		} else {
 			m.appendSystem(i18n.T("mcp.reloaded", m.state.Language), "success")
 		}
@@ -1356,7 +1356,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case LSPReloadDoneMsg:
 		if msg.Err != nil {
-			m.appendSystem(fmt.Sprintf("LSP 重载失败: %v", msg.Err), "error")
+			m.appendSystem(fmt.Sprintf(i18n.T("toast.lsp_reload_failed", m.state.Language), msg.Err), "error")
 		} else {
 			m.appendSystem(i18n.T("lsp.reloaded", m.state.Language), "success")
 		}
@@ -1705,7 +1705,7 @@ func (m *AppModel) initEOSMD() tea.Cmd {
 	if root == "" {
 		wd, err := os.Getwd()
 		if err != nil {
-			m.appendSystem(fmt.Sprintf("初始化失败: %v", err), "error")
+			m.appendSystem(fmt.Sprintf(i18n.T("toast.init_failed", m.state.Language), err), "error")
 			return nil
 		}
 		root = wd
@@ -1789,7 +1789,7 @@ go build -o eos
 	content := mergeEOS(existing)
 
 	if err := os.WriteFile(dst, []byte(content), 0o644); err != nil {
-		m.appendSystem(fmt.Sprintf("EOS.md 写入失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.eosmd_write_failed", m.state.Language), err), "error")
 		return nil
 	}
 	_ = m.adapter.PinContextDocument(context.Background(), "EOS.md", content, 20000)
@@ -1805,7 +1805,7 @@ func (m *AppModel) tryInvokeSkillSlash(skillName string, args []string) bool {
 	arguments := strings.TrimSpace(strings.Join(args, " "))
 	invoked, err := m.adapter.InvokeSkill(context.Background(), skillName, arguments)
 	if err != nil {
-		m.appendSystem(fmt.Sprintf("Skill 启用失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.skill_enable_failed", m.state.Language), err), "error")
 		return true
 	}
 	if !invoked {
@@ -1920,7 +1920,7 @@ func (m *AppModel) handleWorkspaceUse(rawPath string) tea.Cmd {
 	if rawPath == "" {
 		return nil
 	}
-	path, err := resolveWorkspaceInputPath(rawPath)
+	path, err := resolveWorkspaceInputPath(rawPath, m.state.Language)
 	if err != nil {
 		m.appendSystem(err.Error(), "error")
 		return nil
@@ -1941,7 +1941,7 @@ func (m *AppModel) handleWorkspaceUse(rawPath string) tea.Cmd {
 
 func (m *AppModel) switchWorkspaceTrusted(path string) tea.Cmd {
 	if err := m.adapter.UseWorkspace(context.Background(), path); err != nil {
-		m.appendSystem(fmt.Sprintf("工作区切换失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.workspace_switch_failed", m.state.Language), err), "error")
 		return nil
 	}
 	_ = os.Chdir(path)
@@ -2073,15 +2073,15 @@ func (m *AppModel) addTrustedWorkspace(path string) error {
 	return config.TrustWorkspaceLocal(path)
 }
 
-func resolveWorkspaceInputPath(raw string) (string, error) {
+func resolveWorkspaceInputPath(raw string, lang string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", fmt.Errorf("请输入工作区路径")
+		return "", fmt.Errorf("%s", i18n.T("error.workspace_path_required", lang))
 	}
 	if raw == "~" || strings.HasPrefix(raw, "~"+string(os.PathSeparator)) || strings.HasPrefix(raw, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil || strings.TrimSpace(home) == "" {
-			return "", fmt.Errorf("无法解析 ~")
+			return "", fmt.Errorf("%s", i18n.T("error.tilde_unresolvable", lang))
 		}
 		rest := strings.TrimPrefix(raw, "~")
 		rest = strings.TrimPrefix(rest, "/")
@@ -2090,7 +2090,7 @@ func resolveWorkspaceInputPath(raw string) (string, error) {
 	}
 	abs, err := filepath.Abs(raw)
 	if err != nil {
-		return "", fmt.Errorf("路径解析失败: %v", err)
+		return "", fmt.Errorf(i18n.T("error.path_resolve_failed", lang), err)
 	}
 	return config.NormalizeWorkspacePath(abs), nil
 }
@@ -2742,7 +2742,7 @@ func (m *AppModel) savePlanHistoryEntryToDir(idx int, rawDir string) (string, er
 	if !ok {
 		return "", fmt.Errorf("%s", i18n.T("plan.download.unavailable", m.state.Language))
 	}
-	dir, err := resolveWorkspaceInputPath(rawDir)
+	dir, err := resolveWorkspaceInputPath(rawDir, m.state.Language)
 	if err != nil {
 		return "", err
 	}
@@ -3448,7 +3448,7 @@ func (m *AppModel) handleMCPEdit(msg panels.MCPEditMsg) {
 	var entry *config.MCPEntry
 	entries, err := m.adapter.MCPServers(context.Background())
 	if err != nil {
-		m.appendSystem(fmt.Sprintf("加载 MCP 配置失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.mcp_load_failed", m.state.Language), err), "error")
 		return
 	}
 	for _, e := range entries {
@@ -3464,7 +3464,7 @@ func (m *AppModel) handleMCPEdit(msg panels.MCPEditMsg) {
 	}
 	b, err := json.MarshalIndent(entry, "", "  ")
 	if err != nil {
-		m.appendSystem(fmt.Sprintf("序列化 MCP 配置失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.mcp_serialize_failed", m.state.Language), err), "error")
 		return
 	}
 	m.activeView = "setup"
@@ -3608,7 +3608,7 @@ func (m *AppModel) handleRulesSave(msg panels.RulesSaveMsg) {
 		scope = "project"
 	}
 	if err := m.adapter.SaveRules(context.Background(), scope, msg.Content); err != nil {
-		m.appendSystem(fmt.Sprintf("Rules.md 保存失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.rules_save_failed", m.state.Language), err), "error")
 		return
 	}
 
@@ -3629,7 +3629,7 @@ func (m *AppModel) handleMemorySave(msg panels.MemorySaveMsg) {
 		scope = "project"
 	}
 	if err := m.adapter.SaveMemory(context.Background(), scope, msg.Content); err != nil {
-		m.appendSystem(fmt.Sprintf("Memory 保存失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.memory_save_failed", m.state.Language), err), "error")
 		return
 	}
 	m.appendSystem(i18n.T("memory.saved", m.state.Language), "success")
@@ -3641,7 +3641,7 @@ func (m *AppModel) handleMemoryRebuildIndex() {
 		return
 	}
 	if err := m.adapter.RebuildMemoryIndex(context.Background()); err != nil {
-		m.appendSystem(fmt.Sprintf("Memory 索引重建失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.memory_rebuild_failed", m.state.Language), err), "error")
 		return
 	}
 	m.appendSystem(i18n.T("memory.rebuilt", m.state.Language), "success")
@@ -3678,7 +3678,7 @@ func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 
 	entries, err := parseEntries(raw)
 	if err != nil {
-		m.appendSystem(fmt.Sprintf("JSON 解析失败: %v", err), "error")
+		m.appendSystem(fmt.Sprintf(i18n.T("toast.json_parse_failed", m.state.Language), err), "error")
 		return nil
 	}
 
@@ -3696,7 +3696,7 @@ func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 		// 处理重命名：先添加新名称，再删除旧名称
 		if msg.OriginalName != "" && entry.Name != msg.OriginalName {
 			if err := m.adapter.AddMCPEntries(context.Background(), []config.MCPEntry{entry}); err != nil {
-				m.appendSystem(fmt.Sprintf("新增（用于重命名）失败: %v", err), "error")
+				m.appendSystem(fmt.Sprintf(i18n.T("toast.create_for_rename_failed", m.state.Language), err), "error")
 				return nil
 			}
 			if err := m.adapter.DeleteMCPServer(context.Background(), msg.OriginalName); err != nil {
@@ -3714,7 +3714,7 @@ func (m *AppModel) handleMCPConfigSubmit(msg setup.MCPConfigSubmitMsg) tea.Cmd {
 	} else {
 		// 添加模式
 		if err := m.adapter.AddMCPEntries(context.Background(), entries); err != nil {
-			m.appendSystem(fmt.Sprintf("新增失败: %v", err), "error")
+			m.appendSystem(fmt.Sprintf(i18n.T("toast.create_failed", m.state.Language), err), "error")
 			return nil
 		}
 	}

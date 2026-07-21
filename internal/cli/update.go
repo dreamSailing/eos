@@ -11,64 +11,68 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dreamSailing/eos/internal/config"
+	"github.com/dreamSailing/eos/internal/i18n"
 	"github.com/dreamSailing/eos/internal/update"
 	"github.com/dreamSailing/eos/internal/version"
 	"github.com/spf13/cobra"
 )
 
 func newUpdateCmd() *cobra.Command {
+	cfg, _ := config.Load()
+	lang := cfg.Language
 	cmd := &cobra.Command{
 		Use:   "update",
-		Short: "检查并安装最新版本",
+		Short: i18n.T("update.short", lang),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Printf("当前版本: %s\n", version.AppVersion)
-			fmt.Println("正在检查更新...")
+			fmt.Printf(i18n.T("update.current_version", lang), version.AppVersion)
+			fmt.Println(i18n.T("update.checking", lang))
 
 			result, err := update.CheckLatest(context.Background())
 			if err != nil {
-				return fmt.Errorf("检查更新失败: %w", err)
+				return fmt.Errorf(i18n.T("update.check_failed", lang), err)
 			}
 
 			if !result.HasUpdate {
-				fmt.Printf("已是最新版本 (%s)\n", result.LatestVersion)
+				fmt.Printf(i18n.T("update.up_to_date", lang), result.LatestVersion)
 				return nil
 			}
 
-			fmt.Printf("发现新版本: %s\n", result.LatestVersion)
+			fmt.Printf(i18n.T("update.new_version", lang), result.LatestVersion)
 
 			if result.DownloadURL == "" {
-				fmt.Println("未找到适合当前平台的下载链接，请手动下载：")
+				fmt.Println(i18n.T("update.no_download_url", lang))
 				fmt.Printf("  %s\n", result.ReleaseURL)
 				return nil
 			}
 
-			return performSelfUpdate(result)
+			return performSelfUpdate(result, lang)
 		},
 	}
 	return cmd
 }
 
-func performSelfUpdate(result *update.CheckResult) error {
+func performSelfUpdate(result *update.CheckResult, lang string) error {
 	exePath, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("获取当前程序路径失败: %w", err)
+		return fmt.Errorf(i18n.T("update.get_exe_failed", lang), err)
 	}
 	exePath, err = filepath.EvalSymlinks(exePath)
 	if err != nil {
-		return fmt.Errorf("解析程序路径失败: %w", err)
+		return fmt.Errorf(i18n.T("update.eval_symlink_failed", lang), err)
 	}
 
 	tmpFile, err := os.CreateTemp(filepath.Dir(exePath), "eos-update-*.exe")
 	if err != nil {
-		return fmt.Errorf("创建临时文件失败: %w", err)
+		return fmt.Errorf(i18n.T("update.create_temp_failed", lang), err)
 	}
 	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath)
 
-	fmt.Printf("正在下载 %s ...\n", result.LatestVersion)
-	if err := downloadFile(tmpFile, result.DownloadURL); err != nil {
+	fmt.Printf(i18n.T("update.downloading", lang), result.LatestVersion)
+	if err := downloadFile(tmpFile, result.DownloadURL, lang); err != nil {
 		tmpFile.Close()
-		return fmt.Errorf("下载失败: %w", err)
+		return fmt.Errorf(i18n.T("update.download_failed", lang), err)
 	}
 	tmpFile.Close()
 
@@ -76,33 +80,33 @@ func performSelfUpdate(result *update.CheckResult) error {
 		backupPath := exePath + ".bak"
 		_ = os.Remove(backupPath)
 		if err := os.Rename(exePath, backupPath); err != nil {
-			return fmt.Errorf("备份当前版本失败: %w", err)
+			return fmt.Errorf(i18n.T("update.backup_failed", lang), err)
 		}
 		defer os.Remove(backupPath)
 
 		if err := os.Rename(tmpPath, exePath); err != nil {
 			os.Rename(backupPath, exePath)
-			return fmt.Errorf("替换程序失败: %w", err)
+			return fmt.Errorf(i18n.T("update.replace_failed", lang), err)
 		}
 	} else {
 		if err := os.Chmod(tmpPath, 0755); err != nil {
-			return fmt.Errorf("设置权限失败: %w", err)
+			return fmt.Errorf(i18n.T("update.chmod_failed", lang), err)
 		}
 		if err := os.Rename(tmpPath, exePath); err != nil {
-			return fmt.Errorf("替换程序失败: %w", err)
+			return fmt.Errorf(i18n.T("update.replace_failed", lang), err)
 		}
 	}
 
-	fmt.Printf("已成功更新到 %s\n", result.LatestVersion)
+	fmt.Printf(i18n.T("update.success", lang), result.LatestVersion)
 	if strings.TrimSpace(result.ReleaseNotes) != "" {
 		fmt.Println()
-		fmt.Println("更新内容:")
+		fmt.Println(i18n.T("update.release_notes", lang))
 		fmt.Println(result.ReleaseNotes)
 	}
 	return nil
 }
 
-func downloadFile(dst *os.File, url string) error {
+func downloadFile(dst *os.File, url string, lang string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -119,10 +123,10 @@ func downloadFile(dst *os.File, url string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("下载返回状态码 %d", resp.StatusCode)
+		return fmt.Errorf(i18n.T("update.bad_status", lang), resp.StatusCode)
 	}
 
-	progress := &progressWriter{total: resp.ContentLength}
+	progress := &progressWriter{total: resp.ContentLength, lang: lang}
 	_, err = io.Copy(dst, io.TeeReader(resp.Body, progress))
 	if err == nil {
 		fmt.Println()
@@ -134,6 +138,7 @@ type progressWriter struct {
 	total   int64
 	written int64
 	lastPct int
+	lang    string
 }
 
 func (p *progressWriter) Write(data []byte) (int, error) {
@@ -142,7 +147,7 @@ func (p *progressWriter) Write(data []byte) (int, error) {
 	if p.total > 0 {
 		pct := int(float64(p.written) / float64(p.total) * 100)
 		if pct != p.lastPct {
-			fmt.Printf("\r  下载进度: %d%% (%.1f MB / %.1f MB)", pct,
+			fmt.Printf(i18n.T("update.progress", p.lang), pct,
 				float64(p.written)/1024/1024, float64(p.total)/1024/1024)
 			p.lastPct = pct
 		}

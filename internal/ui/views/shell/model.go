@@ -99,7 +99,7 @@ func New(width, height int, s *styles.Styles, lang string) Model {
 	hintsModel.SetSize(width-2, 3)
 	hintsModel.SetStyle(s.Hints)
 
-	welcome := NewWelcomeCard(s)
+	welcome := NewWelcomeCard(s, lang)
 	welcome.SetSize(contentWidth+2, contentHeight)
 
 	return Model{
@@ -532,6 +532,9 @@ func (m *Model) BlurInput() {
 // SetLanguage 设置语言
 func (m *Model) SetLanguage(lang string) {
 	m.language = lang
+	if m.welcome != nil {
+		m.welcome.SetLanguage(lang)
+	}
 }
 
 // ShowSlashHints 显示斜杠命令提示（支持查询过滤）
@@ -546,7 +549,7 @@ func (m *Model) ShowSlashHints(query string) {
 	}
 
 	if len(slashHints) == 0 {
-		slashHints = append(slashHints, hints.Hint{Key: "(无匹配命令)", Desc: ""})
+		slashHints = append(slashHints, hints.Hint{Key: i18n.T("hint.no_command_match", m.language), Desc: ""})
 	}
 
 	m.hints.SetHints(slashHints)
@@ -594,9 +597,9 @@ func (m *Model) ShowPathHints(query string) {
 			}
 		}
 
-		desc := "文件"
+		desc := i18n.T("hint.label.file", m.language)
 		if e.IsDir() {
-			desc = "目录"
+			desc = i18n.T("hint.label.directory", m.language)
 			name += "/"
 		}
 
@@ -610,7 +613,7 @@ func (m *Model) ShowPathHints(query string) {
 	}
 
 	if len(pathHints) == 0 {
-		pathHints = append(pathHints, hints.Hint{Key: "(无匹配文件)", Desc: ""})
+		pathHints = append(pathHints, hints.Hint{Key: i18n.T("hint.no_file_match", m.language), Desc: ""})
 	}
 
 	m.hints.SetHints(pathHints)

@@ -143,7 +143,7 @@ func (m *AppModel) handleWorkspaceSlash(args []string) tea.Cmd {
 	}
 
 	rawPath := strings.TrimSpace(args[1])
-	path, err := resolveWorkspaceInputPath(rawPath)
+	path, err := resolveWorkspaceInputPath(rawPath, m.state.Language)
 	if err != nil {
 		m.appendSystem(err.Error(), "error")
 		return nil
