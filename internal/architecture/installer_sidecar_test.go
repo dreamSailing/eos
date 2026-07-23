@@ -14,8 +14,8 @@ func TestInstallerIncludesRustSidecarArtifacts(t *testing.T) {
 	}
 	content := strings.ReplaceAll(string(raw), "\r\n", "\n")
 	required := []string{
-		`Source: "pkg\coreapi\sidecar\binaries\x86_64-pc-windows-gnu\eos-core.exe"; DestDir: "{app}\core\x86_64-pc-windows-gnu";`,
-		`Source: "pkg\coreapi\sidecar\binaries\x86_64-pc-windows-gnu\manifest.json"; DestDir: "{app}\core\x86_64-pc-windows-gnu";`,
+		`Source: "pkg\coreapi\sidecar\core\x86_64-pc-windows-gnu\eos-core.exe"; DestDir: "{app}\core\x86_64-pc-windows-gnu";`,
+		`Source: "pkg\coreapi\sidecar\core\x86_64-pc-windows-gnu\manifest.json"; DestDir: "{app}\core\x86_64-pc-windows-gnu";`,
 	}
 	for _, line := range required {
 		if !strings.Contains(content, line) {

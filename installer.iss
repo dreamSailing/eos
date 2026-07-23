@@ -33,8 +33,8 @@ Name: "addtopath"; Description: "Add to PATH (enables 'eos' command in terminal)
 [Files]
 Source: "eos.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "eos.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "pkg\coreapi\sidecar\binaries\x86_64-pc-windows-gnu\eos-core.exe"; DestDir: "{app}\core\x86_64-pc-windows-gnu"; Flags: ignoreversion
-Source: "pkg\coreapi\sidecar\binaries\x86_64-pc-windows-gnu\manifest.json"; DestDir: "{app}\core\x86_64-pc-windows-gnu"; Flags: ignoreversion
+Source: "pkg\coreapi\sidecar\core\x86_64-pc-windows-gnu\eos-core.exe"; DestDir: "{app}\core\x86_64-pc-windows-gnu"; Flags: ignoreversion
+Source: "pkg\coreapi\sidecar\core\x86_64-pc-windows-gnu\manifest.json"; DestDir: "{app}\core\x86_64-pc-windows-gnu"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\EOS"; Filename: "{app}\eos.exe"; IconFilename: "{app}\eos.ico"

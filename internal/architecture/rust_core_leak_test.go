@@ -125,9 +125,9 @@ func TestNoSecretsOrPrivateKeysVendored(t *testing.T) {
 
 func TestVendoredManifestsAreNotDevelopmentPlaceholder(t *testing.T) {
 	root := moduleRoot(t)
-	binariesDir := filepath.Join(root, "pkg", "coreapi", "sidecar", "binaries")
+	binariesDir := filepath.Join(root, "pkg", "coreapi", "sidecar", "core")
 	if _, err := os.Stat(binariesDir); os.IsNotExist(err) {
-		t.Skip("no binaries directory found")
+		t.Skip("no core directory found")
 	}
 	var placeholderManifests []string
 	err := filepath.WalkDir(binariesDir, func(path string, d os.DirEntry, err error) error {
@@ -154,7 +154,7 @@ func TestVendoredManifestsAreNotDevelopmentPlaceholder(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("scan binaries directory: %v", err)
+		t.Fatalf("scan core directory: %v", err)
 	}
 	if len(placeholderManifests) > 0 {
 		releaseCheck := isReleaseArtifactCheck()
@@ -175,9 +175,9 @@ func TestVendoredManifestsAreNotDevelopmentPlaceholder(t *testing.T) {
 
 func TestVendoredManifestsCoverGeneratedCoreMethods(t *testing.T) {
 	root := moduleRoot(t)
-	binariesDir := filepath.Join(root, "pkg", "coreapi", "sidecar", "binaries")
+	binariesDir := filepath.Join(root, "pkg", "coreapi", "sidecar", "core")
 	if _, err := os.Stat(binariesDir); os.IsNotExist(err) {
-		t.Skip("no binaries directory found")
+		t.Skip("no core directory found")
 	}
 
 	required := generated.CoreMethods()
@@ -215,7 +215,7 @@ func TestVendoredManifestsCoverGeneratedCoreMethods(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("scan binaries directory: %v", err)
+		t.Fatalf("scan core directory: %v", err)
 	}
 	if checked == 0 {
 		t.Skip("no vendored manifests found")

@@ -155,14 +155,10 @@ func requireFile(path string) (string, error) {
 func defaultSearchRoots() []string {
 	var roots []string
 	if exe, err := os.Executable(); err == nil && strings.TrimSpace(exe) != "" {
-		exeDir := filepath.Dir(exe)
-		roots = append(roots,
-			filepath.Join(exeDir, "core"),
-			filepath.Join(exeDir, "eos-core"),
-		)
+		roots = append(roots, filepath.Join(filepath.Dir(exe), "core"))
 	}
 	if _, file, _, ok := runtime.Caller(0); ok {
-		roots = append(roots, filepath.Join(filepath.Dir(file), "binaries"))
+		roots = append(roots, filepath.Join(filepath.Dir(file), "core"))
 	}
 	return roots
 }
