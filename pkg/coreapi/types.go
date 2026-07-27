@@ -502,6 +502,51 @@ type SetSandboxPolicyRequest struct {
 	Policy    sandbox.Policy `json:"policy"`
 }
 
+// DeriveSandboxPolicyRequest 是 sandbox/derive_policy 的请求：壳层只传 mode +
+// workspace_root，内核按单一真相源派生完整 Policy（含 allow_network 等
+// mode-scoped 默认值）。壳层不再手组装 Policy（AGENTS.md §3）。
+type DeriveSandboxPolicyRequest struct {
+	Mode          string `json:"mode"`
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
+}
+
+// EnterFullAccessRequest 是 permission/enter_full_access 的请求：壳层只在用户
+// 显式触发 --dangerously-skip-permissions 等价开关时调用。内核原子地把双轴
+// （approval=Never + sandbox=DangerFullAccess）一起推进。
+type EnterFullAccessRequest struct {
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
+}
+
+// ApprovalPreviewRequest 是 approval/preview 的请求：壳层（或前端）传入工具
+// 调用的 kind + input，内核返回风险分类（level/decision/tags/candidates/reason）。
+// Input 是 opaque JSON，形状由 kind 决定（command/patch/path）。
+type ApprovalPreviewRequest struct {
+	Kind     string         `json:"kind"`
+	ToolName string         `json:"tool_name,omitempty"`
+	Subject  string         `json:"subject,omitempty"`
+	Input    map[string]any `json:"input,omitempty"`
+}
+
+// ApprovalPreviewCandidate 是 ApprovalPreviewResponse.Candidates 的单项。
+type ApprovalPreviewCandidate struct {
+	Subject string   `json:"subject"`
+	Level   string   `json:"level"`
+	Tags    []string `json:"tags,omitempty"`
+	Reason  string   `json:"reason,omitempty"`
+}
+
+// ApprovalPreviewResponse 是 approval/preview 的响应：内核的风险分类结果。
+// 壳层只渲染这些字段，不再编造审批卡片文案（AGENTS.md §3）。
+type ApprovalPreviewResponse struct {
+	Kind             string                    `json:"kind"`
+	Level            string                    `json:"level"`
+	Decision         string                    `json:"decision"`
+	RequiresApproval bool                      `json:"requires_approval"`
+	Tags             []string                  `json:"tags,omitempty"`
+	Candidates       []ApprovalPreviewCandidate `json:"candidates,omitempty"`
+	Reason           string                    `json:"reason,omitempty"`
+}
+
 type TurnRef struct {
 	SessionID string `json:"session_id"`
 	TurnID    string `json:"turn_id"`

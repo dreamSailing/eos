@@ -102,15 +102,9 @@ func providerConfigFromEndpoints(p *coreapi.ModelProviderOption) *ProviderConfig
 		}
 	}
 
-	// Fallback: if no explicit default, use first available base
-	if cfg.DefaultAPIBase == "" {
-		for _, ep := range p.Endpoints {
-			if base := strings.TrimSpace(ep.APIBase); base != "" {
-				cfg.DefaultAPIBase = base
-				break
-			}
-		}
-	}
+	// 不再为 DefaultAPIBase 做兜底：内核若没显式给标准 openai_chat/responses endpoint，
+	// DefaultAPIBase 保持空串，让缺失暴露出来（与 models.go「不留 fallback 兜底」原则一致）。
+	// 唯一消费方是 setup 向导的 base 预填字段，空值只是表单留空，用户可自行填入，不会掩盖问题。
 
 	// Derive boolean flags from endpoint presence
 	if cfg.CodePlanAPIBase != "" {

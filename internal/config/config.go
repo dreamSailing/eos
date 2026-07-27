@@ -376,6 +376,8 @@ func DefaultLogDir() string {
 }
 
 func ConfiguredLogDir() string {
+	// Load() 返回 (Config, 路径)，无 error——这里的 _ 丢弃的是未使用的配置文件路径，
+	// 不是被吞掉的错误（AGENTS.md L108 针对 `_ = err`）。命名以避免歧义。
 	cfg, _ := Load()
 	return ResolveLogDir(cfg.LogDir)
 }

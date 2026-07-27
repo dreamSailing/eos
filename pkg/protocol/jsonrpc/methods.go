@@ -30,6 +30,7 @@ const (
 	MethodSessionSetMeta             = "session/set_meta"
 	MethodSessionMessagesLoad        = "session/messages/load"
 	MethodSessionMessagesSave        = "session/messages/save"
+	MethodSessionSearch              = "session/search"
 	MethodMCPList                    = "mcp/list"
 	MethodMCPUpsert                  = "mcp/upsert"
 	MethodMCPImportJSON              = "mcp/import_json"
@@ -51,6 +52,7 @@ const (
 	MethodPermissionClearReview      = "permission/clear_pending_review"
 	MethodPermissionAccessModeSet    = "permission/access_mode/set"
 	MethodPermissionApprovalModeSet  = "permission/approval_mode/set"
+	MethodPermissionEnterFullAccess  = "permission/enter_full_access"
 	MethodExtensionsSkillsList       = "extensions/skills/list"
 	MethodExtensionsSkillsReload     = "extensions/skills/reload"
 	MethodExtensionsSkillSetEnabled  = "extensions/skill/set_enabled"
@@ -84,6 +86,7 @@ const (
 	MethodRuntimeReasoningLevelSet   = "runtime/reasoning_level/set"
 	MethodModelList                  = "model/list"
 	MethodModelCatalog               = "model/catalog"
+	MethodModelBundledMcp            = "model/bundled_mcp"
 	MethodModelUpsert                = "model/upsert"
 	MethodModelSave                  = "model/save"
 	MethodModelDelete                = "model/delete"
@@ -133,10 +136,12 @@ const (
 	MethodToolTraces                 = "tool/traces"
 	MethodToolStats                  = "tool/stats"
 	MethodApprovalRespond            = "approval/respond"
+	MethodApprovalPreview            = "approval/preview"
 	MethodInquiryRespond             = "inquiry/respond"
 	MethodStateSnapshot              = "state/snapshot"
 	MethodSandboxPolicy              = "sandbox/policy"
 	MethodSandboxSetPolicy           = "sandbox/set_policy"
+	MethodSandboxDerivePolicy        = "sandbox/derive_policy"
 	MethodSandboxBackend             = "sandbox/backend_status"
 	MethodConfigReload               = "config/reload"
 	MethodAgentControl               = "agent/control"
@@ -169,6 +174,9 @@ func AllCoreMethods() []string {
 		MethodWorkspaceWorktreeList,
 		MethodWorkspaceWorktreeCreate,
 		MethodWorkspaceWorktreeRemove,
+		MethodWorkspaceChanges,
+		MethodWorkspaceRollbackBuild,
+		MethodWorkspaceRollbackApply,
 		MethodSessionCreate,
 		MethodSessionResume,
 		MethodSessionList,
@@ -179,6 +187,7 @@ func AllCoreMethods() []string {
 		MethodSessionSetMeta,
 		MethodSessionMessagesLoad,
 		MethodSessionMessagesSave,
+		MethodSessionSearch,
 		MethodMCPList,
 		MethodMCPUpsert,
 		MethodMCPImportJSON,
@@ -200,6 +209,7 @@ func AllCoreMethods() []string {
 		MethodPermissionClearReview,
 		MethodPermissionAccessModeSet,
 		MethodPermissionApprovalModeSet,
+		MethodPermissionEnterFullAccess,
 		MethodExtensionsSkillsList,
 		MethodExtensionsSkillsReload,
 		MethodExtensionsSkillSetEnabled,
@@ -233,6 +243,7 @@ func AllCoreMethods() []string {
 		MethodRuntimeReasoningLevelSet,
 		MethodModelList,
 		MethodModelCatalog,
+		MethodModelBundledMcp,
 		MethodModelUpsert,
 		MethodModelSave,
 		MethodModelDelete,
@@ -282,10 +293,12 @@ func AllCoreMethods() []string {
 		MethodToolTraces,
 		MethodToolStats,
 		MethodApprovalRespond,
+		MethodApprovalPreview,
 		MethodInquiryRespond,
 		MethodStateSnapshot,
 		MethodSandboxPolicy,
 		MethodSandboxSetPolicy,
+		MethodSandboxDerivePolicy,
 		MethodSandboxBackend,
 		MethodConfigReload,
 		MethodAgentControl,

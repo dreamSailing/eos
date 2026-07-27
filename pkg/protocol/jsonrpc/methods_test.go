@@ -4,8 +4,13 @@ import "testing"
 
 func TestAllCoreMethodsFreezesMigrationSurface(t *testing.T) {
 	methods := AllCoreMethods()
-	if len(methods) != 139 {
-		t.Fatalf("AllCoreMethods() len=%d, want 139", len(methods))
+	// 147 = 139（历史冻结基线）
+	//   + 3 新增内核方法（approval/preview、sandbox/derive_policy、permission/enter_full_access）
+	//   + 5 补齐既有遗漏（session/set_meta、session/search、model/bundled_mcp、
+	//     workspace/changes、workspace/rollback/{build,apply}）
+	// 与 generated.CoreMethods()（schema.json 单一真相源）保持一致。
+	if len(methods) != 147 {
+		t.Fatalf("AllCoreMethods() len=%d, want 147", len(methods))
 	}
 
 	seen := make(map[string]bool, len(methods))

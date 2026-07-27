@@ -52,7 +52,6 @@ type ConversionResult struct {
 	SourceFormat    string   `json:"source_format,omitempty"`
 	TargetFormat    string   `json:"target_format,omitempty"`
 	UsedEngine      string   `json:"used_engine,omitempty"`
-	Degraded        bool     `json:"degraded,omitempty"`
 	Warnings        []string `json:"warnings,omitempty"`
 }
 

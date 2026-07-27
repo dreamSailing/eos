@@ -151,7 +151,15 @@ func execOptionEnv(opts execOptions) map[string]string {
 		}
 	}
 	if opts.SkipPermission {
+		// 双轴（approval=Never + sandbox=DangerFullAccess）由内核 bin 侧读
+		// EOS_SKIP_PERMISSIONS 后用 permission_enter_full_access 单一真相源派生。
+		// 清掉可能残留的 mode env，避免与 skip 标志共存触发内核 fail-fast
+		// （AGENTS.md §3：壳层不做业务裁决）。resolveModeConfig 在 skip=true 时
+		// 已把 AccessMode/ApprovalMode/SandboxMode 清空，这里是防御性兜底。
 		env["EOS_SKIP_PERMISSIONS"] = "1"
+		delete(env, "EOS_ACCESS_MODE")
+		delete(env, "EOS_APPROVAL_MODE")
+		delete(env, "EOS_SANDBOX_MODE")
 	}
 	return env
 }

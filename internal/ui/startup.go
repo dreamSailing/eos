@@ -136,7 +136,15 @@ func tuiOptionEnv(opts TUIOptions) map[string]string {
 		}
 	}
 	if opts.SkipPermissions {
+		// 双轴（approval=Never + sandbox=DangerFullAccess）由内核 bin 侧读
+		// EOS_SKIP_PERMISSIONS 后用 permission_enter_full_access 单一真相源派生。
+		// 这里必须清掉可能由 flag 默认值（如 --sandbox-mode=workspace）带入的
+		// EOS_APPROVAL_MODE/EOS_SANDBOX_MODE，否则内核会因 skip 与显式 mode 共存
+		// 而 fail-fast（AGENTS.md §3：壳层不做业务裁决）。
 		env["EOS_SKIP_PERMISSIONS"] = "1"
+		delete(env, "EOS_ACCESS_MODE")
+		delete(env, "EOS_APPROVAL_MODE")
+		delete(env, "EOS_SANDBOX_MODE")
 	}
 	return env
 }
