@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Rebuild eos-core sidecar and sign-sync to both eos-cli and eos-app.
 
