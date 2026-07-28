@@ -16,7 +16,7 @@ func TestPolicyJSONSerialization(t *testing.T) {
 		Mode:          ModeWorkspaceWrite,
 		WorkspaceRoot: "/home/user/project",
 		WritableRoots: []string{"/tmp", "/var/cache"},
-		Network:       NetworkDeny,
+		AllowNetwork:  true,
 	}
 	data, err := json.Marshal(policy)
 	if err != nil {
@@ -27,7 +27,7 @@ func TestPolicyJSONSerialization(t *testing.T) {
 		`"mode"`,
 		`"workspace_root"`,
 		`"writable_roots"`,
-		`"network"`,
+		`"allow_network"`,
 	} {
 		if !strings.Contains(jsonStr, field) {
 			t.Fatalf("policy JSON missing field %s: %s", field, jsonStr)
@@ -40,6 +40,9 @@ func TestPolicyJSONSerialization(t *testing.T) {
 	}
 	if decoded.Mode != policy.Mode {
 		t.Fatalf("mode round-trip: %q != %q", decoded.Mode, policy.Mode)
+	}
+	if !decoded.AllowNetwork {
+		t.Fatalf("allow_network round-trip: got %v, want true", decoded.AllowNetwork)
 	}
 	if len(decoded.WritableRoots) != 2 {
 		t.Fatalf("writable_roots round-trip len: %d", len(decoded.WritableRoots))

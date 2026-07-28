@@ -76,7 +76,9 @@ type Options struct {
 	// RequireSignature 强制校验 Ed25519 签名。
 	RequireSignature bool
 	// AllowDevPlaceholder 允许 manifest 使用 unsigned-development-placeholder 签名。
-	// 仅 dev 环境允许；release gate 由 EOS_RELEASE_ARTIFACT_CHECK 守卫。
+	// 仅 dev 环境有效；当 EOS_RELEASE_ARTIFACT_CHECK 被设置（release 场景）时，
+	// sidecar.ResolveBinary 会在 resolveManifest 内强制把它改写成 false，
+	// 占位签名必定被拒——无需依赖调用方正确传值。
 	AllowDevPlaceholder bool
 }
 

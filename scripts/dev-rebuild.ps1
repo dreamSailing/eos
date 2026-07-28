@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Rebuild eos-core sidecar and sign-sync to both eos-cli and eos-app.
 
@@ -8,11 +8,14 @@
   Flow:
     1. Kill leftover eos-core.exe / eos.exe / eos-app.exe / go.exe processes.
     2. cargo build --workspace --release (in eos-core-rs).
-    3. Sign-package to eos-cli pkg/coreapi/sidecar/core/<target>/.
-    4. Sign-package to eos-app: output to temp dir, then distribute to
+    3. cargo clippy --workspace -- -D warnings   (AGENTS.md: 零容忍 lint)
+    4. cargo test --workspace                     (AGENTS.md: 改动必须有测试覆盖)
+    5. Sign-package to eos-cli pkg/coreapi/sidecar/core/<target>/.
+    6. Sign-package to eos-app: output to temp dir, then distribute to
        eos-app/core/<target>/ (release package source) and
        eos-app/output/core/<target>/ (dev read path).
-    5. Print both shells' sha256 for verification.
+    7. Print both shells' sha256 for verification.
+  -SkipBuild 跳过 build/clippy/test，用已有二进制重签分发（会打印警告）。
   Assumes all three repos are siblings under the same parent (e.g. C:\home\eos).
 
 .PARAMETER CoreRepo
@@ -85,13 +88,27 @@ if (-not $SkipKill) {
     }
 }
 
-# 2. Release build the sidecar
-if (-not $SkipBuild) {
-    Write-Host "==> cargo build --workspace --release"
+# 2. Release build + lint + test the sidecar.
+#    AGENTS.md 要求内核变更通过 `cargo clippy --workspace -- -D warnings` 和
+#    `cargo test` 才能打包，否则 lint 失败 / 测试不过的内核会被签名分发到壳层。
+#    失败立即中止，绝不继续签名旧二进制。
+if ($SkipBuild) {
+    Write-Warning "-SkipBuild: 跳过 cargo build/clippy/test。将用已存在的二进制重签分发，"
+    Write-Warning "          不会重新校验 lint 与测试。仅在你确信内核已通过全部检查时使用。"
+} else {
     Push-Location $CoreRepo
     try {
+        Write-Host "==> cargo build --workspace --release"
         & cargo build --workspace --release
         if ($LASTEXITCODE -ne 0) { throw "cargo build failed (exit $LASTEXITCODE)" }
+
+        Write-Host "==> cargo clippy --workspace -- -D warnings"
+        & cargo clippy --workspace -- -D warnings
+        if ($LASTEXITCODE -ne 0) { throw "cargo clippy failed (exit $LASTEXITCODE); lint 不过的内核禁止打包" }
+
+        Write-Host "==> cargo test --workspace"
+        & cargo test --workspace
+        if ($LASTEXITCODE -ne 0) { throw "cargo test failed (exit $LASTEXITCODE); 测试不过的内核禁止打包" }
     }
     finally { Pop-Location }
 }

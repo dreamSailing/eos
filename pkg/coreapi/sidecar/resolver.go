@@ -41,6 +41,50 @@ type ResolvedBinary struct {
 	Source       string
 }
 
+// ReleaseArtifactCheck reports whether release-time artifact verification is
+// enabled. It is driven by EOS_RELEASE_ARTIFACT_CHECK: any non-empty value
+// (e.g. the string "1" set by the release pipeline) marks the process as a
+// release build and turns the dev affordances off.
+//
+// This is the single source of truth for the dev/release boundary:
+//   - dev (unset): AllowDevPlaceholder is honored and defaultPublicKeyPEM (the
+//     smoke-test key) is accepted so local development can load self-signed
+//     manifests without a release pipeline.
+//   - release (set): placeholder signatures are rejected outright and a real
+//     production public key MUST be supplied via EOS_SIGNATURE_PUBLIC_KEY or
+//     ResolveOptions.PublicKeyPath. The smoke-test key is never used in
+//     release mode, so a self-signed manifest cannot slip through.
+func ReleaseArtifactCheck() bool {
+	return strings.TrimSpace(os.Getenv(EnvReleaseArtifactCheck)) != ""
+}
+
+// enforceReleaseGate rewrites opts in place so that dev-only affordances cannot
+// bypass release verification. It is a no-op outside release mode.
+//
+// In release mode it:
+//   - forces AllowDevPlaceholder=false regardless of what the caller requested,
+//     so a placeholder signature is rejected even if a caller (test harness,
+//     injected start path, future code) sets it to true;
+//   - requires a real production public key to be supplied externally and
+//     fails fast when neither EOS_SIGNATURE_PUBLIC_KEY nor PublicKeyPath is
+//     configured, preventing the smoke-test default key from silently
+//     validating a self-signed release artifact.
+func enforceReleaseGate(opts ResolveOptions) (ResolveOptions, error) {
+	if !ReleaseArtifactCheck() {
+		return opts, nil
+	}
+	if opts.AllowDevPlaceholder {
+		opts.AllowDevPlaceholder = false
+	}
+	if firstNonEmpty(opts.PublicKeyPath, os.Getenv(EnvSignaturePublicKey)) == "" {
+		return opts, fmt.Errorf(
+			"%s is set but no production public key is configured; set %s to a PEM file path or pass ResolveOptions.PublicKeyPath",
+			EnvReleaseArtifactCheck, EnvSignaturePublicKey,
+		)
+	}
+	return opts, nil
+}
+
 func ResolveBinary(opts ResolveOptions) (ResolvedBinary, error) {
 	goos := firstNonEmpty(opts.GOOS, runtime.GOOS)
 	goarch := firstNonEmpty(opts.GOARCH, runtime.GOARCH)
@@ -85,6 +129,20 @@ func resolveManifest(path string, opts ResolveOptions, source string, targets []
 	}
 	if err := manifest.RequireTarget(targets); err != nil {
 		return ResolvedBinary{}, err
+	}
+	// Release gate runs before key resolution so dev affordances (placeholder
+	// acceptance, smoke-test default key) are clamped down before CheckSignature
+	// can honor them. See ReleaseArtifactCheck / enforceReleaseGate.
+	opts, err = enforceReleaseGate(opts)
+	if err != nil {
+		return ResolvedBinary{}, err
+	}
+	// In release mode a placeholder signature is rejected unconditionally,
+	// independent of RequireSignature: the "optional signature" branch below
+	// would otherwise load an unsigned manifest when a caller forgets to set
+	// RequireSignature. Release builds must carry a real Ed25519 signature.
+	if ReleaseArtifactCheck() && IsPlaceholderSignature(manifest.Signature) {
+		return ResolvedBinary{}, ErrSignaturePlaceholder
 	}
 	publicKey, err := resolvePublicKey(opts.PublicKeyPath)
 	if err != nil {

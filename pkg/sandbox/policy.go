@@ -24,21 +24,18 @@ const (
 	ModeDangerFullAccess Mode = "danger-full-access"
 )
 
-// NetworkPolicy 控制网络访问的总开关。仅 DTO。
-type NetworkPolicy string
-
-const (
-	NetworkDeny  NetworkPolicy = "deny"
-	NetworkAllow NetworkPolicy = "allow"
-)
-
 // Policy 是经 sidecar 透传给内核的沙箱策略。字段语义由内核消费，
 // 壳层不基于这些字段做本地裁决。
+//
+// JSON 字段名必须与内核 eos-core-sandbox::SandboxPolicy 的 serde 契约一致
+// （mode/workspace_root/writable_roots/allow_network）。历史上曾用
+// network:"allow"/"deny" 字符串，与内核 allow_network bool 不匹配，导致
+// sandbox/set_policy 静默丢失网络设置——已统一为 allow_network bool。
 type Policy struct {
-	Mode          Mode          `json:"mode"`
-	WorkspaceRoot string        `json:"workspace_root,omitempty"`
-	WritableRoots []string      `json:"writable_roots,omitempty"`
-	Network       NetworkPolicy `json:"network"`
+	Mode          Mode   `json:"mode"`
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
+	WritableRoots []string `json:"writable_roots,omitempty"`
+	AllowNetwork  bool   `json:"allow_network,omitempty"`
 }
 
 // BackendStatus 描述内核沙箱后端的当前能力与降级状态，由内核经 RPC 返回壳层。

@@ -10,7 +10,9 @@ eos
 eos.exe
 
 # Vendored Rust sidecar release artifacts.
-!pkg/coreapi/sidecar/binaries/**/eos-core.exe
+# 目录由 binaries/ 改名为 core/（见 commit bdaab40），白名单必须匹配实际路径，
+# 否则 *.exe 通配会把 vendored 内核二进制忽略掉（git clean / 重 add 时丢失）。
+!pkg/coreapi/sidecar/core/**/eos-core.exe
 
 # Test binary, built with `go test -c`
 *.test
