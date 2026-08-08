@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 const (
@@ -423,6 +424,9 @@ func Path() string {
 }
 
 func Load() (Config, string) {
+	configMutex.Lock()
+	defer configMutex.Unlock()
+
 	p := Path()
 	var cfg Config
 	b, err := os.ReadFile(p)
@@ -592,7 +596,14 @@ func parseLegacyEnvMap(v any) map[string]string {
 	return out
 }
 
+// configMutex 保护 ~/.eos.json 的并发读写，防止多个 goroutine 同时 Load→改→Save
+// 导致 last-writer-wins 静默丢数据（S5 修复）。
+var configMutex sync.Mutex
+
 func Save(cfg Config, p string) error {
+	configMutex.Lock()
+	defer configMutex.Unlock()
+
 	bs, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		slog.Error("config.save.marshal.error",
@@ -608,11 +619,22 @@ func Save(cfg Config, p string) error {
 			"error", err)
 		return err
 	}
-	if err := os.WriteFile(p, bs, 0600); err != nil {
-		slog.Error("config.save.write_file.error",
-			"path", p,
+	// S4: 原子写——先写 .tmp 再 rename，避免写一半崩溃导致 ~/.eos.json 截断损坏。
+	tmp := p + ".tmp"
+	if err := os.WriteFile(tmp, bs, 0600); err != nil {
+		slog.Error("config.save.write_tmp.error",
+			"path", tmp,
 			"data_size", len(bs),
 			"error", err)
+		return err
+	}
+	if err := os.Rename(tmp, p); err != nil {
+		slog.Error("config.save.rename.error",
+			"tmp", tmp,
+			"dest", p,
+			"error", err)
+		// rename 失败时清理 tmp 文件
+		_ = os.Remove(tmp)
 		return err
 	}
 	slog.Debug("config.save.success",
