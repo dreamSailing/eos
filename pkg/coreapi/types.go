@@ -538,13 +538,13 @@ type ApprovalPreviewCandidate struct {
 // ApprovalPreviewResponse 是 approval/preview 的响应：内核的风险分类结果。
 // 壳层只渲染这些字段，不再编造审批卡片文案（AGENTS.md §3）。
 type ApprovalPreviewResponse struct {
-	Kind             string                    `json:"kind"`
-	Level            string                    `json:"level"`
-	Decision         string                    `json:"decision"`
-	RequiresApproval bool                      `json:"requires_approval"`
-	Tags             []string                  `json:"tags,omitempty"`
+	Kind             string                     `json:"kind"`
+	Level            string                     `json:"level"`
+	Decision         string                     `json:"decision"`
+	RequiresApproval bool                       `json:"requires_approval"`
+	Tags             []string                   `json:"tags,omitempty"`
 	Candidates       []ApprovalPreviewCandidate `json:"candidates,omitempty"`
-	Reason           string                    `json:"reason,omitempty"`
+	Reason           string                     `json:"reason,omitempty"`
 }
 
 type TurnRef struct {
@@ -706,6 +706,25 @@ type ApprovalResponse struct {
 	Decision   ApprovalDecision `json:"decision"`
 	Reason     string           `json:"reason,omitempty"`
 	Metadata   map[string]any   `json:"metadata,omitempty"`
+}
+
+type PendingApprovalListRequest struct {
+	SessionID string `json:"session_id,omitempty"`
+	TurnID    string `json:"turn_id,omitempty"`
+	AgentID   string `json:"agent_id,omitempty"`
+}
+
+type PendingApprovalItem struct {
+	ApprovalID string         `json:"approval_id"`
+	SessionID  string         `json:"session_id"`
+	TurnID     string         `json:"turn_id"`
+	ToolName   string         `json:"tool_name"`
+	Reason     string         `json:"reason"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
+}
+
+type PendingApprovalList struct {
+	Approvals []PendingApprovalItem `json:"approvals"`
 }
 
 type InquiryResponse struct {
@@ -1316,14 +1335,14 @@ type SessionSnapshot struct {
 }
 
 type SessionMessage struct {
-	Role       string             `json:"role"`
-	Type       string             `json:"type,omitempty"`
-	Content    string             `json:"content,omitempty"`
-	Time       time.Time          `json:"time,omitempty"`
-	ImagePaths []string           `json:"image_paths,omitempty"`
-	Metadata   map[string]any     `json:"metadata,omitempty"`
-	ChangeSet  *MessageChangeSet  `json:"changeSet,omitempty"`
-	Rollback   *TurnRollback      `json:"rollback,omitempty"`
+	Role       string            `json:"role"`
+	Type       string            `json:"type,omitempty"`
+	Content    string            `json:"content,omitempty"`
+	Time       time.Time         `json:"time,omitempty"`
+	ImagePaths []string          `json:"image_paths,omitempty"`
+	Metadata   map[string]any    `json:"metadata,omitempty"`
+	ChangeSet  *MessageChangeSet `json:"changeSet,omitempty"`
+	Rollback   *TurnRollback     `json:"rollback,omitempty"`
 }
 
 // ChangedFile describes a single workspace file change (git status + diff).
@@ -1371,7 +1390,7 @@ type TurnRollback struct {
 
 // RunningBaseline is the running-turn baseline state for rollback build.
 type RunningBaseline struct {
-	WorkspacePath         string                       `json:"workspacePath,omitempty"`
+	WorkspacePath         string                          `json:"workspacePath,omitempty"`
 	BaselineFileSnapshots map[string]RollbackFileSnapshot `json:"baselineFileSnapshots,omitempty"`
 }
 

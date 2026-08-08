@@ -135,6 +135,7 @@ const (
 	MethodToolExecute                = "tool/execute"
 	MethodToolTraces                 = "tool/traces"
 	MethodToolStats                  = "tool/stats"
+	MethodApprovalList               = "approval/list"
 	MethodApprovalRespond            = "approval/respond"
 	MethodApprovalPreview            = "approval/preview"
 	MethodInquiryRespond             = "inquiry/respond"
