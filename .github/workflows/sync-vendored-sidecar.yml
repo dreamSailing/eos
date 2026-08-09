@@ -1,0 +1,264 @@
+name: Sync Vendored Sidecar
+
+# 跨平台自动构建 + 签名 + vendored 同步 eos-core sidecar 到 eos-cli（+ eos-app）。
+#
+# 为什么用 CI 而非本机交叉编译：
+#   - macOS：本机 Windows 无法交叉编译（缺 macOS SDK，法律+技术双重不可行）。
+#   - Linux：需 zig + 改 reqwest 为 rustls 才能交叉编译，工具链成本高。
+#   - 原生 runner CI 是唯一可行路径，与 codex（rust-release.yml）、eos-core-rs
+#     （build-multiplatform.yml）的设计一致。
+#
+# 流程：
+#   build job（5 target 矩阵，各在原生 runner）：
+#     checkout eos-core-rs → cargo build --release → 写签名 key（secret）→
+#     package-public-artifact.ps1 签名打包 → 校验 sha256 → upload-artifact。
+#   sync job（依赖 build）：
+#     download 5 artifact → 摆进 eos-cli pkg/coreapi/sidecar/core/<triple>/ →
+#     （可选）同步到 eos-app core/<triple>/ + output/core/<triple>/ →
+#     git commit + push 回仓库。
+#
+# 触发：手动 workflow_dispatch（可选单 target，或仅 sync 用已有 artifact）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "只构建单个目标（留空构建全部 5 个）"
+        type: choice
+        options:
+          - ""
+          - x86_64-pc-windows-gnu
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+        default: ""
+      core_repo:
+        description: "eos-core-rs 仓库（owner/name），默认用 secret EOS_CORE_REPO"
+        required: false
+        default: ""
+      sync_app:
+        description: "同步到 eos-app（Gitee，需 EOS_APP_DEPLOY_KEY）"
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write   # sync job 需 push 回 eos-cli 仓库
+
+jobs:
+  # ── build：5 target 各在原生 runner 编译 + 签名打包 + 上传 artifact ──
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-gnu
+            runner: windows-latest
+          - target: x86_64-apple-darwin
+            runner: macos-13
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+    if: ${{ github.event.inputs.target == '' || github.event.inputs.target == matrix.target }}
+
+    steps:
+      - name: Resolve eos-core-rs repo
+        id: repo
+        shell: bash
+        env:
+          INPUT_REPO: ${{ github.event.inputs.core_repo }}
+          SECRET_REPO: ${{ secrets.EOS_CORE_REPO }}
+        run: |
+          repo="${INPUT_REPO}"
+          if [ -z "$repo" ]; then repo="${SECRET_REPO}"; fi
+          if [ -z "$repo" ]; then repo="dreamSailing/eos-core-rs"; fi
+          echo "repo=$repo" >> "$GITHUB_OUTPUT"
+          echo "Using eos-core-rs repo: $repo"
+
+      - name: Checkout eos-core-rs
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.repo.outputs.repo }}
+          token: ${{ secrets.EOS_CORE_PAT }}   # 私有仓需 PAT，公开仓留空即可
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Install musl toolchain (Linux musl only)
+        if: contains(matrix.target, 'linux-musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build (release)
+        run: cargo build --release --target ${{ matrix.target }} -p eos-core-bin
+
+      - name: Write signing key
+        shell: bash
+        env:
+          EOS_SIGNING_KEY: ${{ secrets.EOS_SIGNING_KEY }}
+        run: |
+          if [ -n "$EOS_SIGNING_KEY" ]; then
+            mkdir -p scripts
+            printf '%s' "$EOS_SIGNING_KEY" > scripts/eos-signing-key.pem
+            echo "signing key written"
+          else
+            echo "::warning::EOS_SIGNING_KEY secret 未设置；将用 development placeholder 签名（仅开发用，release 不可用）"
+          fi
+
+      - name: Sign and package
+        shell: pwsh
+        run: |
+          $exeName = if ("${{ matrix.target }}" -like "*windows*") { "eos-core.exe" } else { "eos-core" }
+          # package 脚本读 target/release/<exe>，交叉/原生 target 产物在
+          # target/<target>/release/<exe>，复制到 package 脚本期望位置。
+          $built = "target/${{ matrix.target }}/release/$exeName"
+          $staged = "target/release/$exeName"
+          New-Item -ItemType Directory -Force -Path (Split-Path $staged) | Out-Null
+          Copy-Item -Force $built $staged
+          $keyPath = if (Test-Path "scripts/eos-signing-key.pem") { "scripts/eos-signing-key.pem" } else { "" }
+          $allowPlaceholder = if ($keyPath -eq "") { "-AllowDevelopmentPlaceholder" } else { "" }
+          & pwsh -NoProfile -File scripts/package-public-artifact.ps1 `
+            -Target "${{ matrix.target }}" `
+            -PrivateKeyPath $keyPath $allowPlaceholder
+
+      - name: Verify sha256
+        shell: pwsh
+        run: |
+          $exeName = if ("${{ matrix.target }}" -like "*windows*") { "eos-core.exe" } else { "eos-core" }
+          $dest = "pkg/coreapi/sidecar/core/${{ matrix.target }}"
+          $manifest = Get-Content "$dest/manifest.json" -Raw | ConvertFrom-Json
+          $manifestHash = ($manifest.sha256 -replace "^sha256:", "").ToLowerInvariant()
+          $actualHash = (Get-FileHash -Algorithm SHA256 "$dest/$exeName").Hash.ToLowerInvariant()
+          Write-Host "manifest: $manifestHash"
+          Write-Host "binary  : $actualHash"
+          if ($manifestHash -ne $actualHash) { throw "sha256 不一致" }
+          Write-Host "sha256 一致"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sidecar-${{ matrix.target }}
+          path: pkg/coreapi/sidecar/core/${{ matrix.target }}/
+          if-no-files-found: error
+
+  # ── sync：下载全部 artifact → 分发到 eos-cli（+ eos-app）→ commit + push ──
+  sync:
+    name: Sync vendored sidecar
+    runs-on: ubuntu-latest
+    needs: build
+    if: always() && !cancelled()
+    # 只在所有 build 都成功（或被 input 过滤跳过）时同步
+    steps:
+      - name: Checkout eos-cli
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Download all sidecar artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded-sidecars
+          pattern: sidecar-*
+          merge-multiple: false
+
+      - name: Distribute artifacts to eos-cli vendored dir
+        run: |
+          set -euo pipefail
+          core_dir="pkg/coreapi/sidecar/core"
+          for dir in downloaded-sidecars/sidecar-*; do
+            [ -d "$dir" ] || continue
+            target=$(basename "$dir" | sed 's/^sidecar-//')
+            dest="$core_dir/$target"
+            mkdir -p "$dest"
+            cp -f "$dir/eos-core"* "$dest/" 2>/dev/null || cp -f "$dir/"* "$dest/"
+            cp -f "$dir/manifest.json" "$dest/"
+            echo "distributed -> $dest"
+          done
+
+      - name: Verify all sha256 match
+        run: |
+          set -euo pipefail
+          core_dir="pkg/coreapi/sidecar/core"
+          for target_dir in "$core_dir"/*/; do
+            [ -f "$target_dir/manifest.json" ] || continue
+            manifest_hash=$(python3 -c "import json,sys; print(json.load(open('${target_dir}manifest.json'))['sha256'].replace('sha256:','').lower())")
+            bin_file=$(ls "$target_dir"eos-core* | head -1)
+            actual_hash=$(sha256sum "$bin_file" | awk '{print $1}' | tr 'A-Z' 'a-z}')
+            target=$(basename "$target_dir")
+            echo "$target: manifest=$manifest_hash binary=$actual_hash"
+            if [ "$manifest_hash" != "$actual_hash" ]; then
+              echo "::error::$target sha256 不一致"; exit 1
+            fi
+          done
+          echo "全部 sha256 一致"
+
+      - name: Commit and push to eos-cli
+        run: |
+          git add pkg/coreapi/sidecar/core/*/eos-core* pkg/coreapi/sidecar/core/*/manifest.json
+          if git diff --staged --quiet; then
+            echo "无变更，跳过 commit"
+          else
+            git commit -m "ci(sidecar): 同步 vendored 多平台 sidecar
+
+          由 sync-vendored-sidecar.yml CI 自动产出：各 target 在原生 runner
+          编译 + Ed25519 签名 + 校验 sha256 后 vendored。勿手动编辑。
+
+          包含 target：$(ls pkg/coreapi/sidecar/core/ | tr '\n' ' ')"
+            git push
+            echo "已 push 到 eos-cli"
+          fi
+
+      # ── 可选：同步到 eos-app（Gitee）──
+      - name: Sync to eos-app (Gitee)
+        if: ${{ github.event.inputs.sync_app == 'true' && secrets.EOS_APP_DEPLOY_KEY != '' }}
+        env:
+          EOS_APP_GIT_URL: ${{ secrets.EOS_APP_GIT_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$EOS_APP_GIT_URL" ]; then
+            echo "::warning::EOS_APP_GIT_URL secret 未设置，跳过 eos-app 同步"
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EOS_APP_DEPLOY_KEY }}" > ~/.ssh/eos_app_key
+          chmod 600 ~/.ssh/eos_app_key
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/eos_app_key -o StrictHostKeyChecking=no"
+          git clone "$EOS_APP_GIT_URL" eos-app-sync
+          cd eos-app-sync
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          core_dir="../pkg/coreapi/sidecar/core"
+          for target_dir in "$core_dir"/*/; do
+            [ -f "$target_dir/manifest.json" ] || continue
+            target=$(basename "$target_dir")
+            for sub in core "output/core"; do
+              dest="$sub/$target"
+              mkdir -p "$dest"
+              cp -f "$target_dir"eos-core* "$dest/" 2>/dev/null || cp -f "$target_dir"* "$dest/"
+              cp -f "$target_dir/manifest.json" "$dest/"
+            done
+          done
+          git add core/*/eos-core* core/*/manifest.json output/core/*/eos-core* output/core/*/manifest.json
+          if git diff --staged --quiet; then
+            echo "eos-app 无变更"
+          else
+            git commit -m "ci(sidecar): 同步 vendored 多平台 sidecar"
+            git push
+            echo "已 push 到 eos-app"
+          fi
