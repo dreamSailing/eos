@@ -1,22 +1,32 @@
 ﻿<#
 .SYNOPSIS
-  Rebuild eos-core sidecar and sign-sync to both eos-cli and eos-app.
+  Rebuild eos-core sidecar (host target only) and sign-sync to eos-cli + eos-app.
 
 .DESCRIPTION
-  After modifying eos-core-rs, run this script to one-click sync the kernel
-  binary to both shells.
+  本机开发快速迭代脚本：改 eos-core-rs 后一键重编当前 host target（Windows 上
+  = x86_64-pc-windows-gnu）+ 签名 + 分发到 eos-cli 和 eos-app 的 windows-gnu 目录，
+  用于本地测试验证。
+
+  ⚠️ 只产 host target。跨平台（macOS darwin / Linux musl）的 sidecar 本机无法
+  交叉编译（macOS 缺 SDK 法律+技术不可行；Linux 需 zig+改 reqwest 为 rustls），
+  由 GitHub Actions workflow sync-vendored-sidecar.yml 在各平台原生 runner 上
+  构建 + 签名 + 自动 vendored 进仓库。勿用本脚本编非 host target。
+
   Flow:
     1. Kill leftover eos-core.exe / eos.exe / eos-app.exe / go.exe processes.
     2. cargo build --workspace --release (in eos-core-rs).
     3. cargo clippy --workspace -- -D warnings   (AGENTS.md: 零容忍 lint)
     4. cargo test --workspace                     (AGENTS.md: 改动必须有测试覆盖)
-    5. Sign-package to eos-cli pkg/coreapi/sidecar/core/<target>/.
+    5. Sign-package to eos-cli pkg/coreapi/sidecar/core/<host-target>/.
     6. Sign-package to eos-app: output to temp dir, then distribute to
-       eos-app/core/<target>/ (release package source) and
-       eos-app/output/core/<target>/ (dev read path).
+       eos-app/core/<host-target>/ (release package source) and
+       eos-app/output/core/<host-target>/ (dev read path).
     7. Print both shells' sha256 for verification.
   -SkipBuild 跳过 build/clippy/test，用已有二进制重签分发（会打印警告）。
   Assumes all three repos are siblings under the same parent (e.g. C:\home\eos).
+
+  跨平台 sidecar（darwin / linux-musl）：见 .github/workflows/sync-vendored-sidecar.yml
+  手动触发，或参考 scripts/README.md 的职责分工说明。
 
 .PARAMETER CoreRepo
   eos-core-rs repo root. Defaults to ..\..\eos-core-rs relative to this script.
@@ -175,3 +185,8 @@ if (-not $SkipApp) {
 
 Write-Host ""
 Write-Host "Done. You can now 'go run .' (eos-cli) or 'wails3 dev' (eos-app)." -ForegroundColor Green
+Write-Host ""
+Write-Host "注意：本脚本只产 host target（$target）。" -ForegroundColor Yellow
+Write-Host "其它平台（darwin / linux-musl）的 sidecar 由 CI 产出：" -ForegroundColor Yellow
+Write-Host "  GitHub Actions → sync-vendored-sidecar.yml → Run workflow" -ForegroundColor Yellow
+Write-Host "勿用本脚本编非 host target（macOS 缺 SDK 编不了）。" -ForegroundColor Yellow
