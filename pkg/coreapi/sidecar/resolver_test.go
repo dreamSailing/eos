@@ -28,7 +28,7 @@ func TestResolveBinaryFromEnvCorePath(t *testing.T) {
 	if resolved.Source != EnvCorePath {
 		t.Fatalf("Source=%q, want %q", resolved.Source, EnvCorePath)
 	}
-	if resolved.Target != "x86_64-unknown-linux-gnu" {
+	if resolved.Target != "x86_64-unknown-linux-musl" {
 		t.Fatalf("Target=%q", resolved.Target)
 	}
 }

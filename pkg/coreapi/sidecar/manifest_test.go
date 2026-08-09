@@ -91,8 +91,8 @@ func TestManifestRequireSignature(t *testing.T) {
 }
 
 func TestManifestRequireTarget(t *testing.T) {
-	manifest := Manifest{Target: "x86_64-unknown-linux-gnu"}
-	if err := manifest.RequireTarget([]string{"x86_64-unknown-linux-gnu"}); err != nil {
+	manifest := Manifest{Target: "x86_64-unknown-linux-musl"}
+	if err := manifest.RequireTarget([]string{"x86_64-unknown-linux-musl"}); err != nil {
 		t.Fatalf("RequireTarget() error = %v", err)
 	}
 	if err := manifest.RequireTarget([]string{"aarch64-apple-darwin"}); !errors.Is(err, ErrTargetMismatch) {
@@ -120,8 +120,8 @@ func TestTargetTriple(t *testing.T) {
 		"windows/arm64": "aarch64-pc-windows-msvc",
 		"darwin/amd64":  "x86_64-apple-darwin",
 		"darwin/arm64":  "aarch64-apple-darwin",
-		"linux/amd64":   "x86_64-unknown-linux-gnu",
-		"linux/arm64":   "aarch64-unknown-linux-gnu",
+		"linux/amd64":   "x86_64-unknown-linux-musl",
+		"linux/arm64":   "aarch64-unknown-linux-musl",
 	}
 	for input, want := range tests {
 		goos, goarch, _ := strings.Cut(input, "/")
@@ -140,6 +140,29 @@ func TestTargetTriplesIncludesWindowsGNUFallback(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("TargetTriples()[%d]=%q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestTargetTriplesLinuxMuslPrimaryWithGNUFallback 验证 Linux 主选 musl（对齐
+// codex/eos-core-rs CI），回退 gnu（兼容历史 gnu 二进制）。
+func TestTargetTriplesLinuxMuslPrimaryWithGNUFallback(t *testing.T) {
+	tests := []struct {
+		goos, goarch string
+		want         []string
+	}{
+		{"linux", "amd64", []string{"x86_64-unknown-linux-musl", "x86_64-unknown-linux-gnu"}},
+		{"linux", "arm64", []string{"aarch64-unknown-linux-musl", "aarch64-unknown-linux-gnu"}},
+	}
+	for _, tc := range tests {
+		got := TargetTriples(tc.goos, tc.goarch)
+		if len(got) != len(tc.want) {
+			t.Fatalf("TargetTriples(%q,%q)=%+v, want %+v", tc.goos, tc.goarch, got, tc.want)
+		}
+		for i := range tc.want {
+			if got[i] != tc.want[i] {
+				t.Fatalf("TargetTriples(%q,%q)[%d]=%q, want %q", tc.goos, tc.goarch, i, got[i], tc.want[i])
+			}
 		}
 	}
 }
