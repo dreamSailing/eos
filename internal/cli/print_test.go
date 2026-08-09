@@ -15,6 +15,8 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -97,50 +99,60 @@ func TestPrintResult_OmitEmptyFields(t *testing.T) {
 	}
 }
 
-// TestBuildDoneEvent_AcceptsCoreAPIUsageSummary 验证 buildDoneEvent 不再依赖
-// sharedcore.UsageSummary；它现在是 coreapi.UsageSummary 适配层。
-// 这是 Rust-only production 切换的一部分：print / exec 的 usage 类型都来自
-// eos-core 返回的 JSON-RPC payload。
-func TestBuildDoneEvent_AcceptsCoreAPIUsageSummary(t *testing.T) {
+// TestBuildTurnCompletedEvent_AcceptsCoreAPIUsageSummary 验证 buildTurnCompletedEvent
+// 产出对齐 codex 的 turn.completed 事件结构（type=turn.completed + 嵌套 usage），
+// 且消费 coreapi.UsageSummary（不再依赖 sharedcore）。
+func TestBuildTurnCompletedEvent_AcceptsCoreAPIUsageSummary(t *testing.T) {
+	input := 200
+	reply := 80
 	total := 500
 	cost := 0.01
 	usage := coreapi.UsageSummary{
-		TotalTokens: &total,
-		CostUSD:     &cost,
+		InputTokens:  &input,
+		ReplyTokens:  &reply,
+		TotalTokens:  &total,
+		CostUSD:      &cost,
 	}
 
-	evt := buildDoneEvent(2*time.Second, usage)
+	evt := buildTurnCompletedEvent(2*time.Second, usage)
 
-	if evt["type"] != "done" {
+	if evt["type"] != "turn.completed" {
 		t.Fatalf("unexpected type: %v", evt["type"])
 	}
 	if evt["duration_ms"] != int64(2000) {
 		t.Fatalf("unexpected duration_ms: %v", evt["duration_ms"])
 	}
-	if evt["tokens"] != 500 {
-		t.Fatalf("unexpected tokens: %v", evt["tokens"])
+	usageObj, ok := evt["usage"].(map[string]any)
+	if !ok {
+		t.Fatalf("usage should be a nested object, got %T", evt["usage"])
 	}
-	if evt["cost_usd"] != 0.01 {
-		t.Fatalf("unexpected cost_usd: %v", evt["cost_usd"])
+	if usageObj["input_tokens"] != 200 {
+		t.Fatalf("unexpected input_tokens: %v", usageObj["input_tokens"])
+	}
+	if usageObj["output_tokens"] != 80 {
+		t.Fatalf("unexpected output_tokens: %v", usageObj["output_tokens"])
+	}
+	if usageObj["total_tokens"] != 500 {
+		t.Fatalf("unexpected total_tokens: %v", usageObj["total_tokens"])
+	}
+	if usageObj["cost_usd"] != 0.01 {
+		t.Fatalf("unexpected cost_usd: %v", usageObj["cost_usd"])
 	}
 }
 
-func TestBuildDoneEvent_NilTokensAndCost(t *testing.T) {
+func TestBuildTurnCompletedEvent_NilTokensAndCost(t *testing.T) {
 	usage := coreapi.UsageSummary{}
 
-	evt := buildDoneEvent(500*time.Millisecond, usage)
+	evt := buildTurnCompletedEvent(500*time.Millisecond, usage)
 
-	if evt["type"] != "done" {
+	if evt["type"] != "turn.completed" {
 		t.Fatal("unexpected type")
 	}
 	if evt["duration_ms"] != int64(500) {
 		t.Fatal("unexpected duration_ms")
 	}
-	if _, ok := evt["tokens"]; ok {
-		t.Fatal("tokens should be omitted when nil")
-	}
-	if _, ok := evt["cost_usd"]; ok {
-		t.Fatal("cost_usd should be omitted when nil")
+	if _, ok := evt["usage"]; ok {
+		t.Fatal("usage should be omitted when all nil")
 	}
 }
 
@@ -191,6 +203,171 @@ func TestRunSingleTurnConsumesTurnEventsBeforeStartReturns(t *testing.T) {
 	}
 	if content != "hello from core" {
 		t.Fatalf("content=%q, want hello from core", content)
+	}
+}
+
+// TestRunStreamJSONTurnEmitsIncrementalJSONL 验证 stream-json 真增量流：
+// turn.started → 逐个 item.* 事件 → turn.completed，每行一个 JSONL，
+// 对齐 codex exec --json 契约（不再是 start/content/done 三段伪流）。
+func TestRunStreamJSONTurnEmitsIncrementalJSONL(t *testing.T) {
+	events := make(chan protocol.Envelope, 8)
+	releaseStart := make(chan struct{})
+	started := make(chan coreapi.StartTurnRequest, 1)
+	engine := &printTestEngine{
+		state:    printTestStateService{},
+		sessions: printTestSessionService{session: coreapi.Session{ID: "session-stream"}},
+		turns:    printTestTurnService{started: started, release: releaseStart},
+		events:   printTestEventSubscriber{events: events},
+	}
+	defer close(releaseStart)
+
+	// 捕获 stdout 的 JSONL 输出。
+	rOut, wOut, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	origStdout := os.Stdout
+	os.Stdout = wOut
+	t.Cleanup(func() { os.Stdout = origStdout })
+
+	done := make(chan struct{})
+	var runErr error
+	go func() {
+		runErr = runStreamJSONTurn(context.Background(), engine, "hello", time.Now())
+		close(done)
+	}()
+
+	var req coreapi.StartTurnRequest
+	select {
+	case req = <-started:
+	case <-time.After(time.Second):
+		t.Fatal("turn/start was not called")
+	}
+
+	// 注入增量 item 事件：started → 两个 delta → completed。
+	events <- protocol.NewEvent(protocol.EventTypeTurnItemStarted, protocol.EventOptions{
+		SessionID: req.SessionID, TurnID: req.TurnID,
+		Payload: map[string]any{"item": map[string]any{"id": "item_1", "type": "agent_message", "status": "in_progress"}},
+	})
+	events <- protocol.NewEvent(protocol.EventTypeTurnItemDelta, protocol.EventOptions{
+		SessionID: req.SessionID, TurnID: req.TurnID,
+		Payload: map[string]any{"delta": "Hel"},
+	})
+	events <- protocol.NewEvent(protocol.EventTypeTurnItemDelta, protocol.EventOptions{
+		SessionID: req.SessionID, TurnID: req.TurnID,
+		Payload: map[string]any{"delta": "lo"},
+	})
+	events <- protocol.NewEvent(protocol.EventTypeTurnItemCompleted, protocol.EventOptions{
+		SessionID: req.SessionID, TurnID: req.TurnID,
+		Payload: map[string]any{"item": map[string]any{"id": "item_1", "type": "agent_message", "text": "Hello"}},
+	})
+	events <- protocol.NewEvent(protocol.EventTypeTurnCompleted, protocol.EventOptions{
+		SessionID: req.SessionID, TurnID: req.TurnID,
+	})
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("runStreamJSONTurn blocked waiting for request.completed")
+	}
+	_ = wOut.Close()
+
+	output, _ := io.ReadAll(rOut)
+	lines := strings.Split(strings.TrimRight(string(output), "\n"), "\n")
+	if len(lines) < 5 {
+		t.Fatalf("expected >=5 JSONL lines (started + 4 item events + completed), got %d:\n%s", len(lines), output)
+	}
+
+	// 每行必须是合法 JSON 且带 type 字段。逐行解析。
+	parsed := make([]map[string]any, len(lines))
+	for i, line := range lines {
+		if err := json.Unmarshal([]byte(line), &parsed[i]); err != nil {
+			t.Fatalf("line %d not valid JSON: %v\nline=%s", i, err, line)
+		}
+		if _, ok := parsed[i]["type"]; !ok {
+			t.Fatalf("line %d missing type field: %s", i, line)
+		}
+	}
+
+	// 第1行 turn.started；第2-5行 item.*（started/delta/delta/completed）；末行 turn.completed。
+	assertType := func(idx int, want string) {
+		t.Helper()
+		if got := parsed[idx]["type"]; got != want {
+			t.Fatalf("line %d type=%v, want %q (line=%s)", idx, got, want, lines[idx])
+		}
+	}
+	assertType(0, "turn.started")
+	assertType(1, "item.started")
+	assertType(2, "item.delta")
+	assertType(3, "item.delta")
+	assertType(4, "item.completed")
+	assertType(len(parsed)-1, "turn.completed")
+
+	// item.delta 行必须携带增量 delta payload（真增量，不是聚合内容）。
+	if got := parsed[2]["delta"]; got != "Hel" {
+		t.Fatalf("first delta line payload=%v, want Hel", got)
+	}
+	if got := parsed[3]["delta"]; got != "lo" {
+		t.Fatalf("second delta line payload=%v, want lo", got)
+	}
+	// item.completed 行带 item.text。
+	if completedItem, ok := parsed[4]["item"].(map[string]any); !ok || completedItem["text"] != "Hello" {
+		t.Fatalf("item.completed line missing item.text=Hello: %s", lines[4])
+	}
+
+	if runErr != nil {
+		t.Fatalf("runStreamJSONTurn() error = %v", runErr)
+	}
+}
+
+// TestRunStreamJSONTurnEmitsTurnFailedOnFailure 验证 request.failed → turn.failed 行。
+func TestRunStreamJSONTurnEmitsTurnFailedOnFailure(t *testing.T) {
+	events := make(chan protocol.Envelope, 4)
+	releaseStart := make(chan struct{})
+	started := make(chan coreapi.StartTurnRequest, 1)
+	engine := &printTestEngine{
+		state:    printTestStateService{},
+		sessions: printTestSessionService{session: coreapi.Session{ID: "session-fail"}},
+		turns:    printTestTurnService{started: started, release: releaseStart},
+		events:   printTestEventSubscriber{events: events},
+	}
+	defer close(releaseStart)
+
+	rOut, wOut, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	origStdout := os.Stdout
+	os.Stdout = wOut
+	t.Cleanup(func() { os.Stdout = origStdout })
+
+	done := make(chan struct{})
+	go func() {
+		_ = runStreamJSONTurn(context.Background(), engine, "hello", time.Now())
+		close(done)
+	}()
+
+	req := <-started
+	events <- protocol.NewEvent(protocol.EventTypeTurnError, protocol.EventOptions{
+		SessionID: req.SessionID, TurnID: req.TurnID,
+		Payload: map[string]any{"error": "boom"},
+	})
+	<-done
+	_ = wOut.Close()
+
+	output, _ := io.ReadAll(rOut)
+	lines := strings.Split(strings.TrimRight(string(output), "\n"), "\n")
+	last := lines[len(lines)-1]
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(last), &parsed); err != nil {
+		t.Fatalf("last line not valid JSON: %v\n%s", err, last)
+	}
+	if parsed["type"] != "turn.failed" {
+		t.Fatalf("expected last line type=turn.failed, got %v: %s", parsed["type"], last)
+	}
+	errObj, ok := parsed["error"].(map[string]any)
+	if !ok || errObj["message"] == "" {
+		t.Fatalf("turn.failed missing error.message: %s", last)
 	}
 }
 
@@ -378,6 +555,7 @@ type printTestEngine struct {
 	sessions coreapi.SessionService
 	turns    coreapi.TurnService
 	events   coreapi.EventSubscriber
+	usage    coreapi.UsageService
 }
 
 func (e *printTestEngine) State() coreapi.StateService {
@@ -394,6 +572,22 @@ func (e *printTestEngine) Turns() coreapi.TurnService {
 
 func (e *printTestEngine) Events() coreapi.EventSubscriber {
 	return e.events
+}
+
+func (e *printTestEngine) Usage() coreapi.UsageService {
+	if e.usage != nil {
+		return e.usage
+	}
+	return printTestUsageService{}
+}
+
+// printTestUsageService 空实现，供 stream-json 流式函数读取 usage 摘要。
+type printTestUsageService struct {
+	coreapi.UsageService
+}
+
+func (printTestUsageService) Summary(context.Context) (coreapi.UsageSummary, error) {
+	return coreapi.UsageSummary{}, nil
 }
 
 type printTestStateService struct {

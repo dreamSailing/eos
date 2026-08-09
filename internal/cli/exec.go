@@ -60,7 +60,7 @@ func newExecCmd() *cobra.Command {
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace root path")
 	cmd.Flags().StringVar(&sandbox, "sandbox", "workspace", "Sandbox mode: workspace or full_access")
 	cmd.Flags().StringVar(&executionMode, "execution-mode", "", "Execution mode for the AI agent")
-	cmd.Flags().StringVar(&output, "output", "text", "Output format: text or json")
+	cmd.Flags().StringVar(&output, "output", "text", "Output format: text, json, or stream-json")
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "Maximum execution duration (e.g. 30s, 5m)")
 	cmd.Flags().StringVar(&accessMode, "access-mode", "", "Access mode: read-only, workspace-write, or danger-full-access")
 	cmd.Flags().StringVar(&approvalMode, "approval-mode", "", "Approval mode: untrusted, on-failure, on-request, or never")
@@ -97,6 +97,18 @@ func runExec(ctx context.Context, opts execOptions) error {
 	engine := selected.Engine
 	if err := applyExecStartup(ctx, engine, opts); err != nil {
 		return err
+	}
+
+	// stream-json 走真增量 JSONL 流式（与 print 模式一致，对齐 codex exec --json）。
+	if strings.EqualFold(strings.TrimSpace(opts.Output), "stream-json") {
+		if err := runStreamJSONTurn(ctx, engine, opts.Prompt, startedAt); err != nil {
+			if ctx.Err() == context.DeadlineExceeded {
+				err = fmt.Errorf("exec timed out after %s", opts.Timeout)
+			}
+			writeExecError(opts.Output, err)
+			return err
+		}
+		return nil
 	}
 
 	content, err := runSingleTurn(ctx, engine, opts.Prompt, opts.Output)

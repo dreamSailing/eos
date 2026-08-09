@@ -81,6 +81,17 @@ func RunPrintMode(opts PrintOptions) error {
 		return applyErr
 	}
 
+	// stream-json 走真增量流式：订阅 turn 事件流，每个 item.* / 生命周期事件
+	// 原样吐出一行 JSONL（对齐 codex exec --json 的 JSONL 契约），
+	// 不走 runSingleTurn 的"累积完整内容后统一输出"伪流。
+	if strings.EqualFold(strings.TrimSpace(opts.OutputFormat), "stream-json") {
+		if err := runStreamJSONTurn(ctx, engine, opts.Query, startedAt); err != nil {
+			writePrintError(opts.OutputFormat, err)
+			return err
+		}
+		return nil
+	}
+
 	content, err := runSingleTurn(ctx, engine, opts.Query, opts.OutputFormat)
 	if err != nil {
 		writePrintError(opts.OutputFormat, err)
@@ -255,16 +266,6 @@ func emitPrintResult(format string, result PrintResult, started time.Time, usage
 			return err
 		}
 		fmt.Fprintln(os.Stdout, string(bs))
-	case "stream-json":
-		events := []map[string]any{
-			{"type": "start", "model": modelName, "timestamp": started.Unix()},
-			{"type": "content", "text": result.Content},
-			buildDoneEvent(time.Since(started), usage),
-		}
-		for _, evt := range events {
-			bs, _ := json.Marshal(evt)
-			fmt.Fprintln(os.Stdout, string(bs))
-		}
 	default:
 		// text 格式：runSingleTurn 已在收到 text_delta 时实时打印到 stdout，
 		// 这里只补一行换行 + 元数据页脚到 stderr，避免重复输出正文。
@@ -284,18 +285,29 @@ func emitPrintResult(format string, result PrintResult, started time.Time, usage
 	return nil
 }
 
-// buildDoneEvent renders the closing "done" event for stream-json output.
-// 接受 coreapi.UsageSummary，与 TUI 路径保持一致。
-func buildDoneEvent(elapsed time.Duration, usage coreapi.UsageSummary) map[string]any {
-	event := map[string]any{
-		"type":        "done",
-		"duration_ms": elapsed.Milliseconds(),
+// buildTurnCompletedEvent 构造 stream-json 的收尾行（对齐 codex exec --json 的
+// turn.completed 事件）。usage 以嵌套对象呈现，与 codex 的
+// {"usage":{"input_tokens":...,"output_tokens":...}} 契约一致。
+func buildTurnCompletedEvent(elapsed time.Duration, usage coreapi.UsageSummary) map[string]any {
+	u := map[string]any{}
+	if usage.InputTokens != nil {
+		u["input_tokens"] = *usage.InputTokens
+	}
+	if usage.ReplyTokens != nil {
+		u["output_tokens"] = *usage.ReplyTokens
 	}
 	if usage.TotalTokens != nil {
-		event["tokens"] = *usage.TotalTokens
+		u["total_tokens"] = *usage.TotalTokens
 	}
 	if usage.CostUSD != nil {
-		event["cost_usd"] = *usage.CostUSD
+		u["cost_usd"] = *usage.CostUSD
+	}
+	event := map[string]any{
+		"type":        "turn.completed",
+		"duration_ms": elapsed.Milliseconds(),
+	}
+	if len(u) > 0 {
+		event["usage"] = u
 	}
 	return event
 }
@@ -435,6 +447,97 @@ func runSingleTurn(ctx context.Context, engine coreapi.Engine, query, outputForm
 			}
 		}
 	}
+}
+
+// runStreamJSONTurn 以真增量 JSONL 流式输出一个 turn（对齐 codex exec --json）。
+//
+// 订阅 turn 事件流，每个 item.* / 生命周期事件原样吐出一行 JSON 到 stdout：
+//   - turn.started / item.started / item.delta / item.completed 等事件 →
+//     {"type":<事件类型>, ...payload}（payload 含 item/delta/text 等字段）
+//   - request.completed (turn 结束) → turn.completed（带 usage，由 buildTurnCompletedEvent 构造）
+//   - request.failed → turn.failed（带 error.message）
+//
+// 与 runSingleTurn 的区别：后者把所有 delta 累积成完整文本在 turn 结束后一次性返回
+// （伪流）；本函数逐事件实时输出，可被 jq -c 等 JSONL 管道消费。
+func runStreamJSONTurn(ctx context.Context, engine coreapi.Engine, query string, startedAt time.Time) error {
+	if engine == nil {
+		return fmt.Errorf("core engine unavailable")
+	}
+	if strings.TrimSpace(query) == "" {
+		return fmt.Errorf("query is required")
+	}
+	session, err := ensureHeadlessSession(ctx, engine)
+	if err != nil {
+		return err
+	}
+
+	turnID := fmt.Sprintf("cli_stream_%d", time.Now().UnixNano())
+	events, unsubscribe := subscribeTurnEvents(ctx, engine, session.ID, turnID)
+	defer unsubscribe()
+
+	startDone := startTurnAsync(ctx, engine, coreapi.StartTurnRequest{
+		SessionID: session.ID,
+		TurnID:    turnID,
+		Input:     query,
+	})
+
+	writeJSONL := func(event map[string]any) {
+		if bs, err := json.Marshal(event); err == nil {
+			fmt.Fprintln(os.Stdout, string(bs))
+		}
+	}
+	// turn.started 作为流的第一行（对齐 codex 的 turn.started 生命周期标记）。
+	writeJSONL(map[string]any{"type": "turn.started", "session_id": session.ID, "turn_id": turnID})
+
+	eventsCh := events
+	startDoneCh := startDone
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case result := <-startDoneCh:
+			startDoneCh = nil
+			if result.err != nil {
+				writeJSONL(map[string]any{"type": "turn.failed", "error": map[string]string{"message": result.err.Error()}})
+				return result.err
+			}
+			// turn/start 非阻塞；靠 request.completed/failed 终止。
+		case ev, ok := <-eventsCh:
+			if !ok {
+				eventsCh = nil
+				if startDoneCh == nil {
+					return nil
+				}
+				continue
+			}
+			eventType, payload, _ := normalizePrintEvent(ev)
+			switch eventType {
+			case protocol.EventTypeItemStarted, protocol.EventTypeItemDelta, protocol.EventTypeItemCompleted:
+				// item.* 事件原样透传：type + 完整 payload（含 item/delta/text 等字段）。
+				writeJSONL(buildItemEvent(string(eventType), payload))
+			case protocol.EventTypeRequestDone:
+				usage, _ := engine.Usage().Summary(ctx)
+				writeJSONL(buildTurnCompletedEvent(time.Since(startedAt), usage))
+				return nil
+			case protocol.EventTypeRequestFailed:
+				msg := printFailureMessage(ev.EventType, payload)
+				writeJSONL(map[string]any{"type": "turn.failed", "error": map[string]string{"message": msg}})
+				return fmt.Errorf("%s", msg)
+			}
+		}
+	}
+}
+
+// buildItemEvent 把 item.* 事件的 payload 装配成 JSONL 行：顶层 type + payload 全字段。
+// payload 里的 original_event_type / event_id / session_id / turn_id 等归一化元数据
+// 一并保留，便于下游管道关联事件与 item。
+func buildItemEvent(eventType string, payload map[string]any) map[string]any {
+	event := make(map[string]any, len(payload)+1)
+	for k, v := range payload {
+		event[k] = v
+	}
+	event["type"] = eventType
+	return event
 }
 
 type asyncTurnStartResult struct {
