@@ -1,6 +1,6 @@
 module github.com/dreamSailing/eos
 
-go 1.25.0
+go 1.25.5
 
 require (
 	github.com/alecthomas/chroma/v2 v2.23.1
@@ -48,6 +48,7 @@ require (
 	github.com/jackmordaunt/icns/v3 v3.0.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
+	github.com/mark3labs/mcp-go v0.57.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
