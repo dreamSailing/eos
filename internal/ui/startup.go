@@ -73,7 +73,7 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 		slog.Info("ui.startup.session", "session_id", opts.SessionID)
 	}
 
-	m := NewAppModelFromCoreClient(client)
+	m := NewAppModelFromCoreClient(client, strings.TrimSpace(opts.SessionID))
 	slog.Info("ui.startup.app.run")
 	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		slog.Error("ui.startup.app.run.error", "error", err)

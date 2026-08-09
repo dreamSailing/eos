@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/dreamSailing/eos/pkg/coreapi"
 	"github.com/dreamSailing/eos/pkg/protocol"
@@ -35,6 +36,14 @@ type testEngine struct {
 	workspaceList    []coreapi.Workspace
 	models           []coreapi.ModelConfig
 	activeModel      string
+
+	// Session 行为可观测/可注入字段（供启动期 resume 测试用，零值保持原行为）：
+	//   resumeCalls      —— 记录 Resume 收到的 SessionID（"latest" 透传）
+	//   messages         —— LoadMessages 返回的消息（按 turn_id 分组回填 history）
+	//   currentSessionID —— Current 返回的 ID（默认 "test-session"）
+	resumeCalls      []string
+	messages         []coreapi.SessionMessage
+	currentSessionID string
 }
 
 func (e *testEngine) State() coreapi.StateService            { return &testStateService{} }
@@ -46,7 +55,7 @@ func (e *testEngine) Config() coreapi.ConfigService          { return &testConfi
 func (e *testEngine) Permissions() coreapi.PermissionService { return &testPermissionService{e: e} }
 func (e *testEngine) Extensions() coreapi.ExtensionService   { return &testExtensionService{} }
 func (e *testEngine) Context() coreapi.ContextService        { return &testContextService{} }
-func (e *testEngine) Usage() coreapi.UsageService            { return nil }
+func (e *testEngine) Usage() coreapi.UsageService            { return &testUsageService{} }
 func (e *testEngine) Versions() coreapi.VersionService       { return nil }
 func (e *testEngine) Tasks() coreapi.TaskService             { return &testTaskService{} }
 func (e *testEngine) Modes() coreapi.ModeService             { return &testModeService{} }
@@ -147,12 +156,16 @@ func (s *testSessionService) Create(_ context.Context, req coreapi.CreateSession
 	return out, nil
 }
 func (s *testSessionService) Resume(_ context.Context, req coreapi.ResumeSessionRequest) (coreapi.Session, error) {
+	s.e.resumeCalls = append(s.e.resumeCalls, req.SessionID)
 	return coreapi.Session{ID: req.SessionID}, nil
 }
 func (s *testSessionService) List(context.Context, coreapi.ListSessionsRequest) ([]coreapi.Session, error) {
 	return nil, nil
 }
 func (s *testSessionService) Current(context.Context, coreapi.CurrentSessionRequest) (coreapi.Session, error) {
+	if id := strings.TrimSpace(s.e.currentSessionID); id != "" {
+		return coreapi.Session{ID: id}, nil
+	}
 	return coreapi.Session{ID: "test-session"}, nil
 }
 func (s *testSessionService) SetCurrent(context.Context, coreapi.SetCurrentSessionRequest) error {
@@ -166,6 +179,9 @@ func (s *testSessionService) SetMeta(context.Context, coreapi.SetSessionMetaRequ
 	return coreapi.Session{}, nil
 }
 func (s *testSessionService) LoadMessages(context.Context, coreapi.LoadSessionMessagesRequest) ([]coreapi.SessionMessage, error) {
+	if s.e.messages != nil {
+		return s.e.messages, nil
+	}
 	return nil, nil
 }
 func (s *testSessionService) SaveMessages(_ context.Context, req coreapi.SaveSessionMessagesRequest) (coreapi.Session, error) {
@@ -361,6 +377,19 @@ func (s *testModeService) SetReasoningLevel(context.Context, coreapi.SetModeRequ
 
 // === State ===
 type testStateService struct{}
+
+// === Usage ===
+// 补全 Usage 空实现，让依赖 refreshCostPanel/UsageSummary 的路径（如启动期 resume）
+// 在测试里不再 nil 解引用。零值无副作用，不改变既有测试行为。
+type testUsageService struct{}
+
+func (s *testUsageService) Summary(context.Context) (coreapi.UsageSummary, error) {
+	return coreapi.UsageSummary{}, nil
+}
+func (s *testUsageService) CostSummary(context.Context) (string, error) { return "", nil }
+func (s *testUsageService) CostItems(context.Context) ([]coreapi.CostItem, error) {
+	return nil, nil
+}
 
 // === Context ===
 type testContextService struct{}

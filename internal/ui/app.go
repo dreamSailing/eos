@@ -102,6 +102,11 @@ type AppModel struct {
 	trustPendingAction string
 	activeCancel       context.CancelFunc
 	stopRequested      bool
+
+	// pendingResumeSession 由启动选项（--continue/--resume）注入。
+	// Init() 在工作区信任检查通过后消费它：调 ResumeSession + restoreSessionHistory
+	// 把指定会话的历史回填进 m.history。nil 表示不做启动期 resume。
+	pendingResumeSession *string
 }
 
 // Init 初始化应用模型
@@ -116,6 +121,9 @@ func (m *AppModel) Init() tea.Cmd {
 		if m.isWorkspaceTrusted(abs) {
 			_ = m.adapter.StartContextEngine(context.Background(), abs)
 			_, _ = m.adapter.Settings(context.Background())
+			// 工作区已信任：立即消费 --continue/--resume 指定的会话。
+			// 不信任的分支在 handleConfirmResultWorkspaceTrust 信任后再消费。
+			m.resumeStartupSession()
 		} else {
 			m.trustPendingPath = abs
 			m.trustPendingAction = "init"

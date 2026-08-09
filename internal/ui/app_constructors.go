@@ -14,6 +14,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -32,14 +33,15 @@ import (
 
 // NewAppModelFromCoreClient 用已 handshake 的 sidecar Client 构造 AppModel。
 // 这是生产路径：TUI 通过 pkg/coreapi/sidecar/client 启动 eos-core --app-server --stdio。
-func NewAppModelFromCoreClient(client *sidecarclient.Client) *AppModel {
-	return newAppModel(hydrateCatalogFromAdapter(adapter.NewCoreClientAdapter(client)))
+// resumeSessionID 非空时（来自 --continue/--resume），Init 会在工作区信任后恢复该会话。
+func NewAppModelFromCoreClient(client *sidecarclient.Client, resumeSessionID string) *AppModel {
+	return newAppModel(hydrateCatalogFromAdapter(adapter.NewCoreClientAdapter(client)), resumeSessionID)
 }
 
 // NewAppModelFromCoreEngine 直接用 coreapi.Engine 构造 AppModel。
 // 供测试场景使用（不启动 sidecar 子进程）。
 func NewAppModelFromCoreEngine(engine coreapi.Engine) *AppModel {
-	return newAppModel(hydrateCatalogFromAdapter(adapter.NewCoreClientAdapterFromEngine(engine)))
+	return newAppModel(hydrateCatalogFromAdapter(adapter.NewCoreClientAdapterFromEngine(engine)), "")
 }
 
 // hydrateCatalogFromAdapter 从适配器加载模型目录并应用到全局状态
@@ -56,8 +58,9 @@ func hydrateCatalogFromAdapter(coreAdapter *adapter.CoreClientAdapter) *adapter.
 	return coreAdapter
 }
 
-// newAppModel 初始化应用模型，创建所有视图和面板
-func newAppModel(adapter *adapter.CoreClientAdapter) *AppModel {
+// newAppModel 初始化应用模型，创建所有视图和面板。
+// resumeSessionID 非空时存入 pendingResumeSession，由 Init() 在工作区信任后消费。
+func newAppModel(adapter *adapter.CoreClientAdapter, resumeSessionID string) *AppModel {
 	theme := styles.GetTheme("dark")
 	styles := styles.NewStyles(theme)
 
@@ -122,6 +125,12 @@ func newAppModel(adapter *adapter.CoreClientAdapter) *AppModel {
 		shellModel.BlurInput()
 	}
 
+	var pendingResume *string
+	if id := strings.TrimSpace(resumeSessionID); id != "" {
+		idCopy := id
+		pendingResume = &idCopy
+	}
+
 	return &AppModel{
 		state: AppState{
 			Mode:          "ai",
@@ -129,19 +138,20 @@ func newAppModel(adapter *adapter.CoreClientAdapter) *AppModel {
 			Theme:         "dark",
 			ExecutionMode: "auto",
 		},
-		adapter:           adapter,
-		styles:            styles,
-		msgRenderer:       messages.NewRenderer(styles, 80),
-		shell:             &shellModel,
-		panels:            panelMap,
-		helpView:          help.NewHelpView(styles, lang),
-		setupView:         setupView,
-		activeView:        activeView,
-		initialSetupFlow:  initialSetupFlow,
-		activePanel:       "",
-		toolInflight:      make(map[string]toolTrack),
-		history:           make([]historyEntry, 0, 128),
-		predictionEnabled: predictionEnabled,
+		adapter:             adapter,
+		styles:              styles,
+		msgRenderer:         messages.NewRenderer(styles, 80),
+		shell:               &shellModel,
+		panels:              panelMap,
+		helpView:            help.NewHelpView(styles, lang),
+		setupView:           setupView,
+		activeView:          activeView,
+		initialSetupFlow:    initialSetupFlow,
+		activePanel:         "",
+		toolInflight:        make(map[string]toolTrack),
+		history:             make([]historyEntry, 0, 128),
+		predictionEnabled:   predictionEnabled,
+		pendingResumeSession: pendingResume,
 	}
 }
 
@@ -216,4 +226,33 @@ func (m *AppModel) markInflightToolsCanceled(output string) {
 		m.history[track.idx] = e
 	}
 	m.rebuildHistoryContent()
+}
+
+// resumeStartupSession 消费 pendingResumeSession：对 --continue/--resume 指定的会话
+// 调 ResumeSession（"latest" 交给内核解析为最近会话）+ restoreSessionHistory 把历史
+// 回填进 m.history。工作区信任检查通过后调用（Init 直接路径或 workspace_trust 确认后）。
+// 幂等：消费后清空 pendingResumeSession，避免重复 resume。
+func (m *AppModel) resumeStartupSession() {
+	if m == nil || m.adapter == nil || m.pendingResumeSession == nil {
+		return
+	}
+	id := strings.TrimSpace(*m.pendingResumeSession)
+	m.pendingResumeSession = nil
+	if id == "" {
+		return
+	}
+	if err := m.adapter.ResumeSession(context.Background(), id); err != nil {
+		m.appendSystem(err.Error(), "error")
+		return
+	}
+	resolvedID, _ := m.adapter.CurrentSessionID(context.Background())
+	if strings.TrimSpace(resolvedID) == "" {
+		m.appendSystem(m.localize("未找到可恢复的会话", "No session found to resume"), "warning")
+		return
+	}
+	m.restoreSessionHistory(resolvedID)
+	m.refreshContextPanel()
+	m.refreshCostPanel()
+	m.updateContextUsageUI()
+	m.appendSystem(fmt.Sprintf("%s: %s", m.localize("已恢复会话", "Resumed session"), resolvedID), "success")
 }

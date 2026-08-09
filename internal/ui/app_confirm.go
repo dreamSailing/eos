@@ -555,6 +555,9 @@ func (m *AppModel) handleConfirmResultWorkspaceTrust(msg confirm.ResultMsg) (tea
 		m.refreshWorkspacePanel()
 		m.refreshRulesPanel()
 		m.refreshLSPPanel()
+		// 工作区刚被信任：现在消费 --continue/--resume 指定的会话
+		// （Init 里的不信任分支延迟到这里）。
+		m.resumeStartupSession()
 	case "switch":
 		cmd := m.switchWorkspaceTrusted(path)
 		if m.activeView == "shell" {
