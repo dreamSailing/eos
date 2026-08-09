@@ -103,13 +103,16 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
-			if m.req.Kind == "permission" {
-				return m, func() tea.Msg {
-					return ResultMsg{ID: m.req.ID, Kind: m.req.Kind, Decision: "decline", OptionIndex: -1}
-				}
+			// Esc 决策不按 Kind 硬编码（旧逻辑 permission→decline/其它→cancel 是
+			// 壳层裁决）。改为基于 options 内容推断，对齐 eos-app decisionForEsc
+			// 与 codex 不变量 P3（esc 必须发 decision，不能只关 UI）。
+			decision, idx := EscDecision(m.req.Options)
+			option := ""
+			if idx >= 0 && idx < len(m.req.Options) {
+				option = m.req.Options[idx]
 			}
 			return m, func() tea.Msg {
-				return ResultMsg{ID: m.req.ID, Kind: m.req.Kind, Decision: "cancel", OptionIndex: -1}
+				return ResultMsg{ID: m.req.ID, Kind: m.req.Kind, Decision: decision, Option: option, OptionIndex: idx}
 			}
 		case "tab":
 			if m.req.AllowText {

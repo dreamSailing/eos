@@ -151,7 +151,23 @@ func (m *AppModel) handleInlinePermissionKey(msg tea.KeyMsg) (bool, tea.Cmd) {
 		result := m.buildInlinePermissionResult("")
 		return true, func() tea.Msg { return result }
 	case "esc":
-		result := m.buildInlinePermissionResult("decline")
+		// Esc 决策不硬编码 "decline"（旧注释明写 "Esc passes decline explicitly"，
+		// 是壳层凭 permission 类型推断）。改为基于 options 推断，对齐 codex/eos-app。
+		// 直接用 EscDecision 的 decision + idx 构造 ResultMsg，确保 Decision / Option /
+		// OptionIndex 三者一致（不走 buildInlinePermissionResult 的光标逻辑，光标位置
+		// 在 esc 时不代表用户选择）。
+		decision, idx := confirm.EscDecision(m.inlinePermissionReq.Options)
+		option := ""
+		if idx >= 0 && idx < len(m.inlinePermissionReq.Options) {
+			option = m.inlinePermissionReq.Options[idx]
+		}
+		result := confirm.ResultMsg{
+			ID:          m.inlinePermissionReq.ID,
+			Kind:        m.inlinePermissionReq.Kind,
+			Decision:    decision,
+			Option:      option,
+			OptionIndex: idx,
+		}
 		return true, func() tea.Msg { return result }
 	default:
 		if len(msg.String()) == 1 {
