@@ -616,7 +616,8 @@ type RenameSessionRequest struct {
 }
 
 // SetSessionMetaRequest updates (or deletes, when Value is nil) a single
-// metadata entry on a session. Used for soft-state flags like "archived".
+// metadata entry on a session. Used for soft-state flags like "archived" and
+// per-session overrides like "sandbox_mode".
 type SetSessionMetaRequest struct {
 	SessionID     string          `json:"session_id"`
 	WorkspaceRoot string          `json:"workspace_root,omitempty"`
