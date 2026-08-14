@@ -158,7 +158,8 @@ func rulesSnapshotDocument(snapshot coreapi.RulesSnapshot, scope string) coreapi
 	return coreapi.RuleDocument{Scope: scope}
 }
 
-// memorySnapshotDocument 从记忆快照中获取指定作用域的文档
+// memorySnapshotDocument 从记忆快照中获取指定 scope 的文档（memory_summary.md /
+// MEMORY.md），缺失时返回仅含 scope 的零值文档。
 func memorySnapshotDocument(snapshot coreapi.MemorySnapshot, scopes ...string) coreapi.MemoryDocument {
 	for _, scope := range scopes {
 		scope = strings.ToLower(strings.TrimSpace(scope))
@@ -174,7 +175,17 @@ func memorySnapshotDocument(snapshot coreapi.MemorySnapshot, scopes ...string) c
 	return coreapi.MemoryDocument{}
 }
 
-// refreshMemoryPanel 刷新记忆面板的数据，包括全局、项目、会话和索引四个作用域
+// panelMemoryDoc 把 coreapi 文档投影为面板文档。
+func panelMemoryDoc(doc coreapi.MemoryDocument) panels.MemoryDoc {
+	return panels.MemoryDoc{
+		Scope:   doc.Scope,
+		Path:    doc.Path,
+		Content: doc.Content,
+		Exists:  doc.Exists,
+	}
+}
+
+// refreshMemoryPanel 刷新记忆面板：memory_summary.md + MEMORY.md 只读快照。
 func (m *AppModel) refreshMemoryPanel() {
 	if m == nil || m.adapter == nil {
 		return
@@ -183,17 +194,14 @@ func (m *AppModel) refreshMemoryPanel() {
 	if !ok || panel == nil {
 		return
 	}
-	root := strings.TrimSpace(m.currentWorkspaceRoot())
 	snap, err := m.adapter.MemorySnapshot(context.Background())
 	if err != nil {
-		panel.SetData(root, "", "", false, "", "", false, "", "", false, "", "", false)
+		panel.SetData(nil)
 		return
 	}
-	global := memorySnapshotDocument(snap, "global")
-	project := memorySnapshotDocument(snap, "project")
-	sessionDoc := memorySnapshotDocument(snap, "session")
-	index := memorySnapshotDocument(snap, "index", "project-index")
-	panel.SetData(root, global.Path, global.Content, global.Exists, project.Path, project.Content, project.Exists, sessionDoc.Path, sessionDoc.Content, sessionDoc.Exists, index.Path, index.Content, index.Exists)
+	summary := memorySnapshotDocument(snap, "memory_summary.md")
+	handbook := memorySnapshotDocument(snap, "MEMORY.md")
+	panel.SetData([]panels.MemoryDoc{panelMemoryDoc(summary), panelMemoryDoc(handbook)})
 }
 
 // overlayCenter 将弹框内容居中叠加到底层视图之上。
@@ -275,6 +283,7 @@ func (m *AppModel) refreshSettingsPanel() {
 	}
 	cfg, _ := config.Load()
 	p.SetGlobalPredictionEnabled(config.NextMessagePredictionEnabled(&cfg))
+	p.SetMemoryInjectionEnabled(config.MemoryInjectionEnabled(&cfg))
 }
 
 func (m *AppModel) handleRulesSave(msg panels.RulesSaveMsg) {
@@ -298,32 +307,21 @@ func (m *AppModel) handleRulesSave(msg panels.RulesSaveMsg) {
 	m.refreshRulesPanel()
 }
 
+// handleMemorySave 把「添加记忆笔记」内容经内核 memory/save 落为 ad_hoc note。
 func (m *AppModel) handleMemorySave(msg panels.MemorySaveMsg) {
 	if m == nil || m.adapter == nil {
 		return
 	}
-	scope := strings.ToLower(strings.TrimSpace(msg.Scope))
-	if scope == "" {
-		scope = "project"
+	content := strings.TrimSpace(msg.Content)
+	if content == "" {
+		m.appendSystem(i18n.T("memory.note_empty", m.state.Language), "warning")
+		return
 	}
-	if err := m.adapter.SaveMemory(context.Background(), scope, msg.Content); err != nil {
+	if err := m.adapter.SaveMemory(context.Background(), content); err != nil {
 		m.appendSystem(fmt.Sprintf(i18n.T("toast.memory_save_failed", m.state.Language), err), "error")
 		return
 	}
 	m.appendSystem(i18n.T("memory.saved", m.state.Language), "success")
-	m.refreshMemoryPanel()
-}
-
-func (m *AppModel) handleMemoryRebuildIndex() {
-	if m == nil || m.adapter == nil {
-		return
-	}
-	if err := m.adapter.RebuildMemoryIndex(context.Background()); err != nil {
-		m.appendSystem(fmt.Sprintf(i18n.T("toast.memory_rebuild_failed", m.state.Language), err), "error")
-		return
-	}
-	m.appendSystem(i18n.T("memory.rebuilt", m.state.Language), "success")
-	m.refreshMemoryPanel()
 }
 
 // refreshCostPanel 刷新成本统计面板
@@ -425,8 +423,8 @@ func (m *AppModel) optionalIntLabel(value *int) string {
 // 1. 保存配置到本地文件
 // 2. 保存工作区设置到核心
 // 3. 处理语言切换
-// 4. 更新预测功能状态
-func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredictionEnabled *bool) {
+// 4. 更新预测功能状态 / 记忆注入开关
+func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredictionEnabled *bool, memoryInjectionEnabled *bool) {
 	if settings == nil {
 		return
 	}
@@ -441,6 +439,10 @@ func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredict
 		if globalPredictionEnabled != nil {
 			enabled := *globalPredictionEnabled
 			cfg.NextMessagePredictionEnabled = &enabled
+		}
+		if memoryInjectionEnabled != nil {
+			enabled := *memoryInjectionEnabled
+			cfg.MemoryInjectionEnabled = &enabled
 		}
 		if err := config.Save(cfg, path); err != nil {
 			m.appendSystem(fmt.Sprintf("Failed to save settings: %v", err), "error")
@@ -466,6 +468,10 @@ func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredict
 		if !m.predictionEnabled {
 			m.clearPrediction()
 		}
+	}
+	// 更新记忆注入开关（下一个 turn 生效）
+	if memoryInjectionEnabled != nil {
+		m.memoryInjectionEnabled = *memoryInjectionEnabled
 	}
 
 	m.appendSystem(i18n.T("settings.saved", m.state.Language), "success")
@@ -527,11 +533,6 @@ func (m *AppModel) handleMemoryRefreshMsg(_ panels.MemoryRefreshMsg) (tea.Model,
 	return m, m.finalizeUpdate(nil)
 }
 
-func (m *AppModel) handleMemoryRebuildIndexMsg(_ panels.MemoryRebuildIndexMsg) (tea.Model, tea.Cmd) {
-	m.handleMemoryRebuildIndex()
-	return m, m.finalizeUpdate(nil)
-}
-
 func (m *AppModel) handleMemorySaveMsg(msg panels.MemorySaveMsg) (tea.Model, tea.Cmd) {
 	m.handleMemorySave(msg)
 	return m, m.finalizeUpdate(nil)
@@ -558,7 +559,7 @@ func (m *AppModel) handleCostRefreshMsg(_ panels.CostRefreshMsg) (tea.Model, tea
 
 // handleSettingsPanelMsg 处理 settings 面板消息（Update 分支提取）。fall-through。
 func (m *AppModel) handleSettingsSaveMsg(msg panels.SettingsSaveMsg) (tea.Model, tea.Cmd) {
-	m.handleSettingsSave(msg.Settings, msg.GlobalPredictionEnabled)
+	m.handleSettingsSave(msg.Settings, msg.GlobalPredictionEnabled, msg.MemoryInjectionEnabled)
 	return m, m.finalizeUpdate(nil)
 }
 

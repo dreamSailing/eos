@@ -194,7 +194,6 @@ type GitService interface {
 type InsightService interface {
 	PredictNextUserMessage(context.Context, PredictNextUserMessageRequest) (string, error)
 	PlanSnapshot(context.Context) (PlanSnapshot, error)
-	MemorySnapshot(context.Context) (MemorySnapshot, error)
 }
 
 type MemoryService interface {
@@ -675,6 +674,11 @@ type StartTurnRequest struct {
 	Attachments       []Attachment       `json:"attachments,omitempty"`
 	Options           json.RawMessage    `json:"options,omitempty"`
 	CollaborationMode *CollaborationMode `json:"collaboration_mode,omitempty"`
+	// UseMemory 是请求级记忆注入开关（镜像 eos-core 的
+	// StartTurnRequest.use_memory）：nil = 按内核全局配置注入；
+	// false = 本次 turn 不注入 memory_summary。注入裁决在内核
+	//（use_memory.unwrap_or(true) && 全局 use_memories），壳层只透传。
+	UseMemory *bool `json:"use_memory,omitempty"`
 }
 
 type Attachment struct {

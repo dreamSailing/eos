@@ -71,6 +71,7 @@ func newAppModel(adapter *adapter.CoreClientAdapter, resumeSessionID string) *Ap
 		lang = "zh"
 	}
 	predictionEnabled := config.NextMessagePredictionEnabled(&cfg)
+	memoryInjectionEnabled := config.MemoryInjectionEnabled(&cfg)
 
 	// 创建Shell视图
 	shellModel := shell.New(80, 24, styles, lang)
@@ -138,20 +139,21 @@ func newAppModel(adapter *adapter.CoreClientAdapter, resumeSessionID string) *Ap
 			Theme:         "dark",
 			ExecutionMode: "auto",
 		},
-		adapter:             adapter,
-		styles:              styles,
-		msgRenderer:         messages.NewRenderer(styles, 80),
-		shell:               &shellModel,
-		panels:              panelMap,
-		helpView:            help.NewHelpView(styles, lang),
-		setupView:           setupView,
-		activeView:          activeView,
-		initialSetupFlow:    initialSetupFlow,
-		activePanel:         "",
-		toolInflight:        make(map[string]toolTrack),
-		history:             make([]historyEntry, 0, 128),
-		predictionEnabled:   predictionEnabled,
-		pendingResumeSession: pendingResume,
+		adapter:                adapter,
+		styles:                 styles,
+		msgRenderer:            messages.NewRenderer(styles, 80),
+		shell:                  &shellModel,
+		panels:                 panelMap,
+		helpView:               help.NewHelpView(styles, lang),
+		setupView:              setupView,
+		activeView:             activeView,
+		initialSetupFlow:       initialSetupFlow,
+		activePanel:            "",
+		toolInflight:           make(map[string]toolTrack),
+		history:                make([]historyEntry, 0, 128),
+		predictionEnabled:      predictionEnabled,
+		memoryInjectionEnabled: memoryInjectionEnabled,
+		pendingResumeSession:   pendingResume,
 	}
 }
 

@@ -200,6 +200,10 @@ type Config struct {
 	CapabilityModels             CapabilityModelRefs             `json:"capability_models,omitempty"`
 	Thinking                     ThinkingConfig                  `json:"thinking,omitempty"` // 思考模式配置
 	NextMessagePredictionEnabled *bool                           `json:"next_message_prediction_enabled,omitempty"`
+	// MemoryInjectionEnabled 是 CLI 壳层的请求级记忆注入开关（默认开）。
+	// 发 turn 时随 StartTurnRequest.use_memory 下发；注入最终裁决在内核
+	//（与全局 [memories].use_memories 求与）。nil = 未设置 = 默认开。
+	MemoryInjectionEnabled *bool `json:"memory_injection_enabled,omitempty"`
 	Agent                        AgentConfig                     `json:"agent,omitempty"`
 	MCP                          []MCPEntry                      `json:"mcp,omitempty"`                // MCP服务配置
 	Skills                       []SkillsDirEntry                `json:"skills,omitempty"`             // Skills 目录配置
@@ -411,6 +415,15 @@ func NextMessagePredictionEnabled(cfg *Config) bool {
 		return true
 	}
 	return *cfg.NextMessagePredictionEnabled
+}
+
+// MemoryInjectionEnabled 返回记忆注入开关；未配置时默认开
+//（对齐内核 use_memory.unwrap_or(true) 的缺省语义）。
+func MemoryInjectionEnabled(cfg *Config) bool {
+	if cfg == nil || cfg.MemoryInjectionEnabled == nil {
+		return true
+	}
+	return *cfg.MemoryInjectionEnabled
 }
 
 func Path() string {

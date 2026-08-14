@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -199,7 +200,9 @@ func (a *CoreClientAdapter) ensurePumpStarted() {
 }
 
 // Invoke 启动一次 turn，订阅事件流直到 RequestDone / RequestFailed，返回 final 文本。
-func (a *CoreClientAdapter) Invoke(ctx context.Context, query, executionMode string, imagePaths []string) (string, error) {
+// useMemory 是请求级记忆注入开关，透传给内核的 turn/start.use_memory
+// （注入裁决在内核）；source 固定为 cli，仅在日志中标识来源壳层。
+func (a *CoreClientAdapter) Invoke(ctx context.Context, query, executionMode string, imagePaths []string, useMemory bool) (string, error) {
 	if a == nil || a.engine == nil {
 		return "", errors.New("core client is not available")
 	}
@@ -230,7 +233,10 @@ func (a *CoreClientAdapter) Invoke(ctx context.Context, query, executionMode str
 			TurnID:     turnID,
 			Input:      query,
 			ImagePaths: append([]string(nil), imagePaths...),
+			// 请求级记忆注入开关：壳层只透传，注入裁决在内核。
+			UseMemory: &useMemory,
 		}
+		slog.Debug("core.turn.start", "use_memory", useMemory, "source", "cli")
 		// Map the global execution_mode ("plan") to the per-turn
 		// collaboration_mode, mirroring Codex's turn/start.collaborationMode.
 		if strings.TrimSpace(strings.ToLower(executionMode)) == "plan" {
@@ -1030,22 +1036,13 @@ func (a *CoreClientAdapter) MemorySnapshot(ctx context.Context) (coreapi.MemoryS
 	return a.engine.Memory().Snapshot(ctx)
 }
 
-func (a *CoreClientAdapter) SaveMemory(ctx context.Context, scope, content string) error {
+// SaveMemory 写一条 ad_hoc 记忆笔记（内核 memory/save 落
+// ~/.eos/memories/extensions/ad_hoc/notes/，空内容会被内核拒绝）。
+func (a *CoreClientAdapter) SaveMemory(ctx context.Context, content string) error {
 	if a == nil || a.engine == nil {
 		return errors.New("core client is not available")
 	}
-	scope = strings.ToLower(strings.TrimSpace(scope))
-	if scope == "" {
-		scope = "project"
-	}
-	return a.engine.Memory().Save(ctx, coreapi.SaveMemoryRequest{Scope: scope, Content: content})
-}
-
-func (a *CoreClientAdapter) RebuildMemoryIndex(ctx context.Context) error {
-	if a == nil || a.engine == nil {
-		return errors.New("core client is not available")
-	}
-	return a.engine.Memory().RebuildIndex(ctx)
+	return a.engine.Memory().Save(ctx, coreapi.SaveMemoryRequest{Content: content})
 }
 
 // === Extensions / Insights ===

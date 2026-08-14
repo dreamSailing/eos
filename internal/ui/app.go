@@ -98,6 +98,10 @@ type AppModel struct {
 	predictionDebounceSeq int
 	predictionEnabled     bool
 
+	// memoryInjectionEnabled 是 CLI 壳层的请求级记忆注入开关（config 持久化，
+	// 默认开），随每次 Invoke 下发 turn/start.use_memory。
+	memoryInjectionEnabled bool
+
 	trustPendingPath   string
 	trustPendingAction string
 	activeCancel       context.CancelFunc
@@ -286,8 +290,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Memory 面板
 	case panels.MemoryRefreshMsg:
 		return m.handleMemoryRefreshMsg(msg)
-	case panels.MemoryRebuildIndexMsg:
-		return m.handleMemoryRebuildIndexMsg(msg)
 	case panels.MemorySaveMsg:
 		return m.handleMemorySaveMsg(msg)
 

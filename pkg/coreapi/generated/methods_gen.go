@@ -112,7 +112,6 @@ const (
 	MethodGitShow = "git/show"
 	MethodInsightPredictNextUserMessage = "insight/predict_next_user_message"
 	MethodInsightPlanSnapshot = "insight/plan_snapshot"
-	MethodInsightMemorySnapshot = "insight/memory_snapshot"
 	MethodMemorySnapshot = "memory/snapshot"
 	MethodMemorySave = "memory/save"
 	MethodMemoryRebuildIndex = "memory/rebuild_index"
@@ -263,7 +262,6 @@ func CoreMethods() []string {
 		MethodGitShow,
 		MethodInsightPredictNextUserMessage,
 		MethodInsightPlanSnapshot,
-		MethodInsightMemorySnapshot,
 		MethodMemorySnapshot,
 		MethodMemorySave,
 		MethodMemoryRebuildIndex,
@@ -367,7 +365,6 @@ func MethodGroups() map[string][]string {
 		"insight": {
 			MethodInsightPredictNextUserMessage,
 			MethodInsightPlanSnapshot,
-			MethodInsightMemorySnapshot,
 		},
 		"lsp": {
 			MethodLSPList,

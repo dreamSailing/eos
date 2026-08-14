@@ -1213,7 +1213,6 @@ func TestRemoteEngineMigrationSurfaceCallsSidecar(t *testing.T) {
 			protocoljsonrpc.MethodContextExport:          map[string]any{"ok": true},
 			protocoljsonrpc.MethodInsightPredictNextUser: map[string]any{"text": "follow-up"},
 			protocoljsonrpc.MethodInsightPlanSnapshot:    plan,
-			protocoljsonrpc.MethodInsightMemorySnapshot:  coreapi.MemorySnapshot{Documents: []coreapi.MemoryDocument{{Scope: "global", Content: "remember"}}},
 			protocoljsonrpc.MethodRoleList:               []coreapi.RoleConfig{role},
 			protocoljsonrpc.MethodRoleResolve:            role,
 		},
@@ -1279,10 +1278,6 @@ func TestRemoteEngineMigrationSurfaceCallsSidecar(t *testing.T) {
 	gotPlan, err := engine.Insights().PlanSnapshot(context.Background())
 	if err != nil || !gotPlan.HasPlan || gotPlan.Content != "step 1\nstep 2" {
 		t.Fatalf("Insights().PlanSnapshot() = %+v, %v", gotPlan, err)
-	}
-	gotMem, err := engine.Insights().MemorySnapshot(context.Background())
-	if err != nil || len(gotMem.Documents) != 1 {
-		t.Fatalf("Insights().MemorySnapshot() = %+v, %v", gotMem, err)
 	}
 
 	roles, err := engine.Roles().List(context.Background())

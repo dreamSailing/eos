@@ -552,6 +552,12 @@ func startTurnAsync(ctx context.Context, engine coreapi.Engine, req coreapi.Star
 			ch <- asyncTurnStartResult{err: fmt.Errorf("core engine unavailable")}
 			return
 		}
+		// 请求级记忆注入开关：headless CLI 与 TUI 共用同一全局配置
+		//（~/.eos.json memory_injection_enabled，默认开），壳层只透传，
+		// 注入裁决在内核。
+		cfg, _ := config.Load()
+		useMemory := config.MemoryInjectionEnabled(&cfg)
+		req.UseMemory = &useMemory
 		turn, err := engine.Turns().Start(ctx, req)
 		ch <- asyncTurnStartResult{turn: turn, err: err}
 	}()

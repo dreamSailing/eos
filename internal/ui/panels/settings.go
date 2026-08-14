@@ -38,6 +38,9 @@ type SettingsPanel struct {
 	rowKeys     []string // 与 table 行同步的稳定字段 ID，供 saveEditValue 匹配
 
 	globalPredictionEnabled bool
+	// memoryInjectionEnabled 是 CLI 全局「记忆注入」开关（~/.eos.json
+	// memory_injection_enabled，默认开），随每次 turn 下发 use_memory。
+	memoryInjectionEnabled bool
 }
 
 // SettingItem 设置项
@@ -113,6 +116,7 @@ func (p *SettingsPanel) LoadSettings() {
 	}
 	cfg, _ := config.Load()
 	p.globalPredictionEnabled = config.NextMessagePredictionEnabled(&cfg)
+	p.memoryInjectionEnabled = config.MemoryInjectionEnabled(&cfg)
 	p.updateTable()
 }
 
@@ -126,6 +130,11 @@ func (p *SettingsPanel) SetSettings(s *settings.Settings) {
 
 func (p *SettingsPanel) SetGlobalPredictionEnabled(enabled bool) {
 	p.globalPredictionEnabled = enabled
+	p.updateTable()
+}
+
+func (p *SettingsPanel) SetMemoryInjectionEnabled(enabled bool) {
+	p.memoryInjectionEnabled = enabled
 	p.updateTable()
 }
 
@@ -160,6 +169,8 @@ func (p *SettingsPanel) updateTable() {
 		}
 		rows = append(rows, table.Row{i18n.T("settings.row.desktop_notifications", p.language), fmt.Sprintf("%v", desktopNotifications)})
 		p.rowKeys = append(p.rowKeys, "DesktopNotifications")
+		rows = append(rows, table.Row{i18n.T("settings.row.memory_injection", p.language), fmt.Sprintf("%v", p.memoryInjectionEnabled)})
+		p.rowKeys = append(p.rowKeys, "MemoryInjection(Global)")
 		rows = append(rows, table.Row{i18n.T("settings.row.context_limit_kb", p.language), fmt.Sprintf("%d", s.MaxInjectKB)})
 		p.rowKeys = append(p.rowKeys, "MaxInjectKB")
 		rows = append(rows, table.Row{i18n.T("settings.row.language", p.language), s.Language})
@@ -201,6 +212,8 @@ func (p *SettingsPanel) editKeyLabel() string {
 		return i18n.T("settings.row.auto_context", p.language)
 	case "DesktopNotifications":
 		return i18n.T("settings.row.desktop_notifications", p.language)
+	case "MemoryInjection(Global)":
+		return i18n.T("settings.row.memory_injection", p.language)
 	case "MaxInjectKB":
 		return i18n.T("settings.row.context_limit_kb", p.language)
 	case "Language":
@@ -263,8 +276,9 @@ func (p *SettingsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 		case "s":
 			// 直接执行保存操作
 			enabled := p.globalPredictionEnabled
+			memoryInjection := p.memoryInjectionEnabled
 			return p, func() tea.Msg {
-				return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled}
+				return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled, MemoryInjectionEnabled: &memoryInjection}
 			}
 		case "r":
 			// 直接执行重置操作
@@ -289,8 +303,9 @@ func (p *SettingsPanel) handleAction() (Panel, tea.Cmd) {
 		return p.enterEditMode()
 	case "Save":
 		enabled := p.globalPredictionEnabled
+		memoryInjection := p.memoryInjectionEnabled
 		return p, func() tea.Msg {
-			return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled}
+			return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled, MemoryInjectionEnabled: &memoryInjection}
 		}
 	case "Reset":
 		p.LoadSettings()
@@ -334,8 +349,9 @@ func (p *SettingsPanel) handleEditMode(msg tea.Msg) (Panel, tea.Cmd) {
 			p.editMode = false
 			p.editInput.Blur()
 			enabled := p.globalPredictionEnabled
+			memoryInjection := p.memoryInjectionEnabled
 			return p, func() tea.Msg {
-				return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled}
+				return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled, MemoryInjectionEnabled: &memoryInjection}
 			}
 		}
 	}
@@ -376,6 +392,8 @@ func (p *SettingsPanel) saveEditValue() {
 		p.settings.Theme = value
 	case "NextMessagePrediction(Global)":
 		p.globalPredictionEnabled = value == "true" || value == "True" || value == "1"
+	case "MemoryInjection(Global)":
+		p.memoryInjectionEnabled = value == "true" || value == "True" || value == "1"
 	case "PlanPromptStyle":
 		p.settings.PlanPromptStyle = value
 	case "PlanBubbleColor":
@@ -472,6 +490,7 @@ func (p *SettingsPanel) SetSize(width, height int) {
 type SettingsSaveMsg struct {
 	Settings                *settings.Settings
 	GlobalPredictionEnabled *bool
+	MemoryInjectionEnabled  *bool
 }
 
 // SettingsResetMsg 重置设置消息

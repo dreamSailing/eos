@@ -4,13 +4,14 @@ import "testing"
 
 func TestAllCoreMethodsFreezesMigrationSurface(t *testing.T) {
 	methods := AllCoreMethods()
-	// 147 = 139（历史冻结基线）
+	// 146 = 139（历史冻结基线）
 	//   + 3 新增内核方法（approval/preview、sandbox/derive_policy、permission/enter_full_access）
 	//   + 5 补齐既有遗漏（session/set_meta、session/search、model/bundled_mcp、
 	//     workspace/changes、workspace/rollback/{build,apply}）
+	//   - 1 移除死方法（insight/memory_snapshot，内核系统 B 清理后已无此路由）
 	// 与 generated.CoreMethods()（schema.json 单一真相源）保持一致。
-	if len(methods) != 147 {
-		t.Fatalf("AllCoreMethods() len=%d, want 147", len(methods))
+	if len(methods) != 146 {
+		t.Fatalf("AllCoreMethods() len=%d, want 146", len(methods))
 	}
 
 	seen := make(map[string]bool, len(methods))
@@ -43,7 +44,7 @@ func TestAllCoreMethodsFreezesMigrationSurface(t *testing.T) {
 		MethodModelSessionSet,
 		MethodRemoteWorkspaceOpen,
 		MethodGitShow,
-		MethodInsightMemorySnapshot,
+		MethodMemorySnapshot,
 		MethodMemoryRecordSearch,
 		MethodRoleResolve,
 		MethodAgentToolExecute,

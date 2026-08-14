@@ -1171,14 +1171,6 @@ func (s remoteInsightService) PlanSnapshot(ctx context.Context) (coreapi.PlanSna
 	return out, nil
 }
 
-func (s remoteInsightService) MemorySnapshot(ctx context.Context) (coreapi.MemorySnapshot, error) {
-	var out coreapi.MemorySnapshot
-	if err := s.engine.call(ctx, protocoljsonrpc.MethodInsightMemorySnapshot, nil, &out); err != nil {
-		return coreapi.MemorySnapshot{}, err
-	}
-	return out, nil
-}
-
 type remoteMemoryService struct {
 	engine *RemoteEngine
 }

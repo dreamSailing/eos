@@ -110,7 +110,6 @@ const (
 	MethodGitShow                    = "git/show"
 	MethodInsightPredictNextUser     = "insight/predict_next_user_message"
 	MethodInsightPlanSnapshot        = "insight/plan_snapshot"
-	MethodInsightMemorySnapshot      = "insight/memory_snapshot"
 	MethodMemorySnapshot             = "memory/snapshot"
 	MethodMemorySave                 = "memory/save"
 	MethodMemoryRebuildIndex         = "memory/rebuild_index"
@@ -268,7 +267,6 @@ func AllCoreMethods() []string {
 		MethodGitShow,
 		MethodInsightPredictNextUser,
 		MethodInsightPlanSnapshot,
-		MethodInsightMemorySnapshot,
 		MethodMemorySnapshot,
 		MethodMemorySave,
 		MethodMemoryRebuildIndex,

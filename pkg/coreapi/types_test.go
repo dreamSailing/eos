@@ -2,7 +2,9 @@ package coreapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/dreamSailing/eos/pkg/protocol"
@@ -378,5 +380,26 @@ func TestInterfacesAreSatisfiable(t *testing.T) {
 func TestErrUnsupportedSupportsErrorsIs(t *testing.T) {
 	if !errors.Is(ErrUnsupported, ErrUnsupported) {
 		t.Fatal("ErrUnsupported should support errors.Is")
+	}
+}
+
+func TestStartTurnRequestUseMemorySerialization(t *testing.T) {
+	enabled := false
+	set := StartTurnRequest{SessionID: "s1", Input: "hi", UseMemory: &enabled}
+	body, err := json.Marshal(set)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(body), `"use_memory":false`) {
+		t.Fatalf("expected use_memory field in %s", body)
+	}
+
+	unset := StartTurnRequest{SessionID: "s1", Input: "hi"}
+	body, err = json.Marshal(unset)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(body), "use_memory") {
+		t.Fatalf("expected use_memory omitted when nil, got %s", body)
 	}
 }

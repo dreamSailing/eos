@@ -51,7 +51,7 @@ func (m *AppModel) handleVerifySlash(args []string) tea.Cmd {
 
 	invoke := func() tea.Msg {
 		ctx := context.Background()
-		content, err := m.adapter.Invoke(ctx, request, m.state.ExecutionMode, nil)
+		content, err := m.adapter.Invoke(ctx, request, m.state.ExecutionMode, nil, m.memoryInjectionEnabled)
 		if err != nil {
 			if strings.Contains(strings.ToLower(err.Error()), "context canceled") {
 				return nil

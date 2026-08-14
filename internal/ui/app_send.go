@@ -220,7 +220,7 @@ func (m *AppModel) sendMessage() tea.Cmd {
 	// 异步调用 AI 引擎
 	invoke := func() tea.Msg {
 		ctx := context.Background()
-		content, err := m.adapter.Invoke(ctx, expanded, m.state.ExecutionMode, imagePaths)
+		content, err := m.adapter.Invoke(ctx, expanded, m.state.ExecutionMode, imagePaths, m.memoryInjectionEnabled)
 		if err != nil {
 			if strings.Contains(strings.ToLower(err.Error()), "context canceled") {
 				return nil
