@@ -1124,11 +1124,11 @@ func (a *CoreClientAdapter) GitDiff(ctx context.Context, path string) (string, e
 	return out.Text, nil
 }
 
-func (a *CoreClientAdapter) GitBranches(ctx context.Context) (coreapi.GitBranchesResult, error) {
+func (a *CoreClientAdapter) GitBranches(ctx context.Context, workspaceRoot string) (coreapi.GitBranchesResult, error) {
 	if a == nil || a.engine == nil {
 		return coreapi.GitBranchesResult{}, errors.New("core client is not available")
 	}
-	return a.engine.Git().Branches(ctx, coreapi.GitBranchesRequest{})
+	return a.engine.Git().Branches(ctx, coreapi.GitBranchesRequest{WorkspaceRoot: strings.TrimSpace(workspaceRoot)})
 }
 
 func (a *CoreClientAdapter) GitLog(ctx context.Context, req coreapi.GitLogRequest) (coreapi.GitLogResult, error) {

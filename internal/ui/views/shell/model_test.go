@@ -201,3 +201,18 @@ func TestEscDismissesSlashHintAndRestoresInputBoxPosition(t *testing.T) {
 		t.Fatalf("expected content height to return to baseline %d after Esc, got %d", baseline, model.contentH)
 	}
 }
+
+func TestRenderStatusBarShowsGitBranchWhenSet(t *testing.T) {
+	s := styles.NewStyles(styles.GetTheme("dark"))
+	model := New(100, 30, s, "zh")
+	model.SetGitBranch("feat/memory")
+	bar := stripANSIForTest(model.renderStatusBar())
+	if !strings.Contains(bar, "⎇ feat/memory") {
+		t.Fatalf("status bar should contain branch item, got: %s", bar)
+	}
+	model.SetGitBranch("")
+	bar = stripANSIForTest(model.renderStatusBar())
+	if strings.Contains(bar, "⎇") {
+		t.Fatalf("branch item should be hidden when branch is empty, got: %s", bar)
+	}
+}

@@ -102,6 +102,11 @@ type AppModel struct {
 	// 默认开），随每次 Invoke 下发 turn/start.use_memory。
 	memoryInjectionEnabled bool
 
+	// gitBranchRoot / gitBranchCheckedAt 是状态栏分支刷新的节流状态：
+	// 工作区变化立即刷新，否则每 gitBranchRefreshInterval 至多查一次。
+	gitBranchRoot      string
+	gitBranchCheckedAt time.Time
+
 	trustPendingPath   string
 	trustPendingAction string
 	activeCancel       context.CancelFunc
@@ -175,6 +180,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case ctxUsageTickMsg:
 		return m.handleCtxUsageTickMsg(msg)
+	case GitBranchMsg:
+		return m.handleGitBranchMsg(msg)
 	case tea.WindowSizeMsg:
 		return m.handleWindowSizeMsg(msg)
 	case tea.MouseMsg:

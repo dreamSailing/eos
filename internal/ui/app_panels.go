@@ -38,6 +38,46 @@ type ctxUsageTickMsg struct{}
 // ctxUsageTickMsg_PanelsUnused 避免删除时误判。
 var _ = ctxUsageTickMsg{}
 
+// gitBranchRefreshInterval 是状态栏 git 分支刷新节流间隔（工作区变化时立即刷新）。
+const gitBranchRefreshInterval = 15 * time.Second
+
+// GitBranchMsg 携带当前工作区所在 git 仓库的分支（空 = 非 git 工作区）。
+type GitBranchMsg struct {
+	Branch string
+}
+
+// maybeRefreshGitBranch 按节流策略发起 git 分支查询：工作区变化立即查，
+// 否则距上次查询超过 gitBranchRefreshInterval 才查（避免每 tick 起子进程）。
+func (m *AppModel) maybeRefreshGitBranch() tea.Cmd {
+	if m == nil || m.adapter == nil {
+		return nil
+	}
+	root := strings.TrimSpace(m.currentWorkspaceRoot())
+	now := time.Now()
+	if root == m.gitBranchRoot && now.Sub(m.gitBranchCheckedAt) < gitBranchRefreshInterval {
+		return nil
+	}
+	m.gitBranchRoot = root
+	m.gitBranchCheckedAt = now
+	adapter := m.adapter
+	return func() tea.Msg {
+		result, err := adapter.GitBranches(context.Background(), root)
+		if err != nil {
+			// 非 git 工作区 / git 不可用：按 Codex 惯例省略显示，不报错。
+			return GitBranchMsg{Branch: ""}
+		}
+		return GitBranchMsg{Branch: result.Current}
+	}
+}
+
+// handleGitBranchMsg 把分支查询结果写入状态栏。
+func (m *AppModel) handleGitBranchMsg(msg GitBranchMsg) (tea.Model, tea.Cmd) {
+	if m.shell != nil {
+		m.shell.SetGitBranch(msg.Branch)
+	}
+	return m, m.finalizeUpdate(nil)
+}
+
 // ctxUsageTick 每 900ms 触发一次上下文使用率刷新
 func (m *AppModel) ctxUsageTick() tea.Cmd {
 	return tea.Tick(900*time.Millisecond, func(time.Time) tea.Msg { return ctxUsageTickMsg{} })
@@ -484,6 +524,10 @@ func (m *AppModel) handleCtxUsageTickMsg(_ ctxUsageTickMsg) (tea.Model, tea.Cmd)
 		m.refreshContextPanel()
 	} else if m.activeView == "panel" && m.activePanel == "memory" {
 		m.refreshMemoryPanel()
+	}
+	// 状态栏 git 分支：节流刷新（工作区变化立即，否则 15s 一次）。
+	if cmd := m.maybeRefreshGitBranch(); cmd != nil {
+		cmds = append(cmds, cmd)
 	}
 	cmds = append(cmds, m.ctxUsageTick())
 	return m, m.finalizeUpdate(tea.Batch(cmds...))

@@ -718,7 +718,7 @@ func (m *AppModel) handleGitSlash(args []string) tea.Cmd {
 		}
 		m.appendSystem(strings.Join(lines, "\n"), "info")
 	case "branches":
-		out, err := m.adapter.GitBranches(context.Background())
+		out, err := m.adapter.GitBranches(context.Background(), m.currentWorkspaceRoot())
 		if err != nil {
 			m.appendSystem(err.Error(), "error")
 			return nil

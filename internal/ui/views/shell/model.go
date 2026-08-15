@@ -65,6 +65,8 @@ type Model struct {
 	ctxVisible       bool
 	bgTaskCount      int
 	executionMode    string
+	// gitBranch 是当前工作区所在 git 仓库的分支（非 git 工作区为空，状态栏隐藏）。
+	gitBranch        string
 	thinkingExpanded bool
 	promptOverlay    string
 	promptOverlayH   int
@@ -420,6 +422,11 @@ func (m *Model) SetContextUsage(tokens int, ratio float64) {
 
 func (m *Model) SetExecutionMode(mode string) {
 	m.executionMode = modes.NormalizeExecutionMode(mode)
+}
+
+// SetGitBranch 设置状态栏显示的当前 git 分支（空 = 非 git 工作区，隐藏项）。
+func (m *Model) SetGitBranch(branch string) {
+	m.gitBranch = strings.TrimSpace(branch)
 }
 
 func (m *Model) SetThinkingExpanded(v bool) {
@@ -861,6 +868,11 @@ func (m Model) renderStatusBar() string {
 		rightParts = append(rightParts, m.styles.TextMuted.Render(i18n.T("status.tasks", m.language)+fmt.Sprintf("%d", m.bgTaskCount)))
 	}
 	if m.mode == ModeAI {
+		// 当前工作区所在 git 仓库分支（对齐 Codex 状态栏 git-branch 项：非 git
+		// 工作区 / 查询失败时省略，不显示错误）。
+		if m.gitBranch != "" {
+			rightParts = append(rightParts, m.styles.TextMuted.Render("⎇ "+m.gitBranch))
+		}
 		rightParts = append(rightParts, m.styles.TextMuted.Render(i18n.T("status.exec", m.language)+executionModeLabel(m.language, m.executionMode)))
 	}
 
