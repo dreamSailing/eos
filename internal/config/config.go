@@ -456,14 +456,15 @@ func Load() (Config, string) {
 			"error", err)
 	}
 	if NormalizeWorkspaceState(&cfg) {
-		if err := Save(cfg, p); err != nil {
+		// 持锁回写：必须用 saveLocked（Save 会再次 Lock 同一互斥锁 → 死锁）。
+		if err := saveLocked(cfg, p); err != nil {
 			slog.Warn("config.load.normalize_workspace_state.save.error", "path", p, "error", err.Error())
 		}
 	}
 
 	if len(cfg.MCP) == 0 {
 		if migrated, ok := tryMigrateLegacyMCPServers(b, &cfg); ok {
-			if err := Save(cfg, p); err != nil {
+			if err := saveLocked(cfg, p); err != nil {
 				slog.Warn("config.load.migrate_mcp.save.error", "path", p, "error", err.Error())
 			} else {
 				slog.Info("config.load.migrate_mcp.save.success", "path", p, "mcp_count", len(migrated))
@@ -616,7 +617,13 @@ var configMutex sync.Mutex
 func Save(cfg Config, p string) error {
 	configMutex.Lock()
 	defer configMutex.Unlock()
+	return saveLocked(cfg, p)
+}
 
+// saveLocked 落盘配置（调用方必须已持有 configMutex）。
+// Load 的迁移路径在持锁状态下回写，必须走本函数——直接调 Save 会因
+// 互斥锁不可重入而死锁。
+func saveLocked(cfg Config, p string) error {
 	bs, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		slog.Error("config.save.marshal.error",
