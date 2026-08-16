@@ -80,8 +80,9 @@ func (m WorkbookModel) PlainText() string {
 	if strings.TrimSpace(m.Title) != "" {
 		parts = append(parts, strings.TrimSpace(m.Title))
 	}
-	for _, sheet := range m.Sheets {
-		parts = append(parts, fmt.Sprintf("# Sheet: %s", sheetNameOrDefault(sheet.Name, len(parts)+1)))
+	for i, sheet := range m.Sheets {
+		// 默认名用真实表序号（i+1），而不是已输出的行数。
+		parts = append(parts, fmt.Sprintf("# Sheet: %s", sheetNameOrDefault(sheet.Name, i+1)))
 		for _, row := range sheet.Rows {
 			parts = append(parts, strings.Join(row, "\t"))
 		}

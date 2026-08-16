@@ -145,7 +145,7 @@ func (c *LRUCache[K, V]) Get(key K) (V, bool) {
 	entry := elem.Value.(*Entry[K, V])
 
 	// 检查是否过期
-	if c.ttl > 0 && time.Now().After(entry.expiration) {
+	if !entry.expiration.IsZero() && time.Now().After(entry.expiration) {
 		c.removeElementLocked(elem)
 		c.stats.Misses++
 		var zero V
@@ -183,7 +183,7 @@ func (c *LRUCache[K, V]) Has(key K) bool {
 	}
 
 	entry := elem.Value.(*Entry[K, V])
-	if c.ttl > 0 && time.Now().After(entry.expiration) {
+	if !entry.expiration.IsZero() && time.Now().After(entry.expiration) {
 		return false
 	}
 	return true
@@ -301,10 +301,6 @@ func (c *LRUCache[K, V]) CleanExpired() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.ttl == 0 {
-		return 0
-	}
-
 	now := time.Now()
 	expired := 0
 
@@ -354,7 +350,7 @@ func (c *LRUCache[K, V]) Peek(key K) (V, bool) {
 	}
 
 	entry := elem.Value.(*Entry[K, V])
-	if c.ttl > 0 && time.Now().After(entry.expiration) {
+	if !entry.expiration.IsZero() && time.Now().After(entry.expiration) {
 		var zero V
 		return zero, false
 	}
@@ -394,7 +390,7 @@ func (c *LRUCache[K, V]) Range(fn func(key K, value V) bool) {
 
 	for elem := c.lruList.Front(); elem != nil; elem = elem.Next() {
 		entry := elem.Value.(*Entry[K, V])
-		if !entry.expiration.IsZero() && c.ttl > 0 && time.Now().After(entry.expiration) {
+		if !entry.expiration.IsZero() && time.Now().After(entry.expiration) {
 			continue
 		}
 		if !fn(entry.key, entry.value) {

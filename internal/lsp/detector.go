@@ -92,13 +92,16 @@ func (d *Detector) DetectLanguage(rootPath string) LanguageType {
 	jsCount := 0
 
 	_ = filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+		if err != nil {
 			return nil
 		}
-
-		// 跳过隐藏目录和vendor
-		if strings.Contains(path, "/.") || strings.Contains(path, "vendor") ||
-			strings.Contains(path, "node_modules") {
+		if info.IsDir() {
+			// 跳过隐藏目录与依赖目录（按目录名判断——按路径子串匹配
+			// 在 Windows 上因分隔符不同而失效）。
+			name := info.Name()
+			if strings.HasPrefix(name, ".") || name == "vendor" || name == "node_modules" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
