@@ -124,34 +124,26 @@ jobs:
       - name: Build (release)
         run: cargo build --release --target ${{ matrix.target }} -p eos-core-bin
 
-      - name: Write signing key
-        shell: bash
+      - name: Sign and package
+        shell: pwsh
         env:
           EOS_SIGNING_KEY: ${{ secrets.EOS_SIGNING_KEY }}
         run: |
-          if [ -n "$EOS_SIGNING_KEY" ]; then
-            mkdir -p scripts
-            printf '%s' "$EOS_SIGNING_KEY" > scripts/eos-signing-key.pem
-            echo "signing key written"
-          else
-            echo "::warning::EOS_SIGNING_KEY secret 未设置；将用 development placeholder 签名（仅开发用，release 不可用）"
-          fi
-
-      - name: Sign and package
-        shell: pwsh
-        run: |
+          if ([string]::IsNullOrWhiteSpace($env:EOS_SIGNING_KEY)) {
+            throw "EOS_SIGNING_KEY secret 未设置"
+          }
           $exeName = if ("${{ matrix.target }}" -like "*windows*") { "eos-core.exe" } else { "eos-core" }
-          # package 脚本读 target/release/<exe>，交叉/原生 target 产物在
+          # package 脚本读 target/release/<exe>，target 构建产物在
           # target/<target>/release/<exe>，复制到 package 脚本期望位置。
           $built = "target/${{ matrix.target }}/release/$exeName"
           $staged = "target/release/$exeName"
           New-Item -ItemType Directory -Force -Path (Split-Path $staged) | Out-Null
           Copy-Item -Force $built $staged
-          $keyPath = if (Test-Path "scripts/eos-signing-key.pem") { "scripts/eos-signing-key.pem" } else { "" }
-          $allowPlaceholder = if ($keyPath -eq "") { "-AllowDevelopmentPlaceholder" } else { "" }
+          New-Item -ItemType Directory -Force -Path scripts | Out-Null
+          [IO.File]::WriteAllText("$PWD/scripts/eos-signing-key.pem", $env:EOS_SIGNING_KEY)
           & pwsh -NoProfile -File scripts/package-public-artifact.ps1 `
             -Target "${{ matrix.target }}" `
-            -PrivateKeyPath $keyPath $allowPlaceholder
+            -PrivateKeyPath scripts/eos-signing-key.pem
 
       - name: Verify sha256
         shell: pwsh
