@@ -4,7 +4,7 @@
 
 EOS 是一个开源的终端 AI 编码助手，当前以 Rust Core 作为核心运行时，Go 侧负责 CLI 入口、TUI、桥接与分发集成。它面向日常编码、代码审查、文档处理、本地自动化，以及 IDE / 平台集成场景，提供交互式 TUI、工具调用、安全门禁、工作区上下文和可扩展的 MCP 能力。
 
-当前 `v1.0.0-beta.1` 是切换到 Rust Core 默认生产路径后的首个统一 beta 版本，发布资产以 Windows 安装包为主，并与 EOS App 的桌面分发版本保持同版号。
+当前 `v1.0.0-beta.3` 起提供三端（Windows / macOS / Linux × amd64+arm64）生产包与 SHA256SUMS 校验，Windows 提供安装器与便携压缩包双通道，并与 EOS App 的桌面分发版本保持同版号。
 
 - 项目仓库：https://github.com/dreamSailing/eos
 - 问题反馈：https://github.com/dreamSailing/eos/issues
@@ -79,6 +79,16 @@ EOS 不是单一的“问答 CLI”，而是一个完整的本地 AI 工作台�
 ## 快速开始
 
 ### 1) 获取并编译
+
+推荐直接安装（Rust 内核已内嵌进二进制，首次运行自动释放到用户缓存目录，无需额外配置）：
+
+```bash
+go install github.com/dreamSailing/eos@latest
+```
+
+或下载对应平台发布包：https://github.com/dreamSailing/eos/releases
+
+从源码编译：
 
 ```bash
 git clone https://github.com/dreamSailing/eos.git

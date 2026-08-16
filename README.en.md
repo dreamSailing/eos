@@ -4,7 +4,7 @@
 
 EOS is an open-source terminal AI coding assistant with Rust Core as its core runtime, while the Go side provides the CLI entry point, TUI, bridge layer, and distribution integration. It is designed for day-to-day coding, code review, document workflows, local automation, and IDE / platform integration, with an interactive TUI, tool calling, safety controls, workspace-aware context, and extensible MCP support.
 
-`v1.0.0-beta.1` is the first unified beta release that ships with Rust Core as the default production runtime. This release line focuses on Windows installers and stays version-aligned with the EOS App desktop distribution.
+Since `v1.0.0-beta.3`, releases ship production packages for three platforms (Windows / macOS / Linux, amd64 + arm64) with SHA256SUMS verification. Windows offers both a setup installer and a portable archive, version-aligned with the EOS App desktop distribution.
 
 - Repository: https://github.com/dreamSailing/eos
 - Issues: https://github.com/dreamSailing/eos/issues
@@ -78,7 +78,17 @@ Compared with heavier or more closed terminal assistants, EOS currently focuses 
 
 ## Quick Start
 
-### 1) Clone and Build
+### 1) Install
+
+Recommended (the Rust core is embedded in the binary and self-extracts on first run):
+
+```bash
+go install github.com/dreamSailing/eos@latest
+```
+
+Or download a platform package: https://github.com/dreamSailing/eos/releases
+
+### 2) Build from Source
 
 ```bash
 git clone https://github.com/dreamSailing/eos.git
