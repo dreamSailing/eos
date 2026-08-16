@@ -1,13 +1,16 @@
 package ui
 
-import "testing"
+import (
+	"io"
+	"testing"
+)
 
 func TestTUISidecarClientOptionsRequiresVerifiedArtifact(t *testing.T) {
 	opts := tuiSidecarClientOptions(TUIOptions{
 		ModelOverride: "test-model",
 		AccessMode:    "workspace-write",
 		ApprovalMode:  "on-request",
-	})
+	}, io.Discard)
 	if !opts.VerifyChecksum {
 		t.Fatal("tuiSidecarClientOptions() must enable checksum verification")
 	}
@@ -28,5 +31,20 @@ func TestTUISidecarClientOptionsRequiresVerifiedArtifact(t *testing.T) {
 	}
 	if opts.Env["EOS_CORE_STORE_DIR"] == "" {
 		t.Fatal("tuiSidecarClientOptions() must provide EOS_CORE_STORE_DIR")
+	}
+}
+
+// 日志级别默认 info（debug 会把敏感内容落盘），用户显式设置时跟随。
+func TestTUISidecarClientOptionsLogLevel(t *testing.T) {
+	t.Setenv("EOS_LOG_LEVEL", "")
+	opts := tuiSidecarClientOptions(TUIOptions{}, io.Discard)
+	if got := opts.Env["EOS_LOG_LEVEL"]; got != "info" {
+		t.Fatalf("EOS_LOG_LEVEL=%q, want info (default)", got)
+	}
+
+	t.Setenv("EOS_LOG_LEVEL", "debug")
+	opts = tuiSidecarClientOptions(TUIOptions{}, io.Discard)
+	if got := opts.Env["EOS_LOG_LEVEL"]; got != "debug" {
+		t.Fatalf("EOS_LOG_LEVEL=%q, want debug (user override)", got)
 	}
 }

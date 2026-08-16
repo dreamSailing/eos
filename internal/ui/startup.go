@@ -62,12 +62,19 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	client, err := StartCoreClient(ctx, tuiSidecarClientOptions(opts))
+	// stderr 落盘 writer 持有日志文件句柄，所有退出路径显式 Close。
+	stderrWriter := newSidecarStderrWriter()
+
+	client, err := StartCoreClient(ctx, tuiSidecarClientOptions(opts, stderrWriter))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start eos-core sidecar: %v\n", err)
-		os.Exit(1)
+		stderrWriter.Close()
+		os.Exit(1) // 此时尚无 client/defer 需要履行
 	}
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+		stderrWriter.Close()
+	}()
 
 	if strings.TrimSpace(opts.SessionID) != "" {
 		slog.Info("ui.startup.session", "session_id", opts.SessionID)
@@ -79,6 +86,9 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 		slog.Error("ui.startup.app.run.error", "error", err)
 		fmt.Fprintf(os.Stderr, "\nError: Application failed to start: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Please check the logs for more details.\n")
+		// os.Exit 不执行 defer——显式清理后再退出，避免 sidecar 僵尸进程与句柄泄漏。
+		_ = client.Close()
+		stderrWriter.Close()
 		os.Exit(1)
 	}
 	slog.Info("ui.startup.app.stopped")
@@ -86,10 +96,10 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 	fmt.Println(T("goodbye.ended", "zh"))
 }
 
-func tuiSidecarClientOptions(opts TUIOptions) sidecarclient.Options {
+func tuiSidecarClientOptions(opts TUIOptions, stderrWriter io.Writer) sidecarclient.Options {
 	return sidecarclient.Options{
 		Env:              tuiOptionEnv(opts),
-		Stderr:           newSidecarStderrWriter(),
+		Stderr:           stderrWriter,
 		VerifyChecksum:   true,
 		RequireSignature: true,
 	}
@@ -101,8 +111,14 @@ func tuiOptionEnv(opts TUIOptions) map[string]string {
 	env := map[string]string{}
 	// Production TUI never inherits a fake provider selection from the parent shell.
 	env["EOS_MODEL_PROVIDER"] = ""
-	// 诊断：开启 sidecar debug 日志，配合 newSidecarStderrWriter 落盘排查 turn 恢复卡死。
-	env["EOS_LOG_LEVEL"] = "debug"
+	// 日志级别跟随用户环境变量；默认 info——debug 会把 API key 片段/用户输入
+	// 等敏感内容落盘 eos-core.log，仅排障时由用户显式开启（AGENTS.md：环境
+	// 变量允许默认值，但需显式说明安全性）。
+	if v := strings.TrimSpace(os.Getenv("EOS_LOG_LEVEL")); v != "" {
+		env["EOS_LOG_LEVEL"] = v
+	} else {
+		env["EOS_LOG_LEVEL"] = "info"
+	}
 	if storeDir := defaultRustCoreStoreDir(); storeDir != "" {
 		env["EOS_CORE_STORE_DIR"] = storeDir
 	}
@@ -156,19 +172,40 @@ func defaultRustCoreStoreDir() string {
 	return ""
 }
 
-// newSidecarStderrWriter 把 eos-core sidecar 的 stderr（tracing 日志与 panic）
-// 落盘到日志目录，避免被 io.Discard 吞掉导致排查无痕。打开失败时回退到丢弃，
-// 不阻断 TUI 启动。
-func newSidecarStderrWriter() io.Writer {
+// sidecarStderrWriter 把 eos-core sidecar 的 stderr（tracing 日志与 panic）
+// 落盘到日志目录。f 为 nil 时降级为丢弃。持有进程生命周期长的日志文件
+// 句柄，由启动路径的退出清理显式 Close。
+type sidecarStderrWriter struct {
+	f *os.File
+}
+
+func (w *sidecarStderrWriter) Write(p []byte) (int, error) {
+	if w.f == nil {
+		return len(p), nil
+	}
+	return w.f.Write(p)
+}
+
+// Close 幂等；打开失败的降级实例（f==nil）为 no-op。
+func (w *sidecarStderrWriter) Close() {
+	if w.f != nil {
+		_ = w.f.Close()
+		w.f = nil
+	}
+}
+
+// newSidecarStderrWriter 打开落盘文件；目录/文件打开失败时返回降级实例
+// （丢弃写入），不阻断 TUI 启动。
+func newSidecarStderrWriter() *sidecarStderrWriter {
 	dir := filepath.Join(config.ConfiguredLogDir(), "core")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		slog.Error("ui.sidecar.stderr.log_dir.error", "error", err)
-		return io.Discard
+		return &sidecarStderrWriter{}
 	}
 	f, err := os.OpenFile(filepath.Join(dir, "eos-core.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		slog.Error("ui.sidecar.stderr.open.error", "error", err)
-		return io.Discard
+		return &sidecarStderrWriter{}
 	}
-	return f
+	return &sidecarStderrWriter{f: f}
 }
