@@ -1,0 +1,17 @@
+//go:build linux && amd64
+
+package sidecar
+
+import _ "embed"
+
+//go:embed core/x86_64-unknown-linux-musl/eos-core
+var embeddedCoreBinary []byte
+
+//go:embed core/x86_64-unknown-linux-musl/manifest.json
+var embeddedCoreManifestBytes []byte
+
+func init() {
+	embeddedCoreSidecar = func() ([]byte, []byte, bool) {
+		return embeddedCoreBinary, embeddedCoreManifestBytes, true
+	}
+}

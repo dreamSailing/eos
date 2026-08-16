@@ -49,6 +49,12 @@ func LoadManifest(path string) (Manifest, error) {
 	if err != nil {
 		return Manifest{}, err
 	}
+	return LoadManifestBytes(data)
+}
+
+// LoadManifestBytes 从字节内容解析 manifest（内嵌分发通道使用：内核产物
+// 以 go:embed 内嵌进 CLI，落盘前需先在内存中校验）。
+func LoadManifestBytes(data []byte) (Manifest, error) {
 	var manifest Manifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return Manifest{}, fmt.Errorf("%w: %v", ErrManifestInvalid, err)
@@ -169,6 +175,20 @@ func (m Manifest) VerifyBinary(path string) error {
 	}
 	if !strings.EqualFold(got, want) {
 		return fmt.Errorf("%w: got sha256:%s want sha256:%s", ErrChecksumMismatch, got, want)
+	}
+	return nil
+}
+
+// VerifyBinaryBytes 校验字节内容与 manifest 的 sha256 一致（内嵌分发通道：
+// 释放到磁盘前先验内容，防止内嵌产物与 manifest 串包）。
+func (m Manifest) VerifyBinaryBytes(bin []byte) error {
+	want, err := parseSHA256(m.SHA256)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrManifestInvalid, err)
+	}
+	got := sha256.Sum256(bin)
+	if !strings.EqualFold(hex.EncodeToString(got[:]), want) {
+		return fmt.Errorf("%w: embedded binary sha256 mismatch with manifest", ErrChecksumMismatch)
 	}
 	return nil
 }

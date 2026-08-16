@@ -118,6 +118,11 @@ func ResolveBinary(opts ResolveOptions) (ResolvedBinary, error) {
 			return resolveManifest(path, opts, "search", []string{candidate})
 		}
 	}
+	// go install 分发通道：exe 旁与源码树均无内核时，释放内嵌内核到用户
+	// 缓存目录（见 embedded.go）。释放失败（无内嵌/校验不过）落到统一错误。
+	if manifestPath, err := materializeEmbedded(goos, goarch); err == nil {
+		return resolveManifest(manifestPath, opts, "embedded", TargetTriples(goos, goarch))
+	}
 	return ResolvedBinary{}, fmt.Errorf("%w: target %s", ErrCoreBinaryNotFound, target)
 }
 
