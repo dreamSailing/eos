@@ -80,24 +80,40 @@ func TestE2EFileMkdirRelativePathApproval(t *testing.T) {
 		t.Fatalf("missing approval_id in output: %s (err=%v)", string(toolResult.Output), err)
 	}
 
-	// Approve. The sandbox check now runs inside execute_approved; with the
-	// relative-path resolution it must allow the write and actually mkdir.
-	var approveResult coreapi.ToolResult
+	// Approve. approval/respond 的同步返回是 ApprovalReceipt（accepted /
+	// decision / approval_id）——实际工具执行结果通过事件总线异步送达
+	// （tool.approval_approved → 恢复的 turn 事件），不在 respond 的返回值里。
+	var receipt struct {
+		ApprovalID string `json:"approval_id"`
+		Decision   string `json:"decision"`
+		Accepted   bool   `json:"accepted"`
+	}
 	if err := client.Process().Call(ctx, jsonrpc.MethodApprovalRespond, map[string]any{
 		"approval_id": pending.ApprovalID,
 		"decision":    "accept",
-	}, &approveResult); err != nil {
+	}, &receipt); err != nil {
 		t.Fatalf("approval/respond error = %v", err)
 	}
-	if approveResult.Status != "ok" {
-		t.Fatalf("approval/respond result status = %q, want ok (display=%q output=%s)",
-			approveResult.Status, approveResult.Display, string(approveResult.Output))
+	if !receipt.Accepted || receipt.ApprovalID != pending.ApprovalID || receipt.Decision != "accept" {
+		t.Fatalf("approval/respond receipt = %+v, want accepted=true decision=accept approval_id=%s",
+			receipt, pending.ApprovalID)
 	}
 
+	// 异步执行：相对路径 "test" 解析到 workspace root 下并真正建目录，
+	// 轮询等待内核完成恢复执行。
 	created := filepath.Join(tmpDir, "test")
-	info, err := os.Stat(created)
-	if err != nil {
-		t.Fatalf("expected directory %s to be created: %v", created, err)
+	deadline := time.Now().Add(20 * time.Second)
+	var info os.FileInfo
+	for {
+		var err error
+		info, err = os.Stat(created)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected directory %s to be created after approval: %v", created, err)
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 	if !info.IsDir() {
 		t.Fatalf("%s exists but is not a directory", created)

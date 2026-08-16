@@ -68,6 +68,7 @@ func StartProcess(ctx context.Context, opts ProcessOptions) (*ProcessClient, err
 	}
 
 	cmd := exec.Command(binaryPath, opts.Args...)
+	hideConsole(cmd)
 	if opts.Dir != "" {
 		cmd.Dir = opts.Dir
 	}
