@@ -1,0 +1,178 @@
+name: Release
+
+# CLI 三端（Windows / macOS / Linux × amd64+arm64）生产包构建。
+#
+# 流程（每 target 原生 runner）：
+#   checkout eos-cli + eos-core-rs（私有仓，PAT）→ cargo 构建 sidecar →
+#   Ed25519 签名打包 → 校验 sha256 → go build CLI（版本注入）→
+#   组装 release 布局（eos(.exe) + core/<triple>/）→ 打包归档 → upload。
+# release job：聚合 5 个归档 + 生成 SHA256SUMS.txt → 创建 GitHub Release。
+#
+# 触发：手动 workflow_dispatch（输入版本号）或推送 v* tag（tag 名即版本号）。
+# 前置 secrets：EOS_CORE_PAT（可读私有仓 dreamSailing/eos-core-rs）、
+# EOS_SIGNING_KEY（Ed25519 签名私钥 PEM 全文）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（如 v1.0.0-beta.3，留空则拒绝）"
+        required: true
+        default: ""
+      core_ref:
+        description: "eos-core-rs 构建 ref（默认 main）"
+        required: false
+        default: "main"
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: windows, goarch: amd64, runner: windows-latest, triple: x86_64-pc-windows-gnu }
+          - { goos: darwin, goarch: amd64, runner: macos-13, triple: x86_64-apple-darwin }
+          - { goos: darwin, goarch: arm64, runner: macos-latest, triple: aarch64-apple-darwin }
+          - { goos: linux, goarch: amd64, runner: ubuntu-latest, triple: x86_64-unknown-linux-musl }
+          - { goos: linux, goarch: arm64, runner: ubuntu-24.04-arm, triple: aarch64-unknown-linux-musl }
+
+    steps:
+      - name: Checkout eos-cli
+        uses: actions/checkout@v4
+
+      - name: Checkout eos-core-rs (private)
+        uses: actions/checkout@v4
+        with:
+          repository: dreamSailing/eos-core-rs
+          ref: ${{ inputs.core_ref || 'main' }}
+          token: ${{ secrets.EOS_CORE_PAT }}
+          path: eos-core-rs
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.triple }}
+
+      - name: Install musl toolchain (linux musl)
+        if: contains(matrix.triple, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      # golang.design/x/clipboard 在 Linux 走 cgo 绑定 X11，编译需要头文件。
+      - name: Install X11 headers (linux)
+        if: matrix.goos == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev pkg-config
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: eos-core-rs
+          key: ${{ matrix.triple }}
+
+      - name: Build sidecar (release)
+        working-directory: eos-core-rs
+        run: cargo build --release --target ${{ matrix.triple }} -p eos-core-bin
+
+      - name: Sign and package sidecar
+        shell: pwsh
+        working-directory: eos-core-rs
+        env:
+          EOS_SIGNING_KEY: ${{ secrets.EOS_SIGNING_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:EOS_SIGNING_KEY)) {
+            throw "EOS_SIGNING_KEY secret 未设置"
+          }
+          $exeName = if ("${{ matrix.goos }}" -eq "windows") { "eos-core.exe" } else { "eos-core" }
+          # package 脚本读 target/release/<exe>，target 构建产物在
+          # target/<target>/release/<exe>，复制到脚本期望位置。
+          $built = "target/${{ matrix.triple }}/release/$exeName"
+          $staged = "target/release/$exeName"
+          New-Item -ItemType Directory -Force -Path (Split-Path $staged) | Out-Null
+          Copy-Item -Force $built $staged
+          New-Item -ItemType Directory -Force -Path scripts | Out-Null
+          [IO.File]::WriteAllText("$PWD/scripts/eos-signing-key.pem", $env:EOS_SIGNING_KEY)
+          & pwsh -NoProfile -File scripts/package-public-artifact.ps1 `
+            -Target "${{ matrix.triple }}" `
+            -PrivateKeyPath scripts/eos-signing-key.pem
+
+      - name: Verify sidecar sha256
+        shell: bash
+        run: |
+          set -euo pipefail
+          dest="eos-core-rs/pkg/coreapi/sidecar/core/${{ matrix.triple }}"
+          manifest_hash=$(python3 -c "import json; print(json.load(open('$dest/manifest.json'))['sha256'].replace('sha256:','').lower())" 2>/dev/null \
+            || jq -r '.sha256' "$dest/manifest.json" | sed 's/^sha256://' | tr 'A-Z' 'a-z')
+          bin_file=$(ls "$dest"/eos-core* | head -1)
+          actual_hash=$(sha256sum "$bin_file" | awk '{print $1}')
+          echo "manifest=$manifest_hash binary=$actual_hash"
+          [ "$manifest_hash" = "$actual_hash" ] || { echo "::error::sha256 不一致"; exit 1; }
+
+      - name: Build CLI and assemble archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version || github.ref_name }}"
+          [ -n "$VERSION" ] || { echo "::error::版本号为空"; exit 1; }
+          COMMIT="${{ github.sha }}"
+          DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          GOOS_T="${{ matrix.goos }}"
+          BIN="eos"; [ "$GOOS_T" = "windows" ] && BIN="eos.exe"
+          STAGE="eos-cli_${VERSION}_${{ matrix.goos }}-${{ matrix.goarch }}"
+          mkdir -p "dist/$STAGE/core/${{ matrix.triple }}"
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/dreamSailing/eos/internal/version.AppVersion=$VERSION -X github.com/dreamSailing/eos/internal/version.BuildCommit=$COMMIT -X github.com/dreamSailing/eos/internal/version.BuildDate=$DATE" \
+            -o "dist/$STAGE/$BIN" .
+          cp "eos-core-rs/pkg/coreapi/sidecar/core/${{ matrix.triple }}"/eos-core* "dist/$STAGE/core/${{ matrix.triple }}/"
+          cp "eos-core-rs/pkg/coreapi/sidecar/core/${{ matrix.triple }}/manifest.json" "dist/$STAGE/core/${{ matrix.triple }}/"
+          cd dist
+          if [ "$GOOS_T" = "windows" ]; then
+            powershell -NoProfile -Command "Compress-Archive -Path '$STAGE' -DestinationPath '$STAGE.zip' -Force"
+          else
+            tar -czf "$STAGE.tar.gz" "$STAGE"
+          fi
+          rm -rf "$STAGE"
+          echo "== dist =="; ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: dist-*
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ inputs.version || github.ref_name }}"
+          gh release create "$VERSION" dist/* \
+            --title "EOS CLI $VERSION" \
+            --notes "三端生产包（Windows / macOS / Linux），内核为构建时 eos-core-rs 指定 ref 的签名产物。校验见 SHA256SUMS.txt。" \
+            --repo "$GITHUB_REPOSITORY" 2>/dev/null \
+          || gh release upload "$VERSION" dist/* --clobber --repo "$GITHUB_REPOSITORY"

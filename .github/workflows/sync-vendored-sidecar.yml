@@ -225,12 +225,19 @@ jobs:
           fi
 
       # ── 可选：同步到 eos-app（Gitee）──
+      # 注意：secrets 上下文不允许出现在 if: 条件里（GitHub 会拒绝整个 workflow
+      # 文件，这正是此前一触发即 0s 失败的原因），key 是否存在改在 run 内判断。
       - name: Sync to eos-app (Gitee)
-        if: ${{ github.event.inputs.sync_app == 'true' && secrets.EOS_APP_DEPLOY_KEY != '' }}
+        if: ${{ github.event.inputs.sync_app == 'true' }}
         env:
           EOS_APP_GIT_URL: ${{ secrets.EOS_APP_GIT_URL }}
+          EOS_APP_DEPLOY_KEY: ${{ secrets.EOS_APP_DEPLOY_KEY }}
         run: |
           set -euo pipefail
+          if [ -z "$EOS_APP_DEPLOY_KEY" ]; then
+            echo "::warning::EOS_APP_DEPLOY_KEY secret 未设置，跳过 eos-app 同步"
+            exit 0
+          fi
           if [ -z "$EOS_APP_GIT_URL" ]; then
             echo "::warning::EOS_APP_GIT_URL secret 未设置，跳过 eos-app 同步"
             exit 0
