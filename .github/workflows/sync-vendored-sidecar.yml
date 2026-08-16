@@ -49,13 +49,35 @@ permissions:
   contents: write   # sync job 需 push 回 eos-cli 仓库
 
 jobs:
-  # ── build：5 target 各在原生 runner 编译 + 签名打包 + 上传 artifact ──
+  # ── resolve：按 input 过滤 target，动态生成 build matrix ──
+  # （job 级 if: 不允许引用 matrix 上下文——此前的一处文件级错误，
+  #   GitHub 校验直接拒绝整个 workflow，表现为每次 push 都产生 0s 失败。
+  #   故改为前置 job 计算 matrix，build 不再需要 job 级 if。）
+  resolve:
+    name: Resolve targets
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.set.outputs.targets }}
+    steps:
+      - id: set
+        env:
+          TARGET: ${{ github.event.inputs.target }}
+        run: |
+          if [ -z "$TARGET" ]; then
+            echo 'targets=["x86_64-pc-windows-gnu","x86_64-apple-darwin","aarch64-apple-darwin","x86_64-unknown-linux-musl","aarch64-unknown-linux-musl"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "targets=[\"$TARGET\"]" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── build：各 target 在原生 runner 编译 + 签名打包 + 上传 artifact ──
   build:
     name: Build (${{ matrix.target }})
+    needs: resolve
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
+        target: ${{ fromJSON(needs.resolve.outputs.targets) }}
         include:
           - target: x86_64-pc-windows-gnu
             runner: windows-latest
@@ -67,7 +89,6 @@ jobs:
             runner: ubuntu-latest
           - target: aarch64-unknown-linux-musl
             runner: ubuntu-24.04-arm
-    if: ${{ github.event.inputs.target == '' || github.event.inputs.target == matrix.target }}
 
     steps:
       - name: Resolve eos-core-rs repo
@@ -156,7 +177,8 @@ jobs:
     name: Sync vendored sidecar
     runs-on: ubuntu-latest
     needs: build
-    if: always() && !cancelled()
+    # 仅全部 build 成功才同步（原 !cancelled() 会在失败时也同步，违背语义）
+    if: success()
     # 只在所有 build 都成功（或被 input 过滤跳过）时同步
     steps:
       - name: Checkout eos-cli
