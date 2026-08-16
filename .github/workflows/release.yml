@@ -40,8 +40,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macos-13（x86_64 runner）已退役：darwin/amd64 在 macos-latest（ARM）
+          # 上交叉编译（cargo --target / GOARCH=amd64 + clang -arch x86_64）。
           - { goos: windows, goarch: amd64, runner: windows-latest, triple: x86_64-pc-windows-gnu }
-          - { goos: darwin, goarch: amd64, runner: macos-13, triple: x86_64-apple-darwin }
+          - { goos: darwin, goarch: amd64, runner: macos-latest, triple: x86_64-apple-darwin }
           - { goos: darwin, goarch: arm64, runner: macos-latest, triple: aarch64-apple-darwin }
           - { goos: linux, goarch: amd64, runner: ubuntu-latest, triple: x86_64-unknown-linux-musl }
           - { goos: linux, goarch: arm64, runner: ubuntu-24.04-arm, triple: aarch64-unknown-linux-musl }
@@ -129,6 +131,11 @@ jobs:
           BIN="eos"; [ "$GOOS_T" = "windows" ] && BIN="eos.exe"
           STAGE="eos-cli_${VERSION}_${{ matrix.goos }}-${{ matrix.goarch }}"
           mkdir -p "dist/$STAGE/core/${{ matrix.triple }}"
+          # 目标三元组显式下发（native runner 上与宿主一致；darwin/amd64 为交叉）。
+          export CGO_ENABLED=1 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}
+          if [ "${{ matrix.goos }}/${{ matrix.goarch }}" = "darwin/amd64" ]; then
+            export CC="clang -arch x86_64"
+          fi
           go build -trimpath \
             -ldflags "-s -w -X github.com/dreamSailing/eos/internal/version.AppVersion=$VERSION -X github.com/dreamSailing/eos/internal/version.BuildCommit=$COMMIT -X github.com/dreamSailing/eos/internal/version.BuildDate=$DATE" \
             -o "dist/$STAGE/$BIN" .
