@@ -225,6 +225,12 @@ jobs:
       - name: Commit and push to eos-cli
         run: |
           git add pkg/coreapi/sidecar/core/*/eos-core* pkg/coreapi/sidecar/core/*/manifest.json
+          # Unix 二进制必须以 100755 提交：CI 的 vendored e2e 测试直接
+          # fork/exec 内核；artifact 下载不保 mode，漏掉会 permission denied。
+          for bin in pkg/coreapi/sidecar/core/*/eos-core; do
+            [ -f "$bin" ] || continue
+            git update-index --chmod=+x "$bin"
+          done
           if git diff --staged --quiet; then
             echo "无变更，跳过 commit"
           else
