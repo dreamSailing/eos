@@ -607,6 +607,11 @@ var enText = map[string]string{
 	"update.create_temp_failed":  "Failed to create a temp file: %w",
 	"update.bad_status":          "Download returned status code %d",
 	"update.progress":            "\r  Download progress: %d%% (%.1f MB / %.1f MB)",
+	"update.check_flag":          "Only check for updates, do not install",
+	"version.short":              "Print version information",
+	"update.asset_missing":       "No downloadable archive for the current platform. Please download manually:",
+	"update.apply_failed":        "Update installation failed: %w",
+	"update.core_updated":        "Core sidecar updated to match\n",
 
 	// Welcome card
 	"welcome.tagline":  "AI navigation, helping you ride the waves",

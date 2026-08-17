@@ -607,6 +607,11 @@ var zhText = map[string]string{
 	"update.create_temp_failed":  "创建临时文件失败: %w",
 	"update.bad_status":          "下载返回状态码 %d",
 	"update.progress":            "\r  下载进度: %d%% (%.1f MB / %.1f MB)",
+	"update.check_flag":          "仅检查更新，不安装",
+	"version.short":              "打印版本信息",
+	"update.asset_missing":       "当前平台没有可下载的发布归档，请手动下载：",
+	"update.apply_failed":        "升级安装失败: %w",
+	"update.core_updated":        "内核 core/ 已随版本同步更新\n",
 
 	// 欢迎卡片
 	"welcome.tagline":  "AI 领航，助你破浪前行",

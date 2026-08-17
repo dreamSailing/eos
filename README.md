@@ -78,15 +78,31 @@ EOS 不是单一的“问答 CLI”，而是一个完整的本地 AI 工作台�
 
 ## 快速开始
 
-### 1) 获取并编译
+### 1) 安装
 
-推荐直接安装（Rust 内核已内嵌进二进制，首次运行自动释放到用户缓存目录，无需额外配置）：
+一行命令安装（推荐，自动识别平台、SHA256 校验、配置 PATH）：
+
+macOS / Linux：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dreamSailing/eos/main/scripts/install.sh | bash
+```
+
+Windows（PowerShell）：
+
+```powershell
+irm https://raw.githubusercontent.com/dreamSailing/eos/main/scripts/install.ps1 | iex
+```
+
+安装后运行 `eos` 即可；`eos version` 查看版本，`eos update` 一键自升级（含 Rust 内核 core/ 同步更新）。
+
+已安装 Go 工具链的用户也可以（内核内嵌，首次运行自动释放）：
 
 ```bash
 go install github.com/dreamSailing/eos@latest
 ```
 
-或下载对应平台发布包：https://github.com/dreamSailing/eos/releases
+安装包（tar.gz / zip 与 Windows 安装器）仍从 Releases 获取：https://github.com/dreamSailing/eos/releases
 
 从源码编译：
 

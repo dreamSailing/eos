@@ -1,11 +1,17 @@
 package update
 
+// Copyright (c) 2026 DreamSailing
+// SPDX-License-Identifier: EOS-NCL-1.1
+// 本文件基于 EOS 非商用许可证 v1.1 发布，详见 LICENSE。
+// 商业使用请联系版权人获得商业授权。
+
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
@@ -20,9 +26,14 @@ type CheckResult struct {
 	CurrentVersion string `json:"currentVersion"`
 	LatestVersion  string `json:"latestVersion"`
 	HasUpdate      bool   `json:"hasUpdate"`
-	DownloadURL    string `json:"downloadUrl,omitempty"`
-	ReleaseNotes   string `json:"releaseNotes,omitempty"`
-	ReleaseURL     string `json:"releaseUrl,omitempty"`
+	// AssetName / DownloadURL 指向当前平台对应的发布归档
+	// （eos-cli_<版本>_<goos>-<goarch>.tar.gz / .zip），而非裸二进制。
+	AssetName string `json:"assetName,omitempty"`
+	// ChecksumURL 指向该 Release 的 SHA256SUMS.txt，Apply 阶段校验归档完整性。
+	ChecksumURL string `json:"checksumUrl,omitempty"`
+	DownloadURL string `json:"downloadUrl,omitempty"`
+	ReleaseNotes string `json:"releaseNotes,omitempty"`
+	ReleaseURL   string `json:"releaseUrl,omitempty"`
 }
 
 type githubRelease struct {
@@ -38,6 +49,12 @@ type githubAsset struct {
 }
 
 func CheckLatest(ctx context.Context) (*CheckResult, error) {
+	return CheckLatestFor(ctx, runtime.GOOS, runtime.GOARCH)
+}
+
+// CheckLatestFor 检查 goos/goarch 平台的最新版本。抽出来便于测试注入
+// 平台组合（当前机器无法覆盖全部目标平台）。
+func CheckLatestFor(ctx context.Context, goos, goarch string) (*CheckResult, error) {
 	current := strings.TrimSpace(version.AppVersion)
 	if current == "" || current == "dev" {
 		return &CheckResult{CurrentVersion: current, HasUpdate: false}, nil
@@ -80,24 +97,28 @@ func CheckLatest(ctx context.Context) (*CheckResult, error) {
 		ReleaseURL:     release.HTMLURL,
 	}
 
+	assetName, suffix := platformAssetName(latest, goos, goarch)
 	for _, asset := range release.Assets {
-		if strings.Contains(asset.Name, "windows-amd64") && strings.HasSuffix(asset.Name, ".exe") {
+		switch {
+		case asset.Name == assetName:
+			result.AssetName = asset.Name
 			result.DownloadURL = asset.BrowserDownloadURL
-			break
+		case asset.Name == "SHA256SUMS.txt":
+			result.ChecksumURL = asset.BrowserDownloadURL
 		}
 	}
+	_ = suffix // suffix 已并入 assetName
 
 	return result, nil
 }
 
-func isNewer(current, latest string) bool {
-	c := normalizeSemver(current)
-	l := normalizeSemver(latest)
-	return l != "" && c != "" && l > c
-}
-
-func normalizeSemver(v string) string {
-	v = strings.TrimSpace(v)
-	v = strings.TrimPrefix(v, "v")
-	return v
+// platformAssetName 返回 goos/goarch 对应的发布归档名（与 .github 发布
+// 资产命名约定一致）：非 Windows 为 .tar.gz，Windows 为 .zip。
+func platformAssetName(tag, goos, goarch string) (string, string) {
+	tag = strings.TrimPrefix(strings.TrimSpace(tag), "v")
+	suffix := ".tar.gz"
+	if goos == "windows" {
+		suffix = ".zip"
+	}
+	return fmt.Sprintf("eos-cli_v%s_%s-%s%s", tag, goos, goarch, suffix), suffix
 }

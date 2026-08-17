@@ -80,13 +80,29 @@ Compared with heavier or more closed terminal assistants, EOS currently focuses 
 
 ### 1) Install
 
-Recommended (the Rust core is embedded in the binary and self-extracts on first run):
+One-line install (recommended; detects your platform, verifies SHA256, sets up PATH):
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dreamSailing/eos/main/scripts/install.sh | bash
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/dreamSailing/eos/main/scripts/install.ps1 | iex
+```
+
+Then run `eos`. Use `eos version` to check the version and `eos update` to self-upgrade (the Rust core sidecar is updated together with the binary).
+
+If you already have the Go toolchain (the Rust core is embedded and self-extracts on first run):
 
 ```bash
 go install github.com/dreamSailing/eos@latest
 ```
 
-Or download a platform package: https://github.com/dreamSailing/eos/releases
+Packages (tar.gz / zip plus the Windows installer) remain available at https://github.com/dreamSailing/eos/releases
 
 ### 2) Build from Source
 
