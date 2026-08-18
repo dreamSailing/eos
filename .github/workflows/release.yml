@@ -77,7 +77,7 @@ jobs:
       # golang.design/x/clipboard 在 Linux 走 cgo 绑定 X11，编译需要头文件。
       - name: Install X11 headers (linux)
         if: matrix.goos == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev pkg-config libpipewire-0.3-dev libdrm-dev libgbm-dev libwayland-dev libxdo-dev
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev pkg-config libpipewire-0.3-dev libdrm-dev libgbm-dev libwayland-dev libxdo-dev libegl-dev
 
       - uses: Swatinem/rust-cache@v2
         with:
