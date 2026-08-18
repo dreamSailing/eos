@@ -72,6 +72,9 @@ const (
 	MethodUsageSummary = "usage/summary"
 	MethodUsageCostSummary = "usage/cost_summary"
 	MethodUsageCostItems = "usage/cost_items"
+	MethodNetworkList = "network/list"
+	MethodNetworkGet = "network/get"
+	MethodNetworkClear = "network/clear"
 	MethodVersionsList = "versions/list"
 	MethodVersionsRollback = "versions/rollback"
 	MethodVersionsDelete = "versions/delete"
@@ -115,10 +118,6 @@ const (
 	MethodMemorySnapshot = "memory/snapshot"
 	MethodMemorySave = "memory/save"
 	MethodMemoryRebuildIndex = "memory/rebuild_index"
-	MethodMemoryRecordAdd = "memory/record/add"
-	MethodMemoryRecordList = "memory/record/list"
-	MethodMemoryRecordSearch = "memory/record/search"
-	MethodMemoryRecordDelete = "memory/record/delete"
 	MethodRoleList = "role/list"
 	MethodRoleResolve = "role/resolve"
 	MethodAgentSpawn = "agent/spawn"
@@ -136,6 +135,7 @@ const (
 	MethodToolExecute = "tool/execute"
 	MethodToolTraces = "tool/traces"
 	MethodToolStats = "tool/stats"
+	MethodApprovalList = "approval/list"
 	MethodApprovalRespond = "approval/respond"
 	MethodApprovalPreview = "approval/preview"
 	MethodInquiryRespond = "inquiry/respond"
@@ -146,8 +146,6 @@ const (
 	MethodSandboxBackendStatus = "sandbox/backend_status"
 	MethodConfigReload = "config/reload"
 	MethodAgentControl = "agent/control"
-	MethodOrchestratorStart = "orchestrator/start"
-	MethodOrchestratorCancel = "orchestrator/cancel"
 	MethodDiagnosticsStartup = "diagnostics/startup"
 )
 
@@ -222,6 +220,9 @@ func CoreMethods() []string {
 		MethodUsageSummary,
 		MethodUsageCostSummary,
 		MethodUsageCostItems,
+		MethodNetworkList,
+		MethodNetworkGet,
+		MethodNetworkClear,
 		MethodVersionsList,
 		MethodVersionsRollback,
 		MethodVersionsDelete,
@@ -265,10 +266,6 @@ func CoreMethods() []string {
 		MethodMemorySnapshot,
 		MethodMemorySave,
 		MethodMemoryRebuildIndex,
-		MethodMemoryRecordAdd,
-		MethodMemoryRecordList,
-		MethodMemoryRecordSearch,
-		MethodMemoryRecordDelete,
 		MethodRoleList,
 		MethodRoleResolve,
 		MethodAgentSpawn,
@@ -286,6 +283,7 @@ func CoreMethods() []string {
 		MethodToolExecute,
 		MethodToolTraces,
 		MethodToolStats,
+		MethodApprovalList,
 		MethodApprovalRespond,
 		MethodApprovalPreview,
 		MethodInquiryRespond,
@@ -296,8 +294,6 @@ func CoreMethods() []string {
 		MethodSandboxBackendStatus,
 		MethodConfigReload,
 		MethodAgentControl,
-		MethodOrchestratorStart,
-		MethodOrchestratorCancel,
 		MethodDiagnosticsStartup,
 	}
 }
@@ -315,6 +311,7 @@ func MethodGroups() map[string][]string {
 			MethodAgentControl,
 		},
 		"approval": {
+			MethodApprovalList,
 			MethodApprovalRespond,
 			MethodApprovalPreview,
 		},
@@ -384,10 +381,6 @@ func MethodGroups() map[string][]string {
 			MethodMemorySnapshot,
 			MethodMemorySave,
 			MethodMemoryRebuildIndex,
-			MethodMemoryRecordAdd,
-			MethodMemoryRecordList,
-			MethodMemoryRecordSearch,
-			MethodMemoryRecordDelete,
 		},
 		"model": {
 			MethodModelList,
@@ -405,9 +398,10 @@ func MethodGroups() map[string][]string {
 			MethodModelSessionSet,
 			MethodModelSessionClear,
 		},
-		"orchestrator": {
-			MethodOrchestratorStart,
-			MethodOrchestratorCancel,
+		"other": {
+			MethodNetworkList,
+			MethodNetworkGet,
+			MethodNetworkClear,
 		},
 		"permission": {
 			MethodPermissionSnapshot,

@@ -138,6 +138,9 @@ const (
 	MethodApprovalRespond            = "approval/respond"
 	MethodApprovalPreview            = "approval/preview"
 	MethodInquiryRespond             = "inquiry/respond"
+	MethodNetworkList                = "network/list"
+	MethodNetworkGet                 = "network/get"
+	MethodNetworkClear               = "network/clear"
 	MethodStateSnapshot              = "state/snapshot"
 	MethodSandboxPolicy              = "sandbox/policy"
 	MethodSandboxSetPolicy           = "sandbox/set_policy"
@@ -270,10 +273,6 @@ func AllCoreMethods() []string {
 		MethodMemorySnapshot,
 		MethodMemorySave,
 		MethodMemoryRebuildIndex,
-		MethodMemoryRecordAdd,
-		MethodMemoryRecordList,
-		MethodMemoryRecordSearch,
-		MethodMemoryRecordDelete,
 		MethodRoleList,
 		MethodRoleResolve,
 		MethodAgentSpawn,
@@ -294,6 +293,11 @@ func AllCoreMethods() []string {
 		MethodApprovalRespond,
 		MethodApprovalPreview,
 		MethodInquiryRespond,
+		MethodNetworkList,
+		MethodNetworkGet,
+		MethodNetworkClear,
+		MethodApprovalList,
+
 		MethodStateSnapshot,
 		MethodSandboxPolicy,
 		MethodSandboxSetPolicy,
@@ -301,8 +305,6 @@ func AllCoreMethods() []string {
 		MethodSandboxBackend,
 		MethodConfigReload,
 		MethodAgentControl,
-		MethodOrchestratorStart,
-		MethodOrchestratorCancel,
 		MethodDiagnosticsStartup,
 	}
 }

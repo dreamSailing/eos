@@ -415,24 +415,6 @@ type InquiryResponse struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-type OrchestratorStartRequest struct {
-	SessionID string `json:"session_id"`
-	UserInput string `json:"user_input"`
-	Images []string `json:"images,omitempty"`
-	PlanPreference string `json:"plan_preference,omitempty"`
-}
-
-type OrchestratorStartResponse struct {
-	DispatchDecision string `json:"dispatch_decision"`
-	PrimaryAgentID string `json:"primary_agent_id"`
-}
-
-type OrchestratorEvent struct {
-	EventType string `json:"event_type"`
-	AgentID string `json:"agent_id,omitempty"`
-	Payload json.RawMessage `json:"payload,omitempty"`
-}
-
 type ConfigReloadRequest struct {
 	Paths []string `json:"paths,omitempty"`
 	DryRun bool `json:"dry_run"`
@@ -775,6 +757,26 @@ type CostItem struct {
 	CostKnown bool `json:"cost_known"`
 }
 
+type NetworkHeader struct {
+	Name string `json:"name"`
+	Value string `json:"value"`
+}
+
+type NetworkRecord struct {
+	ID uint64 `json:"id"`
+	StartedAt string `json:"started_at"`
+	DurationMs uint64 `json:"duration_ms"`
+	Method string `json:"method"`
+	URL string `json:"url"`
+	Streaming bool `json:"streaming"`
+	Status *uint16 `json:"status,omitempty"`
+	Error string `json:"error,omitempty"`
+	RequestHeaders []NetworkHeader `json:"request_headers"`
+	RequestBody string `json:"request_body"`
+	ResponseBody string `json:"response_body"`
+	StreamBlocks uint64 `json:"stream_blocks,omitempty"`
+}
+
 type VersionItem struct {
 	ID string `json:"id"`
 	File string `json:"file,omitempty"`
@@ -1111,46 +1113,6 @@ type MemorySnapshot struct {
 type SaveMemoryRequest struct {
 	Scope string `json:"scope,omitempty"`
 	Content string `json:"content"`
-}
-
-type MemoryRecord struct {
-	ID string `json:"id"`
-	Scope string `json:"scope"`
-	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	Kind string `json:"kind,omitempty"`
-	Content string `json:"content"`
-	Tags []string `json:"tags,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
-	UpdatedAt string `json:"updated_at,omitempty"`
-	Source string `json:"source,omitempty"`
-}
-
-type AddMemoryRecordRequest struct {
-	Scope string `json:"scope"`
-	Kind string `json:"kind,omitempty"`
-	Content string `json:"content"`
-	Tags []string `json:"tags,omitempty"`
-	Source string `json:"source,omitempty"`
-	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-}
-
-type ListMemoryRecordsRequest struct {
-	Scope string `json:"scope,omitempty"`
-	Kind string `json:"kind,omitempty"`
-	Tags []string `json:"tags,omitempty"`
-}
-
-type SearchMemoryRecordsRequest struct {
-	Keywords []string `json:"keywords,omitempty"`
-	Tags []string `json:"tags,omitempty"`
-	Scope string `json:"scope,omitempty"`
-	Kind string `json:"kind,omitempty"`
-}
-
-type DeleteMemoryRecordRequest struct {
-	ID string `json:"id"`
 }
 
 type RoleRef struct {
