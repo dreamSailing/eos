@@ -45,8 +45,12 @@ jobs:
           - { goos: windows, goarch: amd64, runner: windows-latest, triple: x86_64-pc-windows-gnu }
           - { goos: darwin, goarch: amd64, runner: macos-latest, triple: x86_64-apple-darwin }
           - { goos: darwin, goarch: arm64, runner: macos-latest, triple: aarch64-apple-darwin }
-          - { goos: linux, goarch: amd64, runner: ubuntu-latest, triple: x86_64-unknown-linux-musl }
-          - { goos: linux, goarch: arm64, runner: ubuntu-24.04-arm, triple: aarch64-unknown-linux-musl }
+          # Linux 内核目标 musl→gnu：内核截图链 xcap→wayland/drm/gbm/pipewire
+          # 系统库探测在 musl 交叉下必败（无 dlopen 开关）。CLI 的 Go 主程序
+          # 本就带 CGO（X11 剪贴板）构建在 ubuntu-24.04 runner，glibc ≥2.39
+          # 地板早已存在，musl 内核是包内唯一静态件，换 gnu 实际零兼容性损失。
+          - { goos: linux, goarch: amd64, runner: ubuntu-latest, triple: x86_64-unknown-linux-gnu }
+          - { goos: linux, goarch: arm64, runner: ubuntu-24.04-arm, triple: aarch64-unknown-linux-gnu }
 
     steps:
       - name: Checkout eos-cli
@@ -67,14 +71,13 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.triple }}
 
-      - name: Install musl toolchain (linux musl)
-        if: contains(matrix.triple, 'musl')
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      # X11 供 CLI Go 侧剪贴板；pipewire/drm/gbm/wayland/xdo 供内核 xcap
+      # 截图链的 pkg-config 探测与链接（-sys crate 无 dlopen 逃生门）。
 
       # golang.design/x/clipboard 在 Linux 走 cgo 绑定 X11，编译需要头文件。
       - name: Install X11 headers (linux)
         if: matrix.goos == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev pkg-config libpipewire-0.3-dev libdrm-dev libgbm-dev libwayland-dev libxdo-dev
 
       - uses: Swatinem/rust-cache@v2
         with:
