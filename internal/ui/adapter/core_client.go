@@ -849,6 +849,15 @@ func (a *CoreClientAdapter) LSPDiagnosticsMarkdown(ctx context.Context) string {
 
 // === Tools / Tasks ===
 
+// ExecuteCoreTool 直接执行一次内核工具（不经 turn 循环），供 TUI 斜杠
+// 命令等宿主功能复用内核工具能力（如 /screenshot）。
+func (a *CoreClientAdapter) ExecuteCoreTool(ctx context.Context, req coreapi.ToolRequest) (coreapi.ToolResult, error) {
+	if a == nil || a.engine == nil {
+		return coreapi.ToolResult{}, errors.New("core client is not available")
+	}
+	return a.engine.Tools().Execute(ctx, req)
+}
+
 func (a *CoreClientAdapter) ToolTraces(ctx context.Context) ([]coreapi.ToolTrace, error) {
 	if a == nil || a.engine == nil {
 		return nil, errors.New("core client is not available")
