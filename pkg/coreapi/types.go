@@ -1148,10 +1148,15 @@ type ProviderEndpoint struct {
 }
 
 // PlanModel 套餐类 preset 内可选的模型项（如方舟 Agent Plan 含多厂商模型）。
+// 能力字段为模型级标注：nil = 未标注（回落 preset 级能力）。
 type PlanModel struct {
 	ModelID       string `json:"model_id"`
 	Label         string `json:"label,omitempty"`
 	ContextWindow int64  `json:"context_window,omitempty"`
+	// SupportsReasoningEffort 等三项为模型级能力标注（omitempty，nil 回落 preset 级）。
+	SupportsReasoningEffort *bool `json:"supports_reasoning_effort,omitempty"`
+	SupportsVision          *bool `json:"supports_vision,omitempty"`
+	SupportsTools           *bool `json:"supports_tools,omitempty"`
 }
 
 type ModelProviderOption struct {
