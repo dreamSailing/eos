@@ -1123,21 +1123,24 @@ type ModeSnapshot struct {
 }
 
 type ModelConfig struct {
-	Name                    string `json:"name"`
-	APIBase                 string `json:"api_base,omitempty"`
-	APIKeyMasked            string `json:"api_key_masked,omitempty"`
-	Model                   string `json:"model,omitempty"`
-	Source                  string `json:"source,omitempty"`
-	Active                  bool   `json:"active"`
-	SupportsReasoningEffort bool   `json:"supports_reasoning_effort"`
-	SupportsVision          bool   `json:"supports_vision"`
-	SupportsTools           bool   `json:"supports_tools"`
-	ProviderID              string `json:"provider_id,omitempty"`
-	Format                  string `json:"format,omitempty"`
-	PresetID                string `json:"preset_id,omitempty"`
-	EditKind                string `json:"edit_kind,omitempty"`
-	CanEdit                 bool   `json:"can_edit"`
-	CanDelete               bool   `json:"can_delete"`
+	Name                    string   `json:"name"`
+	APIBase                 string   `json:"api_base,omitempty"`
+	APIKeyMasked            string   `json:"api_key_masked,omitempty"`
+	Model                   string   `json:"model,omitempty"`
+	Source                  string   `json:"source,omitempty"`
+	Active                  bool     `json:"active"`
+	SupportsReasoningEffort bool     `json:"supports_reasoning_effort"`
+	// ReasoningLevels 思考档位（空 = 未标注，前端回落通用四档；
+	// wire 档位词汇见内核 protocol model.rs：off/auto/minimal/low/medium/high/xhigh/max）。
+	ReasoningLevels []string `json:"reasoning_levels"`
+	SupportsVision  bool     `json:"supports_vision"`
+	SupportsTools   bool     `json:"supports_tools"`
+	ProviderID      string   `json:"provider_id,omitempty"`
+	Format          string   `json:"format,omitempty"`
+	PresetID        string   `json:"preset_id,omitempty"`
+	EditKind        string   `json:"edit_kind,omitempty"`
+	CanEdit         bool     `json:"can_edit"`
+	CanDelete       bool     `json:"can_delete"`
 }
 
 // ProviderEndpoint 服务商一个接入端点 = (plan, format) 组合。
@@ -1157,6 +1160,8 @@ type PlanModel struct {
 	SupportsReasoningEffort *bool `json:"supports_reasoning_effort,omitempty"`
 	SupportsVision          *bool `json:"supports_vision,omitempty"`
 	SupportsTools           *bool `json:"supports_tools,omitempty"`
+	// ReasoningLevels 模型级思考档位（nil = 未标注，回落 preset 级）。
+	ReasoningLevels []string `json:"reasoning_levels,omitempty"`
 }
 
 type ModelProviderOption struct {
@@ -1179,6 +1184,8 @@ type ModelPresetOption struct {
 	Tags                    []string    `json:"tags,omitempty"`
 	Description             string      `json:"description,omitempty"`
 	SupportsReasoningEffort bool        `json:"supports_reasoning_effort"`
+	// ReasoningLevels 思考档位（空 = 不支持思考强度）。
+	ReasoningLevels         []string    `json:"reasoning_levels,omitempty"`
 	SupportsVision          bool        `json:"supports_vision"`
 	SupportsImageGeneration bool        `json:"supports_image_generation"`
 	SupportsVideoGeneration bool        `json:"supports_video_generation"`

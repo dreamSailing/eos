@@ -824,6 +824,7 @@ type ModelConfig struct {
 	SupportsReasoningEffort bool `json:"supports_reasoning_effort"`
 	SupportsVision bool `json:"supports_vision"`
 	SupportsTools bool `json:"supports_tools"`
+	ReasoningLevels []string `json:"reasoning_levels"`
 	ProviderID string `json:"provider_id,omitempty"`
 	APIType string `json:"api_type,omitempty"`
 	PresetID string `json:"preset_id,omitempty"`
@@ -862,7 +863,19 @@ type ModelPresetOption struct {
 	SupportsVideoGeneration bool `json:"supports_video_generation"`
 	SupportsSpeechSynthesis bool `json:"supports_speech_synthesis"`
 	SupportsTools bool `json:"supports_tools"`
+	ReasoningLevels []string `json:"reasoning_levels,omitempty"`
+	PlanModels []PlanModel `json:"plan_models,omitempty"`
 	BundledMcp []McpServerConfig `json:"bundled_mcp,omitempty"`
+}
+
+type PlanModel struct {
+	ModelID string `json:"model_id"`
+	Label string `json:"label"`
+	ContextWindow int64 `json:"context_window"`
+	SupportsReasoningEffort bool `json:"supports_reasoning_effort,omitempty"`
+	SupportsVision bool `json:"supports_vision,omitempty"`
+	SupportsTools bool `json:"supports_tools,omitempty"`
+	ReasoningLevels []string `json:"reasoning_levels,omitempty"`
 }
 
 type ModelCatalogState struct {
