@@ -60,6 +60,7 @@ var Commands = []Command{
 	{Name: "/memory", Group: GroupRuntime, DescriptionZH: "打开记忆面板", DescriptionEN: "Open the memory panel"},
 	{Name: "/context", Aliases: []string{"/ctx"}, Group: GroupRuntime, DescriptionZH: "打开上下文面板", DescriptionEN: "Open the context panel"},
 	{Name: "/tasks", Group: GroupRuntime, DescriptionZH: "打开任务面板", DescriptionEN: "Open the tasks panel"},
+	{Name: "/goal", Group: GroupRuntime, Usage: "/goal [set <目标> [预算tokens]|get|pause|resume|clear]", DescriptionZH: "目标模式：设定目标后 agent 持续工作直到完成", DescriptionEN: "Goal mode: agent keeps working toward the goal until complete"},
 	{Name: "/plan", Group: GroupRuntime, Usage: "/plan [auto|plan]", DescriptionZH: "查看当前计划/待办，或切换计划执行模式", DescriptionEN: "Inspect plan/todos or switch planning mode"},
 	{Name: "/plan-style", Group: GroupRuntime, Usage: "/plan-style [concise|detailed|custom:<text>]", DescriptionZH: "查看或设置计划提示风格", DescriptionEN: "Inspect or change the planner prompt style"},
 	{Name: "/permissions", Group: GroupRuntime, Usage: "/permissions [auto|plan|access <mode>|approval <mode>]", DescriptionZH: "查看或切换执行/访问/审批模式", DescriptionEN: "Inspect or change execution, access, and approval modes"},

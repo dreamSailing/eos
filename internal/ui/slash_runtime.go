@@ -1632,3 +1632,142 @@ func (m *AppModel) pluginSearchCmd(query string) tea.Cmd {
 	}()
 	return nil
 }
+
+// === /goal 目标模式 ===
+
+// goalStatusLabel 把内核 goal 状态映射为双语标签。
+func (m *AppModel) goalStatusLabel(status string) string {
+	switch status {
+	case "active":
+		return m.localize("进行中（自驱）", "active (self-driving)")
+	case "paused":
+		return m.localize("已暂停", "paused")
+	case "blocked":
+		return m.localize("已阻塞（连续阻塞后停止）", "blocked")
+	case "usageLimited":
+		return m.localize("用量受限", "usage-limited")
+	case "budgetLimited":
+		return m.localize("预算耗尽（终态）", "budget-limited (terminal)")
+	case "complete":
+		return m.localize("已完成", "complete")
+	default:
+		return status
+	}
+}
+
+// goalUsageText 拼目标用量行（预算存在时附剩余）。
+func (m *AppModel) goalUsageText(goal coreapi.ThreadGoal) string {
+	used := fmt.Sprintf("%d tokens / %ds", goal.TokensUsed, goal.TimeUsedSeconds)
+	if goal.TokenBudget != nil {
+		remaining := *goal.TokenBudget - goal.TokensUsed
+		if remaining < 0 {
+			remaining = 0
+		}
+		return fmt.Sprintf("%s / %s (≈%d)", used, fmt.Sprintf("%d", *goal.TokenBudget), remaining)
+	}
+	return used
+}
+
+// handleGoalSlash /goal set <目标...> [budget=N] | get | pause | resume | clear。
+//
+// set 后目标进入 active，agent 空闲自驱持续朝目标工作，直到完成（模型调
+// update_goal complete）、阻塞、预算耗尽或用户暂停/清除。
+func (m *AppModel) handleGoalSlash(args []string) tea.Cmd {
+	if len(args) == 0 {
+		return m.runGoalGet()
+	}
+	switch strings.ToLower(strings.TrimSpace(args[0])) {
+	case "set":
+		rest := strings.TrimSpace(strings.Join(args[1:], " "))
+		if rest == "" {
+			m.appendSystem(m.localize("用法：/goal set <目标文本> [budget=token数]", "Usage: /goal set <objective> [budget=tokens]"), "warning")
+			return nil
+		}
+		var budget *int64
+		// 末尾 budget=N（或 budget:N）显式预算语法；目标文本里的普通词不受影响。
+		if idx := strings.LastIndex(rest, "budget="); idx >= 0 {
+			raw := strings.TrimSpace(rest[idx+len("budget="):])
+			if n, err := strconvParseInt64(raw); err == nil && n > 0 {
+				budget = &n
+				rest = strings.TrimSpace(rest[:idx])
+			}
+		}
+		if rest == "" {
+			m.appendSystem(m.localize("目标文本不能为空", "objective must not be empty"), "warning")
+			return nil
+		}
+		goal, err := m.adapter.SetGoal(context.Background(), rest, budget)
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("设定目标失败", "Failed to set goal"), err), "error")
+			return nil
+		}
+		m.appendSystem(fmt.Sprintf(
+			"%s\n%s: %s\n%s",
+			m.localize("🎯 目标已设定，agent 将持续工作直到完成（/goal pause 暂停，/goal clear 清除）", "Goal set; the agent will keep working until complete (/goal pause, /goal clear)"),
+			m.localize("目标", "Objective"), goal.Objective,
+			m.goalUsageText(goal),
+		), "success")
+		return nil
+	case "get", "":
+		return m.runGoalGet()
+	case "pause":
+		goal, err := m.adapter.PauseGoal(context.Background())
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("暂停目标失败", "Failed to pause goal"), err), "error")
+			return nil
+		}
+		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("目标已暂停，停止自驱", "Goal paused; self-driving stopped"), m.goalStatusLabel(goal.Status)), "success")
+		return nil
+	case "resume":
+		goal, err := m.adapter.ResumeGoal(context.Background())
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("恢复目标失败", "Failed to resume goal"), err), "error")
+			return nil
+		}
+		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("目标已恢复，agent 继续朝目标工作", "Goal resumed; the agent continues toward the goal"), m.goalStatusLabel(goal.Status)), "success")
+		return nil
+	case "clear":
+		if err := m.adapter.ClearGoal(context.Background()); err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("清除目标失败", "Failed to clear goal"), err), "error")
+			return nil
+		}
+		m.appendSystem(m.localize("目标已清除", "Goal cleared"), "success")
+		return nil
+	default:
+		m.appendSystem(m.localize("用法：/goal [set <目标文本> [budget=token数]|get|pause|resume|clear]", "Usage: /goal [set <objective> [budget=tokens]|get|pause|resume|clear]"), "warning")
+		return nil
+	}
+}
+
+// runGoalGet 拉取并展示当前目标状态。
+func (m *AppModel) runGoalGet() tea.Cmd {
+	go func() {
+		resp, err := m.adapter.GetGoal(context.Background())
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("查询目标失败", "Failed to get goal"), err), "error")
+			return
+		}
+		if resp.Goal == nil {
+			m.appendSystem(m.localize("当前会话没有目标。用 /goal set <目标文本> 开启目标模式。", "No goal set. Use /goal set <objective> to start goal mode."), "info")
+			return
+		}
+		goal := *resp.Goal
+		m.appendSystem(fmt.Sprintf(
+			"%s\n%s: %s\n%s: %s\n%s",
+			m.localize("🎯 当前提问目标", "Current goal"),
+			m.localize("目标", "Objective"), goal.Objective,
+			m.localize("状态", "Status"), m.goalStatusLabel(goal.Status),
+			m.goalUsageText(goal),
+		), "info")
+	}()
+	return nil
+}
+
+// strconvParseInt64 独立小函数（避免在 handler 里散落 strconv 引用）。
+func strconvParseInt64(raw string) (int64, error) {
+	var n int64
+	if _, err := fmt.Sscanf(raw, "%d", &n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}

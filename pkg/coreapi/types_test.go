@@ -26,6 +26,7 @@ func (compileTimeEngine) Context() ContextService        { return nil }
 func (compileTimeEngine) Usage() UsageService            { return nil }
 func (compileTimeEngine) Versions() VersionService       { return nil }
 func (compileTimeEngine) Tasks() TaskService             { return nil }
+func (compileTimeEngine) Goals() GoalService             { return nil }
 func (compileTimeEngine) Modes() ModeService             { return nil }
 func (compileTimeEngine) Models() ModelService           { return nil }
 func (compileTimeEngine) RemoteWorkspaces() RemoteWorkspaceService {
@@ -402,5 +403,51 @@ func TestStartTurnRequestUseMemorySerialization(t *testing.T) {
 	}
 	if strings.Contains(string(body), "use_memory") {
 		t.Fatalf("expected use_memory omitted when nil, got %s", body)
+	}
+}
+
+func TestThreadGoalWireShapeMatchesKernelCamelCase(t *testing.T) {
+	budget := int64(50000)
+	goal := ThreadGoal{
+		ThreadID:        "s1",
+		GoalID:          "goal_1",
+		Objective:       "让测试全绿",
+		Status:          "active",
+		TokenBudget:     &budget,
+		TokensUsed:      1200,
+		TimeUsedSeconds: 90,
+		CreatedAt:       1787145692,
+		UpdatedAt:       1787145782,
+	}
+	body, err := json.Marshal(goal)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, key := range []string{
+		`"threadId"`, `"goalId"`, `"objective"`, `"status"`,
+		`"tokenBudget"`, `"tokensUsed"`, `"timeUsedSeconds"`,
+		`"createdAt"`, `"updatedAt"`,
+	} {
+		if !strings.Contains(string(body), key) {
+			t.Fatalf("expected %s in %s", key, body)
+		}
+	}
+
+	// goal/get 响应：无目标时 goal 字段整体省略（内核 skip_serializing_if）。
+	empty, err := json.Marshal(GoalGetResponse{})
+	if err != nil {
+		t.Fatalf("marshal empty get response: %v", err)
+	}
+	if strings.Contains(string(empty), "goal") {
+		t.Fatalf("expected goal omitted when nil, got %s", empty)
+	}
+
+	// goal/set 请求：tokenBudget 缺省省略，sessionId/objective 必带。
+	req, err := json.Marshal(GoalSetRequest{SessionID: "s1", Objective: "ship it"})
+	if err != nil {
+		t.Fatalf("marshal set request: %v", err)
+	}
+	if !strings.Contains(string(req), `"sessionId"`) || strings.Contains(string(req), "tokenBudget") {
+		t.Fatalf("unexpected set request shape: %s", req)
 	}
 }

@@ -59,6 +59,7 @@ func (e *testEngine) Context() coreapi.ContextService        { return &testConte
 func (e *testEngine) Usage() coreapi.UsageService            { return &testUsageService{} }
 func (e *testEngine) Versions() coreapi.VersionService       { return nil }
 func (e *testEngine) Tasks() coreapi.TaskService             { return &testTaskService{} }
+func (e *testEngine) Goals() coreapi.GoalService             { return &testGoalService{} }
 func (e *testEngine) Modes() coreapi.ModeService             { return &testModeService{} }
 func (e *testEngine) Models() coreapi.ModelService           { return &testModelService{e: e} }
 func (e *testEngine) RemoteWorkspaces() coreapi.RemoteWorkspaceService {
@@ -478,3 +479,24 @@ func (s *testTaskService) Tail(context.Context, coreapi.TaskIDRequest) ([]string
 }
 func (s *testTaskService) Kill(context.Context, coreapi.TaskIDRequest) error { return nil }
 func (s *testTaskService) Cleanup(context.Context) (int, error)              { return 0, nil }
+
+// testGoalService 是 UI 测试用的 goal service 假实现（不触网）。
+type testGoalService struct{}
+
+func (s *testGoalService) Set(_ context.Context, _ coreapi.GoalSetRequest) (coreapi.ThreadGoal, error) {
+	return coreapi.ThreadGoal{}, nil
+}
+
+func (s *testGoalService) Get(_ context.Context, _ coreapi.GoalRefRequest) (coreapi.GoalGetResponse, error) {
+	return coreapi.GoalGetResponse{}, nil
+}
+
+func (s *testGoalService) Pause(_ context.Context, _ coreapi.GoalRefRequest) (coreapi.ThreadGoal, error) {
+	return coreapi.ThreadGoal{}, nil
+}
+
+func (s *testGoalService) Resume(_ context.Context, _ coreapi.GoalRefRequest) (coreapi.ThreadGoal, error) {
+	return coreapi.ThreadGoal{}, nil
+}
+
+func (s *testGoalService) Clear(_ context.Context, _ coreapi.GoalRefRequest) error { return nil }

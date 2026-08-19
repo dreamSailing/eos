@@ -475,6 +475,73 @@ func (a *CoreClientAdapter) PermissionSnapshot(ctx context.Context) (coreapi.Per
 	return a.engine.Permissions().Snapshot(ctx)
 }
 
+// === Goal（目标模式）===
+
+// SetGoal 设定会话目标：目标进入 active 后 agent 空闲自驱，持续朝目标工作。
+// tokenBudget 为 nil 表示不设预算。
+func (a *CoreClientAdapter) SetGoal(ctx context.Context, objective string, tokenBudget *int64) (coreapi.ThreadGoal, error) {
+	if a == nil || a.engine == nil {
+		return coreapi.ThreadGoal{}, errors.New("core client is not available")
+	}
+	sessionID, err := a.CurrentSessionID(ctx)
+	if err != nil {
+		return coreapi.ThreadGoal{}, err
+	}
+	return a.engine.Goals().Set(ctx, coreapi.GoalSetRequest{
+		SessionID:   sessionID,
+		Objective:   objective,
+		TokenBudget: tokenBudget,
+	})
+}
+
+// GetGoal 查询当前会话目标（Goal 为 nil 表示无目标）。
+func (a *CoreClientAdapter) GetGoal(ctx context.Context) (coreapi.GoalGetResponse, error) {
+	if a == nil || a.engine == nil {
+		return coreapi.GoalGetResponse{}, errors.New("core client is not available")
+	}
+	sessionID, err := a.CurrentSessionID(ctx)
+	if err != nil {
+		return coreapi.GoalGetResponse{}, err
+	}
+	return a.engine.Goals().Get(ctx, coreapi.GoalRefRequest{SessionID: sessionID})
+}
+
+// PauseGoal 暂停目标（停止自驱；进行中的 turn 不打断）。
+func (a *CoreClientAdapter) PauseGoal(ctx context.Context) (coreapi.ThreadGoal, error) {
+	if a == nil || a.engine == nil {
+		return coreapi.ThreadGoal{}, errors.New("core client is not available")
+	}
+	sessionID, err := a.CurrentSessionID(ctx)
+	if err != nil {
+		return coreapi.ThreadGoal{}, err
+	}
+	return a.engine.Goals().Pause(ctx, coreapi.GoalRefRequest{SessionID: sessionID})
+}
+
+// ResumeGoal 恢复目标并立即触发自驱。
+func (a *CoreClientAdapter) ResumeGoal(ctx context.Context) (coreapi.ThreadGoal, error) {
+	if a == nil || a.engine == nil {
+		return coreapi.ThreadGoal{}, errors.New("core client is not available")
+	}
+	sessionID, err := a.CurrentSessionID(ctx)
+	if err != nil {
+		return coreapi.ThreadGoal{}, err
+	}
+	return a.engine.Goals().Resume(ctx, coreapi.GoalRefRequest{SessionID: sessionID})
+}
+
+// ClearGoal 清除会话目标（幂等）。
+func (a *CoreClientAdapter) ClearGoal(ctx context.Context) error {
+	if a == nil || a.engine == nil {
+		return errors.New("core client is not available")
+	}
+	sessionID, err := a.CurrentSessionID(ctx)
+	if err != nil {
+		return err
+	}
+	return a.engine.Goals().Clear(ctx, coreapi.GoalRefRequest{SessionID: sessionID})
+}
+
 func (a *CoreClientAdapter) ModeSnapshot(ctx context.Context) (coreapi.ModeSnapshot, error) {
 	if a == nil || a.engine == nil {
 		return coreapi.ModeSnapshot{}, errors.New("core client is not available")

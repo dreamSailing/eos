@@ -176,6 +176,10 @@ func (e *RemoteEngine) Tasks() coreapi.TaskService {
 	return remoteTaskService{engine: e}
 }
 
+func (e *RemoteEngine) Goals() coreapi.GoalService {
+	return remoteGoalService{engine: e}
+}
+
 func (e *RemoteEngine) Modes() coreapi.ModeService {
 	return remoteModeService{engine: e}
 }
@@ -904,6 +908,47 @@ type remoteTaskService struct {
 	engine *RemoteEngine
 }
 
+type remoteGoalService struct {
+	engine *RemoteEngine
+}
+
+func (s remoteGoalService) Set(ctx context.Context, req coreapi.GoalSetRequest) (coreapi.ThreadGoal, error) {
+	var out coreapi.ThreadGoal
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodGoalSet, req, &out); err != nil {
+		return coreapi.ThreadGoal{}, err
+	}
+	return out, nil
+}
+
+func (s remoteGoalService) Get(ctx context.Context, req coreapi.GoalRefRequest) (coreapi.GoalGetResponse, error) {
+	var out coreapi.GoalGetResponse
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodGoalGet, req, &out); err != nil {
+		return coreapi.GoalGetResponse{}, err
+	}
+	return out, nil
+}
+
+func (s remoteGoalService) Pause(ctx context.Context, req coreapi.GoalRefRequest) (coreapi.ThreadGoal, error) {
+	var out coreapi.ThreadGoal
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodGoalPause, req, &out); err != nil {
+		return coreapi.ThreadGoal{}, err
+	}
+	return out, nil
+}
+
+func (s remoteGoalService) Resume(ctx context.Context, req coreapi.GoalRefRequest) (coreapi.ThreadGoal, error) {
+	var out coreapi.ThreadGoal
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodGoalResume, req, &out); err != nil {
+		return coreapi.ThreadGoal{}, err
+	}
+	return out, nil
+}
+
+func (s remoteGoalService) Clear(ctx context.Context, req coreapi.GoalRefRequest) error {
+	var out map[string]any
+	return s.engine.call(ctx, protocoljsonrpc.MethodGoalClear, req, &out)
+}
+
 func (s remoteTaskService) List(ctx context.Context) ([]coreapi.TaskSnapshot, error) {
 	var out []coreapi.TaskSnapshot
 	if err := s.engine.call(ctx, protocoljsonrpc.MethodTaskList, nil, &out); err != nil {
@@ -1022,6 +1067,7 @@ func (s remoteUsageService) CostItems(ctx context.Context) ([]coreapi.CostItem, 
 var (
 	_ coreapi.GitService     = remoteGitService{}
 	_ coreapi.TaskService    = remoteTaskService{}
+	_ coreapi.GoalService    = remoteGoalService{}
 	_ coreapi.VersionService = remoteVersionService{}
 	_ coreapi.UsageService   = remoteUsageService{}
 )

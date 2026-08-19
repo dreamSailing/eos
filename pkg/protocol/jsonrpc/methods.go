@@ -80,6 +80,11 @@ const (
 	MethodTaskTail                   = "task/tail"
 	MethodTaskKill                   = "task/kill"
 	MethodTaskCleanup                = "task/cleanup"
+	MethodGoalSet                    = "goal/set"
+	MethodGoalGet                    = "goal/get"
+	MethodGoalPause                  = "goal/pause"
+	MethodGoalResume                 = "goal/resume"
+	MethodGoalClear                  = "goal/clear"
 	MethodRuntimeModesGet            = "runtime/modes/get"
 	MethodRuntimeExecutionModeSet    = "runtime/execution_mode/set"
 	MethodRuntimeSandboxModeSet      = "runtime/sandbox_mode/set"
@@ -244,6 +249,11 @@ func AllCoreMethods() []string {
 		MethodTaskTail,
 		MethodTaskKill,
 		MethodTaskCleanup,
+		MethodGoalSet,
+		MethodGoalGet,
+		MethodGoalPause,
+		MethodGoalResume,
+		MethodGoalClear,
 		MethodRuntimeModesGet,
 		MethodRuntimeExecutionModeSet,
 		MethodRuntimeSandboxModeSet,

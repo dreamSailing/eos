@@ -27,6 +27,7 @@ type Engine interface {
 	Usage() UsageService
 	Versions() VersionService
 	Tasks() TaskService
+	Goals() GoalService
 	Modes() ModeService
 	Models() ModelService
 	RemoteWorkspaces() RemoteWorkspaceService
@@ -153,6 +154,51 @@ type TaskService interface {
 	Tail(context.Context, TaskIDRequest) ([]string, error)
 	Kill(context.Context, TaskIDRequest) error
 	Cleanup(context.Context) (int, error)
+}
+
+// GoalService 是目标模式（goal mode）的外部控制面：设定目标后 agent 空闲自驱，
+// 持续朝目标工作直到完成 / 阻塞 / 预算耗尽或用户干预。
+type GoalService interface {
+	// Set 设定（或替换）会话目标：进入 active 并立即触发自驱开工。
+	Set(context.Context, GoalSetRequest) (ThreadGoal, error)
+	// Get 查询会话当前目标（Goal 为 nil 表示无目标）。
+	Get(context.Context, GoalRefRequest) (GoalGetResponse, error)
+	// Pause 暂停目标（active → paused，停止自驱；进行中的 turn 不打断）。
+	Pause(context.Context, GoalRefRequest) (ThreadGoal, error)
+	// Resume 恢复目标（paused/blocked/usageLimited → active 并立即自驱）。
+	Resume(context.Context, GoalRefRequest) (ThreadGoal, error)
+	// Clear 清除会话目标（幂等）。
+	Clear(context.Context, GoalRefRequest) error
+}
+
+// GoalSetRequest is the request for goal/set.
+type GoalSetRequest struct {
+	SessionID   string `json:"sessionId"`
+	Objective   string `json:"objective"`
+	TokenBudget *int64 `json:"tokenBudget,omitempty"`
+}
+
+// GoalRefRequest is the request for goal/get | goal/pause | goal/resume | goal/clear.
+type GoalRefRequest struct {
+	SessionID string `json:"sessionId"`
+}
+
+// GoalGetResponse is the response for goal/get.
+type GoalGetResponse struct {
+	Goal *ThreadGoal `json:"goal,omitempty"`
+}
+
+// ThreadGoal 是会话目标（wire 结构对齐内核 protocol::ThreadGoal，camelCase）。
+type ThreadGoal struct {
+	ThreadID        string `json:"threadId"`
+	GoalID          string `json:"goalId"`
+	Objective       string `json:"objective"`
+	Status          string `json:"status"` // active|paused|blocked|usageLimited|budgetLimited|complete
+	TokenBudget     *int64 `json:"tokenBudget,omitempty"`
+	TokensUsed      int64  `json:"tokensUsed"`
+	TimeUsedSeconds int64  `json:"timeUsedSeconds"`
+	CreatedAt       int64  `json:"createdAt"`
+	UpdatedAt       int64  `json:"updatedAt"`
 }
 
 type ModeService interface {
