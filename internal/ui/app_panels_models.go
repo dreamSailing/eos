@@ -111,7 +111,12 @@ func (m *AppModel) handleModelFormComplete(msg setup.ModelFormCompleteMsg) {
 	} else {
 		// 添加模式：添加新模型并设置为当前上下文模型
 		if err := m.adapter.UpsertModelEntry(context.Background(), entry); err == nil {
-			_, _ = m.adapter.SelectModelForCurrentContext(context.Background(), name)
+			scope, _ := m.adapter.SelectModelForCurrentContext(context.Background(), name)
+			if scope == "session" {
+				// 会话内新增仅写了 session 绑定；同步 workspace 默认，
+				// 让后续新会话继承「最近添加」的模型（对齐桌面端语义）。
+				_ = m.adapter.SelectWorkspaceModel(context.Background(), name)
+			}
 			m.refreshShellWelcomeInfo()
 			if !suppressSuccessMessage {
 				m.appendSystem(fmt.Sprintf("Added and selected model: %s", name), "success")

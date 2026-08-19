@@ -720,6 +720,28 @@ func (a *CoreClientAdapter) SelectModelForCurrentContext(ctx context.Context, na
 	return "global", nil
 }
 
+// SelectWorkspaceModel 将模型写入当前工作区默认（供新增模型后联动后续会话的默认模型）。
+func (a *CoreClientAdapter) SelectWorkspaceModel(ctx context.Context, name string) error {
+	if a == nil || a.engine == nil {
+		return errors.New("core client is not available")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("model name is required")
+	}
+	workspaceRoot := strings.TrimSpace(a.ActiveWorkspace(ctx))
+	if workspaceRoot == "" {
+		return nil
+	}
+	return a.engine.Models().SetWorkspace(ctx, coreapi.SetWorkspaceModelRequest{
+		WorkspaceRoot: workspaceRoot,
+		ModelName:     name,
+	})
+}
+
 func (a *CoreClientAdapter) DeleteModel(ctx context.Context, name string) error {
 	if a == nil || a.engine == nil {
 		return errors.New("core client is not available")
