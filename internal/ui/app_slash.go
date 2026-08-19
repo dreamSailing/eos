@@ -116,6 +116,7 @@ func slashCommandHandler(m *AppModel) map[string]func(args []string) tea.Cmd {
 		"/workspace": m.handleWorkspaceSlash,
 		"/config":    func(_ []string) tea.Cmd { m.openSettingsPanel(); return nil },
 		"/screenshot": m.handleScreenshotSlash,
+		"/feedback":            m.handleFeedbackSlash,
 		"/lsp": func(_ []string) tea.Cmd {
 			m.clearPrediction()
 			m.activeView = "panel"
