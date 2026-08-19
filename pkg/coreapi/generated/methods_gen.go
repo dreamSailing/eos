@@ -75,6 +75,7 @@ const (
 	MethodPluginInstall = "plugin/install"
 	MethodPluginList = "plugin/list"
 	MethodPluginRemove = "plugin/remove"
+	MethodPluginSearch = "plugin/search"
 	MethodNetworkList = "network/list"
 	MethodNetworkGet = "network/get"
 	MethodNetworkClear = "network/clear"
@@ -226,6 +227,7 @@ func CoreMethods() []string {
 		MethodPluginInstall,
 		MethodPluginList,
 		MethodPluginRemove,
+		MethodPluginSearch,
 		MethodNetworkList,
 		MethodNetworkGet,
 		MethodNetworkClear,
@@ -357,6 +359,7 @@ func MethodGroups() map[string][]string {
 			MethodPluginInstall,
 			MethodPluginList,
 			MethodPluginRemove,
+			MethodPluginSearch,
 		},
 		"git": {
 			MethodGitStatus,

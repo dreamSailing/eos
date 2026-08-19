@@ -141,6 +141,7 @@ const (
 	MethodPluginInstall              = "plugin/install"
 	MethodPluginList                 = "plugin/list"
 	MethodPluginRemove               = "plugin/remove"
+	MethodPluginSearch               = "plugin/search"
 	MethodNetworkList                = "network/list"
 	MethodNetworkGet                 = "network/get"
 	MethodNetworkClear               = "network/clear"
@@ -299,6 +300,7 @@ func AllCoreMethods() []string {
 		MethodPluginInstall,
 		MethodPluginList,
 		MethodPluginRemove,
+		MethodPluginSearch,
 		MethodNetworkList,
 		MethodNetworkGet,
 		MethodNetworkClear,

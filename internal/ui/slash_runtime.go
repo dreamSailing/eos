@@ -1589,3 +1589,46 @@ func (m *AppModel) clearPendingPluginConfirm() string {
 	m.pendingPluginConfirm = ""
 	return s
 }
+
+func (m *AppModel) pluginSearchCmd(query string) tea.Cmd {
+	go func() {
+		var out struct {
+			Results []struct {
+				Name        string   `json:"name"`
+				Description string   `json:"description"`
+				Version     string   `json:"version"`
+				Author      string   `json:"author"`
+				Permissions []string `json:"permissions"`
+			} `json:"results"`
+			Total int    `json:"total"`
+			Index string `json:"index_url"`
+		}
+		params := map[string]interface{}{"query": query}
+		err := m.adapter.CallCore(
+			context.Background(),
+			"plugin/search",
+			params,
+			&out,
+		)
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("搜索失败: %v", err), "error")
+			return
+		}
+		if out.Total == 0 {
+			m.appendSystem(fmt.Sprintf("未找到匹配「%s」的插件", query), "info")
+			return
+		}
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("🔍 找到 %d 个插件：\n", out.Total))
+		for _, p := range out.Results {
+			perms := strings.Join(p.Permissions, ", ")
+			if perms != "" {
+				perms = fmt.Sprintf(" [权限: %s]", perms)
+			}
+			sb.WriteString(fmt.Sprintf("  📦 %s v%s — %s（by %s）%s\n", p.Name, p.Version, p.Description, p.Author, perms))
+		}
+		sb.WriteString("\n用 /plugin install <名称> 安装")
+		m.appendSystem(sb.String(), "info")
+	}()
+	return nil
+}

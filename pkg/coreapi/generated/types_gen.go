@@ -796,6 +796,23 @@ type PluginDetail struct {
 	Skills []string `json:"skills,omitempty"`
 }
 
+type PluginIndexEntry struct {
+	Name string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Version string `json:"version,omitempty"`
+	Author string `json:"author,omitempty"`
+	Source string `json:"source,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
+	Tags []string `json:"tags,omitempty"`
+	Stars uint64 `json:"stars,omitempty"`
+}
+
+type PluginSearchResult struct {
+	Results []PluginIndexEntry `json:"results"`
+	Total int `json:"total"`
+	IndexURL string `json:"index_url"`
+}
+
 type NetworkRecord struct {
 	ID uint64 `json:"id"`
 	StartedAt string `json:"started_at"`
