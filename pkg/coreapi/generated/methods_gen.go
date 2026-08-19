@@ -72,6 +72,9 @@ const (
 	MethodUsageSummary = "usage/summary"
 	MethodUsageCostSummary = "usage/cost_summary"
 	MethodUsageCostItems = "usage/cost_items"
+	MethodPluginInstall = "plugin/install"
+	MethodPluginList = "plugin/list"
+	MethodPluginRemove = "plugin/remove"
 	MethodNetworkList = "network/list"
 	MethodNetworkGet = "network/get"
 	MethodNetworkClear = "network/clear"
@@ -220,6 +223,9 @@ func CoreMethods() []string {
 		MethodUsageSummary,
 		MethodUsageCostSummary,
 		MethodUsageCostItems,
+		MethodPluginInstall,
+		MethodPluginList,
+		MethodPluginRemove,
 		MethodNetworkList,
 		MethodNetworkGet,
 		MethodNetworkClear,
@@ -348,6 +354,9 @@ func MethodGroups() map[string][]string {
 			MethodExtensionsPluginsList,
 			MethodExtensionsPluginSetEnabled,
 			MethodBrowserStatus,
+			MethodPluginInstall,
+			MethodPluginList,
+			MethodPluginRemove,
 		},
 		"git": {
 			MethodGitStatus,

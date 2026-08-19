@@ -256,6 +256,13 @@ func (s remoteDiagnosticsService) Startup(ctx context.Context) (coreapi.StartupD
 	return out, nil
 }
 
+func (e *RemoteEngine) Caller() coreapi.Caller {
+	if e == nil {
+		return nil
+	}
+	return e.caller
+}
+
 func (e *RemoteEngine) call(ctx context.Context, method string, params any, out any) error {
 	if e == nil || e.caller == nil {
 		return fmt.Errorf("%s: %w", method, ErrCallerUnavailable)

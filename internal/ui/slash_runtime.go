@@ -480,7 +480,24 @@ func (m *AppModel) handleSkillsSlash(args []string) tea.Cmd {
 	return nil
 }
 
-func (m *AppModel) handlePluginSlash() tea.Cmd {
+func (m *AppModel) handlePluginSlash(args ...string) tea.Cmd {
+	// 子命令模式：install/list/remove
+	if len(args) > 0 {
+		switch args[0] {
+		case "install":
+			if len(args) < 2 {
+				m.appendSystem("用法：/plugin install <本地路径或 git URL>", "warning")
+				return nil
+			}
+			return m.pluginInstallCmd(args[1])
+		case "remove":
+			if len(args) < 2 {
+				m.appendSystem("用法：/plugin remove <名称>", "warning")
+				return nil
+			}
+			return m.pluginRemoveCmd(args[1])
+		}
+	}
 	rows, err := m.adapter.Plugins(context.Background())
 	if err != nil {
 		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("读取插件失败", "Failed to read plugins"), err), "error")
@@ -1467,4 +1484,51 @@ func mapInt(metadata map[string]any, key string) int {
 	default:
 		return 0
 	}
+}
+
+func (m *AppModel) pluginInstallCmd(source string) tea.Cmd {
+	go func() {
+		var out struct {
+			Name            string   `json:"name"`
+			Version         string   `json:"version"`
+			McpRegistered   bool     `json:"mcp_registered"`
+			SkillsInstalled []string `json:"skills_installed"`
+		}
+		err := m.adapter.CallCore(
+			context.Background(),
+			"plugin/install",
+			map[string]interface{}{"source": source},
+			&out,
+		)
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("安装失败: %v", err), "error")
+			return
+		}
+		msg := fmt.Sprintf("✅ 插件 %s v%s 已安装", out.Name, out.Version)
+		if out.McpRegistered {
+			msg += "（MCP 已注册）"
+		}
+		if len(out.SkillsInstalled) > 0 {
+			msg += fmt.Sprintf("（技能: %s）", strings.Join(out.SkillsInstalled, ", "))
+		}
+		m.appendSystem(msg, "info")
+	}()
+	return nil
+}
+
+func (m *AppModel) pluginRemoveCmd(name string) tea.Cmd {
+	go func() {
+		err := m.adapter.CallCore(
+			context.Background(),
+			"plugin/remove",
+			map[string]interface{}{"name": name},
+			&struct{}{},
+		)
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("卸载失败: %v", err), "error")
+			return
+		}
+		m.appendSystem(fmt.Sprintf("🗑️ 插件 %s 已卸载", name), "info")
+	}()
+	return nil
 }

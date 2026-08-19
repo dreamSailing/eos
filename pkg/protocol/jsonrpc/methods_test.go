@@ -10,8 +10,8 @@ func TestAllCoreMethodsFreezesMigrationSurface(t *testing.T) {
 	//     workspace/changes、workspace/rollback/{build,apply}）
 	//   - 1 移除死方法（insight/memory_snapshot，内核系统 B 清理后已无此路由）
 	// 与 generated.CoreMethods()（schema.json 单一真相源）保持一致。
-	if len(methods) != 144 {
-		t.Fatalf("AllCoreMethods() len=%d, want 144", len(methods))
+	if len(methods) != 147 {
+		t.Fatalf("AllCoreMethods() len=%d, want 147", len(methods))
 	}
 
 	seen := make(map[string]bool, len(methods))

@@ -113,10 +113,11 @@ func slashCommandHandler(m *AppModel) map[string]func(args []string) tea.Cmd {
 			}
 			return nil
 		},
-		"/workspace": m.handleWorkspaceSlash,
-		"/config":    func(_ []string) tea.Cmd { m.openSettingsPanel(); return nil },
+		"/workspace":  m.handleWorkspaceSlash,
+		"/config":     func(_ []string) tea.Cmd { m.openSettingsPanel(); return nil },
 		"/screenshot": m.handleScreenshotSlash,
-		"/feedback":            m.handleFeedbackSlash,
+		"/feedback":   m.handleFeedbackSlash,
+		"/plugin":     func(args []string) tea.Cmd { return m.handlePluginSlash(args...) },
 		"/lsp": func(_ []string) tea.Cmd {
 			m.clearPrediction()
 			m.activeView = "panel"
@@ -162,7 +163,6 @@ func slashCommandHandler(m *AppModel) map[string]func(args []string) tea.Cmd {
 		"/resume":         m.handleResumeSlash,
 		"/permissions":    m.handlePermissionsSlash,
 		"/skills":         m.handleSkillsSlash,
-		"/plugin":         func(_ []string) tea.Cmd { return m.handlePluginSlash() },
 		"/reload-plugins": func(_ []string) tea.Cmd { return m.handleReloadPluginsSlash() },
 		"/doctor":         func(_ []string) tea.Cmd { return m.handleDoctorSlash() },
 		"/diff":           m.handleDiffSlash,

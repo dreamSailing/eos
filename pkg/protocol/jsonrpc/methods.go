@@ -138,6 +138,9 @@ const (
 	MethodApprovalRespond            = "approval/respond"
 	MethodApprovalPreview            = "approval/preview"
 	MethodInquiryRespond             = "inquiry/respond"
+	MethodPluginInstall              = "plugin/install"
+	MethodPluginList                 = "plugin/list"
+	MethodPluginRemove               = "plugin/remove"
 	MethodNetworkList                = "network/list"
 	MethodNetworkGet                 = "network/get"
 	MethodNetworkClear               = "network/clear"
@@ -293,6 +296,9 @@ func AllCoreMethods() []string {
 		MethodApprovalRespond,
 		MethodApprovalPreview,
 		MethodInquiryRespond,
+		MethodPluginInstall,
+		MethodPluginList,
+		MethodPluginRemove,
 		MethodNetworkList,
 		MethodNetworkGet,
 		MethodNetworkClear,

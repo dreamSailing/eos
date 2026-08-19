@@ -858,6 +858,22 @@ func (a *CoreClientAdapter) ExecuteCoreTool(ctx context.Context, req coreapi.Too
 	return a.engine.Tools().Execute(ctx, req)
 }
 
+// CallCore 通用 JSON-RPC 调用（供 /plugin 等斜杠命令直接调协议方法）。
+func (a *CoreClientAdapter) CallCore(ctx context.Context, method string, params interface{}, result interface{}) error {
+	if a == nil || a.engine == nil {
+		return errors.New("core client is not available")
+	}
+	if params == nil {
+		params = map[string]interface{}{}
+	}
+	rawParams, _ := json.Marshal(params)
+	caller := a.engine.Caller()
+	if caller == nil {
+		return errors.New("core caller is not available")
+	}
+	return caller.Call(ctx, method, json.RawMessage(rawParams), result)
+}
+
 func (a *CoreClientAdapter) ToolTraces(ctx context.Context) ([]coreapi.ToolTrace, error) {
 	if a == nil || a.engine == nil {
 		return nil, errors.New("core client is not available")

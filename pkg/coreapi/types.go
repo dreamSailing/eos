@@ -13,6 +13,8 @@ import (
 var ErrUnsupported = errors.New("coreapi unsupported operation")
 
 type Engine interface {
+	// Caller 返回底层 JSON-RPC 调用器（供宿主直调协议方法）。
+	Caller() Caller
 	State() StateService
 	Workspaces() WorkspaceService
 	Sessions() SessionService
@@ -1529,4 +1531,10 @@ type NetworkRecord struct {
 type NetworkListResult struct {
 	Enabled bool            `json:"enabled"`
 	Records []NetworkRecord `json:"records"`
+}
+
+// Caller 是底层 JSON-RPC 调用接口（sidecar.RemoteEngine 实现）。
+// 独立定义避免 coreapi ↔ sidecar 循环依赖。
+type Caller interface {
+	Call(ctx context.Context, method string, params any, out any) error
 }

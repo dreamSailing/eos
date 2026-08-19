@@ -762,6 +762,40 @@ type NetworkHeader struct {
 	Value string `json:"value"`
 }
 
+type PluginManifest struct {
+	Plugin []PluginMeta `json:"plugin"`
+}
+
+type PluginMeta struct {
+	Name string `json:"name"`
+	Version string `json:"version,omitempty"`
+	Description string `json:"description,omitempty"`
+	Author string `json:"author,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
+}
+
+type PluginInstallResult struct {
+	Name string `json:"name"`
+	Version string `json:"version"`
+	Installed bool `json:"installed"`
+	McpRegistered bool `json:"mcp_registered"`
+	SkillsInstalled []string `json:"skills_installed"`
+	Path string `json:"path"`
+}
+
+type PluginDetail struct {
+	Name string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Version string `json:"version,omitempty"`
+	Author string `json:"author,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
+	Enabled bool `json:"enabled"`
+	Source string `json:"source,omitempty"`
+	Path string `json:"path,omitempty"`
+	McpServerName string `json:"mcp_server_name,omitempty"`
+	Skills []string `json:"skills,omitempty"`
+}
+
 type NetworkRecord struct {
 	ID uint64 `json:"id"`
 	StartedAt string `json:"started_at"`
