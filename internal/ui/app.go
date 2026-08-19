@@ -92,6 +92,7 @@ type AppModel struct {
 
 	pendingImagePaths   []string
 	pendingPlanDownload *planDownloadRequest
+	pendingPluginConfirm string
 
 	predictionText        string
 	predictionSeq         int

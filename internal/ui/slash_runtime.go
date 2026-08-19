@@ -1493,6 +1493,8 @@ func (m *AppModel) pluginInstallCmd(source string) tea.Cmd {
 			Version         string   `json:"version"`
 			McpRegistered   bool     `json:"mcp_registered"`
 			SkillsInstalled []string `json:"skills_installed"`
+			NeedsConfirm    bool     `json:"needs_confirm"`
+			Permissions     []string `json:"permissions"`
 		}
 		err := m.adapter.CallCore(
 			context.Background(),
@@ -1504,6 +1506,27 @@ func (m *AppModel) pluginInstallCmd(source string) tea.Cmd {
 			m.appendSystem(fmt.Sprintf("安装失败: %v", err), "error")
 			return
 		}
+
+		// Phase 2 权限确认流：首次返回 needs_confirm=true，展示权限后
+		// 用户在 TUI 按 y 确认 → 二次调用带 confirm_permissions=true
+		if out.NeedsConfirm && len(out.Permissions) > 0 {
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("🔒 插件 %s v%s 需要以下权限：\n", out.Name, out.Version))
+			for _, perm := range out.Permissions {
+				sb.WriteString(fmt.Sprintf("  • %s\n", perm))
+			}
+			sb.WriteString("\n按 y 确认安装，其他键取消")
+			m.appendSystem(sb.String(), "warning")
+			m.setPendingPluginConfirm(source)
+			return
+		}
+
+		if out.NeedsConfirm {
+			// 无权限声明但 needs_confirm（不应发生）——直接装
+			m.pluginInstallConfirm(source)
+			return
+		}
+
 		msg := fmt.Sprintf("✅ 插件 %s v%s 已安装", out.Name, out.Version)
 		if out.McpRegistered {
 			msg += "（MCP 已注册）"
@@ -1514,6 +1537,30 @@ func (m *AppModel) pluginInstallCmd(source string) tea.Cmd {
 		m.appendSystem(msg, "info")
 	}()
 	return nil
+}
+
+func (m *AppModel) pluginInstallConfirm(source string) {
+	var out struct {
+		Name            string   `json:"name"`
+		Version         string   `json:"version"`
+		McpRegistered   bool     `json:"mcp_registered"`
+		SkillsInstalled []string `json:"skills_installed"`
+	}
+	err := m.adapter.CallCore(
+		context.Background(),
+		"plugin/install",
+		map[string]interface{}{"source": source, "confirm_permissions": true},
+		&out,
+	)
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("确认安装失败: %v", err), "error")
+		return
+	}
+	msg := fmt.Sprintf("✅ 插件 %s v%s 已安装（权限已确认）", out.Name, out.Version)
+	if out.McpRegistered {
+		msg += "（MCP 已注册）"
+	}
+	m.appendSystem(msg, "info")
 }
 
 func (m *AppModel) pluginRemoveCmd(name string) tea.Cmd {
@@ -1531,4 +1578,14 @@ func (m *AppModel) pluginRemoveCmd(name string) tea.Cmd {
 		m.appendSystem(fmt.Sprintf("🗑️ 插件 %s 已卸载", name), "info")
 	}()
 	return nil
+}
+
+func (m *AppModel) setPendingPluginConfirm(source string) {
+	m.pendingPluginConfirm = source
+}
+
+func (m *AppModel) clearPendingPluginConfirm() string {
+	s := m.pendingPluginConfirm
+	m.pendingPluginConfirm = ""
+	return s
 }
