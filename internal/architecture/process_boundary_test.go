@@ -43,7 +43,10 @@ var allowedProcessExecCalls = map[string]int{
 	"internal/pkg/utils/command.go:Command:exec.Command":                         1,
 	"internal/pkg/utils/command.go:CommandContext:exec.CommandContext":           1,
 	"internal/ui/slash_runtime.go:copyToClipboard:exec.Command":                  3,
-	"pkg/coreapi/sidecar/process_client.go:StartProcess:exec.Command":            1,
+	// /feedback 打开系统浏览器（darwin/windows/linux 三分支）：用户可见的
+	// 系统动作，与剪贴板同类，非工具/代理执行路径，不走 GuardedRunner。
+	"internal/ui/app_slash_feedback.go:openInBrowser:exec.Command":    3,
+	"pkg/coreapi/sidecar/process_client.go:StartProcess:exec.Command": 1,
 }
 
 func TestProcessExecutionCallSitesAreClassified(t *testing.T) {

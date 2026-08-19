@@ -238,7 +238,7 @@ func TestEngineProviderRejectsManifestTargetMismatch(t *testing.T) {
 	}
 	manifestPath := writeTestManifest(t, dir, sidecarManifestOptions{
 		Binary:              binaryName,
-		Target:              "aarch64-apple-darwin",
+		Target:              mismatchingTargetTriple(t),
 		Features:            []string{"initialize", "session/list"},
 		AllowDevPlaceholder: true,
 	})
@@ -395,6 +395,25 @@ func currentTargetTriple(t *testing.T) string {
 		t.Skip("unable to determine current target triple")
 	}
 	return out
+}
+
+// mismatchingTargetTriple 返回一个与当前平台必然不同的 triple。
+// 原实现硬编码 aarch64-apple-darwin 当「不匹配」目标，在 arm64 mac 上恰好
+// 等于当前平台，走不到 mismatch 分支（校验顺延到 feature 检查而报错）。
+func mismatchingTargetTriple(t *testing.T) string {
+	t.Helper()
+	current := currentTargetTriple(t)
+	for _, candidate := range []string{
+		"x86_64-apple-darwin",
+		"aarch64-apple-darwin",
+		"x86_64-unknown-linux-musl",
+	} {
+		if candidate != current {
+			return candidate
+		}
+	}
+	t.Skip("unable to determine mismatching target triple")
+	return ""
 }
 
 func goEnv(t *testing.T, key string) string {

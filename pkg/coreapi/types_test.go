@@ -13,6 +13,7 @@ import (
 
 type compileTimeEngine struct{}
 
+func (compileTimeEngine) Caller() Caller                 { return nil }
 func (compileTimeEngine) State() StateService            { return nil }
 func (compileTimeEngine) Workspaces() WorkspaceService   { return nil }
 func (compileTimeEngine) Sessions() SessionService       { return nil }

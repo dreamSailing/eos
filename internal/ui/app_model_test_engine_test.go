@@ -46,6 +46,7 @@ type testEngine struct {
 	currentSessionID string
 }
 
+func (e *testEngine) Caller() coreapi.Caller                 { return nil }
 func (e *testEngine) State() coreapi.StateService            { return &testStateService{} }
 func (e *testEngine) Workspaces() coreapi.WorkspaceService   { return &testWorkspaceService{e: e} }
 func (e *testEngine) Sessions() coreapi.SessionService       { return &testSessionService{e: e} }
