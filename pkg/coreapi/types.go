@@ -1042,6 +1042,9 @@ type Settings struct {
 	MaxTurnTokens        int    `json:"max_turn_tokens,omitempty"`
 	MaxSessionTokens     int    `json:"max_session_tokens,omitempty"`
 	MidRiskConfirm       bool   `json:"mid_risk_confirm,omitempty"`
+	// PromptTimeoutSecs 是询问（审批/问询）等待超时秒数（nil/0 = 一直等待）。
+	// 超时后内核自动响应：审批拒绝、问询选 (Recommended) 项。
+	PromptTimeoutSecs *int64 `json:"prompt_timeout_secs,omitempty"`
 }
 
 type RuleDocument struct {
