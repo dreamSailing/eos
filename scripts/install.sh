@@ -57,10 +57,12 @@ SHA_CMD="sha256sum"; command -v sha256sum >/dev/null 2>&1 || SHA_CMD="shasum -a 
 # 解析最新版本（未指定 --version 时）
 if [ -z "$VERSION" ]; then
   echo "正在获取最新版本..."
-  VERSION="$(curl -fsSL --retry 3 --connect-timeout 10 --max-time 30 \
-    -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/${REPO}/releases/latest" \
-    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+  # 不走 api.github.com：未认证 API 限流 60 次/小时/IP，共享出口极易触发
+  # rate limit。releases/latest 网页 302 到 releases/tag/<版本>，取
+  # Location 头解析 tag，不占 API 配额。
+  VERSION="$(curl -fsSI --retry 3 --connect-timeout 10 --max-time 30 \
+    "https://github.com/${REPO}/releases/latest" \
+    | tr -d '\r' | sed -n 's/^[Ll]ocation:.*\/tag\/\([^[:space:]]*\).*/\1/p' | tail -1)"
   [ -n "$VERSION" ] || err "无法获取最新版本号，请到 https://github.com/${REPO}/releases 手动下载"
 fi
 echo "目标版本: ${VERSION} (${OS}/${ARCH})"

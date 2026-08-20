@@ -28,10 +28,20 @@ $Arch = switch ($env:PROCESSOR_ARCHITECTURE) {
 try {
     if (-not $Version) {
         Write-Host "正在获取最新版本..."
-        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" `
-            -Headers @{ "User-Agent" = "EOS-Install" }
-        $Version = $release.tag_name
-        if (-not $Version) { throw "无法获取最新版本号" }
+        # 不走 api.github.com：未认证 API 限流 60 次/小时/IP，国内共享出口
+        # 极易触发「rate limit exceeded」。releases/latest 网页会 302 到
+        # releases/tag/<版本>，从 Location 解析 tag，不占 API 配额。
+        # HttpWebRequest 方式兼容 Windows PowerShell 5.1 与 PowerShell 7。
+        try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+        $req = [System.Net.HttpWebRequest]::Create("https://github.com/$Repo/releases/latest")
+        $req.AllowAutoRedirect = $false
+        $req.UserAgent = "EOS-Install"
+        $resp = $req.GetResponse()
+        $location = $resp.Headers["Location"]
+        $resp.Close()
+        if (-not $location) { throw "无法获取最新版本号（releases/latest 未返回重定向）" }
+        $Version = ($location -split '/tag/')[-1]
+        if (-not $Version -or $Version -eq $location) { throw "无法从重定向解析版本号: $location" }
     }
     Write-Host "目标版本: $Version (windows/$Arch)"
 
