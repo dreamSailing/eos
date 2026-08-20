@@ -2,12 +2,13 @@
 # EOS CLI 官方安装脚本（macOS / Linux）
 #
 # 用法：
-#   curl -fsSL https://raw.githubusercontent.com/dreamSailing/eos/main/scripts/install.sh | bash
-#   ./install.sh --version v1.0.0-beta.3     # 安装指定版本
+#   curl -fsSL https://cdn.jsdelivr.net/gh/dreamSailing/eos@main/scripts/install.sh | bash
+#   ./install.sh --version v1.0.0          # 安装指定版本
 #   ./install.sh --bin ~/.local/bin --dir ~/.local/share/eos
 #
 # 行为：GitHub Releases 拉取对应平台归档 → SHA256 校验 → 安装到
 #   ~/.local/share/eos（eos + core/ 整树）→ 符号链接 ~/.local/bin/eos。
+# PATH 不含链接目录时自动写入当前 shell 的配置文件（幂等），装完即可使用。
 # `eos update` 之后升级同一位置，符号链接保持不变。
 
 set -euo pipefail
@@ -99,16 +100,37 @@ chmod +x "${DIST_DIR}/eos"
 
 ln -sf "${DIST_DIR}/eos" "${BIN_DIR}/eos"
 
-case ":${PATH}:" in
-  *":${BIN_DIR}:"*) ;;
-  *)
-    cat <<EOF
+# PATH 不含链接目录时，自动把 export 行写入当前 shell 的配置文件（幂等）：
+# 优先按 $SHELL 判断（macOS 默认 zsh → ~/.zshrc），否则挑一个已存在的
+# 常见配置文件，都没有则落到 ~/.profile（bash 登录 shell 会读）。
+ensure_path() {
+  case ":${PATH}:" in
+    *":${BIN_DIR}:"*) return 0 ;;
+  esac
+  local rc=""
+  case "${SHELL:-}" in
+    */zsh*)  rc="$HOME/.zshrc" ;;
+    */bash*) rc="$HOME/.bashrc" ;;
+  esac
+  if [ -z "$rc" ]; then
+    for f in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
+      if [ -f "$f" ]; then rc="$f"; break; fi
+    done
+  fi
+  [ -n "$rc" ] || rc="$HOME/.profile"
 
-注意: ${BIN_DIR} 不在 PATH 中，请把下面这行加入你的 shell 配置（~/.bashrc / ~/.zshrc）：
-  export PATH="${BIN_DIR}:\$PATH"
-EOF
-    ;;
-esac
+  if [ ! -f "$rc" ] || ! grep -qF "${BIN_DIR}" "$rc"; then
+    printf '\n# eos CLI\nexport PATH="%s:$PATH"\n' "${BIN_DIR}" >> "$rc"
+    echo
+    echo "已把 ${BIN_DIR} 写入 ${rc}"
+    echo "新开一个终端即可使用 eos（或先执行: source ${rc}）"
+  else
+    echo
+    echo "检测到 ${rc} 已包含 ${BIN_DIR}，但当前 PATH 未生效。"
+    echo "请执行: source ${rc}（或新开一个终端）"
+  fi
+}
+ensure_path
 
 echo
 "${BIN_DIR}/eos" --help >/dev/null 2>&1 || true
