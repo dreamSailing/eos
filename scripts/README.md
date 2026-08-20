@@ -32,8 +32,8 @@ powershell -File scripts/dev-rebuild.ps1 -SkipApp   # 只分发 eos-cli，不碰
 | `x86_64-pc-windows-gnu` | windows-latest |
 | `x86_64-apple-darwin` | macos-13 |
 | `aarch64-apple-darwin` | macos-latest |
-| `x86_64-unknown-linux-musl` | ubuntu-latest |
-| `aarch64-unknown-linux-musl` | ubuntu-24.04-arm |
+| `x86_64-unknown-linux-gnu` | ubuntu-latest |
+| `aarch64-unknown-linux-gnu` | ubuntu-24.04-arm |
 
 触发：GitHub Actions → sync-vendored-sidecar.yml → Run workflow（手动）。
 build job 产出签名 artifact，sync job 分发到 `pkg/coreapi/sidecar/core/<triple>/`

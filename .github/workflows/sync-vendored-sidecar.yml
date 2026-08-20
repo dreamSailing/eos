@@ -30,8 +30,8 @@ on:
           - x86_64-pc-windows-gnu
           - x86_64-apple-darwin
           - aarch64-apple-darwin
-          - x86_64-unknown-linux-musl
-          - aarch64-unknown-linux-musl
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
         default: ""
       core_repo:
         description: "eos-core-rs 仓库（owner/name），默认用 secret EOS_CORE_REPO"
@@ -64,7 +64,7 @@ jobs:
           TARGET: ${{ github.event.inputs.target }}
         run: |
           if [ -z "$TARGET" ]; then
-            echo 'targets=["x86_64-pc-windows-gnu","x86_64-apple-darwin","aarch64-apple-darwin","x86_64-unknown-linux-musl","aarch64-unknown-linux-musl"]' >> "$GITHUB_OUTPUT"
+            echo 'targets=["x86_64-pc-windows-gnu","x86_64-apple-darwin","aarch64-apple-darwin","x86_64-unknown-linux-gnu","aarch64-unknown-linux-gnu"]' >> "$GITHUB_OUTPUT"
           else
             echo "targets=[\"$TARGET\"]" >> "$GITHUB_OUTPUT"
           fi
@@ -85,9 +85,12 @@ jobs:
             runner: macos-latest   # macos-13（x86_64 runner）已退役，ARM runner 交叉编
           - target: aarch64-apple-darwin
             runner: macos-latest
-          - target: x86_64-unknown-linux-musl
+          # Linux 内核目标 musl→gnu（对齐 release.yml）：内核截图链 xcap→
+          # wayland/drm/gbm/pipewire 的 -sys 系统库探测在 musl 交叉编译下必败
+          # （无 dlopen 开关）；gnu 在原生 runner 上构建，glibc 地板天然存在。
+          - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
-          - target: aarch64-unknown-linux-musl
+          - target: aarch64-unknown-linux-gnu
             runner: ubuntu-24.04-arm
 
     steps:
@@ -113,9 +116,12 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - name: Install musl toolchain (Linux musl only)
-        if: contains(matrix.target, 'linux-musl')
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      # xcap 截图链（wayland/drm/gbm/pipewire/xdo/egl）的 -sys crate 无
+      # dlopen 逃生门，gnu 原生构建也需 pkg-config 探测 + 链接系统 dev 库，
+      # 与 release.yml 的 Linux 步骤保持一致。
+      - name: Install Linux system deps (xcap chain)
+        if: contains(matrix.target, 'linux')
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libpipewire-0.3-dev libdrm-dev libgbm-dev libwayland-dev libxdo-dev libegl-dev
 
       - uses: Swatinem/rust-cache@v2
         with:
