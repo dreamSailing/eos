@@ -37,6 +37,10 @@ on:
         description: "eos-core-rs 仓库（owner/name），默认用 secret EOS_CORE_REPO"
         required: false
         default: ""
+      bypass_cache:
+        description: "跳过 rust-cache 全量重编（诊断缓存污染交叉编译产物）"
+        type: boolean
+        default: false
       sync_app:
         description: "同步到 eos-app（Gitee，需 EOS_APP_DEPLOY_KEY）"
         type: boolean
@@ -124,6 +128,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y pkg-config libpipewire-0.3-dev libdrm-dev libgbm-dev libwayland-dev libxdo-dev libegl-dev
 
       - uses: Swatinem/rust-cache@v2
+        if: ${{ github.event.inputs.bypass_cache != 'true' }}
         with:
           key: ${{ matrix.target }}
 
