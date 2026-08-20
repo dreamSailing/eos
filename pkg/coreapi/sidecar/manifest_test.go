@@ -120,8 +120,8 @@ func TestTargetTriple(t *testing.T) {
 		"windows/arm64": "aarch64-pc-windows-msvc",
 		"darwin/amd64":  "x86_64-apple-darwin",
 		"darwin/arm64":  "aarch64-apple-darwin",
-		"linux/amd64":   "x86_64-unknown-linux-musl",
-		"linux/arm64":   "aarch64-unknown-linux-musl",
+		"linux/amd64":   "x86_64-unknown-linux-gnu",
+		"linux/arm64":   "aarch64-unknown-linux-gnu",
 	}
 	for input, want := range tests {
 		goos, goarch, _ := strings.Cut(input, "/")
@@ -144,15 +144,15 @@ func TestTargetTriplesIncludesWindowsGNUFallback(t *testing.T) {
 	}
 }
 
-// TestTargetTriplesLinuxMuslPrimaryWithGNUFallback 验证 Linux 主选 musl（对齐
-// codex/eos-core-rs CI），回退 gnu（兼容历史 gnu 二进制）。
-func TestTargetTriplesLinuxMuslPrimaryWithGNUFallback(t *testing.T) {
+// TestTargetTriplesLinuxGNUPrimaryWithMuslFallback 验证 Linux 主选 gnu（对齐
+// release.yml 与 vendored 产物），回退 musl（兼容历史安装布局）。
+func TestTargetTriplesLinuxGNUPrimaryWithMuslFallback(t *testing.T) {
 	tests := []struct {
 		goos, goarch string
 		want         []string
 	}{
-		{"linux", "amd64", []string{"x86_64-unknown-linux-musl", "x86_64-unknown-linux-gnu"}},
-		{"linux", "arm64", []string{"aarch64-unknown-linux-musl", "aarch64-unknown-linux-gnu"}},
+		{"linux", "amd64", []string{"x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl"}},
+		{"linux", "arm64", []string{"aarch64-unknown-linux-gnu", "aarch64-unknown-linux-musl"}},
 	}
 	for _, tc := range tests {
 		got := TargetTriples(tc.goos, tc.goarch)

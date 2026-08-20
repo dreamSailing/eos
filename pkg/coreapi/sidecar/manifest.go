@@ -223,9 +223,9 @@ func TargetTriple(goos, goarch string) string {
 	case "darwin/arm64":
 		return "aarch64-apple-darwin"
 	case "linux/amd64":
-		return "x86_64-unknown-linux-musl"
+		return "x86_64-unknown-linux-gnu"
 	case "linux/arm64":
-		return "aarch64-unknown-linux-musl"
+		return "aarch64-unknown-linux-gnu"
 	default:
 		if goos == "" || goarch == "" {
 			return ""
@@ -246,17 +246,18 @@ func TargetTriples(goos, goarch string) []string {
 	if goos == "windows" && goarch == "amd64" && primary != "x86_64-pc-windows-gnu" {
 		out = append(out, "x86_64-pc-windows-gnu")
 	}
-	// Linux：主选 musl（静态链接，对齐 codex/eos-core-rs CI），回退 gnu
-	// （动态链接 glibc，兼容历史/手动放置的 gnu 二进制）。
+	// Linux：主选 gnu（对齐 release.yml 与 vendored 产物——xcap 截图链的
+	// -sys 系统库探测在 musl 交叉编译下必败），回退 musl（兼容历史安装
+	// 布局里的 musl 二进制：旧版发版/手动放置）。
 	if goos == "linux" {
 		switch goarch {
 		case "amd64":
-			if primary != "x86_64-unknown-linux-gnu" {
-				out = append(out, "x86_64-unknown-linux-gnu")
+			if primary != "x86_64-unknown-linux-musl" {
+				out = append(out, "x86_64-unknown-linux-musl")
 			}
 		case "arm64":
-			if primary != "aarch64-unknown-linux-gnu" {
-				out = append(out, "aarch64-unknown-linux-gnu")
+			if primary != "aarch64-unknown-linux-musl" {
+				out = append(out, "aarch64-unknown-linux-musl")
 			}
 		}
 	}

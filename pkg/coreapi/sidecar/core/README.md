@@ -18,16 +18,16 @@ pkg/coreapi/sidecar/core/<target-triple>/
 | `x86_64-pc-windows-gnu` | Windows x86_64 | dev-rebuild.ps1（本机）或 CI |
 | `x86_64-apple-darwin` | macOS Intel | CI（macos-13 runner） |
 | `aarch64-apple-darwin` | macOS Apple Silicon | CI（macos-latest runner） |
-| `x86_64-unknown-linux-musl` | Linux x86_64（静态） | CI（ubuntu-latest runner） |
-| `aarch64-unknown-linux-musl` | Linux ARM64（静态） | CI（ubuntu-arm / cross） |
+| `x86_64-unknown-linux-gnu` | Linux x86_64 | CI（ubuntu-latest runner） |
+| `aarch64-unknown-linux-gnu` | Linux ARM64 | CI（ubuntu-24.04-arm runner） |
 
 壳层 resolver（`pkg/coreapi/sidecar/manifest.go`）按 `runtime.GOOS`/`GOARCH` 选 target：
-- Linux 主选 **musl**（对齐 codex/eos-core-rs CI，静态链接），回退 gnu（兼容历史二进制）。
+- Linux 主选 **gnu**（对齐 release.yml 与 vendored 产物），回退 musl（兼容历史安装布局）。
 - Windows 主选 msvc，回退 gnu。
 
 ## 填充方式
 
-- **跨平台（darwin / linux-musl）**：GitHub Actions workflow `sync-vendored-sidecar.yml`
+- **跨平台（darwin / linux-gnu）**：GitHub Actions workflow `sync-vendored-sidecar.yml`
   在各平台原生 runner 上编译 + Ed25519 签名 + 校验 sha256，自动 commit 进此目录。
   手动触发：Actions → sync-vendored-sidecar → Run workflow；或 eos-core 发版后自动。
   本机**无法**交叉编译 macOS（缺 macOS SDK），勿用本机脚本编这些 target。

@@ -4,10 +4,10 @@ package sidecar
 
 import _ "embed"
 
-//go:embed core/x86_64-unknown-linux-musl/eos-core
+//go:embed core/x86_64-unknown-linux-gnu/eos-core
 var embeddedCoreBinary []byte
 
-//go:embed core/x86_64-unknown-linux-musl/manifest.json
+//go:embed core/x86_64-unknown-linux-gnu/manifest.json
 var embeddedCoreManifestBytes []byte
 
 func init() {
