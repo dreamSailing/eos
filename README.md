@@ -85,7 +85,7 @@ EOS 不是单一的“问答 CLI”，而是一个完整的本地 AI 工作台�
 macOS / Linux：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dreamSailing/eos/main/scripts/install.sh | bash
+curl -fsSL https://cdn.jsdelivr.net/gh/dreamSailing/eos@main/scripts/install.sh | bash
 ```
 
 Windows（PowerShell）：

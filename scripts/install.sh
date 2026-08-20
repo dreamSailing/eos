@@ -56,7 +56,7 @@ SHA_CMD="sha256sum"; command -v sha256sum >/dev/null 2>&1 || SHA_CMD="shasum -a 
 # 解析最新版本（未指定 --version 时）
 if [ -z "$VERSION" ]; then
   echo "正在获取最新版本..."
-  VERSION="$(curl -fsSL --retry 3 \
+  VERSION="$(curl -fsSL --retry 3 --connect-timeout 10 --max-time 30 \
     -H "Accept: application/vnd.github+json" \
     "https://api.github.com/repos/${REPO}/releases/latest" \
     | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
@@ -72,11 +72,11 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 echo "下载 ${ASSET}..."
-curl -fsSL --retry 3 -o "${TMP}/${ASSET}" "${BASE_URL}/${ASSET}" \
-  || err "下载失败（版本 ${VERSION} 可能没有 ${OS}-${ARCH} 归档），到 ${BASE_URL} 确认"
+curl -fsSL --retry 3 --connect-timeout 10 --max-time 300 -o "${TMP}/${ASSET}" "${BASE_URL}/${ASSET}" \
+  || err "下载失败：可能是网络问题（raw.githubusercontent.com 在部分地区不可达）。建议：1) go install github.com/dreamSailing/eos@latest  2) 配置代理后重试  3) 手动下载 ${BASE_URL}/${ASSET}"
 
 echo "校验 SHA256..."
-curl -fsSL --retry 3 -o "${TMP}/SHA256SUMS.txt" "${BASE_URL}/SHA256SUMS.txt" || err "下载校验清单失败"
+curl -fsSL --retry 3 --connect-timeout 10 --max-time 30 -o "${TMP}/SHA256SUMS.txt" "${BASE_URL}/SHA256SUMS.txt" || err "下载校验清单失败"
 WANT="$(awk -v f="$ASSET" '$2 == f {print tolower($1)}' "${TMP}/SHA256SUMS.txt")"
 [ -n "$WANT" ] || err "SHA256SUMS.txt 中没有 ${ASSET} 条目"
 GOT="$($SHA_CMD "${TMP}/${ASSET}" | awk '{print tolower($1)}')"

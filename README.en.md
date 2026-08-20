@@ -85,7 +85,7 @@ One-line install (recommended; detects your platform, verifies SHA256, sets up P
 macOS / Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dreamSailing/eos/main/scripts/install.sh | bash
+curl -fsSL https://cdn.jsdelivr.net/gh/dreamSailing/eos@main/scripts/install.sh | bash
 ```
 
 Windows (PowerShell):
