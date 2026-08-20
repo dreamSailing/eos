@@ -130,6 +130,28 @@ jobs:
       - name: Build (release)
         run: cargo build --release --target ${{ matrix.target }} -p eos-core-bin
 
+      # 内置 catalog 完整性门禁：编译产物必须含当前源码的 MiniMax anthropic
+      # 端点字面量。2026-08-20 实测 x86_64-apple-darwin 交叉编译产物缺失该
+      # 字符串（原生 arm64 / gnu / windows 均正常），缺失 = catalog 陈旧或
+      # 链接异常，宁可构建失败也不允许静默分发坏内核。
+      - name: Verify builtin catalog marker in built binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe="target/${{ matrix.target }}/release/eos-core"
+          if [ "${{ matrix.target }}" = "x86_64-pc-windows-gnu" ]; then exe="${exe}.exe"; fi
+          echo "checking: $exe"
+          if grep -aq 'api.minimaxi.com/anthropic/v1' "$exe"; then
+            echo "::error::内置 catalog 是旧版（含 anthropic/v1 旧端点）——疑似非当前源码构建"
+            exit 1
+          fi
+          if ! grep -aq 'api.minimaxi.com/anthropic' "$exe"; then
+            echo "::error::内置 catalog 端点字面量缺失（交叉编译/链接异常）"
+            echo "minimaxi 出现次数: $(grep -aoc minimaxi "$exe" || echo 0)"
+            exit 1
+          fi
+          echo "catalog marker OK"
+
       - name: Sign and package
         shell: pwsh
         env:
