@@ -88,3 +88,86 @@ func TestApplyCoreModelCatalogEmptySnapshotStaysEmpty(t *testing.T) {
 		t.Fatal("AllowCustomModelFromCatalog()=true, want false for empty snapshot")
 	}
 }
+
+// TestMiniMaxTokenPlanCatalog 对齐内核 MiniMax 目录：Token Plan 复用 coding
+// plan 的两个端点，preset 按 (plan, format) 查端点必须拿到正确 base，
+// 且套餐 PlanModels（M3/M2.7）透传不丢。
+func TestMiniMaxTokenPlanCatalog(t *testing.T) {
+	t.Cleanup(func() {
+		globalRegistry = NewProviderRegistry()
+		globalCatalog = NewModelCatalog()
+	})
+
+	ApplyCoreModelCatalog(coreapi.ModelCatalogState{
+		Providers: []coreapi.ModelProviderOption{{
+			ID:        "minimax",
+			Name:      "MiniMax",
+			APIKeyEnv: "MINIMAX_API_KEY",
+			Endpoints: []coreapi.ProviderEndpoint{
+				ep("api", "openai_chat", "https://api.minimaxi.com/v1"),
+				ep("coding", "openai_chat", "https://api.minimaxi.com/v1"),
+				ep("coding", "anthropic", "https://api.minimaxi.com/anthropic/v1"),
+			},
+		}},
+		Presets: []coreapi.ModelPresetOption{
+			{
+				ID:         "minimax-token-plan-openai",
+				Name:       "MiniMax Token Plan (OpenAI)",
+				ProviderID: "minimax",
+				ModelName:  "MiniMax-M3",
+				Plan:       "coding",
+				Format:     "openai_chat",
+				PlanModels: []coreapi.PlanModel{
+					{ModelID: "MiniMax-M3", Label: "MiniMax M3"},
+					{ModelID: "MiniMax-M2.7", Label: "MiniMax M2.7"},
+				},
+			},
+			{
+				ID:         "minimax-token-plan-claude",
+				Name:       "MiniMax Token Plan (Claude)",
+				ProviderID: "minimax",
+				ModelName:  "MiniMax-M3",
+				Plan:       "coding",
+				Format:     "anthropic",
+			},
+		},
+	})
+
+	provider := GetProviderByID("minimax")
+	if provider == nil {
+		t.Fatal("GetProviderByID(minimax)=nil")
+	}
+
+	openai := GetModelEntry("minimax-token-plan-openai")
+	if openai == nil {
+		t.Fatal("GetModelEntry(minimax-token-plan-openai)=nil")
+	}
+	if got := provider.ResolveAPIBase(openai.Plan, openai.PlanFormat); got != "https://api.minimaxi.com/v1" {
+		t.Fatalf("token-plan-openai base=%q, want https://api.minimaxi.com/v1", got)
+	}
+	if len(openai.PlanModels) != 2 || openai.PlanModels[0].ModelID != "MiniMax-M3" || openai.PlanModels[1].ModelID != "MiniMax-M2.7" {
+		t.Fatalf("token-plan-openai plan models=%+v, want M3 + M2.7", openai.PlanModels)
+	}
+
+	claude := GetModelEntry("minimax-token-plan-claude")
+	if claude == nil {
+		t.Fatal("GetModelEntry(minimax-token-plan-claude)=nil")
+	}
+	if got := provider.ResolveAPIBase(claude.Plan, claude.PlanFormat); got != "https://api.minimaxi.com/anthropic/v1" {
+		t.Fatalf("token-plan-claude base=%q, want https://api.minimaxi.com/anthropic/v1", got)
+	}
+}
+
+// TestResolveAPIBaseUnknownPlanFormat 查不到的 (plan, format) 返回空串，
+// 由调用方回落，不静默给错端点。
+func TestResolveAPIBaseUnknownPlanFormat(t *testing.T) {
+	cfg := &ProviderConfig{
+		Endpoints: []coreapi.ProviderEndpoint{ep("api", "openai_chat", "https://example.invalid/v1")},
+	}
+	if got := cfg.ResolveAPIBase("coding", "anthropic"); got != "" {
+		t.Fatalf("ResolveAPIBase(coding, anthropic)=%q, want empty", got)
+	}
+	if got := cfg.ResolveAPIBase("", ""); got != "" {
+		t.Fatalf("ResolveAPIBase(empty)=%q, want empty", got)
+	}
+}

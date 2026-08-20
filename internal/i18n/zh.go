@@ -467,6 +467,8 @@ var zhText = map[string]string{
 	"setup.label.api_base":     "API 地址:",
 	"setup.label.api_key":      "API 密钥:",
 	"setup.label.model_name":   "模型名称:",
+	"setup.plan_model.label":   "套餐内模型（输入上方提示的模型 ID 之一）:",
+	"setup.plan_model.invalid": "模型 ID 必须是套餐内模型",
 	"setup.hint.provider":      "↑/↓: 选择 | Enter: 确认 | Esc: 返回",
 	"setup.hint.config":        "Enter: 保存 | Tab: 下一项 | Esc: 取消",
 	"setup.custom":             "自定义",

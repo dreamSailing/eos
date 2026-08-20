@@ -40,6 +40,9 @@ func ApplyCoreModelCatalog(catalog coreapi.ModelCatalogState) {
 			Provider:                ProviderType(strings.TrimSpace(preset.ProviderID)),
 			ModelName:               strings.TrimSpace(preset.ModelName),
 			APIType:                 apiTypeFromPlanFormat(preset.Plan, preset.Format),
+			Plan:                    strings.TrimSpace(preset.Plan),
+			PlanFormat:              strings.TrimSpace(preset.Format),
+			PlanModels:              append([]coreapi.PlanModel(nil), preset.PlanModels...),
 			ContextWindow:           preset.ContextWindow,
 			ThinkingCap:             DetectThinkingCapability(firstNonEmpty(preset.ModelName, preset.ID)),
 			SupportsVision:          preset.SupportsVision,
@@ -66,6 +69,7 @@ func providerConfigFromEndpoints(p *coreapi.ModelProviderOption) *ProviderConfig
 		APIKeyEnv:     strings.TrimSpace(p.APIKeyEnv),
 		Website:       strings.TrimSpace(p.Website),
 		DefaultModels: append([]string(nil), p.DefaultModels...),
+		Endpoints:     append([]coreapi.ProviderEndpoint(nil), p.Endpoints...),
 	}
 
 	for _, ep := range p.Endpoints {
@@ -78,7 +82,7 @@ func providerConfigFromEndpoints(p *coreapi.ModelProviderOption) *ProviderConfig
 			if cfg.DefaultAPIBase == "" {
 				cfg.DefaultAPIBase = base
 			}
-		case fmt == "openai_chat" && plan == "code":
+		case fmt == "openai_chat" && (plan == "code" || plan == "coding"):
 			cfg.CodePlanAPIBase = base
 			cfg.HasCodePlan = true
 		case fmt == "openai_chat" && plan == "agent":
@@ -118,6 +122,8 @@ func providerConfigFromEndpoints(p *coreapi.ModelProviderOption) *ProviderConfig
 }
 
 // apiTypeFromPlanFormat maps (plan, format) to the legacy APIType enum.
+// 内核 plan 是开放字符串（api/coding/token/agent，"code"/"coding" 两种拼写都存在），
+// 此枚举仅服务旧展示逻辑；端点解析请用 ProviderConfig.ResolveAPIBase。
 func apiTypeFromPlanFormat(plan, format string) APIType {
 	plan = strings.ToLower(strings.TrimSpace(plan))
 	fmt := strings.ToLower(strings.TrimSpace(format))
@@ -125,7 +131,7 @@ func apiTypeFromPlanFormat(plan, format string) APIType {
 	switch fmt {
 	case "openai_chat", "openai_responses":
 		switch plan {
-		case "code":
+		case "code", "coding":
 			return APITypeCodePlan
 		case "token":
 			return APITypeTokenPlan
@@ -136,6 +142,8 @@ func apiTypeFromPlanFormat(plan, format string) APIType {
 		switch plan {
 		case "token":
 			return APITypeTokenPlanClaude
+		case "code", "coding", "agent":
+			return APITypeClaude
 		default:
 			return APITypeClaude
 		}

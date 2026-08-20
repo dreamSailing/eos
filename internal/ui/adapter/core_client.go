@@ -706,6 +706,7 @@ func (a *CoreClientAdapter) ModelEntries(ctx context.Context) ([]config.ModelEnt
 			APIKey:                  strings.TrimSpace(item.APIKeyMasked),
 			Model:                   strings.TrimSpace(item.Model),
 			Source:                  strings.TrimSpace(item.Source),
+			Provider:                strings.TrimSpace(item.ProviderID),
 			SupportsReasoningEffort: item.SupportsReasoningEffort,
 			SupportsVision:          item.SupportsVision,
 			SupportsTools:           item.SupportsTools,
@@ -826,6 +827,16 @@ func (a *CoreClientAdapter) UpsertModelEntry(ctx context.Context, entry config.M
 		APIKey:  strings.TrimSpace(entry.APIKey),
 		Model:   strings.TrimSpace(entry.Model),
 	})
+}
+
+// SaveModel 走内核 model/save（preset/custom_model/custom_provider 三种模式），
+// 保留 provider/preset 关联：内核按 (plan, format) 解析端点与请求构造器，
+// 套餐类 preset（如 MiniMax Token Plan）的端点与鉴权才能选对。
+func (a *CoreClientAdapter) SaveModel(ctx context.Context, req coreapi.ModelSaveRequest) error {
+	if a == nil || a.engine == nil {
+		return errors.New("core client is not available")
+	}
+	return a.engine.Models().Save(ctx, req)
 }
 
 func (a *CoreClientAdapter) SyncEnvModel(ctx context.Context) error {

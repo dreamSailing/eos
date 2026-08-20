@@ -7,6 +7,8 @@ package ai
 
 import (
 	"strings"
+
+	"github.com/dreamSailing/eos/pkg/coreapi"
 )
 
 // ProviderType 服务商类型
@@ -39,23 +41,42 @@ const (
 
 // ProviderConfig 服务商配置
 type ProviderConfig struct {
-	ID                     string       // 唯一标识
-	Name                   string       // 显示名称
-	Type                   ProviderType // 服务商类型
-	DefaultAPIBase         string       // 默认 Base URL（标准 API）
-	CodePlanAPIBase        string       // Code/Plan API Base URL (OpenAI 兼容)
-	ClaudeAPIBase          string       // Claude 兼容 API Base URL (Anthropic 协议)
-	AgentPlanAPIBase       string       // Agent Plan API Base URL (OpenAI 兼容)
-	AgentPlanClaudeAPIBase string       // Agent Plan Claude 兼容 API Base URL
-	APIKeyEnv              string       // API Key 环境变量名
-	Website                string       // 官方网站
-	HasCodePlan            bool         // 是否支持 Code/Plan 套餐
-	HasClaudeCode          bool         // 是否支持 Claude 兼容 API 模式
-	HasAgentPlan           bool         // 是否支持 Agent Plan
-	HasTokenPlan           bool         // 是否支持 Token Plan
-	TokenPlanAPIBase       string       // Token Plan API Base URL (OpenAI 兼容)
-	TokenPlanClaudeAPIBase string       // Token Plan Claude 兼容 API Base URL
-	DefaultModels          []string     // 默认/推荐模型列表
+	ID                     string                      // 唯一标识
+	Name                   string                      // 显示名称
+	Type                   ProviderType                // 服务商类型
+	DefaultAPIBase         string                      // 默认 Base URL（标准 API）
+	CodePlanAPIBase        string                      // Code/Plan API Base URL (OpenAI 兼容)
+	ClaudeAPIBase          string                      // Claude 兼容 API Base URL (Anthropic 协议)
+	AgentPlanAPIBase       string                      // Agent Plan API Base URL (OpenAI 兼容)
+	AgentPlanClaudeAPIBase string                      // Agent Plan Claude 兼容 API Base URL
+	APIKeyEnv              string                      // API Key 环境变量名
+	Website                string                      // 官方网站
+	HasCodePlan            bool                        // 是否支持 Code/Plan 套餐
+	HasClaudeCode          bool                        // 是否支持 Claude 兼容 API 模式
+	HasAgentPlan           bool                        // 是否支持 Agent Plan
+	HasTokenPlan           bool                        // 是否支持 Token Plan
+	TokenPlanAPIBase       string                      // Token Plan API Base URL (OpenAI 兼容)
+	TokenPlanClaudeAPIBase string                      // Token Plan Claude 兼容 API Base URL
+	DefaultModels          []string                    // 默认/推荐模型列表
+	Endpoints              []coreapi.ProviderEndpoint // 内核原始端点向量，(plan, format) 查 base 的真相源
+}
+
+// ResolveAPIBase 按 (plan, format) 在服务商端点表里查 API Base，
+// 与内核 resolve_api_base 同一套规则：内核 plan 是开放字符串（api/coding/token/agent），
+// 查不到返回空串，由调用方决定回落。
+func (p *ProviderConfig) ResolveAPIBase(plan, format string) string {
+	if p == nil {
+		return ""
+	}
+	plan = strings.ToLower(strings.TrimSpace(plan))
+	format = strings.ToLower(strings.TrimSpace(format))
+	for _, ep := range p.Endpoints {
+		if strings.EqualFold(strings.TrimSpace(ep.Plan), plan) &&
+			strings.EqualFold(strings.TrimSpace(ep.Format), format) {
+			return strings.TrimSpace(ep.APIBase)
+		}
+	}
+	return ""
 }
 
 // ProviderRegistry 服务商注册表

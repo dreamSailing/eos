@@ -7,6 +7,8 @@ package ai
 
 import (
 	"strings"
+
+	"github.com/dreamSailing/eos/pkg/coreapi"
 )
 
 // ModelCatalogEntry 模型目录条目
@@ -16,6 +18,9 @@ type ModelCatalogEntry struct {
 	Provider                ProviderType       // 服务商类型
 	ModelName               string             // API 调用时的模型名称
 	APIType                 APIType            // API 类型
+	Plan                    string             // 内核 preset 的 plan 值（开放字符串：api/coding/token/agent）
+	PlanFormat              string             // 内核 preset 的请求格式：openai_chat/openai_responses/anthropic
+	PlanModels              []coreapi.PlanModel // 套餐类 preset 内可选的模型（非空 = 套餐类，模型可从中选择）
 	ContextWindow           int                // 上下文窗口大小
 	ThinkingCap             ThinkingCapability // 思考能力等级
 	SupportsVision          bool               // 是否支持视觉

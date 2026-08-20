@@ -467,6 +467,8 @@ var enText = map[string]string{
 	"setup.label.api_base":     "API Base:",
 	"setup.label.api_key":      "API Key:",
 	"setup.label.model_name":   "Model Name:",
+	"setup.plan_model.label":   "Plan model (enter one of the model IDs hinted above):",
+	"setup.plan_model.invalid": "Model ID must be one of the plan models",
 	"setup.hint.provider":      "↑/↓: select | Enter: confirm | Esc: back",
 	"setup.hint.config":        "Enter: save | Tab: next | Esc: cancel",
 	"setup.custom":             "Custom",

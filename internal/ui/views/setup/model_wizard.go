@@ -51,7 +51,8 @@ type ModelSetupView struct {
 	customProvider   bool // 是否选择自定义服务商
 	customModel      bool // 是否选择自定义模型
 	apiBaseReadOnly  bool // API Base 是否只读
-	modelReadOnly    bool // Model 名称是否只读
+	modelReadOnly    bool // Model 名称是否只读（套餐类 preset 为 false，可从套餐模型中选择）
+	errMsg           string // 保存校验错误（非空时显示在配置步骤底部）
 	language         string
 }
 
@@ -361,16 +362,19 @@ func (v *ModelSetupView) Update(msg tea.Msg) (*ModelSetupView, tea.Cmd) {
 					v.modelFocused = false
 					v.customModel = false
 					v.apiBaseReadOnly = true
-					v.modelReadOnly = true
+					// 套餐类 preset（如 MiniMax Token Plan）内含多个可选模型，
+					// 模型字段开放编辑（保存时按白名单校验）；普通 preset 固定。
+					v.modelReadOnly = len(model.PlanModels) == 0
 
 					// 设置显示名称（默认用模型 ID）
 					v.inputs[0].SetValue(v.selectedModel.ID)
 					v.inputs[0].Placeholder = i18n.T("setup.label.display_name", v.language) + " (e.g., " + v.selectedModel.Name + ")"
 
-					// 设置 API Base
-					base := v.selectedProvider.DefaultAPIBase
-					if v.selectedModel.APIType == ai.APITypeCodePlan && v.selectedProvider.CodePlanAPIBase != "" {
-						base = v.selectedProvider.CodePlanAPIBase
+					// 设置 API Base：按 (plan, format) 在服务商端点表里查，
+					// 与内核 resolve_api_base 同一套规则（旧枚举特判只做回落）。
+					base := v.selectedProvider.ResolveAPIBase(model.Plan, model.PlanFormat)
+					if base == "" {
+						base = ai.GetAPIBase(v.selectedProvider.Type, model.APIType, "")
 					}
 					v.inputs[1].SetValue(base)
 					v.inputs[1].Placeholder = i18n.T("setup.label.api_base", v.language) + " (fixed)"
@@ -378,8 +382,18 @@ func (v *ModelSetupView) Update(msg tea.Msg) (*ModelSetupView, tea.Cmd) {
 					v.inputs[2].SetValue("")
 					v.inputs[2].Placeholder = v.selectedProvider.APIKeyEnv
 
-					v.inputs[3].SetValue(v.selectedModel.ModelName)
-					v.inputs[3].Placeholder = i18n.T("setup.label.model_name", v.language) + " (fixed)"
+					if len(model.PlanModels) > 0 {
+						// 套餐类：预填 preset 默认模型，placeholder 列出全部可选模型 ID。
+						v.inputs[3].SetValue(v.selectedModel.ModelName)
+						ids := make([]string, 0, len(model.PlanModels))
+						for _, pm := range model.PlanModels {
+							ids = append(ids, pm.ModelID)
+						}
+						v.inputs[3].Placeholder = strings.Join(ids, " / ")
+					} else {
+						v.inputs[3].SetValue(v.selectedModel.ModelName)
+						v.inputs[3].Placeholder = i18n.T("setup.label.model_name", v.language) + " (fixed)"
+					}
 
 					v.inputs[0].Focus()
 					v.focusIndex = 0
@@ -503,37 +517,50 @@ func (v *ModelSetupView) Update(msg tea.Msg) (*ModelSetupView, tea.Cmd) {
 				}
 			}
 		} else {
-			// 固定模型：只有名称和 API Key 可编辑
-			// 确保 focusIndex 在可编辑范围内 (0 或 2)
-			if v.focusIndex == 1 || v.focusIndex == 3 {
-				v.focusIndex = 0
+			// 固定模型：名称、API Key 可编辑；套餐类 preset（modelReadOnly=false）
+			// 额外开放模型字段（0/2/3 循环），普通 preset 只在 0/2 之间切换。
+			hasPlanModels := !v.modelReadOnly
+			fixFocus := func() {
+				if v.focusIndex == 1 || (!hasPlanModels && v.focusIndex == 3) {
+					v.focusIndex = 0
+				}
 			}
+			fixFocus()
 			var cmd tea.Cmd
 			v.inputs[v.focusIndex], cmd = v.inputs[v.focusIndex].Update(msg)
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 
-			// 处理 Tab 切换（只在可编辑字段间切换）
 			if keyMsg, ok := msg.(tea.KeyMsg); ok {
+				next := func(forward bool) int {
+					if hasPlanModels {
+						order := []int{0, 2, 3}
+						idx := 0
+						for i, o := range order {
+							if o == v.focusIndex {
+								idx = i
+								break
+							}
+						}
+						if forward {
+							return order[(idx+1)%len(order)]
+						}
+						return order[(idx-1+len(order))%len(order)]
+					}
+					if v.focusIndex == 0 {
+						return 2
+					}
+					return 0
+				}
 				switch keyMsg.String() {
 				case "tab":
 					v.inputs[v.focusIndex].Blur()
-					// 在 0 和 2 之间切换
-					if v.focusIndex == 0 {
-						v.focusIndex = 2
-					} else {
-						v.focusIndex = 0
-					}
+					v.focusIndex = next(true)
 					v.inputs[v.focusIndex].Focus()
 				case "shift+tab":
 					v.inputs[v.focusIndex].Blur()
-					// 在 0 和 2 之间切换
-					if v.focusIndex == 0 {
-						v.focusIndex = 2
-					} else {
-						v.focusIndex = 0
-					}
+					v.focusIndex = next(false)
 					v.inputs[v.focusIndex].Focus()
 				}
 			}
@@ -549,6 +576,27 @@ func (v *ModelSetupView) handleSave() tea.Cmd {
 	apiBase := v.inputs[1].Value()
 	apiKey := v.inputs[2].Value()
 	model := v.inputs[3].Value()
+
+	// 套餐类 preset：模型必须是其 plan_models 白名单内的 ModelID
+	//（内核 model/save 同样按白名单校验，这里前置拦截并提示）。
+	if !v.customProvider && !v.customModel && v.selectedModel != nil && len(v.selectedModel.PlanModels) > 0 {
+		valid := false
+		for _, pm := range v.selectedModel.PlanModels {
+			if strings.TrimSpace(model) == strings.TrimSpace(pm.ModelID) {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			ids := make([]string, 0, len(v.selectedModel.PlanModels))
+			for _, pm := range v.selectedModel.PlanModels {
+				ids = append(ids, pm.ModelID)
+			}
+			v.errMsg = fmt.Sprintf("%s: %s", i18n.T("setup.plan_model.invalid", v.language), strings.Join(ids, " / "))
+			return nil
+		}
+	}
+	v.errMsg = ""
 
 	// 如果没有设置显示名称，使用默认值
 	if displayName == "" {
@@ -572,10 +620,14 @@ func (v *ModelSetupView) handleSave() tea.Cmd {
 
 	// Provider 字段：内置服务商使用服务商 ID，自定义使用"custom"
 	providerID := ""
+	presetID := ""
 	if v.customProvider {
 		providerID = "custom"
 	} else {
 		providerID = v.selectedProvider.ID
+		if !v.customModel && v.selectedModel != nil {
+			presetID = v.selectedModel.ID
+		}
 	}
 
 	return func() tea.Msg {
@@ -583,6 +635,7 @@ func (v *ModelSetupView) handleSave() tea.Cmd {
 			Config: SetupConfig{
 				Name:     displayName,
 				Provider: providerID,
+				PresetID: presetID,
 				APIBase:  apiBase,
 				APIKey:   apiKey,
 				Model:    model,
@@ -680,7 +733,7 @@ func (v *ModelSetupView) View() string {
 			content.WriteString(v.inputs[3].View())
 			content.WriteString("\n\n")
 		} else {
-			// 选择服务商 + 固定模型：只显示名称和 API Key
+			// 选择服务商 + 固定/套餐模型
 			content.WriteString(v.styles.Text.Render(i18n.T("setup.label.display_name", v.language)))
 			content.WriteString("\n")
 			content.WriteString(v.inputs[0].View())
@@ -694,8 +747,21 @@ func (v *ModelSetupView) View() string {
 			content.WriteString(v.inputs[2].View())
 			content.WriteString("\n\n")
 
-			content.WriteString(v.styles.TextMuted.Render(i18n.T("setup.label.model_name", v.language) + " " + v.inputs[3].Value() + " (fixed)"))
+			if v.modelReadOnly {
+				// 普通 preset：模型只读
+				content.WriteString(v.styles.TextMuted.Render(i18n.T("setup.label.model_name", v.language) + " " + v.inputs[3].Value() + " (fixed)"))
+			} else {
+				// 套餐类 preset：模型可从套餐内选择（输入 Model ID）
+				content.WriteString(v.styles.Text.Render(i18n.T("setup.plan_model.label", v.language)))
+				content.WriteString("\n")
+				content.WriteString(v.inputs[3].View())
+			}
 			content.WriteString("\n\n")
+
+			if v.errMsg != "" {
+				content.WriteString(v.styles.TextError.Render(v.errMsg))
+				content.WriteString("\n\n")
+			}
 		}
 	}
 

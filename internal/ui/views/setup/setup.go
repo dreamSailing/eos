@@ -43,6 +43,7 @@ type SetupView struct {
 type SetupConfig struct {
 	Name     string // 模型名称（显示名称）
 	Provider string // 服务商 ID
+	PresetID string // 选中的内核 preset ID（自定义模型/自定义服务商为空）
 	APIBase  string
 	APIKey   string
 	Model    string

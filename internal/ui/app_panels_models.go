@@ -20,6 +20,7 @@ import (
 	"github.com/dreamSailing/eos/internal/i18n"
 	"github.com/dreamSailing/eos/internal/ui/panels"
 	"github.com/dreamSailing/eos/internal/ui/views/setup"
+	"github.com/dreamSailing/eos/pkg/coreapi"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -93,36 +94,56 @@ func (m *AppModel) handleModelFormComplete(msg setup.ModelFormCompleteMsg) {
 		name = fmt.Sprintf("model-%d", time.Now().Unix()%100000)
 	}
 
-	entry := config.ModelEntry{
-		Name:    name,
-		APIBase: msg.Config.APIBase,
-		APIKey:  msg.Config.APIKey,
-		Model:   msg.Config.Model,
-		Source:  "user",
-	}
-
 	if msg.EditMode {
-		// 编辑模式：更新现有模型
+		// 编辑模式：更新现有模型（旧 upsert 通道，向导暂无编辑入口）
+		entry := config.ModelEntry{
+			Name:    name,
+			APIBase: msg.Config.APIBase,
+			APIKey:  msg.Config.APIKey,
+			Model:   msg.Config.Model,
+			Source:  "user",
+		}
 		if err := m.adapter.UpsertModelEntry(context.Background(), entry); err != nil {
 			m.appendSystem(fmt.Sprintf("Failed to update model: %s", name), "error")
 		} else {
 			m.appendSystem(fmt.Sprintf("Updated model: %s", name), "success")
 		}
+		m.refreshModelsPanel()
+		return
+	}
+
+	// 添加模式：走内核 model/save（保留 provider/preset 关联，套餐类
+	// preset 由内核按 (plan, format) 解析端点，对齐桌面端添加流程）。
+	req := coreapi.ModelSaveRequest{
+		Name:    name,
+		APIKey:  strings.TrimSpace(msg.Config.APIKey),
+		APIBase: strings.TrimSpace(msg.Config.APIBase),
+		Model:   strings.TrimSpace(msg.Config.Model),
+	}
+	switch {
+	case msg.Config.PresetID != "":
+		req.Mode = "preset"
+		req.ProviderID = msg.Config.Provider
+		req.PresetID = msg.Config.PresetID
+	case msg.Config.Provider == "custom":
+		req.Mode = "custom_provider"
+	default:
+		req.Mode = "custom_model"
+		req.ProviderID = msg.Config.Provider
+	}
+
+	if err := m.adapter.SaveModel(context.Background(), req); err != nil {
+		m.appendSystem(fmt.Sprintf("Failed to add model: %s (%v)", name, err), "error")
 	} else {
-		// 添加模式：添加新模型并设置为当前上下文模型
-		if err := m.adapter.UpsertModelEntry(context.Background(), entry); err == nil {
-			scope, _ := m.adapter.SelectModelForCurrentContext(context.Background(), name)
-			if scope == "session" {
-				// 会话内新增仅写了 session 绑定；同步 workspace 默认，
-				// 让后续新会话继承「最近添加」的模型（对齐桌面端语义）。
-				_ = m.adapter.SelectWorkspaceModel(context.Background(), name)
-			}
-			m.refreshShellWelcomeInfo()
-			if !suppressSuccessMessage {
-				m.appendSystem(fmt.Sprintf("Added and selected model: %s", name), "success")
-			}
-		} else {
-			m.appendSystem(fmt.Sprintf("Failed to add model: %s", name), "error")
+		scope, _ := m.adapter.SelectModelForCurrentContext(context.Background(), name)
+		if scope == "session" {
+			// 会话内新增仅写了 session 绑定；同步 workspace 默认，
+			// 让后续新会话继承「最近添加」的模型（对齐桌面端语义）。
+			_ = m.adapter.SelectWorkspaceModel(context.Background(), name)
+		}
+		m.refreshShellWelcomeInfo()
+		if !suppressSuccessMessage {
+			m.appendSystem(fmt.Sprintf("Added and selected model: %s", name), "success")
 		}
 	}
 	m.initialSetupFlow = false
