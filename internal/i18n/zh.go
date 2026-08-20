@@ -655,6 +655,7 @@ var zhText = map[string]string{
 	"settings.row.context_limit_kb":      "上下文上限(KB)",
 	"settings.row.language":              "语言",
 	"settings.row.theme":                 "主题",
+	"settings.row.diff_theme": "Diff 高亮主题",
 	"settings.row.plan_prompt_style":     "计划详略",
 
 	// 面板底部提示

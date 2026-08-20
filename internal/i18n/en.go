@@ -655,6 +655,7 @@ var enText = map[string]string{
 	"settings.row.context_limit_kb":      "Context limit (KB)",
 	"settings.row.language":              "Language",
 	"settings.row.theme":                 "Theme",
+	"settings.row.diff_theme": "Diff highlight theme",
 	"settings.row.plan_prompt_style":     "Plan detail",
 
 	// Panel footer hints

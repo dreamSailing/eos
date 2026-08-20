@@ -9,13 +9,43 @@ import (
 	"bytes"
 	"strings"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/formatters"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/muesli/termenv"
 )
 
-func HighlightCodeANSI(code string, lang string) string {
+// DefaultChromaTheme 是 diff/代码块高亮的默认 chroma 主题。
+const DefaultChromaTheme = "monokai"
+
+// NormalizeChromaTheme 校验主题名：空白或 chroma 不认识的名字回默认主题。
+// 注意 styles.Get 对未知名返回 Fallback（非 nil），必须比对 Style.Name 判定。
+func NormalizeChromaTheme(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return DefaultChromaTheme
+	}
+	for _, candidate := range []string{trimmed, strings.ToLower(trimmed)} {
+		if style := styles.Get(candidate); style != nil && style.Name == candidate {
+			return candidate
+		}
+	}
+	return DefaultChromaTheme
+}
+
+func chromaFormatter() chroma.Formatter {
+	formatterName := "terminal16"
+	switch termenv.EnvColorProfile() {
+	case termenv.ANSI256:
+		formatterName = "terminal256"
+	case termenv.TrueColor:
+		formatterName = "terminal16m"
+	}
+	return formatters.Get(formatterName)
+}
+
+func highlightANSI(code string, lang string, theme string) string {
 	code = strings.ReplaceAll(code, "\r\n", "\n")
 	code = strings.TrimRight(code, "\n")
 	if code == "" {
@@ -47,22 +77,26 @@ func HighlightCodeANSI(code string, lang string) string {
 		return code
 	}
 
-	formatterName := "terminal16"
-	switch termenv.EnvColorProfile() {
-	case termenv.ANSI256:
-		formatterName = "terminal256"
-	case termenv.TrueColor:
-		formatterName = "terminal16m"
-	}
-	formatter := formatters.Get(formatterName)
-	style := styles.Get("monokai")
+	style := styles.Get(NormalizeChromaTheme(theme))
 	if style == nil {
 		style = styles.Fallback
 	}
 
 	var buf bytes.Buffer
-	if err := formatter.Format(&buf, style, it); err != nil {
+	if err := chromaFormatter().Format(&buf, style, it); err != nil {
 		return code
 	}
 	return strings.TrimRight(buf.String(), "\n")
+}
+
+// HighlightCodeANSI 用默认主题渲染代码块 ANSI 高亮。
+func HighlightCodeANSI(code string, lang string) string {
+	return highlightANSI(code, lang, DefaultChromaTheme)
+}
+
+// HighlightDiffANSI 用 chroma 的 diff lexer 渲染统一 diff 的 ANSI 高亮
+//（+/-/@@ 标记行着色）。theme 会被 NormalizeChromaTheme 校验回退。
+// 注意：输入必须是原始 diff 文本；截断应在调用前完成，避免截断 ANSI 序列。
+func HighlightDiffANSI(diff string, theme string) string {
+	return highlightANSI(diff, "diff", theme)
 }

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/ui/render"
 	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/lipgloss"
@@ -11,7 +12,8 @@ import (
 
 // RenderInlinePermission renders a lightweight permission prompt intended to
 // appear above the shell status bar without taking over the full screen.
-func RenderInlinePermission(s *styles.Styles, lang string, req Request, selected int, width int) string {
+// diffTheme 是 diff chroma 高亮主题（空 = 默认 monokai）。
+func RenderInlinePermission(s *styles.Styles, lang, diffTheme string, req Request, selected int, width int) string {
 	if s == nil {
 		return ""
 	}
@@ -67,7 +69,8 @@ func RenderInlinePermission(s *styles.Styles, lang string, req Request, selected
 		if p := strings.TrimSpace(req.DiffPath); p != "" {
 			body = append(body, diffPathStyle.Render(p))
 		}
-		body = append(body, diffStyle.Render(truncateInlinePermissionDiff(req.Diff)))
+		// 先截断再高亮，避免把 ANSI 序列拦腰截断。
+		body = append(body, diffStyle.Render(render.HighlightDiffANSI(truncateInlinePermissionDiff(req.Diff), diffTheme)))
 	}
 
 	for i, opt := range req.Options {

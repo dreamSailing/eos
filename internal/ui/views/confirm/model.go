@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/dreamSailing/eos/internal/ui/render"
 	"github.com/dreamSailing/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -38,10 +39,11 @@ type ResultMsg struct {
 }
 
 type Model struct {
-	width    int
-	height   int
-	styles   *styles.Styles
-	language string
+	width     int
+	height    int
+	styles    *styles.Styles
+	language  string
+	diffTheme string // diff chroma 高亮主题（空 = 默认 monokai）
 
 	req      Request
 	selected int
@@ -56,7 +58,7 @@ type Model struct {
 	sel   lipgloss.Style
 }
 
-func New(styles *styles.Styles, lang string, req Request) *Model {
+func New(styles *styles.Styles, lang, diffTheme string, req Request) *Model {
 	in := textinput.New()
 	in.Width = 60
 	in.Placeholder = req.TextHint
@@ -66,10 +68,11 @@ func New(styles *styles.Styles, lang string, req Request) *Model {
 		in.Blur()
 	}
 	m := &Model{
-		styles:   styles,
-		language: lang,
-		req:      req,
-		input:    in,
+		styles:    styles,
+		language:  lang,
+		diffTheme: diffTheme,
+		req:       req,
+		input:     in,
 	}
 	m.panel = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -196,6 +199,8 @@ func (m *Model) View() string {
 		if len(diff) > 5000 {
 			diff = diff[:5000] + "..."
 		}
+		// 截断后再高亮，避免把 ANSI 序列拦腰截断。
+		diff = render.HighlightDiffANSI(diff, m.diffTheme)
 		if strings.TrimSpace(m.req.DiffPath) != "" {
 			b.WriteString(m.muted.Render(m.req.DiffPath))
 			b.WriteString("\n")

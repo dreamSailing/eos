@@ -517,6 +517,9 @@ func lastNonEmptyLine(text string) string {
 type SystemMessage struct {
 	Content string
 	Level   string // "info", "warning", "error", "success"
+	// PreStyled 为 true 时内容已含 ANSI 码（如 diff 高亮），跳过按宽度
+	// 折行（wrapText 不感知 ANSI，会把转义序列拆断）。
+	PreStyled bool
 }
 
 func (m *SystemMessage) Type() MessageType {
@@ -548,6 +551,11 @@ func (m *SystemMessage) Render(s *styles.Styles, width int) string {
 		style = s.TextSuccess
 	}
 	lines := wrapText(fmt.Sprintf("%s %s", icon, m.Content), width)
+	if m.PreStyled {
+		// 预格式化内容（含 ANSI）：只按换行拆行，不做宽度折行，
+		// 避免把已有 ANSI 序列当可见字符折断。
+		lines = strings.Split(fmt.Sprintf("%s %s", icon, m.Content), "\n")
+	}
 	var out strings.Builder
 	for i, line := range lines {
 		out.WriteString(style.Render(line))

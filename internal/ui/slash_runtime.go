@@ -627,7 +627,7 @@ func (m *AppModel) handleDiffSlash(args []string) tea.Cmd {
 			if target == "" {
 				target = m.localize("(当前待审批改动)", "(current pending edit)")
 			}
-			m.appendSystem(fmt.Sprintf("%s: %s\n%s", m.localize("待审批 diff", "Pending diff"), target, truncateBlock(review.Diff, 40, 5000)), "info")
+			m.appendSystemStyled(fmt.Sprintf("%s: %s\n%s", m.localize("待审批 diff", "Pending diff"), target, m.highlightDiffBlock(review.Diff, 40, 5000)), "info")
 			return nil
 		}
 		changes, err := m.adapter.GitStatus(context.Background())
@@ -658,7 +658,7 @@ func (m *AppModel) handleDiffSlash(args []string) tea.Cmd {
 		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("该文件没有差异", "No diff for file"), path), "info")
 		return nil
 	}
-	m.appendSystem(fmt.Sprintf("%s: %s\n%s", m.localize("文件 diff", "File diff"), path, truncateBlock(diff, 80, 7000)), "info")
+	m.appendSystemStyled(fmt.Sprintf("%s: %s\n%s", m.localize("文件 diff", "File diff"), path, m.highlightDiffBlock(diff, 80, 7000)), "info")
 	return nil
 }
 
@@ -668,14 +668,14 @@ func (m *AppModel) handleReviewSlash(args []string) tea.Cmd {
 		path := strings.TrimSpace(args[0])
 		if diff, err := m.adapter.GitDiff(context.Background(), path); err == nil && strings.TrimSpace(diff) != "" {
 			lines = append(lines, fmt.Sprintf("%s: %s", m.localize("目标文件", "Target file"), path))
-			lines = append(lines, truncateBlock(diff, 40, 5000))
+			lines = append(lines, m.highlightDiffBlock(diff, 40, 5000))
 		} else if err != nil {
 			lines = append(lines, fmt.Sprintf("%s: %v", m.localize("读取 diff 失败", "Failed to read diff"), err))
 		}
 	} else if review, _ := m.adapter.PendingReview(context.Background()); strings.TrimSpace(review.Diff) != "" {
 		target := blankFallback(review.Path, m.localize("(当前待审批改动)", "(current pending edit)"))
 		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("待审改动", "Pending change"), target))
-		lines = append(lines, truncateBlock(review.Diff, 40, 5000))
+		lines = append(lines, m.highlightDiffBlock(review.Diff, 40, 5000))
 	} else {
 		changes, err := m.adapter.GitStatus(context.Background())
 		if err == nil && len(changes) > 0 {
@@ -709,7 +709,8 @@ func (m *AppModel) handleReviewSlash(args []string) tea.Cmd {
 	}
 
 	lines = append(lines, m.localize("建议：先看 /diff，再结合 /doctor 与 /tasks 判断是否需要继续审查。", "Tip: inspect /diff first, then combine /doctor and /tasks to continue the review flow."))
-	m.appendSystem(strings.Join(lines, "\n"), "info")
+	// 含高亮 diff（ANSI），走 preStyled 通道避免宽度折行破坏转义序列。
+	m.appendSystemStyled(strings.Join(lines, "\n"), "info")
 	return nil
 }
 

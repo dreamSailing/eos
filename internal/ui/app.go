@@ -103,6 +103,10 @@ type AppModel struct {
 	// 默认开），随每次 Invoke 下发 turn/start.use_memory。
 	memoryInjectionEnabled bool
 
+	// diffTheme 是 diff/代码块 chroma 高亮主题（config 持久化，默认 monokai），
+	// 供 /diff、审批 diff 与 markdown 代码块渲染使用。
+	diffTheme string
+
 	// gitBranchRoot / gitBranchCheckedAt 是状态栏分支刷新的节流状态：
 	// 工作区变化立即刷新，否则每 gitBranchRefreshInterval 至多查一次。
 	gitBranchRoot      string

@@ -214,6 +214,7 @@ type Config struct {
 	LastWorkspace                string                          `json:"last_workspace,omitempty"`     // 上次前台工作区（绝对路径）
 	TrustedWorkspaces            []string                        `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
 	Language                     string                          `json:"language,omitempty"`           // 语言设置 (zh, en)
+	DiffTheme                    string                          `json:"diff_theme,omitempty"`         // diff/代码块 chroma 高亮主题（monokai 等）
 	LogDir                       string                          `json:"log_dir,omitempty"`            // 全局日志目录
 	FastModel                    string                          `json:"fast_model,omitempty"`         // Fast mode model name
 	Permissions                  *PermissionsConfig              `json:"permissions,omitempty"`        // Tool permissions
@@ -424,6 +425,15 @@ func MemoryInjectionEnabled(cfg *Config) bool {
 		return true
 	}
 	return *cfg.MemoryInjectionEnabled
+}
+
+// DiffHighlightTheme 返回 diff/代码块高亮主题名；空值回默认 monokai。
+// 主题合法性由渲染层校验（chroma styles registry），非法名渲染时同样回退。
+func DiffHighlightTheme(cfg *Config) string {
+	if cfg == nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.DiffTheme)
 }
 
 func Path() string {

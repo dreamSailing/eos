@@ -21,8 +21,9 @@ import (
 
 // MarkdownRenderer Markdown渲染器
 type MarkdownRenderer struct {
-	width  int
-	styles *RenderStyles
+	width       int
+	styles      *RenderStyles
+	chromaTheme string // 代码块 chroma 主题（空 = DefaultChromaTheme）
 
 	mu   sync.Mutex
 	tr   *glamour.TermRenderer
@@ -161,6 +162,16 @@ func (r *MarkdownRenderer) SetStyles(styles *RenderStyles) {
 	if styles != nil {
 		r.styles = styles
 	}
+	r.rebuild()
+}
+
+// SetChromaTheme 设置代码块 chroma 主题并强制重建 TermRenderer
+//（rebuild 只按宽度缓存，主题变更必须显式失效）。
+func (r *MarkdownRenderer) SetChromaTheme(theme string) {
+	r.chromaTheme = NormalizeChromaTheme(theme)
+	r.mu.Lock()
+	r.tr = nil
+	r.mu.Unlock()
 	r.rebuild()
 }
 
@@ -369,7 +380,7 @@ func (r *MarkdownRenderer) rebuild() {
 	cfg.H4.Prefix = ""
 	cfg.H5.Prefix = ""
 	cfg.H6.Prefix = ""
-	cfg.CodeBlock.Theme = "monokai"
+	cfg.CodeBlock.Theme = NormalizeChromaTheme(r.chromaTheme)
 	codeBG := "#1e293b"
 	codeFG := "#e5e7eb"
 	indentToken := "│ "

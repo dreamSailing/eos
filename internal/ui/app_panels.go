@@ -463,8 +463,8 @@ func (m *AppModel) optionalIntLabel(value *int) string {
 // 1. 保存配置到本地文件
 // 2. 保存工作区设置到核心
 // 3. 处理语言切换
-// 4. 更新预测功能状态 / 记忆注入开关
-func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredictionEnabled *bool, memoryInjectionEnabled *bool) {
+// 4. 更新预测功能状态 / 记忆注入开关 / diff 高亮主题
+func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredictionEnabled *bool, memoryInjectionEnabled *bool, diffTheme string) {
 	if settings == nil {
 		return
 	}
@@ -484,6 +484,7 @@ func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredict
 			enabled := *memoryInjectionEnabled
 			cfg.MemoryInjectionEnabled = &enabled
 		}
+		cfg.DiffTheme = strings.TrimSpace(diffTheme)
 		if err := config.Save(cfg, path); err != nil {
 			m.appendSystem(fmt.Sprintf("Failed to save settings: %v", err), "error")
 			return
@@ -512,6 +513,13 @@ func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredict
 	// 更新记忆注入开关（下一个 turn 生效）
 	if memoryInjectionEnabled != nil {
 		m.memoryInjectionEnabled = *memoryInjectionEnabled
+	}
+	// 更新 diff/代码块高亮主题（markdown 代码块立即生效，diff 视图下次渲染生效）
+	if theme := strings.TrimSpace(diffTheme); theme != m.diffTheme {
+		m.diffTheme = theme
+		if m.msgRenderer != nil {
+			m.msgRenderer.SetChromaTheme(theme)
+		}
 	}
 
 	m.appendSystem(i18n.T("settings.saved", m.state.Language), "success")
@@ -603,7 +611,7 @@ func (m *AppModel) handleCostRefreshMsg(_ panels.CostRefreshMsg) (tea.Model, tea
 
 // handleSettingsPanelMsg 处理 settings 面板消息（Update 分支提取）。fall-through。
 func (m *AppModel) handleSettingsSaveMsg(msg panels.SettingsSaveMsg) (tea.Model, tea.Cmd) {
-	m.handleSettingsSave(msg.Settings, msg.GlobalPredictionEnabled, msg.MemoryInjectionEnabled)
+	m.handleSettingsSave(msg.Settings, msg.GlobalPredictionEnabled, msg.MemoryInjectionEnabled, msg.DiffTheme)
 	return m, m.finalizeUpdate(nil)
 }
 

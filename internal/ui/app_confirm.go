@@ -77,6 +77,7 @@ func (m *AppModel) updateInlinePermissionUI() {
 	m.shell.SetPromptOverlay(confirm.RenderInlinePermission(
 		m.styles,
 		m.state.Language,
+		m.diffHighlightTheme(),
 		*m.inlinePermissionReq,
 		m.inlinePermissionSelected,
 		m.width,
@@ -190,7 +191,7 @@ func (m *AppModel) openConfirm(req confirm.Request) {
 		m.prevView = m.activeView
 	}
 	m.clearPrediction()
-	m.confirmView = confirm.New(m.styles, m.state.Language, req)
+	m.confirmView = confirm.New(m.styles, m.state.Language, m.diffHighlightTheme(), req)
 	m.confirmView.SetSize(m.width, m.height)
 	m.activeView = "confirm"
 	m.shell.BlurInput()
@@ -448,7 +449,7 @@ func (m *AppModel) handlePromptRequestMsg(msg PromptRequestMsg) (tea.Model, tea.
 	if m.confirmView == nil {
 		m.prevView = m.activeView
 	}
-	m.confirmView = confirm.New(m.styles, m.state.Language, req)
+	m.confirmView = confirm.New(m.styles, m.state.Language, m.diffHighlightTheme(), req)
 	m.confirmView.SetSize(m.width, m.height)
 	m.activeView = "confirm"
 	m.shell.BlurInput()
@@ -691,7 +692,7 @@ func (m *AppModel) handleTaskKillRequestMsg(msg panels.TaskKillRequestMsg) (tea.
 		Question: fmt.Sprintf(i18n.T("tasks.kill.question", m.state.Language), id),
 		Options:  []string{"OK"},
 	}
-	m.confirmView = confirm.New(m.styles, m.state.Language, req)
+	m.confirmView = confirm.New(m.styles, m.state.Language, m.diffHighlightTheme(), req)
 	m.confirmView.SetSize(m.width, m.height)
 	m.activeView = "confirm"
 	m.shell.BlurInput()

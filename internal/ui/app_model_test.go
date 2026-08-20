@@ -466,7 +466,7 @@ func TestHandleSettingsSavePersistsGlobalPredictionFlag(t *testing.T) {
 
 	disabled := false
 	memoryOff := false
-	app.handleSettingsSave(&settings.Settings{Language: "zh"}, &disabled, &memoryOff)
+	app.handleSettingsSave(&settings.Settings{Language: "zh"}, &disabled, &memoryOff, "")
 
 	if app.predictionEnabled {
 		t.Fatalf("expected prediction to be disabled")

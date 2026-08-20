@@ -41,6 +41,9 @@ type SettingsPanel struct {
 	// memoryInjectionEnabled 是 CLI 全局「记忆注入」开关（~/.eos.json
 	// memory_injection_enabled，默认开），随每次 turn 下发 use_memory。
 	memoryInjectionEnabled bool
+	// diffTheme 是 diff/代码块 chroma 高亮主题（~/.eos.json diff_theme，
+	// 默认 monokai），供 /diff、审批 diff 与 markdown 代码块渲染使用。
+	diffTheme string
 }
 
 // SettingItem 设置项
@@ -117,6 +120,7 @@ func (p *SettingsPanel) LoadSettings() {
 	cfg, _ := config.Load()
 	p.globalPredictionEnabled = config.NextMessagePredictionEnabled(&cfg)
 	p.memoryInjectionEnabled = config.MemoryInjectionEnabled(&cfg)
+	p.diffTheme = config.DiffHighlightTheme(&cfg)
 	p.updateTable()
 }
 
@@ -177,6 +181,8 @@ func (p *SettingsPanel) updateTable() {
 		p.rowKeys = append(p.rowKeys, "Language")
 		rows = append(rows, table.Row{i18n.T("settings.row.theme", p.language), s.Theme})
 		p.rowKeys = append(p.rowKeys, "Theme")
+		rows = append(rows, table.Row{i18n.T("settings.row.diff_theme", p.language), p.diffTheme})
+		p.rowKeys = append(p.rowKeys, "DiffTheme")
 		planPromptStyle := strings.TrimSpace(s.PlanPromptStyle)
 		if planPromptStyle == "" {
 			planPromptStyle = "concise"
@@ -220,6 +226,8 @@ func (p *SettingsPanel) editKeyLabel() string {
 		return i18n.T("settings.row.language", p.language)
 	case "Theme":
 		return i18n.T("settings.row.theme", p.language)
+	case "DiffTheme":
+		return i18n.T("settings.row.diff_theme", p.language)
 	case "PlanPromptStyle":
 		return i18n.T("settings.row.plan_prompt_style", p.language)
 	default:
@@ -278,7 +286,7 @@ func (p *SettingsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 			enabled := p.globalPredictionEnabled
 			memoryInjection := p.memoryInjectionEnabled
 			return p, func() tea.Msg {
-				return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled, MemoryInjectionEnabled: &memoryInjection}
+				return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled, MemoryInjectionEnabled: &memoryInjection, DiffTheme: p.diffTheme}
 			}
 		case "r":
 			// 直接执行重置操作
@@ -305,7 +313,7 @@ func (p *SettingsPanel) handleAction() (Panel, tea.Cmd) {
 		enabled := p.globalPredictionEnabled
 		memoryInjection := p.memoryInjectionEnabled
 		return p, func() tea.Msg {
-			return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled, MemoryInjectionEnabled: &memoryInjection}
+			return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled, MemoryInjectionEnabled: &memoryInjection, DiffTheme: p.diffTheme}
 		}
 	case "Reset":
 		p.LoadSettings()
@@ -351,7 +359,7 @@ func (p *SettingsPanel) handleEditMode(msg tea.Msg) (Panel, tea.Cmd) {
 			enabled := p.globalPredictionEnabled
 			memoryInjection := p.memoryInjectionEnabled
 			return p, func() tea.Msg {
-				return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled, MemoryInjectionEnabled: &memoryInjection}
+				return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled, MemoryInjectionEnabled: &memoryInjection, DiffTheme: p.diffTheme}
 			}
 		}
 	}
@@ -396,6 +404,9 @@ func (p *SettingsPanel) saveEditValue() {
 		p.memoryInjectionEnabled = value == "true" || value == "True" || value == "1"
 	case "PlanPromptStyle":
 		p.settings.PlanPromptStyle = value
+	case "DiffTheme":
+		// 原样保存；非法主题名由渲染层 NormalizeChromaTheme 回退默认。
+		p.diffTheme = strings.TrimSpace(value)
 	case "PlanBubbleColor":
 		p.settings.PlanBubbleColor = value
 	}
@@ -491,6 +502,8 @@ type SettingsSaveMsg struct {
 	Settings                *settings.Settings
 	GlobalPredictionEnabled *bool
 	MemoryInjectionEnabled  *bool
+	// DiffTheme 是 diff/代码块高亮主题（~/.eos.json diff_theme，全局）。
+	DiffTheme string
 }
 
 // SettingsResetMsg 重置设置消息

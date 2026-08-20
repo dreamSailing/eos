@@ -72,6 +72,7 @@ func newAppModel(adapter *adapter.CoreClientAdapter, resumeSessionID string) *Ap
 	}
 	predictionEnabled := config.NextMessagePredictionEnabled(&cfg)
 	memoryInjectionEnabled := config.MemoryInjectionEnabled(&cfg)
+	diffTheme := config.DiffHighlightTheme(&cfg)
 
 	// 创建Shell视图
 	shellModel := shell.New(80, 24, styles, lang)
@@ -132,7 +133,7 @@ func newAppModel(adapter *adapter.CoreClientAdapter, resumeSessionID string) *Ap
 		pendingResume = &idCopy
 	}
 
-	return &AppModel{
+	model := &AppModel{
 		state: AppState{
 			Mode:          "ai",
 			Language:      lang,
@@ -153,8 +154,12 @@ func newAppModel(adapter *adapter.CoreClientAdapter, resumeSessionID string) *Ap
 		history:                make([]historyEntry, 0, 128),
 		predictionEnabled:      predictionEnabled,
 		memoryInjectionEnabled: memoryInjectionEnabled,
+		diffTheme:              diffTheme,
 		pendingResumeSession:   pendingResume,
 	}
+
+	model.msgRenderer.SetChromaTheme(diffTheme)
+	return model
 }
 
 // resolveShellWelcomeInfo 从适配器获取模型信息，用于欢迎卡片显示

@@ -49,6 +49,13 @@ func (r *Renderer) SetWidth(width int) {
 	}
 }
 
+// SetChromaTheme 设置 markdown 代码块（含 ```diff 围栏）的 chroma 高亮主题。
+func (r *Renderer) SetChromaTheme(theme string) {
+	if r.md != nil {
+		r.md.SetChromaTheme(theme)
+	}
+}
+
 func (r *Renderer) SetAgentNameMap(m map[string]string) {
 	r.agentNameMap = map[string]string{}
 	for k, v := range m {
@@ -282,6 +289,16 @@ func (r *Renderer) RenderSystem(content, level string) string {
 	msg := &SystemMessage{
 		Content: content,
 		Level:   level,
+	}
+	return msg.Render(r.styles, r.width)
+}
+
+// RenderSystemPreStyled 渲染已含 ANSI 码的系统消息（跳过宽度折行）。
+func (r *Renderer) RenderSystemPreStyled(content, level string) string {
+	msg := &SystemMessage{
+		Content:   content,
+		Level:     level,
+		PreStyled: true,
 	}
 	return msg.Render(r.styles, r.width)
 }

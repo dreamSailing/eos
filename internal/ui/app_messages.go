@@ -22,6 +22,7 @@ import (
 	"github.com/dreamSailing/eos/internal/i18n"
 	"github.com/dreamSailing/eos/internal/state"
 	"github.com/dreamSailing/eos/internal/ui/components/messages"
+	"github.com/dreamSailing/eos/internal/ui/render"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -51,6 +52,7 @@ type historyEntry struct {
 	tokens        int           // token 数量（用于 AI 回复）
 	duration      time.Duration // 执行耗时
 	level         string        // 消息级别（用于系统消息）："error", "warning", "success", "info"
+	preStyled     bool          // 内容已含 ANSI 码（diff 高亮），渲染时跳过宽度折行
 	executionMode string        // 执行模式（用于 AI 回复）："auto", "plan" 等
 	rawMarkdown   string        // 原始 markdown 内容（用于计划下载）
 	copiedAt      time.Time     // 复制时间（用于显示复制成功提示）
@@ -113,6 +115,9 @@ func (m *AppModel) renderHistoryEntry(e historyEntry) string {
 	case "agent.final":
 		return m.msgRenderer.RenderAgentFinalAtWithActions(e.agentName, e.agentID, e.sourceAgent, e.sourceAgentID, e.agentEvent, e.content, e.timestamp, m.bubbleActionsForEntry(e))
 	case "system":
+		if e.preStyled {
+			return m.msgRenderer.RenderSystemPreStyled(e.content, e.level)
+		}
 		return m.msgRenderer.RenderSystem(e.content, e.level)
 	case "reasoning":
 		// Archived thinking block, collapsed: a header line ("💭 Thinking · Xs")
@@ -279,6 +284,24 @@ func (m *AppModel) clearCurrentThinking() {
 
 func (m *AppModel) appendSystem(text, level string) {
 	m.appendHistory(historyEntry{kind: "system", content: text, level: level})
+}
+
+// appendSystemStyled 追加已含 ANSI 码的系统消息（如 diff 高亮）。
+func (m *AppModel) appendSystemStyled(text, level string) {
+	m.appendHistory(historyEntry{kind: "system", content: text, level: level, preStyled: true})
+}
+
+// diffHighlightTheme 返回当前 diff/代码块高亮主题（零值回默认）。
+func (m *AppModel) diffHighlightTheme() string {
+	if theme := strings.TrimSpace(m.diffTheme); theme != "" {
+		return theme
+	}
+	return render.DefaultChromaTheme
+}
+
+// highlightDiffBlock 先截断（避免截断 ANSI 序列）再高亮，供 /diff、/review 输出。
+func (m *AppModel) highlightDiffBlock(diff string, maxLines int, maxBytes int) string {
+	return render.HighlightDiffANSI(truncateBlock(diff, maxLines, maxBytes), m.diffHighlightTheme())
 }
 
 // handleAIResponseMsg 处理 AIResponseMsg（Update 分支提取）。
