@@ -4,8 +4,8 @@
   "api_version": "v1",
   "target": "x86_64-apple-darwin",
   "binary": "eos-core",
-  "sha256": "sha256:cac047cac22c8e5ace4a0e61208062529f1e4bf71da130336e4c3f1c95bccb37",
-  "signature": "ed25519:P6+eYcJRKkowQPyXuEKYhq91jLJ+whTnQ3RdLDZV+JfWr1mumJLcN5LtGj7LYjy0NtNu7w48ydNo2naopqA/Aw==",
+  "sha256": "sha256:242f948e80402aaed18dfc565259f24e1ee62fbb7fb4823fa6a0de3b4cf7f9a7",
+  "signature": "ed25519:9V4xsFwlG2m82iFQV1elBknAtDQD2JBDA4sd8+hbtUpr01udjC3x8oN8E0x5EL9ARtW96pnXRrjj9fsTh8LoCA==",
   "min_cli_version": "v1.0.0-beta.1",
   "features": [
     "initialize",
