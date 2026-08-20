@@ -72,16 +72,38 @@ BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-echo "下载 ${ASSET}..."
-curl -fsSL --retry 3 --connect-timeout 10 --max-time 300 -o "${TMP}/${ASSET}" "${BASE_URL}/${ASSET}" \
-  || err "下载失败：可能是网络问题（raw.githubusercontent.com 在部分地区不可达）。建议：1) go install github.com/dreamSailing/eos@latest  2) 配置代理后重试  3) 手动下载 ${BASE_URL}/${ASSET}"
-
-echo "校验 SHA256..."
-curl -fsSL --retry 3 --connect-timeout 10 --max-time 30 -o "${TMP}/SHA256SUMS.txt" "${BASE_URL}/SHA256SUMS.txt" || err "下载校验清单失败"
-WANT="$(awk -v f="$ASSET" '$2 == f {print tolower($1)}' "${TMP}/SHA256SUMS.txt")"
-[ -n "$WANT" ] || err "SHA256SUMS.txt 中没有 ${ASSET} 条目"
-GOT="$($SHA_CMD "${TMP}/${ASSET}" | awk '{print tolower($1)}')"
-[ "$GOT" = "$WANT" ] || err "校验不匹配：期望 ${WANT}，实际 ${GOT}"
+# 下载 + SHA256 校验一体循环：
+#   - --http1.1：部分网络对 GitHub CDN 的 HTTP/2 流会中途断流
+#     （curl: (92) PROTOCOL_ERROR），降级 HTTP/1.1 实测稳定；
+#   - -C - 断点续传：重试不从头下载；
+#   - 校验不过自动删档重下，防止截断的包被安装。
+WANT=""
+VERIFIED=""
+for round in 1 2 3 4 5; do
+  if [ -z "$WANT" ]; then
+    curl -fL --http1.1 --retry 2 --connect-timeout 10 --max-time 30 \
+      -o "${TMP}/SHA256SUMS.txt" "${BASE_URL}/SHA256SUMS.txt" 2>/dev/null || true
+    [ -s "${TMP}/SHA256SUMS.txt" ] && \
+      WANT="$(awk -v f="$ASSET" '$2 == f {print tolower($1)}' "${TMP}/SHA256SUMS.txt")"
+  fi
+  if [ -n "$WANT" ]; then
+    if [ ! -f "${TMP}/${ASSET}" ] || \
+       [ "$($SHA_CMD "${TMP}/${ASSET}" | awk '{print tolower($1)}')" != "$WANT" ]; then
+      echo "下载 ${ASSET}..."
+      curl -fL --http1.1 --retry 2 --connect-timeout 10 --max-time 300 -C - \
+        -o "${TMP}/${ASSET}" "${BASE_URL}/${ASSET}" || true
+    fi
+    if [ -f "${TMP}/${ASSET}" ] && \
+       [ "$($SHA_CMD "${TMP}/${ASSET}" | awk '{print tolower($1)}')" = "$WANT" ]; then
+      VERIFIED=1
+      break
+    fi
+    rm -f "${TMP}/${ASSET}"
+  fi
+  echo "下载未完成，重试 (${round}/5)..."
+done
+[ -n "$VERIFIED" ] || err "下载失败：网络不稳定或 ${BASE_URL} 不可达。建议：1) 重新运行本脚本（支持断点续传）  2) 配置代理后重试  3) go install github.com/dreamSailing/eos@latest  4) 手动下载 ${BASE_URL}/${ASSET}"
+echo "SHA256 校验通过"
 
 echo "安装到 ${DIST_DIR} ..."
 mkdir -p "$DIST_DIR" "$BIN_DIR"
