@@ -14,6 +14,7 @@ import (
 	"github.com/dreamSailing/eos/internal/ai"
 	"github.com/dreamSailing/eos/internal/i18n"
 	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/dreamSailing/eos/pkg/coreapi"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -54,6 +55,9 @@ type ModelSetupView struct {
 	modelReadOnly    bool // Model 名称是否只读（套餐类 preset 为 false，可从套餐模型中选择）
 	errMsg           string // 保存校验错误（非空时显示在配置步骤底部）
 	language         string
+
+	existingNames map[string]bool // 已配置条目名（默认显示名去重用）
+	planIndex     int             // 套餐内模型当前选中索引（选择式切换）
 }
 
 // ModelSetupConfig 模型设置配置
@@ -252,6 +256,54 @@ func (v *ModelSetupView) SetSize(width, height int) {
 	}
 }
 
+// SetExistingNames 注入已配置条目名列表：进入配置步骤时默认显示名与其
+// 冲突会自动加序号后缀，避免「已存在同名模型」保存失败（用户重添套餐时
+// 曾反复撞名）。
+func (v *ModelSetupView) SetExistingNames(names []string) {
+	v.existingNames = make(map[string]bool, len(names))
+	for _, n := range names {
+		v.existingNames[strings.TrimSpace(n)] = true
+	}
+}
+
+// dedupeName 确保 base 在 existingNames 中不冲突，冲突则追加 -2/-3…。
+func (v *ModelSetupView) dedupeName(base string) string {
+	if v.existingNames == nil || !v.existingNames[base] {
+		return base
+	}
+	for i := 2; ; i++ {
+		candidate := fmt.Sprintf("%s-%d", base, i)
+		if !v.existingNames[candidate] {
+			return candidate
+		}
+	}
+}
+
+// hasPlanChoice 当前选中 preset 是否提供套餐内多模型选择。
+func (v *ModelSetupView) hasPlanChoice() bool {
+	return v.selectedModel != nil && len(v.selectedModel.PlanModels) > 1
+}
+
+// currentPlanModel 返回套餐内当前选中的模型（无套餐选择时 nil）。
+func (v *ModelSetupView) currentPlanModel() *coreapi.PlanModel {
+	if !v.hasPlanChoice() || v.planIndex < 0 || v.planIndex >= len(v.selectedModel.PlanModels) {
+		return nil
+	}
+	return &v.selectedModel.PlanModels[v.planIndex]
+}
+
+// cyclePlanModel 左右切换套餐内模型并同步到表单值（handleSave 直接读 inputs[3]）。
+func (v *ModelSetupView) cyclePlanModel(delta int) {
+	if !v.hasPlanChoice() {
+		return
+	}
+	n := len(v.selectedModel.PlanModels)
+	v.planIndex = ((v.planIndex+delta)%n + n) % n
+	if pm := v.currentPlanModel(); pm != nil {
+		v.inputs[3].SetValue(pm.ModelID)
+	}
+}
+
 // Init 初始化
 func (v *ModelSetupView) Init() tea.Cmd {
 	return textinput.Blink
@@ -363,11 +415,13 @@ func (v *ModelSetupView) Update(msg tea.Msg) (*ModelSetupView, tea.Cmd) {
 					v.customModel = false
 					v.apiBaseReadOnly = true
 					// 套餐类 preset（如 MiniMax Token Plan）内含多个可选模型，
-					// 模型字段开放编辑（保存时按白名单校验）；普通 preset 固定。
+					// 模型字段为选择式（←/→ 切换，见 updatePlanPickerUI）；
+					// 普通 preset 固定不可改。
 					v.modelReadOnly = len(model.PlanModels) == 0
 
-					// 设置显示名称（默认用模型 ID）
-					v.inputs[0].SetValue(v.selectedModel.ID)
+					// 默认显示名：preset ID，与已有条目冲突时自动加序号，
+					// 避免重复添加同一套餐时「已存在同名模型」保存失败。
+					v.inputs[0].SetValue(v.dedupeName(v.selectedModel.ID))
 					v.inputs[0].Placeholder = i18n.T("setup.label.display_name", v.language) + " (e.g., " + v.selectedModel.Name + ")"
 
 					// 设置 API Base：按 (plan, format) 在服务商端点表里查，
@@ -383,13 +437,16 @@ func (v *ModelSetupView) Update(msg tea.Msg) (*ModelSetupView, tea.Cmd) {
 					v.inputs[2].Placeholder = v.selectedProvider.APIKeyEnv
 
 					if len(model.PlanModels) > 0 {
-						// 套餐类：预填 preset 默认模型，placeholder 列出全部可选模型 ID。
-						v.inputs[3].SetValue(v.selectedModel.ModelName)
-						ids := make([]string, 0, len(model.PlanModels))
-						for _, pm := range model.PlanModels {
-							ids = append(ids, pm.ModelID)
+						// 套餐类：默认选 preset 默认模型（选择式切换，非手输）。
+						v.planIndex = 0
+						defaultID := strings.TrimSpace(model.ModelName)
+						for i, pm := range model.PlanModels {
+							if strings.TrimSpace(pm.ModelID) == defaultID {
+								v.planIndex = i
+								break
+							}
 						}
-						v.inputs[3].Placeholder = strings.Join(ids, " / ")
+						v.inputs[3].SetValue(model.PlanModels[v.planIndex].ModelID)
 					} else {
 						v.inputs[3].SetValue(v.selectedModel.ModelName)
 						v.inputs[3].Placeholder = i18n.T("setup.label.model_name", v.language) + " (fixed)"
@@ -516,18 +573,32 @@ func (v *ModelSetupView) Update(msg tea.Msg) (*ModelSetupView, tea.Cmd) {
 					v.inputs[v.focusIndex].Focus()
 				}
 			}
-		} else {
-			// 固定模型：名称、API Key 可编辑；套餐类 preset（modelReadOnly=false）
-			// 额外开放模型字段（0/2/3 循环），普通 preset 只在 0/2 之间切换。
-			hasPlanModels := !v.modelReadOnly
-			fixFocus := func() {
-				if v.focusIndex == 1 || (!hasPlanModels && v.focusIndex == 3) {
-					v.focusIndex = 0
+			} else {
+				// 固定模型：名称、API Key 可编辑；套餐类 preset（modelReadOnly=false）
+				// 模型字段为选择式（0/2/3 循环聚焦），普通 preset 只在 0/2 之间切换。
+				hasPlanModels := !v.modelReadOnly
+				fixFocus := func() {
+					if v.focusIndex == 1 || (!hasPlanModels && v.focusIndex == 3) {
+						v.focusIndex = 0
+					}
 				}
-			}
-			fixFocus()
-			var cmd tea.Cmd
-			v.inputs[v.focusIndex], cmd = v.inputs[v.focusIndex].Update(msg)
+				fixFocus()
+
+				// 套餐内模型：选择式（←/→ 或 h/l 切换），不转发按键给输入框。
+				if hasPlanModels && v.focusIndex == 3 {
+					if keyMsg, ok := msg.(tea.KeyMsg); ok {
+						switch keyMsg.String() {
+						case "left", "h":
+							v.cyclePlanModel(-1)
+						case "right", "l":
+							v.cyclePlanModel(1)
+						}
+					}
+					return v, nil
+				}
+
+				var cmd tea.Cmd
+				v.inputs[v.focusIndex], cmd = v.inputs[v.focusIndex].Update(msg)
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -750,11 +821,22 @@ func (v *ModelSetupView) View() string {
 			if v.modelReadOnly {
 				// 普通 preset：模型只读
 				content.WriteString(v.styles.TextMuted.Render(i18n.T("setup.label.model_name", v.language) + " " + v.inputs[3].Value() + " (fixed)"))
-			} else {
-				// 套餐类 preset：模型可从套餐内选择（输入 Model ID）
-				content.WriteString(v.styles.Text.Render(i18n.T("setup.plan_model.label", v.language)))
+			} else if v.hasPlanChoice() {
+				// 套餐类 preset：模型选择式切换（←/→），与桌面端选择器对齐。
+				content.WriteString(v.styles.Text.Render(i18n.T("setup.plan_model.picker_label", v.language)))
 				content.WriteString("\n")
-				content.WriteString(v.inputs[3].View())
+				if pm := v.currentPlanModel(); pm != nil {
+					ctx := "-"
+					if pm.ContextWindow > 0 {
+						ctx = fmt.Sprintf("%.0fK", float64(pm.ContextWindow)/1000)
+					}
+					content.WriteString(v.styles.TextInfo.Render(fmt.Sprintf("‹ %s ›  %s · %s", pm.ModelID, pm.Label, ctx)))
+				}
+				content.WriteString("\n")
+				content.WriteString(v.styles.TextMuted.Render(i18n.T("setup.plan_model.picker_help", v.language)))
+			} else {
+				// 单一可选模型的套餐：展示当前值即可。
+				content.WriteString(v.styles.TextMuted.Render(i18n.T("setup.label.model_name", v.language) + " " + v.inputs[3].Value() + " (fixed)"))
 			}
 			content.WriteString("\n\n")
 

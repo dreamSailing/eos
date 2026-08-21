@@ -39,6 +39,17 @@ func (m *AppModel) refreshModelsPanel() {
 		active = strings.TrimSpace(snapshot.ResolvedModelName)
 	}
 	panel.SetModels(models, active)
+
+	// 注入目录的套餐内可选模型（M3 / M2.7 等切换选择器数据源）。
+	planMap := make(map[string][]coreapi.PlanModel)
+	if catalog := m.adapter.ModelCatalogSnapshot(context.Background()); catalog != nil {
+		for _, preset := range catalog.Presets {
+			if len(preset.PlanModels) > 1 {
+				planMap[strings.TrimSpace(preset.ID)] = preset.PlanModels
+			}
+		}
+	}
+	panel.SetPlanModels(planMap)
 }
 
 // handleModelSelect 处理模型选择，根据作用域显示不同的成功消息
@@ -58,6 +69,29 @@ func (m *AppModel) handleModelSelect(msg panels.ModelSelectMsg) {
 	default:
 		m.appendSystem(fmt.Sprintf("Switched global default model: %s", msg.Name), "success")
 	}
+}
+
+// handleModelPlanSelect 套餐内切换模型：条目不动，仅 model/save 换套餐内
+// 具体模型（如 MiniMax Token Plan 的 MiniMax-M3 ↔ MiniMax-M2.7），随后重新
+// 激活条目让当前会话立即生效。
+func (m *AppModel) handleModelPlanSelect(msg panels.ModelPlanSelectMsg) {
+	ctx := context.Background()
+	if err := m.adapter.SwitchPlanModel(ctx, msg.EntryName, msg.ModelID); err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("切换套餐内模型失败", "Failed to switch plan model"), err), "error")
+		return
+	}
+	scope, _ := m.adapter.SelectModelForCurrentContext(ctx, msg.EntryName)
+	m.refreshModelsPanel()
+	m.refreshShellWelcomeInfo()
+	scopeLabel := map[string]string{
+		"session":   m.localize("会话", "session"),
+		"workspace": m.localize("工作区", "workspace"),
+	}[scope]
+	if scopeLabel == "" {
+		scopeLabel = m.localize("全局", "global")
+	}
+	m.appendSystem(fmt.Sprintf("%s: %s → %s [%s]",
+		m.localize("已切换套餐内模型", "Switched plan model"), msg.EntryName, msg.ModelID, scopeLabel), "success")
 }
 
 // handleModelDelete 处理模型删除
@@ -158,12 +192,25 @@ func (m *AppModel) handleModelSelectMsg(msg panels.ModelSelectMsg) (tea.Model, t
 	return m, m.finalizeUpdate(nil)
 }
 
+// handleModelPlanSelectMsg 处理 panels.ModelPlanSelectMsg（Update 分支提取）。fall-through。
+func (m *AppModel) handleModelPlanSelectMsg(msg panels.ModelPlanSelectMsg) (tea.Model, tea.Cmd) {
+	m.handleModelPlanSelect(msg)
+	return m, m.finalizeUpdate(nil)
+}
+
 // handleModelAddMsg 处理 panels.ModelAddMsg（Update 分支提取）。fall-through。
 func (m *AppModel) handleModelAddMsg(_ panels.ModelAddMsg) (tea.Model, tea.Cmd) {
 	// 添加模型 - 打开向导视图
 	m.activeView = "setup"
 	wizard := setup.NewModelSetupWizard(m.styles, m.state.Language)
 	wizard.SetSize(m.width, m.height)
+	if entries, _, err := m.adapter.ModelEntries(context.Background()); err == nil {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name)
+		}
+		wizard.SetExistingNames(names)
+	}
 	m.setupView = wizard
 	return m, m.finalizeUpdate(nil)
 }

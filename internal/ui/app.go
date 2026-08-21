@@ -251,6 +251,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// 模型面板
 	case panels.ModelSelectMsg:
 		return m.handleModelSelectMsg(msg)
+	case panels.ModelPlanSelectMsg:
+		return m.handleModelPlanSelectMsg(msg)
 	case panels.ModelAddMsg:
 		return m.handleModelAddMsg(msg)
 	case panels.ModelDeleteMsg:

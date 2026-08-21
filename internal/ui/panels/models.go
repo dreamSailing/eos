@@ -12,6 +12,7 @@ import (
 	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/i18n"
 	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/dreamSailing/eos/pkg/coreapi"
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,6 +29,14 @@ type ModelsPanel struct {
 	actionOps    []string
 	actionIndex  int
 	language     string
+
+	// presetPlanMaps: preset_id → 套餐内可选模型（内核目录下发）。
+	// 套餐类条目（如 MiniMax Token Plan）可在其中切换 MiniMax-M3 / M2.7。
+	presetPlanModels map[string][]coreapi.PlanModel
+	// planPickerEntry 非空时面板处于「套餐内模型选择」子模式。
+	planPickerEntry *config.ModelEntry
+	planModels      []coreapi.PlanModel
+	planTable       table.Model
 }
 
 // NewModelsPanel 创建新的模型管理面板
@@ -53,15 +62,26 @@ func NewModelsPanel(styles *styles.Styles, lang string) *ModelsPanel {
 	t.KeyMap.LineUp.SetKeys("up", "k")
 	t.KeyMap.LineDown.SetKeys("down", "j")
 
+	// 套餐内模型选择表格（复用同一套样式）
+	planTable := table.New(
+		table.WithHeight(10),
+		table.WithStyles(s),
+		table.WithFocused(true),
+	)
+	planTable.KeyMap.LineUp.SetKeys("up", "k")
+	planTable.KeyMap.LineDown.SetKeys("down", "j")
+
 	panel := &ModelsPanel{
-		BasePanel:    NewBasePanel("models"),
-		styles:       styles,
-		table:        t,
-		models:       make([]config.ModelEntry, 0),
-		currentModel: "",
-		actionOps:    []string{"Use", "Add", "Delete", "SyncEnv"},
-		actionIndex:  0,
-		language:     lang,
+		BasePanel:        NewBasePanel("models"),
+		styles:           styles,
+		table:            t,
+		models:           make([]config.ModelEntry, 0),
+		currentModel:     "",
+		actionOps:        []string{"Use", "Model", "Add", "Delete", "SyncEnv"},
+		actionIndex:      0,
+		language:         lang,
+		presetPlanModels: make(map[string][]coreapi.PlanModel),
+		planTable:        planTable,
 	}
 
 	panel.updateTableColumns()
@@ -91,6 +111,116 @@ func (p *ModelsPanel) SetCurrentModel(current string) {
 	p.currentModel = current
 	p.updateTable()
 }
+
+// SetPlanModels 注入内核目录的 preset_id → 套餐内可选模型映射。
+func (p *ModelsPanel) SetPlanModels(m map[string][]coreapi.PlanModel) {
+	p.presetPlanModels = m
+	if p.planPickerEntry != nil {
+		// 刷新子模式数据；条目已不存在时退出子模式。
+		if !p.reloadPlanModels(p.planPickerEntry.Name) {
+			p.planPickerEntry = nil
+		}
+	}
+}
+
+// planModelsFor 返回条目对应的套餐内可选模型（需 >1 才有切换意义）。
+func (p *ModelsPanel) planModelsFor(m *config.ModelEntry) []coreapi.PlanModel {
+	if m == nil {
+		return nil
+	}
+	return p.presetPlanModels[strings.TrimSpace(m.PresetID)]
+}
+
+// reloadPlanModels 重新装载指定条目的套餐模型；条目不在列表返回 false。
+func (p *ModelsPanel) reloadPlanModels(entryName string) bool {
+	var entry *config.ModelEntry
+	for i := range p.models {
+		if p.models[i].Name == entryName {
+			entry = &p.models[i]
+			break
+		}
+	}
+	if entry == nil {
+		return false
+	}
+	p.planModels = p.planModelsFor(entry)
+	p.updatePlanTable()
+	return true
+}
+
+// openPlanPicker 进入「套餐内模型选择」子模式。
+func (p *ModelsPanel) openPlanPicker() {
+	entry := p.GetSelectedModel()
+	if entry == nil || len(p.planModelsFor(entry)) < 2 {
+		return
+	}
+	p.planPickerEntry = entry
+	p.reloadPlanModels(entry.Name)
+}
+
+func (p *ModelsPanel) updatePlanTable() {
+	columns := []table.Column{
+		{Title: i18n.T("models.col.label", p.language), Width: 24},
+		{Title: i18n.T("models.col.model_id", p.language), Width: 22},
+		{Title: i18n.T("models.col.ctx", p.language), Width: 12},
+		{Title: i18n.T("models.col.capability", p.language), Width: 14},
+	}
+	p.planTable.SetColumns(columns)
+
+	rows := make([]table.Row, 0, len(p.planModels))
+	current := ""
+	if p.planPickerEntry != nil {
+		current = strings.TrimSpace(p.planPickerEntry.Model)
+	}
+	for _, pm := range p.planModels {
+		mark := " "
+		if strings.TrimSpace(pm.ModelID) == current {
+			mark = "*"
+		}
+		ctx := "-"
+		if pm.ContextWindow > 0 {
+			ctx = fmt.Sprintf("%.0fK", float64(pm.ContextWindow)/1000)
+		}
+		caps := p.planCapabilityLabel(pm)
+		rows = append(rows, table.Row{mark + " " + pm.Label, pm.ModelID, ctx, caps})
+	}
+	p.planTable.SetRows(rows)
+	p.planTable.SetCursor(0)
+}
+
+// planCapabilityLabel 套餐模型能力紧凑标注：中文「视/理/工」，英文 V/R/T。
+// 能力字段为 *bool（nil = 未标注），nil 视为不支持。
+func (p *ModelsPanel) planCapabilityLabel(pm coreapi.PlanModel) string {
+	zh := p.language == "zh"
+	var parts []string
+	if derefPlanCap(pm.SupportsVision) {
+		if zh {
+			parts = append(parts, "视")
+		} else {
+			parts = append(parts, "V")
+		}
+	}
+	if derefPlanCap(pm.SupportsReasoningEffort) {
+		if zh {
+			parts = append(parts, "理")
+		} else {
+			parts = append(parts, "R")
+		}
+	}
+	if derefPlanCap(pm.SupportsTools) {
+		if zh {
+			parts = append(parts, "工")
+		} else {
+			parts = append(parts, "T")
+		}
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, "/")
+}
+
+func derefPlanCap(v *bool) bool { return v != nil && *v }
 
 // updateTable 更新表格
 func (p *ModelsPanel) updateTable() {
@@ -148,6 +278,29 @@ func (p *ModelsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 		return p, nil
 
 	case tea.KeyMsg:
+		// 套餐内模型选择子模式：Enter 确认 / Esc 返回，其余交给表格导航。
+		if p.planPickerEntry != nil {
+			switch msg.String() {
+			case "enter":
+				idx := p.planTable.Cursor()
+				if idx >= 0 && idx < len(p.planModels) {
+					entryName := p.planPickerEntry.Name
+					modelID := strings.TrimSpace(p.planModels[idx].ModelID)
+					p.planPickerEntry = nil
+					return p, func() tea.Msg {
+						return ModelPlanSelectMsg{EntryName: entryName, ModelID: modelID}
+					}
+				}
+				return p, nil
+			case "esc":
+				p.planPickerEntry = nil
+				return p, nil
+			}
+			var cmd tea.Cmd
+			p.planTable, cmd = p.planTable.Update(msg)
+			return p, cmd
+		}
+
 		switch msg.String() {
 		case "left", "h":
 			// 向左切换操作
@@ -176,6 +329,10 @@ func (p *ModelsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 						return ModelSelectMsg{Name: m.Name}
 					}
 				}
+			case "Model":
+				// 套餐内切换模型（如 MiniMax Token Plan 的 M3 / M2.7）
+				p.openPlanPicker()
+				return p, nil
 			case "Add":
 				// 添加模型
 				return p, func() tea.Msg {
@@ -201,6 +358,10 @@ func (p *ModelsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 					return ModelSelectMsg{Name: m.Name}
 				}
 			}
+		case "m", "M":
+			// 套餐内切换模型
+			p.openPlanPicker()
+			return p, nil
 		case "a", "A":
 			// 直接执行新增操作
 			return p, func() tea.Msg {
@@ -229,6 +390,17 @@ func (p *ModelsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 // View 渲染
 func (p *ModelsPanel) View() string {
 	var content strings.Builder
+
+	// 套餐内模型选择子模式
+	if p.planPickerEntry != nil {
+		content.WriteString(p.styles.PanelTitle.Render(
+			fmt.Sprintf("%s — %s", i18n.T("models.plan.title", p.language), p.planPickerEntry.Name)))
+		content.WriteString("\n\n")
+		content.WriteString(p.planTable.View())
+		content.WriteString("\n\n")
+		content.WriteString(p.styles.TextMuted.Render(i18n.T("models.plan.help", p.language)))
+		return p.RenderBorder(content.String(), "Plan Models")
+	}
 
 	content.WriteString(p.styles.PanelTitle.Render(i18n.T("models.list.title", p.language)))
 	content.WriteString("\n\n")
@@ -262,6 +434,8 @@ func (p *ModelsPanel) View() string {
 		switch op {
 		case "Use":
 			key = "models.action.use"
+		case "Model":
+			key = "models.action.model"
 		case "Add":
 			key = "models.action.add"
 		case "Delete":
@@ -295,6 +469,12 @@ func (p *ModelsPanel) SetSize(width, height int) {
 // ModelSelectMsg 选择模型消息
 type ModelSelectMsg struct {
 	Name string
+}
+
+// ModelPlanSelectMsg 套餐内切换模型消息（条目不变，仅换套餐内具体模型）
+type ModelPlanSelectMsg struct {
+	EntryName string
+	ModelID   string
 }
 
 // ModelAddMsg 添加模型消息
