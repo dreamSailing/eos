@@ -125,38 +125,98 @@ func currentExecutable() (string, error) {
 	return exePath, nil
 }
 
+// 弱网（如直连 GitHub 的国内链路）单次 GET 极易瞬断：主包侥幸下完、
+// 几 KB 的 SHA256SUMS.txt 被 RST 的情况实测常见。下载统一带重试 + 断点
+// 续传（Range），重试从已落盘字节继续，不做整包重来。
+var (
+	downloadAttempts      = 4
+	downloadRetryBackoff  = 1 * time.Second
+)
+
 func downloadTo(ctx context.Context, url, dst string, progress ProgressFn) error {
+	var lastErr error
+	for attempt := 1; attempt <= downloadAttempts; attempt++ {
+		// 重试时若已有部分落盘且服务端支持 Range，从断点继续；
+		// 首次尝试若有残留（上次调用失败遗留）则丢弃重新开始。
+		offset := int64(0)
+		if attempt > 1 {
+			if info, err := os.Stat(dst); err == nil {
+				offset = info.Size()
+			}
+		} else {
+			_ = os.Remove(dst)
+		}
+		written, err := downloadOnce(ctx, url, dst, offset, progress)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if written == 0 {
+			// 本次尝试毫无进展（连接都没建立或立即断开），残留文件清掉，
+			// 避免下次 Range 从 0 字节"续传"造成误导。
+			_ = os.Remove(dst)
+		}
+		if attempt == downloadAttempts {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(attempt) * downloadRetryBackoff):
+		}
+	}
+	return fmt.Errorf("after %d attempts: %w", downloadAttempts, lastErr)
+}
+
+// downloadOnce 执行一次下载。offset>0 时带 Range 请求；服务端返回 206
+// 则续传追加，返回 200（不支持 Range）则整体重写。返回本次写入字节数。
+func downloadOnce(ctx context.Context, url, dst string, offset int64, progress ProgressFn) (int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	req.Header.Set("User-Agent", "EOS-Update")
+	if offset > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status %d", resp.StatusCode)
-	}
 
-	f, err := os.Create(dst)
-	if err != nil {
-		return err
+	var f *os.File
+	switch resp.StatusCode {
+	case http.StatusOK:
+		offset = 0
+		if f, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644); err != nil {
+			return 0, err
+		}
+	case http.StatusPartialContent:
+		if f, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644); err != nil {
+			return 0, err
+		}
+	default:
+		return 0, fmt.Errorf("status %d", resp.StatusCode)
 	}
 	defer f.Close()
 
+	total := resp.ContentLength
+	if total >= 0 {
+		total += offset
+	}
 	var reader io.Reader = resp.Body
 	if progress != nil {
-		reader = &progressReader{r: resp.Body, total: resp.ContentLength, fn: progress}
+		reader = &progressReader{r: resp.Body, base: offset, total: total, fn: progress}
 	}
-	_, err = io.Copy(f, reader)
-	return err
+	written, err := io.Copy(f, reader)
+	return written, err
 }
 
 type progressReader struct {
 	r     io.Reader
+	base  int64 // 续传时已落盘的字节数，进度按累计值上报
 	total int64
 	done  int64
 	fn    ProgressFn
@@ -165,7 +225,7 @@ type progressReader struct {
 func (p *progressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
 	p.done += int64(n)
-	p.fn(p.done, p.total)
+	p.fn(p.base+p.done, p.total)
 	return n, err
 }
 

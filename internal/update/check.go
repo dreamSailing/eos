@@ -65,27 +65,9 @@ func CheckLatestFor(ctx context.Context, goos, goarch string) (*CheckResult, err
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	release, err := fetchLatestRelease(ctx, url)
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "EOS-Update-Check")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch latest release: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("GitHub API returned %d: %s", resp.StatusCode, string(body))
-	}
-
-	var release githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return nil, fmt.Errorf("decode release: %w", err)
+		return nil, err
 	}
 
 	latest := strings.TrimSpace(release.TagName)
@@ -110,6 +92,47 @@ func CheckLatestFor(ctx context.Context, goos, goarch string) (*CheckResult, err
 	_ = suffix // suffix 已并入 assetName
 
 	return result, nil
+}
+
+// fetchLatestRelease 拉取 releases/latest 的元数据。弱网下 api.github.com
+// 瞬断常见（EOF/RST），带指数退避重试；重试共享外层 ctx 超时预算。
+func fetchLatestRelease(ctx context.Context, url string) (githubRelease, error) {
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return githubRelease{}, fmt.Errorf("create request: %w", err)
+		}
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("User-Agent", "EOS-Update-Check")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("fetch latest release: %w", err)
+		} else {
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+				resp.Body.Close()
+				return githubRelease{}, fmt.Errorf("GitHub API returned %d: %s", resp.StatusCode, string(body))
+			}
+			var release githubRelease
+			err = json.NewDecoder(resp.Body).Decode(&release)
+			resp.Body.Close()
+			if err == nil {
+				return release, nil
+			}
+			lastErr = fmt.Errorf("decode release: %w", err)
+		}
+		if attempt == 3 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return githubRelease{}, lastErr
+		case <-time.After(time.Duration(attempt) * time.Second):
+		}
+	}
+	return githubRelease{}, lastErr
 }
 
 // platformAssetName 返回 goos/goarch 对应的发布归档名（与 .github 发布
