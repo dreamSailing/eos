@@ -15,17 +15,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// printVersion 输出版本信息到 stdout。version 子命令与根命令 --version 标志共用。
+func printVersion() {
+	fmt.Printf("eos %s (%s/%s, %s)\n",
+		version.AppVersion, runtime.GOOS, runtime.GOARCH, runtime.Version())
+	if version.BuildCommit != "" && version.BuildCommit != "unknown" {
+		fmt.Printf("commit %s, built %s\n", version.BuildCommit, version.BuildDate)
+	}
+}
+
 func newVersionCmd() *cobra.Command {
 	cfg, _ := config.Load()
 	return &cobra.Command{
 		Use:   "version",
 		Short: i18n.T("version.short", cfg.Language),
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("eos %s (%s/%s, %s)\n",
-				version.AppVersion, runtime.GOOS, runtime.GOARCH, runtime.Version())
-			if version.BuildCommit != "" && version.BuildCommit != "unknown" {
-				fmt.Printf("commit %s, built %s\n", version.BuildCommit, version.BuildDate)
-			}
+			printVersion()
 		},
 	}
 }

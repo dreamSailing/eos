@@ -32,6 +32,7 @@ var (
 	cliApprovalMode    string
 	cliSandboxMode     string
 	cliSkipPermissions bool
+	cliShowVersion    bool
 )
 
 // rootLang 根据环境变量 EOS_LANG 返回界面语言。
@@ -64,6 +65,11 @@ var rootCmd = &cobra.Command{
 	Long:  rootLong(),
 	Run: func(cmd *cobra.Command, args []string) {
 		slog.Info("cli.start", "lang", rootLang())
+
+		if cliShowVersion {
+			printVersion()
+			return
+		}
 
 		// Handle --print mode
 		if printQuery != "" {
@@ -141,6 +147,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cliApprovalMode, "approval-mode", "", "Approval mode: untrusted, on-failure, on-request, or never")
 	rootCmd.PersistentFlags().StringVar(&cliSandboxMode, "sandbox-mode", "workspace", "Legacy sandbox mode alias: workspace or full_access")
 	rootCmd.PersistentFlags().BoolVar(&cliSkipPermissions, "dangerously-skip-permissions", false, "Compatibility alias for --access-mode danger-full-access --approval-mode never")
+	rootCmd.Flags().BoolVar(&cliShowVersion, "version", false, "Print the EOS version and exit")
 
 	rootCmd.AddCommand(newDocumentCmd())
 	rootCmd.AddCommand(newExecCmd())
