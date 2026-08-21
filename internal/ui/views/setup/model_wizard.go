@@ -49,10 +49,10 @@ type ModelSetupView struct {
 	selectedModel    *ai.ModelCatalogEntry
 	providerFocused  bool
 	modelFocused     bool
-	customProvider   bool // 是否选择自定义服务商
-	customModel      bool // 是否选择自定义模型
-	apiBaseReadOnly  bool // API Base 是否只读
-	modelReadOnly    bool // Model 名称是否只读（套餐类 preset 为 false，可从套餐模型中选择）
+	customProvider   bool   // 是否选择自定义服务商
+	customModel      bool   // 是否选择自定义模型
+	apiBaseReadOnly  bool   // API Base 是否只读
+	modelReadOnly    bool   // Model 名称是否只读（套餐类 preset 为 false，可从套餐模型中选择）
 	errMsg           string // 保存校验错误（非空时显示在配置步骤底部）
 	language         string
 
@@ -304,6 +304,47 @@ func (v *ModelSetupView) cyclePlanModel(delta int) {
 	}
 }
 
+// configFocusOrder 返回配置步骤的焦点循环顺序（只含当前模式的可编辑字段）：
+// 自定义服务商四个字段全可编辑；其余模式 API Base 只读（跳过 index 1）；
+// 套餐类 preset 的模型为选择式（含 index 3），普通 preset 模型只读（不含 index 3）。
+func (v *ModelSetupView) configFocusOrder() []int {
+	switch {
+	case v.customProvider:
+		return []int{0, 1, 2, 3}
+	case v.customModel || v.hasPlanChoice():
+		return []int{0, 2, 3}
+	default:
+		return []int{0, 2}
+	}
+}
+
+// focusInput 聚焦第 idx 个输入框并使其余输入框失焦。
+// 进入/切换焦点的唯一入口，保证 focusIndex 与实际焦点一致。
+func (v *ModelSetupView) focusInput(idx int) {
+	for i := range v.inputs {
+		if i == idx {
+			v.inputs[i].Focus()
+		} else {
+			v.inputs[i].Blur()
+		}
+	}
+	v.focusIndex = idx
+}
+
+// cycleConfigFocus 在焦点循环里按 delta（+1/-1）双向循环移动：
+// Tab 在末尾回开头，Shift+Tab 在开头回末尾。
+func (v *ModelSetupView) cycleConfigFocus(delta int) {
+	order := v.configFocusOrder()
+	pos := 0
+	for i, idx := range order {
+		if idx == v.focusIndex {
+			pos = i
+			break
+		}
+	}
+	v.focusInput(order[(pos+delta+len(order))%len(order)])
+}
+
 // Init 初始化
 func (v *ModelSetupView) Init() tea.Cmd {
 	return textinput.Blink
@@ -381,7 +422,6 @@ func (v *ModelSetupView) Update(msg tea.Msg) (*ModelSetupView, tea.Cmd) {
 					v.modelReadOnly = false
 					if len(v.inputs) > 0 {
 						v.inputs[0].Placeholder = i18n.T("setup.label.display_name", v.language)
-						v.inputs[0].Focus()
 					}
 					if len(v.inputs) > 1 {
 						v.inputs[1].Placeholder = i18n.T("setup.label.api_base", v.language)
@@ -392,6 +432,7 @@ func (v *ModelSetupView) Update(msg tea.Msg) (*ModelSetupView, tea.Cmd) {
 					if len(v.inputs) > 3 {
 						v.inputs[3].Placeholder = i18n.T("setup.label.model_name", v.language)
 					}
+					v.focusInput(0)
 					return v, nil
 				}
 
@@ -452,8 +493,7 @@ func (v *ModelSetupView) Update(msg tea.Msg) (*ModelSetupView, tea.Cmd) {
 						v.inputs[3].Placeholder = i18n.T("setup.label.model_name", v.language) + " (fixed)"
 					}
 
-					v.inputs[0].Focus()
-					v.focusIndex = 0
+					v.focusInput(0)
 				} else if row == len(v.models) {
 					// 选择自定义模型
 					v.step = ModelSetupStepConfig
@@ -476,8 +516,7 @@ func (v *ModelSetupView) Update(msg tea.Msg) (*ModelSetupView, tea.Cmd) {
 					v.inputs[3].SetValue("")
 					v.inputs[3].Placeholder = i18n.T("setup.label.model_name", v.language)
 
-					v.inputs[0].Focus()
-					v.focusIndex = 0
+					v.focusInput(0)
 				}
 
 			case ModelSetupStepConfig, ModelSetupStepCustom:
@@ -508,132 +547,36 @@ func (v *ModelSetupView) Update(msg tea.Msg) (*ModelSetupView, tea.Cmd) {
 		}
 
 	case ModelSetupStepConfig, ModelSetupStepCustom:
-		// 根据选择情况处理输入
-		if v.customProvider {
-			// 自定义服务商：所有字段都可编辑
-			var cmd tea.Cmd
-			v.inputs[v.focusIndex], cmd = v.inputs[v.focusIndex].Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-
-			// 处理 Tab 切换
+		// 套餐内模型：选择式（←/→ 或 h/l 切换），不转发按键给输入框；
+		// Tab/Shift+Tab 仍走焦点循环，保证能从模型选择切回上面的字段。
+		if !v.customProvider && !v.customModel && v.hasPlanChoice() && v.focusIndex == 3 {
 			if keyMsg, ok := msg.(tea.KeyMsg); ok {
 				switch keyMsg.String() {
+				case "left", "h":
+					v.cyclePlanModel(-1)
+				case "right", "l":
+					v.cyclePlanModel(1)
 				case "tab":
-					v.inputs[v.focusIndex].Blur()
-					v.focusIndex = (v.focusIndex + 1) % len(v.inputs)
-					v.inputs[v.focusIndex].Focus()
+					v.cycleConfigFocus(1)
 				case "shift+tab":
-					v.inputs[v.focusIndex].Blur()
-					v.focusIndex--
-					if v.focusIndex < 0 {
-						v.focusIndex = len(v.inputs) - 1
-					}
-					v.inputs[v.focusIndex].Focus()
+					v.cycleConfigFocus(-1)
 				}
 			}
-		} else if v.customModel {
-			// 自定义模型：API Base 只读，其他可编辑
-			// 如果当前聚焦在只读字段，跳过
-			if v.focusIndex == 1 && v.apiBaseReadOnly {
-				v.focusIndex = 0
-				v.inputs[0].Focus()
-			}
-			var cmd tea.Cmd
-			v.inputs[v.focusIndex], cmd = v.inputs[v.focusIndex].Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
+			return v, tea.Batch(cmds...)
+		}
 
-			// 处理 Tab 切换（跳过只读字段）
-			if keyMsg, ok := msg.(tea.KeyMsg); ok {
-				switch keyMsg.String() {
-				case "tab":
-					v.inputs[v.focusIndex].Blur()
-					v.focusIndex = (v.focusIndex + 1) % len(v.inputs)
-					// 跳过 API Base (index 1)
-					if v.focusIndex == 1 {
-						v.focusIndex = (v.focusIndex + 1) % len(v.inputs)
-					}
-					v.inputs[v.focusIndex].Focus()
-				case "shift+tab":
-					v.inputs[v.focusIndex].Blur()
-					v.focusIndex--
-					if v.focusIndex < 0 {
-						v.focusIndex = len(v.inputs) - 1
-					}
-					// 跳过 API Base (index 1)
-					if v.focusIndex == 1 {
-						v.focusIndex--
-						if v.focusIndex < 0 {
-							v.focusIndex = len(v.inputs) - 1
-						}
-					}
-					v.inputs[v.focusIndex].Focus()
-				}
-			}
-			} else {
-				// 固定模型：名称、API Key 可编辑；套餐类 preset（modelReadOnly=false）
-				// 模型字段为选择式（0/2/3 循环聚焦），普通 preset 只在 0/2 之间切换。
-				hasPlanModels := !v.modelReadOnly
-				fixFocus := func() {
-					if v.focusIndex == 1 || (!hasPlanModels && v.focusIndex == 3) {
-						v.focusIndex = 0
-					}
-				}
-				fixFocus()
+		var cmd tea.Cmd
+		v.inputs[v.focusIndex], cmd = v.inputs[v.focusIndex].Update(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 
-				// 套餐内模型：选择式（←/→ 或 h/l 切换），不转发按键给输入框。
-				if hasPlanModels && v.focusIndex == 3 {
-					if keyMsg, ok := msg.(tea.KeyMsg); ok {
-						switch keyMsg.String() {
-						case "left", "h":
-							v.cyclePlanModel(-1)
-						case "right", "l":
-							v.cyclePlanModel(1)
-						}
-					}
-					return v, nil
-				}
-
-				var cmd tea.Cmd
-				v.inputs[v.focusIndex], cmd = v.inputs[v.focusIndex].Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-
-			if keyMsg, ok := msg.(tea.KeyMsg); ok {
-				next := func(forward bool) int {
-					if hasPlanModels {
-						order := []int{0, 2, 3}
-						idx := 0
-						for i, o := range order {
-							if o == v.focusIndex {
-								idx = i
-								break
-							}
-						}
-						if forward {
-							return order[(idx+1)%len(order)]
-						}
-						return order[(idx-1+len(order))%len(order)]
-					}
-					if v.focusIndex == 0 {
-						return 2
-					}
-					return 0
-				}
-				switch keyMsg.String() {
-				case "tab":
-					v.inputs[v.focusIndex].Blur()
-					v.focusIndex = next(true)
-					v.inputs[v.focusIndex].Focus()
-				case "shift+tab":
-					v.inputs[v.focusIndex].Blur()
-					v.focusIndex = next(false)
-					v.inputs[v.focusIndex].Focus()
-				}
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			switch keyMsg.String() {
+			case "tab":
+				v.cycleConfigFocus(1)
+			case "shift+tab":
+				v.cycleConfigFocus(-1)
 			}
 		}
 	}
