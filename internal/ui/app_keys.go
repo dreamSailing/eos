@@ -62,6 +62,7 @@ func (m *AppModel) handleGlobalKey(msg tea.KeyMsg) tea.Cmd {
 		m.shell.HideHints()
 		m.clearPrediction()
 		m.shell.ClearInput()
+		m.clearSelection()
 		return func() tea.Msg { return nil } // 返回非nil阻止进入else分支
 
 	case "tab":

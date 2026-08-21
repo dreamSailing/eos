@@ -182,13 +182,17 @@ func (m *AppModel) handleModeChangedMsg(msg ModeChangedMsg) (tea.Model, tea.Cmd)
 // handleMouseMsg 处理 tea.MouseMsg（Update 分支提取）。
 // 各分支均早退或经 finalizeUpdate 走尾部逻辑。
 func (m *AppModel) handleMouseMsg(msg tea.MouseMsg, cmds []tea.Cmd) (tea.Model, tea.Cmd) {
-	if m.activeView == "shell" && msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-		if cmd := m.tryHandleBubbleActionAt(msg.X, msg.Y); cmd != nil {
-			cmds = append(cmds, cmd)
-			return m, tea.Batch(cmds...)
-		}
-	}
 	if m.activeView == "shell" {
+		// 先尝试框选/点击（selection.go）；消耗事件则不再交给 shell/viewport。
+		if m.handleContentSelection(msg) {
+			return m, m.finalizeUpdate(tea.Batch(cmds...))
+		}
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if cmd := m.tryHandleBubbleActionAt(msg.X, msg.Y); cmd != nil {
+				cmds = append(cmds, cmd)
+				return m, tea.Batch(cmds...)
+			}
+		}
 		updatedShell, shellCmd := m.shell.Update(msg)
 		*m.shell = updatedShell
 		if shellCmd != nil {

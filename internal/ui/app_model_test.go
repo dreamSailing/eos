@@ -597,6 +597,18 @@ func TestRenderHistoryEntryShowsDownloadActionOnlyForPlanMessages(t *testing.T) 
 	if hasAction(autoActions, "download") {
 		t.Fatalf("did not expect download action for auto entry, got %v", autoActions)
 	}
+
+	userActions := app.bubbleActionsForEntry(historyEntry{
+		kind:      "user",
+		content:   "帮我写一个排序函数",
+		timestamp: time.Now(),
+	})
+	if !hasAction(userActions, "copy") {
+		t.Fatalf("expected copy action for user entry, got %v", userActions)
+	}
+	if hasAction(userActions, "download") {
+		t.Fatalf("did not expect download action for user entry, got %v", userActions)
+	}
 }
 
 func TestHandleItemDeltaReasoningStreamsIntoLiveThinkingBlock(t *testing.T) {

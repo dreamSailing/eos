@@ -90,6 +90,12 @@ type AppModel struct {
 
 	actionHits []bubbleActionHit
 
+	// 鼠标框选状态（selection.go）。
+	selAnchor *selectionCoord
+	selStart  selectionCoord
+	selEnd    selectionCoord
+	selActive bool
+
 	pendingImagePaths   []string
 	pendingPlanDownload *planDownloadRequest
 	pendingPluginConfirm string

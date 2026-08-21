@@ -130,7 +130,8 @@ func (m *AppModel) renderHistoryEntry(e historyEntry) string {
 }
 
 func (m *AppModel) bubbleActionsForEntry(e historyEntry) []messages.BubbleAction {
-	if (e.kind != "ai" && e.kind != "agent.final") || strings.TrimSpace(e.content) == "" {
+	// AI / 子 Agent 回复与用户消息均可点击复制；计划消息额外提供下载。
+	if (e.kind != "ai" && e.kind != "agent.final" && e.kind != "user") || strings.TrimSpace(e.content) == "" {
 		return nil
 	}
 	// 文本流布局下 Label 不再用于内联按钮；弹框展示文案由 actionLabel(kind) 解析。

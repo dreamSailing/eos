@@ -73,6 +73,10 @@ type Model struct {
 
 	// 样式
 	styles *styles.Styles
+
+	// 框选高亮：需要反色高亮的物理行范围 [selFrom, selTo]；-1 表示无。
+	selFrom int
+	selTo   int
 }
 
 type statusTickMsg struct{}
@@ -118,6 +122,8 @@ func New(width, height int, s *styles.Styles, lang string) Model {
 		contentH:         contentHeight,
 		executionMode:    "auto",
 		thinkingExpanded: false,
+		selFrom:          -1,
+		selTo:            -1,
 	}
 }
 
@@ -651,6 +657,51 @@ func (m *Model) ContentLineCount() int {
 	return m.content.LineCount()
 }
 
+// Content 返回内容区原始文本（含 ANSI 样式），用于框选复制。
+func (m *Model) Content() string {
+	return m.content.Content()
+}
+
+// ContentWidth 返回内容区可渲染宽度（不含左右边距）。
+func (m *Model) ContentWidth() int {
+	return max(m.width-4, 1)
+}
+
+// SetSelectionHighlight 设置需要高亮（反色）的物理行范围 [from, to]。
+// from > to 或 to < 0 视为清除高亮。
+func (m *Model) SetSelectionHighlight(from, to int) {
+	if to < 0 || from > to {
+		m.selFrom = -1
+		m.selTo = -1
+		return
+	}
+	m.selFrom = from
+	m.selTo = to
+}
+
+// ClearSelectionHighlight 清除框选高亮。
+func (m *Model) ClearSelectionHighlight() {
+	m.selFrom = -1
+	m.selTo = -1
+}
+
+// applySelectionHighlight 把视口渲染内容中落在 [selFrom, selTo] 的可见行
+// 用反色（reverse video）包起来，形成框选高亮。整行反色对带 ANSI 的
+// 内容安全（内层颜色保留，外层追加反转 + 复位）。
+func applySelectionHighlight(view string, yOffset, from, to int) string {
+	if from < 0 || to < from {
+		return view
+	}
+	lines := strings.Split(view, "\n")
+	for i := range lines {
+		phys := yOffset + i
+		if phys >= from && phys <= to {
+			lines[i] = "\x1b[7m" + lines[i] + "\x1b[0m"
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // acceptHint 接受选中的 hint
 func (m *Model) acceptHint(selected string) {
 	text := m.input.Value()
@@ -808,6 +859,10 @@ func (m Model) View() string {
 
 	// 内容区域 - 如果没有内容则显示欢迎面板
 	contentView := m.content.View()
+	// 框选高亮：把视口可见行中落在选中物理行范围的行反色。
+	if m.selFrom >= 0 {
+		contentView = applySelectionHighlight(contentView, m.content.YOffset(), m.selFrom, m.selTo)
+	}
 	// 使用原始内容判断是否为空，因为 View() 返回的字符串包含样式（padding等）
 	hasContent := m.content.Content() != ""
 	inlineLive := m.renderInlineLive()
