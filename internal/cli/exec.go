@@ -101,7 +101,7 @@ func runExec(ctx context.Context, opts execOptions) error {
 
 	// stream-json 走真增量 JSONL 流式（与 print 模式一致，对齐 codex exec --json）。
 	if strings.EqualFold(strings.TrimSpace(opts.Output), "stream-json") {
-		if err := runStreamJSONTurn(ctx, engine, opts.Prompt, startedAt); err != nil {
+		if err := runStreamJSONTurn(ctx, engine, opts.Prompt, startedAt, ""); err != nil {
 			if ctx.Err() == context.DeadlineExceeded {
 				err = fmt.Errorf("exec timed out after %s", opts.Timeout)
 			}
@@ -111,7 +111,7 @@ func runExec(ctx context.Context, opts execOptions) error {
 		return nil
 	}
 
-	content, err := runSingleTurn(ctx, engine, opts.Prompt, opts.Output)
+	content, err := runSingleTurn(ctx, engine, opts.Prompt, opts.Output, "")
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			err = fmt.Errorf("exec timed out after %s", opts.Timeout)

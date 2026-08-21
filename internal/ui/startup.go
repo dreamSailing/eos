@@ -43,6 +43,44 @@ func StartInteractiveTUI() {
 	StartInteractiveTUIWithOptions(TUIOptions{})
 }
 
+// applyTUIStartupModel 启动期模型处理：
+//   - 自愈当前会话的无效 model_name 覆盖（历史桌面端写入的目录 label 会让
+//     会话每次对话 NotFound，这里归一化或清除）；
+//   - --model 真正生效：EOS_MODEL_OVERRIDE 环境变量内核并不消费，这里显式
+//     走归一化解析 + SelectModelForCurrentContext。输入支持条目名/模型 ID/
+//     套餐模型 label（如 "MiniMax M3"）。
+//
+// 任一步失败只提示不阻断进入 TUI。
+func applyTUIStartupModel(m *AppModel, override string) {
+	if m == nil || m.adapter == nil {
+		return
+	}
+	ctx := context.Background()
+	if note := m.adapter.HealCurrentSessionModel(ctx); note != "" {
+		m.appendSystem(note, "warning")
+	}
+	override = strings.TrimSpace(override)
+	if override == "" {
+		return
+	}
+	res, err := m.adapter.ResolveModelInput(ctx, override)
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("--model: %v", err), "error")
+		return
+	}
+	if res.NeedsPlanSwitch {
+		if err := m.adapter.SwitchPlanModel(ctx, res.EntryName, res.PlanModelID); err != nil {
+			m.appendSystem(fmt.Sprintf("--model: %v", err), "error")
+			return
+		}
+	}
+	if _, err := m.adapter.SelectModelForCurrentContext(ctx, res.EntryName); err != nil {
+		m.appendSystem(fmt.Sprintf("--model: %v", err), "error")
+		return
+	}
+	m.appendSystem(fmt.Sprintf("--model: %s", res.EntryName), "success")
+}
+
 // StartInteractiveTUIWithOptions 启动 TUI 入口。
 // 生产路径：直接启动 eos-core --app-server --stdio sidecar 子进程，
 // 用 sidecarclient.Client + NewAppModelFromCoreClient 构造 AppModel。
@@ -81,6 +119,7 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 	}
 
 	m := NewAppModelFromCoreClient(client, strings.TrimSpace(opts.SessionID))
+	applyTUIStartupModel(m, opts.ModelOverride)
 	slog.Info("ui.startup.app.run")
 	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		slog.Error("ui.startup.app.run.error", "error", err)

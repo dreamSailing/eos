@@ -39,6 +39,7 @@ type ModelEntry struct {
 	Model                   string `json:"model"`
 	Source                  string `json:"source,omitempty"`
 	Provider                string `json:"provider,omitempty"`                  // 服务商类型 (deepseek, dashscope, etc.)
+	PresetID                string `json:"preset_id,omitempty"`                 // 内置 preset ID（套餐内切换模型走 model/save 时需要）
 	APIType                 string `json:"api_type,omitempty"`                  // API 类型 (standard, code-plan)
 	Role                    string `json:"role,omitempty"`                      // 模型角色: primary/image_generation/video_generation/speech_synthesis
 	Enabled                 *bool  `json:"enabled,omitempty"`                   // 是否启用（旧配置留空时默认 true）

@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dreamSailing/eos/internal/ai"
 	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/pkg/coreapi"
@@ -707,6 +708,7 @@ func (a *CoreClientAdapter) ModelEntries(ctx context.Context) ([]config.ModelEnt
 			Model:                   strings.TrimSpace(item.Model),
 			Source:                  strings.TrimSpace(item.Source),
 			Provider:                strings.TrimSpace(item.ProviderID),
+			PresetID:                strings.TrimSpace(item.PresetID),
 			SupportsReasoningEffort: item.SupportsReasoningEffort,
 			SupportsVision:          item.SupportsVision,
 			SupportsTools:           item.SupportsTools,
@@ -821,22 +823,130 @@ func (a *CoreClientAdapter) UpsertModelEntry(ctx context.Context, entry config.M
 	if a == nil || a.engine == nil {
 		return errors.New("core client is not available")
 	}
-	return a.engine.Models().Upsert(ctx, coreapi.UpsertModelRequest{
+	// 内核 upsert 持久化会把 eos.json 的 api_key 覆写成 masked；当前内核的
+	// eos.json 加载路径会把 masked 当真实 key 用（重启后 401），保存前快照、
+	// 成功后回补明文。见 internal/config/apikey_patch.go。
+	plaintext := config.SnapshotPlaintextAPIKeys()
+	if k := strings.TrimSpace(entry.APIKey); k != "" && !config.LooksMaskedAPIKey(k) {
+		plaintext[entry.Name] = entry.APIKey
+	}
+	if err := a.engine.Models().Upsert(ctx, coreapi.UpsertModelRequest{
 		Name:    strings.TrimSpace(entry.Name),
 		APIBase: strings.TrimSpace(entry.APIBase),
 		APIKey:  strings.TrimSpace(entry.APIKey),
 		Model:   strings.TrimSpace(entry.Model),
-	})
+	}); err != nil {
+		return err
+	}
+	config.RestorePlaintextAPIKeys(plaintext)
+	return nil
 }
 
 // SaveModel 走内核 model/save（preset/custom_model/custom_provider 三种模式），
 // 保留 provider/preset 关联：内核按 (plan, format) 解析端点与请求构造器，
 // 套餐类 preset（如 MiniMax Token Plan）的端点与鉴权才能选对。
+//
+// 保存前后维护明文 key：内核持久化会把 eos.json 的 api_key 写成 masked 占位
+//（真实 key 进钥匙串），而当前内核的加载路径会把 masked 灌进 secrets 并屏蔽
+// 钥匙串——重启后 401。保存前快照明文、成功后回补，保证旧内核下可用。
 func (a *CoreClientAdapter) SaveModel(ctx context.Context, req coreapi.ModelSaveRequest) error {
 	if a == nil || a.engine == nil {
 		return errors.New("core client is not available")
 	}
-	return a.engine.Models().Save(ctx, req)
+	plaintext := config.SnapshotPlaintextAPIKeys()
+	if k := strings.TrimSpace(req.APIKey); k != "" && !config.LooksMaskedAPIKey(k) {
+		plaintext[strings.TrimSpace(req.Name)] = k
+		// 改名场景：旧名下的明文 key 转移到新名。
+		if old := strings.TrimSpace(req.OriginalName); old != "" && old != strings.TrimSpace(req.Name) {
+			delete(plaintext, old)
+		}
+	}
+	if err := a.engine.Models().Save(ctx, req); err != nil {
+		return err
+	}
+	config.RestorePlaintextAPIKeys(plaintext)
+	return nil
+}
+
+// ModelCatalogSnapshot 返回内核内置目录（providers + presets），供 /model
+// 归一化解析（旧条目按端点兜底关联）与套餐内模型切换使用；失败返回 nil，
+// 调用方按「无目录」降级。
+func (a *CoreClientAdapter) ModelCatalogSnapshot(ctx context.Context) *coreapi.ModelCatalogState {
+	if a == nil || a.engine == nil {
+		return nil
+	}
+	catalog, err := a.engine.Models().Catalog(ctx)
+	if err != nil {
+		return nil
+	}
+	return &catalog
+}
+
+// ResolveModelInput 把用户输入（条目名/模型 ID/套餐模型 label/preset 名，
+// 空格连字符不敏感）解析到已配置条目。见 ai.ResolveModelInput。
+func (a *CoreClientAdapter) ResolveModelInput(ctx context.Context, input string) (*ai.ModelResolution, error) {
+	if a == nil || a.engine == nil {
+		return nil, errors.New("core client is not available")
+	}
+	entries, err := a.Models(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ai.ResolveModelInput(input, entries, a.ModelCatalogSnapshot(ctx))
+}
+
+// SwitchPlanModel 在套餐类条目内切换具体模型（如 MiniMax Token Plan 的
+// MiniMax-M3 / MiniMax-M2.7）：mode=preset 的 model/save 更新，original_name
+// 指向现有条目（内核走更新路径而非新增，不会触发同名冲突），api_key 留空
+// 由内核保留已存的 key。
+func (a *CoreClientAdapter) SwitchPlanModel(ctx context.Context, entryName, planModelID string) error {
+	if a == nil || a.engine == nil {
+		return errors.New("core client is not available")
+	}
+	entryName = strings.TrimSpace(entryName)
+	planModelID = strings.TrimSpace(planModelID)
+	if entryName == "" || planModelID == "" {
+		return errors.New("entry name and plan model id are required")
+	}
+	entries, err := a.Models(ctx)
+	if err != nil {
+		return err
+	}
+	var entry *coreapi.ModelConfig
+	for i := range entries {
+		if entries[i].Name == entryName {
+			entry = &entries[i]
+			break
+		}
+	}
+	if entry == nil {
+		return fmt.Errorf("model entry %q not found", entryName)
+	}
+	if strings.TrimSpace(entry.PresetID) == "" {
+		return fmt.Errorf("model entry %q is not a built-in preset; edit it instead", entryName)
+	}
+	return a.SaveModel(ctx, coreapi.ModelSaveRequest{
+		OriginalName: entry.Name,
+		Mode:         "preset",
+		ProviderID:   strings.TrimSpace(entry.ProviderID),
+		PresetID:     strings.TrimSpace(entry.PresetID),
+		Name:         entry.Name,
+		APIBase:      strings.TrimSpace(entry.APIBase),
+		Model:        planModelID,
+	})
+}
+
+// HealCurrentSessionModel 自愈当前会话的无效 model_name 覆盖（历史版本
+// 写入的目录 label）。返回用户可见的提示文本，空串表示无需处理。
+func (a *CoreClientAdapter) HealCurrentSessionModel(ctx context.Context) string {
+	if a == nil || a.engine == nil {
+		return ""
+	}
+	session, err := a.engine.Sessions().Current(ctx, coreapi.CurrentSessionRequest{})
+	if err != nil || strings.TrimSpace(session.ID) == "" {
+		return ""
+	}
+	return ai.HealSessionModelOverride(ctx, a.engine.Models(), session)
 }
 
 func (a *CoreClientAdapter) SyncEnvModel(ctx context.Context) error {

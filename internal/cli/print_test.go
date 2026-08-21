@@ -172,7 +172,7 @@ func TestRunSingleTurnConsumesTurnEventsBeforeStartReturns(t *testing.T) {
 	var content string
 	var err error
 	go func() {
-		content, err = runSingleTurn(context.Background(), engine, "hello", "json")
+		content, err = runSingleTurn(context.Background(), engine, "hello", "json", "")
 		close(done)
 	}()
 
@@ -233,7 +233,7 @@ func TestRunStreamJSONTurnEmitsIncrementalJSONL(t *testing.T) {
 	done := make(chan struct{})
 	var runErr error
 	go func() {
-		runErr = runStreamJSONTurn(context.Background(), engine, "hello", time.Now())
+		runErr = runStreamJSONTurn(context.Background(), engine, "hello", time.Now(), "")
 		close(done)
 	}()
 
@@ -343,7 +343,7 @@ func TestRunStreamJSONTurnEmitsTurnFailedOnFailure(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = runStreamJSONTurn(context.Background(), engine, "hello", time.Now())
+		_ = runStreamJSONTurn(context.Background(), engine, "hello", time.Now(), "")
 		close(done)
 	}()
 
@@ -572,6 +572,10 @@ func (e *printTestEngine) Turns() coreapi.TurnService {
 
 func (e *printTestEngine) Events() coreapi.EventSubscriber {
 	return e.events
+}
+
+func (e *printTestEngine) Models() coreapi.ModelService {
+	return nil // heal/override 在 nil service 下自动跳过
 }
 
 func (e *printTestEngine) Usage() coreapi.UsageService {

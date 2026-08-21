@@ -60,6 +60,7 @@ func TestImportBoundary(t *testing.T) {
 
 func TestAllowedImports(t *testing.T) {
 	allowed := map[string]bool{
+		"github.com/dreamSailing/eos/internal/ai":                true,
 		"github.com/dreamSailing/eos/internal/config":            true,
 		"github.com/dreamSailing/eos/internal/pkg/settings":      true,
 		"github.com/dreamSailing/eos/pkg/coreapi":                true,

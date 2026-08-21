@@ -18,12 +18,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/dreamSailing/eos/internal/ai"
 	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/pkg/coreapi"
 	"github.com/dreamSailing/eos/pkg/coreapi/engineprovider"
@@ -43,6 +45,7 @@ type PrintOptions struct {
 	SandboxMode     string
 	SkipPermissions bool
 	Workspace       string // optional workspace path; empty = use default
+	ModelOverride   string // --model：条目名/模型 ID/套餐模型 label，空=用当前上下文模型
 }
 
 // PrintResult holds the result of a print mode execution
@@ -85,14 +88,14 @@ func RunPrintMode(opts PrintOptions) error {
 	// 原样吐出一行 JSONL（对齐 codex exec --json 的 JSONL 契约），
 	// 不走 runSingleTurn 的"累积完整内容后统一输出"伪流。
 	if strings.EqualFold(strings.TrimSpace(opts.OutputFormat), "stream-json") {
-		if err := runStreamJSONTurn(ctx, engine, opts.Query, startedAt); err != nil {
+		if err := runStreamJSONTurn(ctx, engine, opts.Query, startedAt, opts.ModelOverride); err != nil {
 			writePrintError(opts.OutputFormat, err)
 			return err
 		}
 		return nil
 	}
 
-	content, err := runSingleTurn(ctx, engine, opts.Query, opts.OutputFormat)
+	content, err := runSingleTurn(ctx, engine, opts.Query, opts.OutputFormat, opts.ModelOverride)
 	if err != nil {
 		writePrintError(opts.OutputFormat, err)
 		return err
@@ -369,7 +372,7 @@ func headlessRustCoreStoreDir() string {
 //
 // 对 text 输出格式，每个 text_delta 实时写入 stdout（逐 chunk 涌现，对齐 codex 体验）；
 // json/stream-json 仍只在 turn 结束后输出完整结构，保持机器可读契约不变。
-func runSingleTurn(ctx context.Context, engine coreapi.Engine, query, outputFormat string) (string, error) {
+func runSingleTurn(ctx context.Context, engine coreapi.Engine, query, outputFormat, modelOverride string) (string, error) {
 	if engine == nil {
 		return "", fmt.Errorf("core engine unavailable")
 	}
@@ -378,6 +381,9 @@ func runSingleTurn(ctx context.Context, engine coreapi.Engine, query, outputForm
 	}
 	session, err := ensureHeadlessSession(ctx, engine)
 	if err != nil {
+		return "", err
+	}
+	if err := applyModelOverride(ctx, engine, session, modelOverride); err != nil {
 		return "", err
 	}
 
@@ -459,7 +465,7 @@ func runSingleTurn(ctx context.Context, engine coreapi.Engine, query, outputForm
 //
 // 与 runSingleTurn 的区别：后者把所有 delta 累积成完整文本在 turn 结束后一次性返回
 // （伪流）；本函数逐事件实时输出，可被 jq -c 等 JSONL 管道消费。
-func runStreamJSONTurn(ctx context.Context, engine coreapi.Engine, query string, startedAt time.Time) error {
+func runStreamJSONTurn(ctx context.Context, engine coreapi.Engine, query string, startedAt time.Time, modelOverride string) error {
 	if engine == nil {
 		return fmt.Errorf("core engine unavailable")
 	}
@@ -468,6 +474,9 @@ func runStreamJSONTurn(ctx context.Context, engine coreapi.Engine, query string,
 	}
 	session, err := ensureHeadlessSession(ctx, engine)
 	if err != nil {
+		return err
+	}
+	if err := applyModelOverride(ctx, engine, session, modelOverride); err != nil {
 		return err
 	}
 
@@ -571,6 +580,12 @@ func ensureHeadlessSession(ctx context.Context, engine coreapi.Engine) (coreapi.
 	workspaceRoot := headlessWorkspaceRoot(ctx, engine)
 	session, err := engine.Sessions().Current(ctx, coreapi.CurrentSessionRequest{WorkspaceRoot: workspaceRoot})
 	if err == nil && strings.TrimSpace(session.ID) != "" {
+		// 会话自愈：历史版本（桌面端 GUI）曾把目录 label（如 "MiniMax M3"）
+		// 写进 model_name，内核按条目名精确匹配会 NotFound，每次对话必炸。
+		// 这里归一化修复或清除无效覆盖，避免复用旧会话时阻断。
+		if note := ai.HealSessionModelOverride(ctx, engine.Models(), session); note != "" {
+			slog.Warn("print.session.model.healed", "session_id", session.ID, "note", note)
+		}
 		return session, nil
 	}
 	session, err = engine.Sessions().Create(ctx, coreapi.CreateSessionRequest{
@@ -585,6 +600,51 @@ func ensureHeadlessSession(ctx context.Context, engine coreapi.Engine) (coreapi.
 		return coreapi.Session{}, fmt.Errorf("create headless session returned empty id")
 	}
 	return session, nil
+}
+
+// applyModelOverride 把 --model 的值解析并写入会话模型覆盖。
+// EOS_MODEL_OVERRIDE 环境变量内核并不消费（历史遗留），--model 必须走
+// model/session/set 才真正生效；输入支持条目名/模型 ID/套餐模型 label。
+func applyModelOverride(ctx context.Context, engine coreapi.Engine, session coreapi.Session, override string) error {
+	override = strings.TrimSpace(override)
+	if override == "" {
+		return nil
+	}
+	entries, err := engine.Models().List(ctx)
+	if err != nil {
+		return fmt.Errorf("--model: list models: %w", err)
+	}
+	var catalog *coreapi.ModelCatalogState
+	if c, catErr := engine.Models().Catalog(ctx); catErr == nil {
+		catalog = &c
+	}
+	res, err := ai.ResolveModelInput(override, entries, catalog)
+	if err != nil {
+		return fmt.Errorf("--model: %v", err)
+	}
+	if res.NeedsPlanSwitch {
+		// 与 adapter.SaveModel 相同的明文 key 维护：内核保存会把 eos.json
+		// api_key 覆写成 masked，旧内核加载时会把 masked 当真实 key（401）。
+		plaintext := config.SnapshotPlaintextAPIKeys()
+		if err := engine.Models().Save(ctx, coreapi.ModelSaveRequest{
+			OriginalName: res.EntryName,
+			Mode:         "preset",
+			ProviderID:   res.ProviderID,
+			PresetID:     res.PresetID,
+			Name:         res.EntryName,
+			Model:        res.PlanModelID,
+		}); err != nil {
+			return fmt.Errorf("--model: switch plan model: %w", err)
+		}
+		config.RestorePlaintextAPIKeys(plaintext)
+	}
+	if err := engine.Models().SetSession(ctx, coreapi.SetSessionModelRequest{
+		SessionID: session.ID,
+		ModelName: res.EntryName,
+	}); err != nil {
+		return fmt.Errorf("--model: set session model: %w", err)
+	}
+	return nil
 }
 
 func headlessWorkspaceRoot(ctx context.Context, engine coreapi.Engine) string {

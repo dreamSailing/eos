@@ -219,6 +219,22 @@ func (m *AppModel) handleModelSlash(args []string) tea.Cmd {
 		return nil
 	}
 
+	// 归一化解析：条目名 / 模型 ID / 套餐内模型 label（如 MiniMax M3，桌面端
+	// 历史数据形态）/ preset 名都接受，空格连字符不敏感；命中套餐内具体模型
+	// 时顺带切换（M3 ↔ M2.7），对齐桌面端语义。
+	res, err := m.adapter.ResolveModelInput(context.Background(), name)
+	if err != nil {
+		m.appendSystem(err.Error(), "error")
+		return nil
+	}
+	if res.NeedsPlanSwitch {
+		if switchErr := m.adapter.SwitchPlanModel(context.Background(), res.EntryName, res.PlanModelID); switchErr != nil {
+			m.appendSystem(fmt.Sprintf("%s: %v", m.localize("切换套餐内模型失败", "Failed to switch plan model"), switchErr), "error")
+			return nil
+		}
+	}
+	name = res.EntryName
+
 	scope, err := m.adapter.SelectModelForCurrentContext(context.Background(), name)
 	if err != nil {
 		m.appendSystem(err.Error(), "error")
@@ -233,6 +249,10 @@ func (m *AppModel) handleModelSlash(args []string) tea.Cmd {
 	}[strings.ToLower(strings.TrimSpace(scope))]
 	if scopeLabel == "" {
 		scopeLabel = m.localize("当前上下文", "current context")
+	}
+	if res.NeedsPlanSwitch {
+		m.appendSystem(fmt.Sprintf("%s: %s (%s) [%s]", m.localize("已切换模型", "Switched model"), name, res.PlanModelID, scopeLabel), "success")
+		return nil
 	}
 	m.appendSystem(fmt.Sprintf("%s: %s [%s]", m.localize("已切换模型", "Switched model"), name, scopeLabel), "success")
 	return nil

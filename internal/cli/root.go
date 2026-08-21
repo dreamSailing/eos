@@ -75,6 +75,7 @@ var rootCmd = &cobra.Command{
 				ApprovalMode:    modes.ApprovalMode,
 				SandboxMode:     modes.SandboxMode,
 				SkipPermissions: modes.SkipAllChecks,
+				ModelOverride:   cliModel,
 			}); err != nil {
 				os.Exit(1)
 			}
