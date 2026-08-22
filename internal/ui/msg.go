@@ -89,11 +89,72 @@ func ConvertEvent(e uiadapter.RuntimeEvent) Msg {
 			Event:           agentEventKind(e.Type),
 			Content:         eventText(e, "error", "reason", "message", "text"),
 		}
+	case "browser.takeover.started":
+		return BrowserTakeoverStartedMsg{Reason: payloadString(e, "reason"), Note: payloadString(e, "note")}
+	case "browser.takeover.ended":
+		return BrowserTakeoverEndedMsg{Result: payloadString(e, "result")}
+	case "browser.action":
+		return BrowserActionMsg{Action: payloadString(e, "action"), Target: payloadString(e, "target"), Result: payloadString(e, "result")}
+	case "browser.download.completed":
+		return BrowserDownloadDoneMsg{Filename: payloadString(e, "filename"), Path: payloadString(e, "path")}
+	case "browser.pick.selected":
+		return BrowserPickSelectedMsg{Ref: payloadString(e, "ref"), Selector: payloadString(e, "selector"), Role: payloadString(e, "role"), Name: payloadString(e, "name")}
 	case "error", string(protocol.EventTypeRequestFailed), string(protocol.EventTypeTaskFailed):
 		return AIResponseMsg{Type: "error", Content: eventText(e, "error", "message", "text"), RID: e.RID}
 	default:
 		return nil
 	}
+}
+
+// BrowserTakeoverStartedMsg 内核请求/人接管了浏览器（browser.takeover.started）。
+type BrowserTakeoverStartedMsg struct {
+	Reason string
+	Note   string
+}
+
+// BrowserTakeoverEndedMsg 接管结束（resumed/timeout/cancelled）。
+type BrowserTakeoverEndedMsg struct {
+	Result string
+}
+
+// BrowserActionMsg AI 浏览器动作（步骤日志行）。
+type BrowserActionMsg struct {
+	Action string
+	Target string
+	Result string
+}
+
+// BrowserDownloadDoneMsg 下载完成（含落盘路径）。
+type BrowserDownloadDoneMsg struct {
+	Filename string
+	Path     string
+}
+
+// BrowserPickSelectedMsg 选取器捕获元素（结构化引用插入输入行）。
+type BrowserPickSelectedMsg struct {
+	Ref      string
+	Selector string
+	Role     string
+	Name     string
+}
+
+// FormatPickChip 结构化引用的输入行文案（e12 · button "登录"）。
+func (msg BrowserPickSelectedMsg) FormatPickChip() string {
+	ref := msg.Ref
+	if ref == "" {
+		ref = msg.Selector
+	}
+	if ref == "" {
+		ref = "element"
+	}
+	if msg.Role == "" {
+		return ref
+	}
+	name := msg.Name
+	if name != "" {
+		name = ` "` + name + `"`
+	}
+	return ref + " · " + msg.Role + name
 }
 
 func convertPromptEvent(e uiadapter.RuntimeEvent) PromptRequestMsg {
@@ -127,6 +188,19 @@ func convertPromptEvent(e uiadapter.RuntimeEvent) PromptRequestMsg {
 // convertItemStarted turns an item.started event into a Msg. The payload
 // nests the TurnItem under payload.item with a "kind" discriminator
 // ("agent_message" or "tool_call").
+
+func payloadString(e uiadapter.RuntimeEvent, key string) string {
+	if e.Data == nil {
+		return ""
+	}
+	if value, ok := e.Data[key]; ok {
+		if text, ok := value.(string); ok {
+			return text
+		}
+	}
+	return ""
+}
+
 func convertItemStarted(e uiadapter.RuntimeEvent) Msg {
 	item, _ := e.Data["item"].(map[string]any)
 	kind, _ := item["kind"].(string)
@@ -509,6 +583,11 @@ type VersionCheckMsg struct {
 }
 
 // 实现 msgType 方法以满足接口要求
+func (BrowserTakeoverStartedMsg) msgType() {}
+func (BrowserTakeoverEndedMsg) msgType()   {}
+func (BrowserActionMsg) msgType()          {}
+func (BrowserDownloadDoneMsg) msgType()    {}
+func (BrowserPickSelectedMsg) msgType()    {}
 func (WindowSizeMsg) msgType()       {}
 func (TickMsg) msgType()             {}
 func (KeyMsg) msgType()              {}

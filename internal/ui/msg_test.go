@@ -407,3 +407,76 @@ func TestConvertEventReasoningCompletedJoinsContentVec(t *testing.T) {
 		t.Fatalf("Text=%q, want empty for reasoning items", completed.Text)
 	}
 }
+
+
+func TestConvertEventBrowserEvents(t *testing.T) {
+	cases := []struct {
+		name string
+		e    uiadapter.RuntimeEvent
+		fn   func(t *testing.T, msg Msg)
+	}{
+		{
+			name: "takeover started",
+			e:    uiadapter.RuntimeEvent{Type: "browser.takeover.started", Data: map[string]any{"reason": "login", "note": "请登录"}},
+			fn: func(t *testing.T, msg Msg) {
+				got, ok := msg.(BrowserTakeoverStartedMsg)
+				if !ok || got.Reason != "login" || got.Note != "请登录" {
+					t.Fatalf("unexpected msg: %#v", msg)
+				}
+			},
+		},
+		{
+			name: "takeover ended",
+			e:    uiadapter.RuntimeEvent{Type: "browser.takeover.ended", Data: map[string]any{"result": "resumed"}},
+			fn: func(t *testing.T, msg Msg) {
+				got, ok := msg.(BrowserTakeoverEndedMsg)
+				if !ok || got.Result != "resumed" {
+					t.Fatalf("unexpected msg: %#v", msg)
+				}
+			},
+		},
+		{
+			name: "action line",
+			e:    uiadapter.RuntimeEvent{Type: "browser.action", Data: map[string]any{"action": "click", "target": "ref e3", "result": "ok"}},
+			fn: func(t *testing.T, msg Msg) {
+				got, ok := msg.(BrowserActionMsg)
+				if !ok || got.Action != "click" || got.Target != "ref e3" {
+					t.Fatalf("unexpected msg: %#v", msg)
+				}
+			},
+		},
+		{
+			name: "pick chip formatting",
+			e:    uiadapter.RuntimeEvent{Type: "browser.pick.selected", Data: map[string]any{"ref": "e12", "role": "button", "name": "登录"}},
+			fn: func(t *testing.T, msg Msg) {
+				got, ok := msg.(BrowserPickSelectedMsg)
+				if !ok {
+					t.Fatalf("unexpected msg: %#v", msg)
+				}
+				want := "e12 · button \"登录\""
+				if got.FormatPickChip() != want {
+					t.Fatalf("chip = %q, want %q", got.FormatPickChip(), want)
+				}
+			},
+		},
+		{
+			name: "download done",
+			e:    uiadapter.RuntimeEvent{Type: "browser.download.completed", Data: map[string]any{"filename": "a.pdf", "path": "/dl/a.pdf"}},
+			fn: func(t *testing.T, msg Msg) {
+				got, ok := msg.(BrowserDownloadDoneMsg)
+				if !ok || got.Path != "/dl/a.pdf" {
+					t.Fatalf("unexpected msg: %#v", msg)
+				}
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := ConvertEvent(tc.e)
+			if msg == nil {
+				t.Fatalf("ConvertEvent returned nil")
+			}
+			tc.fn(t, msg)
+		})
+	}
+}

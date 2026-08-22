@@ -66,6 +66,7 @@ type AppModel struct {
 	helpView                 *help.HelpView
 	setupView                any // 可以是 *setup.SetupView 或 *setup.ModelSetupView
 	confirmView              *confirm.Model
+	browserTakeoverConfirm    bool
 	actionPopup              *confirm.ActionPopup // 点击消息文本弹出的操作选择框
 	prevView                 string
 	inlinePermissionReq      *confirm.Request
@@ -232,6 +233,17 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleErrorMsg(msg)
 	case clearCopiedMsg:
 		return m.handleClearCopiedMsg(msg)
+
+	case BrowserTakeoverStartedMsg:
+		return m.handleBrowserTakeoverStarted(msg)
+	case BrowserTakeoverEndedMsg:
+		return m.handleBrowserTakeoverEnded(msg)
+	case BrowserActionMsg:
+		return m.handleBrowserActionMsg(msg)
+	case BrowserDownloadDoneMsg:
+		return m.handleBrowserDownloadDoneMsg(msg)
+	case BrowserPickSelectedMsg:
+		return m.handleBrowserPickSelectedMsg(msg)
 
 	case PromptRequestMsg:
 		return m.handlePromptRequestMsg(msg)
