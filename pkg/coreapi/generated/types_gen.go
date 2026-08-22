@@ -727,6 +727,7 @@ type BrowserConfig struct {
 	WindowHeight int `json:"window_height"`
 	ActionHighlight bool `json:"action_highlight"`
 	PreviewFps int `json:"preview_fps"`
+	DialogPolicy string `json:"dialog_policy"`
 }
 
 type BrowserProfileRecord struct {
@@ -779,6 +780,11 @@ type BrowserControlTakeoverRequest struct {
 
 type BrowserControlResumeRequest struct {
 	Result string `json:"result,omitempty"`
+}
+
+type BrowserUploadProvideRequest struct {
+	RequestID string `json:"request_id"`
+	Paths []string `json:"paths"`
 }
 
 type ElementPick struct {

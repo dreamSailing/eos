@@ -4,8 +4,8 @@
     "api_version":  "v1",
     "target":  "x86_64-pc-windows-gnu",
     "binary":  "eos-core.exe",
-    "sha256":  "sha256:9c8c3002128e73522c352a9058d6b564e458f3826aee475263f919836ccd3678",
-    "signature":  "ed25519:JiKihujT13PQX1a3cjR3LS3c5pEkfhN+Kq5DSTrmj22ISSFHpRcSibeCOhAj9cK5qUfftD6RoUh5FTSDGzC9Dg==",
+    "sha256":  "sha256:b62fd3b3e4088cc9ea487c328c720761da452113effa10741144b70d718e8bc6",
+    "signature":  "ed25519:V78oIYgEZd+2HcJ+kLQSrNltAdhKVhRgzgseopWxZgz5OQGvb+C3GC7sJmXxMG42DwuxAqzFKVjPAvmVFj/ZBg==",
     "min_cli_version":  "v1.0.0-beta.1",
     "features":  [
                      "initialize",
@@ -75,6 +75,7 @@
                      "browser/control_resume",
                      "browser/pick_start",
                      "browser/pick_stop",
+                     "browser/upload_provide",
                      "context/preview",
                      "context/stats",
                      "context/window",

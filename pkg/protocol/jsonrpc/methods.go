@@ -68,6 +68,7 @@ const (
 	MethodBrowserControlResume       = "browser/control_resume"
 	MethodBrowserPickStart           = "browser/pick_start"
 	MethodBrowserPickStop            = "browser/pick_stop"
+	MethodBrowserUploadProvide       = "browser/upload_provide"
 	MethodContextPreview             = "context/preview"
 	MethodContextStats               = "context/stats"
 	MethodContextWindow              = "context/window"
@@ -245,6 +246,7 @@ func AllCoreMethods() []string {
 		MethodBrowserControlResume,
 		MethodBrowserPickStart,
 		MethodBrowserPickStop,
+		MethodBrowserUploadProvide,
 		MethodContextPreview,
 		MethodContextStats,
 		MethodContextWindow,

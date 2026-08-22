@@ -70,6 +70,7 @@ const (
 	MethodBrowserControlResume = "browser/control_resume"
 	MethodBrowserPickStart = "browser/pick_start"
 	MethodBrowserPickStop = "browser/pick_stop"
+	MethodBrowserUploadProvide = "browser/upload_provide"
 	MethodContextPreview = "context/preview"
 	MethodContextStats = "context/stats"
 	MethodContextWindow = "context/window"
@@ -235,6 +236,7 @@ func CoreMethods() []string {
 		MethodBrowserControlResume,
 		MethodBrowserPickStart,
 		MethodBrowserPickStop,
+		MethodBrowserUploadProvide,
 		MethodContextPreview,
 		MethodContextStats,
 		MethodContextWindow,
@@ -390,6 +392,7 @@ func MethodGroups() map[string][]string {
 			MethodBrowserControlResume,
 			MethodBrowserPickStart,
 			MethodBrowserPickStop,
+			MethodBrowserUploadProvide,
 			MethodPluginInstall,
 			MethodPluginList,
 			MethodPluginRemove,
