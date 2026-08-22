@@ -68,6 +68,8 @@ const (
 	MethodBrowserProfiles = "browser/profiles"
 	MethodBrowserControlTakeover = "browser/control_takeover"
 	MethodBrowserControlResume = "browser/control_resume"
+	MethodBrowserPickStart = "browser/pick_start"
+	MethodBrowserPickStop = "browser/pick_stop"
 	MethodContextPreview = "context/preview"
 	MethodContextStats = "context/stats"
 	MethodContextWindow = "context/window"
@@ -231,6 +233,8 @@ func CoreMethods() []string {
 		MethodBrowserProfiles,
 		MethodBrowserControlTakeover,
 		MethodBrowserControlResume,
+		MethodBrowserPickStart,
+		MethodBrowserPickStop,
 		MethodContextPreview,
 		MethodContextStats,
 		MethodContextWindow,
@@ -384,6 +388,8 @@ func MethodGroups() map[string][]string {
 			MethodBrowserProfiles,
 			MethodBrowserControlTakeover,
 			MethodBrowserControlResume,
+			MethodBrowserPickStart,
+			MethodBrowserPickStop,
 			MethodPluginInstall,
 			MethodPluginList,
 			MethodPluginRemove,
