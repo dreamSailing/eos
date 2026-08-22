@@ -156,14 +156,14 @@ func (m *AppModel) refreshMCPPanel() {
 	mcpPanel.SetServers(out)
 	browser, err := m.adapter.BrowserStatus(context.Background())
 	if err != nil {
-		browser = coreapi.BrowserStatus{}
+		browser = coreapi.BrowserRuntimeStatus{}
 	}
 	mcpPanel.SetBrowserSummary(panels.BrowserSummary{
-		Configured: browser.Configured,
-		Enabled:    browser.Enabled,
-		Loaded:     browser.Loaded,
-		ServerName: browser.ServerName,
-		Hint:       browser.InstallHint,
+		Running:   browser.Running,
+		Kind:      browser.BrowserKind,
+		Version:   browser.BrowserVersion,
+		Profile:   browser.Profile,
+		LastError: browser.LastError,
 	})
 }
 

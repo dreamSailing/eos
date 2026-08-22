@@ -593,7 +593,7 @@ func (m *AppModel) handleDoctorSlash() tea.Cmd {
 		fmt.Sprintf("%s: %d", m.localize("可用 skills", "Available skills"), len(skills)),
 		fmt.Sprintf("%s: %d", m.localize("已注册插件", "Registered plugins"), len(plugins)),
 		fmt.Sprintf("%s: %d", m.localize("工具追踪数", "Tool traces"), len(traces)),
-		fmt.Sprintf("%s: %s", m.localize("浏览器 MCP", "Browser MCP"), m.browserStatusLabel(browser)),
+		fmt.Sprintf("%s: %s", m.localize("内置浏览器", "Built-in browser"), m.browserStatusLabel(browser)),
 	}
 	if strings.TrimSpace(browser.LastError) != "" {
 		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("浏览器错误", "Browser error"), browser.LastError))
@@ -1097,7 +1097,7 @@ func (m *AppModel) handleStatusSlash() tea.Cmd {
 		fmt.Sprintf("%s: %s", m.localize("审批模式", "Approval mode"), snap.ApprovalMode),
 		fmt.Sprintf("%s: %s", m.localize("沙箱模式", "Sandbox mode"), snap.SandboxMode),
 		fmt.Sprintf("%s: %s", m.localize("当前会话", "Session"), blankFallback(currentSessionID, m.localize("无", "none"))),
-		fmt.Sprintf("%s: %s", m.localize("浏览器 MCP", "Browser MCP"), m.browserStatusLabel(browser)),
+		fmt.Sprintf("%s: %s", m.localize("内置浏览器", "Built-in browser"), m.browserStatusLabel(browser)),
 	}
 	if strings.TrimSpace(snap.LastAuthorization) != "" {
 		lines = append(lines, fmt.Sprintf("%s: %s", m.localize("最近授权", "Last authorization"), snap.LastAuthorization))
@@ -1155,16 +1155,14 @@ func (m *AppModel) handleRemoteSlash(args []string) tea.Cmd {
 	return nil
 }
 
-func (m *AppModel) browserStatusLabel(status coreapi.BrowserStatus) string {
+func (m *AppModel) browserStatusLabel(status coreapi.BrowserRuntimeStatus) string {
 	switch {
-	case status.Configured && status.Enabled && status.Loaded:
-		return m.localize("已可用", "ready")
-	case status.Configured && status.Enabled:
-		return m.localize("已配置，待加载", "configured, pending load")
-	case status.Configured:
-		return m.localize("已配置，未启用", "configured, disabled")
+	case status.Running:
+		return m.localize("运行中", fmt.Sprintf("running (%s)", status.BrowserKind))
+	case status.LastError != "":
+		return m.localize("异常", "error")
 	default:
-		return m.localize("未配置", "not configured")
+		return m.localize("未启动", "not running")
 	}
 }
 

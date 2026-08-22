@@ -62,6 +62,10 @@ const (
 	MethodExtensionsPluginsList = "extensions/plugins/list"
 	MethodExtensionsPluginSetEnabled = "extensions/plugin/set_enabled"
 	MethodBrowserStatus = "browser/status"
+	MethodBrowserLaunch = "browser/launch"
+	MethodBrowserClose = "browser/close"
+	MethodBrowserTabs = "browser/tabs"
+	MethodBrowserProfiles = "browser/profiles"
 	MethodContextPreview = "context/preview"
 	MethodContextStats = "context/stats"
 	MethodContextWindow = "context/window"
@@ -219,6 +223,10 @@ func CoreMethods() []string {
 		MethodExtensionsPluginsList,
 		MethodExtensionsPluginSetEnabled,
 		MethodBrowserStatus,
+		MethodBrowserLaunch,
+		MethodBrowserClose,
+		MethodBrowserTabs,
+		MethodBrowserProfiles,
 		MethodContextPreview,
 		MethodContextStats,
 		MethodContextWindow,
@@ -366,6 +374,10 @@ func MethodGroups() map[string][]string {
 			MethodExtensionsPluginsList,
 			MethodExtensionsPluginSetEnabled,
 			MethodBrowserStatus,
+			MethodBrowserLaunch,
+			MethodBrowserClose,
+			MethodBrowserTabs,
+			MethodBrowserProfiles,
 			MethodPluginInstall,
 			MethodPluginList,
 			MethodPluginRemove,

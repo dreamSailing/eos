@@ -845,10 +845,36 @@ func (s remoteExtensionService) SetPluginEnabled(ctx context.Context, req coreap
 	return s.engine.call(ctx, protocoljsonrpc.MethodExtensionsPluginSetEnabled, req, &out)
 }
 
-func (s remoteExtensionService) BrowserStatus(ctx context.Context) (coreapi.BrowserStatus, error) {
-	var out coreapi.BrowserStatus
+func (s remoteExtensionService) BrowserStatus(ctx context.Context) (coreapi.BrowserRuntimeStatus, error) {
+	var out coreapi.BrowserRuntimeStatus
 	if err := s.engine.call(ctx, protocoljsonrpc.MethodBrowserStatus, nil, &out); err != nil {
-		return coreapi.BrowserStatus{}, err
+		return coreapi.BrowserRuntimeStatus{}, err
+	}
+	return out, nil
+}
+
+func (s remoteExtensionService) BrowserLaunch(ctx context.Context, req coreapi.BrowserLaunchRequest) error {
+	var out map[string]any
+	return s.engine.call(ctx, protocoljsonrpc.MethodBrowserLaunch, req, &out)
+}
+
+func (s remoteExtensionService) BrowserClose(ctx context.Context, req coreapi.BrowserCloseRequest) error {
+	var out map[string]any
+	return s.engine.call(ctx, protocoljsonrpc.MethodBrowserClose, req, &out)
+}
+
+func (s remoteExtensionService) BrowserTabs(ctx context.Context) ([]coreapi.BrowserTabInfo, error) {
+	var out []coreapi.BrowserTabInfo
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodBrowserTabs, nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s remoteExtensionService) BrowserProfiles(ctx context.Context) ([]coreapi.BrowserProfileRecord, error) {
+	var out []coreapi.BrowserProfileRecord
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodBrowserProfiles, nil, &out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

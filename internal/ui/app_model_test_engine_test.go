@@ -452,8 +452,24 @@ func (s *testExtensionService) ListPlugins(context.Context) ([]coreapi.PluginInf
 func (s *testExtensionService) SetPluginEnabled(context.Context, coreapi.SetExtensionEnabledRequest) error {
 	return nil
 }
-func (s *testExtensionService) BrowserStatus(context.Context) (coreapi.BrowserStatus, error) {
-	return coreapi.BrowserStatus{}, nil
+func (s *testExtensionService) BrowserStatus(context.Context) (coreapi.BrowserRuntimeStatus, error) {
+	return coreapi.BrowserRuntimeStatus{}, nil
+}
+
+func (s *testExtensionService) BrowserLaunch(ctx context.Context, req coreapi.BrowserLaunchRequest) error {
+	return nil
+}
+
+func (s *testExtensionService) BrowserClose(ctx context.Context, req coreapi.BrowserCloseRequest) error {
+	return nil
+}
+
+func (s *testExtensionService) BrowserTabs(ctx context.Context) ([]coreapi.BrowserTabInfo, error) {
+	return nil, nil
+}
+
+func (s *testExtensionService) BrowserProfiles(ctx context.Context) ([]coreapi.BrowserProfileRecord, error) {
+	return nil, nil
 }
 
 // === MCP ===

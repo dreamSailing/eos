@@ -719,6 +719,92 @@ type BrowserStatus struct {
 	InstallHint string `json:"install_hint,omitempty"`
 }
 
+type BrowserConfig struct {
+	Headless bool `json:"headless"`
+	DownloadDir string `json:"download_dir,omitempty"`
+	DefaultProfile string `json:"default_profile"`
+	WindowWidth int `json:"window_width"`
+	WindowHeight int `json:"window_height"`
+	ActionHighlight bool `json:"action_highlight"`
+	PreviewFps int `json:"preview_fps"`
+}
+
+type BrowserProfileRecord struct {
+	Name string `json:"name"`
+	Dir string `json:"dir"`
+	CreatedAt int64 `json:"created_at"`
+	Note string `json:"note,omitempty"`
+}
+
+type BrowserRuntimeStatus struct {
+	Running bool `json:"running"`
+	Headless bool `json:"headless"`
+	BrowserKind string `json:"browser_kind,omitempty"`
+	BrowserVersion string `json:"browser_version,omitempty"`
+	Profile string `json:"profile,omitempty"`
+	ProfileDir string `json:"profile_dir,omitempty"`
+	Tabs []BrowserTabInfo `json:"tabs"`
+	CurrentURL string `json:"current_url,omitempty"`
+	Control BrowserControlState `json:"control"`
+	LastError string `json:"last_error,omitempty"`
+}
+
+type BrowserTabInfo struct {
+	Index int `json:"index"`
+	URL string `json:"url"`
+	Title string `json:"title"`
+	Active bool `json:"active"`
+}
+
+type BrowserControlState struct {
+	Mode string `json:"mode"`
+	Reason string `json:"reason,omitempty"`
+	Note string `json:"note,omitempty"`
+	DeadlineMs int64 `json:"deadline_ms,omitempty"`
+}
+
+type BrowserLaunchRequest struct {
+	Profile string `json:"profile,omitempty"`
+}
+
+type BrowserCloseRequest struct {
+	Profile string `json:"profile,omitempty"`
+}
+
+type BrowserControlTakeoverRequest struct {
+	Reason string `json:"reason,omitempty"`
+	Note string `json:"note,omitempty"`
+	TimeoutMs int64 `json:"timeout_ms,omitempty"`
+}
+
+type ElementPick struct {
+	Ref string `json:"ref,omitempty"`
+	Selector string `json:"selector,omitempty"`
+	Role string `json:"role,omitempty"`
+	Name string `json:"name,omitempty"`
+	Text string `json:"text,omitempty"`
+	URL string `json:"url,omitempty"`
+	Ts int64 `json:"ts"`
+}
+
+type BrowserAction struct {
+	Action string `json:"action"`
+	Target string `json:"target,omitempty"`
+	Result string `json:"result"`
+	Ts int64 `json:"ts"`
+}
+
+type BrowserDownloadEvent struct {
+	Guid string `json:"guid,omitempty"`
+	URL string `json:"url,omitempty"`
+	Filename string `json:"filename,omitempty"`
+	Path string `json:"path,omitempty"`
+	ReceivedBytes int64 `json:"received_bytes"`
+	TotalBytes int64 `json:"total_bytes"`
+	State string `json:"state"`
+	Ts int64 `json:"ts"`
+}
+
 type ContextStats struct {
 	MessageCount int64 `json:"message_count"`
 	Estimated int64 `json:"estimated"`

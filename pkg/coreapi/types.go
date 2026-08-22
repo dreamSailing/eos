@@ -121,7 +121,11 @@ type ExtensionService interface {
 	InvokeSkill(context.Context, InvokeSkillRequest) (InvokeSkillResult, error)
 	ListPlugins(context.Context) ([]PluginInfo, error)
 	SetPluginEnabled(context.Context, SetExtensionEnabledRequest) error
-	BrowserStatus(context.Context) (BrowserStatus, error)
+	BrowserStatus(context.Context) (BrowserRuntimeStatus, error)
+	BrowserLaunch(ctx context.Context, req BrowserLaunchRequest) error
+	BrowserClose(ctx context.Context, req BrowserCloseRequest) error
+	BrowserTabs(ctx context.Context) ([]BrowserTabInfo, error)
+	BrowserProfiles(ctx context.Context) ([]BrowserProfileRecord, error)
 }
 
 type ContextService interface {
@@ -1115,15 +1119,48 @@ type PluginInfo struct {
 	Enabled     bool   `json:"enabled"`
 }
 
-type BrowserStatus struct {
-	ServerName  string `json:"server_name,omitempty"`
-	Configured  bool   `json:"configured"`
-	Enabled     bool   `json:"enabled"`
-	Loaded      bool   `json:"loaded"`
-	Tools       int    `json:"tools,omitempty"`
-	LastError   string `json:"last_error,omitempty"`
-	Command     string `json:"command,omitempty"`
-	InstallHint string `json:"install_hint,omitempty"`
+// BrowserRuntimeStatus 是内核内置 CDP 浏览器引擎的真实运行时状态
+// （running/headed/浏览器种类与版本/profile/tabs/控制权）。
+type BrowserRuntimeStatus struct {
+	Running        bool                `json:"running"`
+	Headless       bool                `json:"headless"`
+	BrowserKind    string              `json:"browser_kind,omitempty"`
+	BrowserVersion string              `json:"browser_version,omitempty"`
+	Profile        string              `json:"profile,omitempty"`
+	ProfileDir     string              `json:"profile_dir,omitempty"`
+	Tabs           []BrowserTabInfo    `json:"tabs"`
+	CurrentURL     string              `json:"current_url,omitempty"`
+	Control        BrowserControlState `json:"control"`
+	LastError      string              `json:"last_error,omitempty"`
+}
+
+type BrowserTabInfo struct {
+	Index  int    `json:"index"`
+	URL    string `json:"url"`
+	Title  string `json:"title"`
+	Active bool   `json:"active"`
+}
+
+type BrowserControlState struct {
+	Mode       string `json:"mode"`
+	Reason     string `json:"reason,omitempty"`
+	Note       string `json:"note,omitempty"`
+	DeadlineMS *int64 `json:"deadline_ms,omitempty"`
+}
+
+type BrowserLaunchRequest struct {
+	Profile string `json:"profile,omitempty"`
+}
+
+type BrowserCloseRequest struct {
+	Profile string `json:"profile,omitempty"`
+}
+
+type BrowserProfileRecord struct {
+	Name      string `json:"name"`
+	Dir       string `json:"dir"`
+	CreatedAt int64  `json:"created_at"`
+	Note      string `json:"note,omitempty"`
 }
 
 type ContextStats struct {

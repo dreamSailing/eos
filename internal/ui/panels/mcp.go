@@ -37,11 +37,11 @@ type MCPPanel struct {
 }
 
 type BrowserSummary struct {
-	Configured bool
-	Enabled    bool
-	Loaded     bool
-	ServerName string
-	Hint       string
+	Running   bool
+	Kind      string
+	Version   string
+	Profile   string
+	LastError string
 }
 
 // NewMCPPanel 创建新的MCP面板
@@ -250,20 +250,18 @@ func (p *MCPPanel) View() string {
 		content.WriteString("\n\n")
 	}
 
-	statusLine := i18n.T("mcp.browser.missing", p.language)
+	statusLine := i18n.T("mcp.browser.idle", p.language)
 	switch {
-	case p.browserSummary.Configured && p.browserSummary.Enabled && p.browserSummary.Loaded:
-		statusLine = fmt.Sprintf(i18n.T("mcp.browser.ready", p.language), blankOr(p.browserSummary.ServerName, "playwright"))
-	case p.browserSummary.Configured && p.browserSummary.Enabled:
-		statusLine = fmt.Sprintf(i18n.T("mcp.browser.configured", p.language), blankOr(p.browserSummary.ServerName, "playwright"))
-	case p.browserSummary.Configured:
-		statusLine = fmt.Sprintf(i18n.T("mcp.browser.disabled", p.language), blankOr(p.browserSummary.ServerName, "playwright"))
+	case p.browserSummary.Running:
+		kind := blankOr(p.browserSummary.Kind, "chrome")
+		if p.browserSummary.Version != "" {
+			kind = fmt.Sprintf("%s %s", kind, p.browserSummary.Version)
+		}
+		statusLine = fmt.Sprintf(i18n.T("mcp.browser.ready", p.language), kind)
+	case p.browserSummary.LastError != "":
+		statusLine = fmt.Sprintf(i18n.T("mcp.browser.error", p.language), p.browserSummary.LastError)
 	}
 	content.WriteString(statusLine)
-	if strings.TrimSpace(p.browserSummary.Hint) != "" {
-		content.WriteString("\n")
-		content.WriteString(p.styles.TextMuted.Render(p.browserSummary.Hint))
-	}
 	content.WriteString("\n\n")
 
 	var opStrs []string

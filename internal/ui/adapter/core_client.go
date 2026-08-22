@@ -1317,11 +1317,39 @@ func (a *CoreClientAdapter) Plugins(ctx context.Context) ([]coreapi.PluginInfo, 
 	return a.engine.Extensions().ListPlugins(ctx)
 }
 
-func (a *CoreClientAdapter) BrowserStatus(ctx context.Context) (coreapi.BrowserStatus, error) {
+func (a *CoreClientAdapter) BrowserStatus(ctx context.Context) (coreapi.BrowserRuntimeStatus, error) {
 	if a == nil || a.engine == nil {
-		return coreapi.BrowserStatus{}, errors.New("core client is not available")
+		return coreapi.BrowserRuntimeStatus{}, errors.New("core client is not available")
 	}
 	return a.engine.Extensions().BrowserStatus(ctx)
+}
+
+func (a *CoreClientAdapter) BrowserLaunch(ctx context.Context, req coreapi.BrowserLaunchRequest) error {
+	if a == nil || a.engine == nil {
+		return errors.New("core client is not available")
+	}
+	return a.engine.Extensions().BrowserLaunch(ctx, req)
+}
+
+func (a *CoreClientAdapter) BrowserClose(ctx context.Context, req coreapi.BrowserCloseRequest) error {
+	if a == nil || a.engine == nil {
+		return errors.New("core client is not available")
+	}
+	return a.engine.Extensions().BrowserClose(ctx, req)
+}
+
+func (a *CoreClientAdapter) BrowserTabs(ctx context.Context) ([]coreapi.BrowserTabInfo, error) {
+	if a == nil || a.engine == nil {
+		return nil, errors.New("core client is not available")
+	}
+	return a.engine.Extensions().BrowserTabs(ctx)
+}
+
+func (a *CoreClientAdapter) BrowserProfiles(ctx context.Context) ([]coreapi.BrowserProfileRecord, error) {
+	if a == nil || a.engine == nil {
+		return nil, errors.New("core client is not available")
+	}
+	return a.engine.Extensions().BrowserProfiles(ctx)
 }
 
 func (a *CoreClientAdapter) CurrentRemoteRepo(ctx context.Context) (coreapi.RemoteRepoState, bool, error) {

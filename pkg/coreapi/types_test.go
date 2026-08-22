@@ -197,8 +197,24 @@ func (compileTimeExtensions) ListPlugins(context.Context) ([]PluginInfo, error) 
 func (compileTimeExtensions) SetPluginEnabled(context.Context, SetExtensionEnabledRequest) error {
 	return nil
 }
-func (compileTimeExtensions) BrowserStatus(context.Context) (BrowserStatus, error) {
-	return BrowserStatus{}, nil
+func (compileTimeExtensions) BrowserStatus(context.Context) (BrowserRuntimeStatus, error) {
+	return BrowserRuntimeStatus{}, nil
+}
+
+func (compileTimeExtensions) BrowserLaunch(ctx context.Context, req BrowserLaunchRequest) error {
+	return nil
+}
+
+func (compileTimeExtensions) BrowserClose(ctx context.Context, req BrowserCloseRequest) error {
+	return nil
+}
+
+func (compileTimeExtensions) BrowserTabs(ctx context.Context) ([]BrowserTabInfo, error) {
+	return nil, nil
+}
+
+func (compileTimeExtensions) BrowserProfiles(ctx context.Context) ([]BrowserProfileRecord, error) {
+	return nil, nil
 }
 
 type compileTimeContext struct{}
