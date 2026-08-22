@@ -777,6 +777,10 @@ type BrowserControlTakeoverRequest struct {
 	TimeoutMs int64 `json:"timeout_ms,omitempty"`
 }
 
+type BrowserControlResumeRequest struct {
+	Result string `json:"result,omitempty"`
+}
+
 type ElementPick struct {
 	Ref string `json:"ref,omitempty"`
 	Selector string `json:"selector,omitempty"`

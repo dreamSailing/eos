@@ -464,6 +464,14 @@ func (s *testExtensionService) BrowserClose(ctx context.Context, req coreapi.Bro
 	return nil
 }
 
+func (s *testExtensionService) BrowserControlTakeover(ctx context.Context, req coreapi.BrowserControlTakeoverRequest) error {
+	return nil
+}
+
+func (s *testExtensionService) BrowserControlResume(ctx context.Context) error {
+	return nil
+}
+
 func (s *testExtensionService) BrowserTabs(ctx context.Context) ([]coreapi.BrowserTabInfo, error) {
 	return nil, nil
 }

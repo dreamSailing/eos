@@ -1338,6 +1338,20 @@ func (a *CoreClientAdapter) BrowserClose(ctx context.Context, req coreapi.Browse
 	return a.engine.Extensions().BrowserClose(ctx, req)
 }
 
+func (a *CoreClientAdapter) BrowserControlTakeover(ctx context.Context, req coreapi.BrowserControlTakeoverRequest) error {
+	if a == nil || a.engine == nil {
+		return errors.New("core client is not available")
+	}
+	return a.engine.Extensions().BrowserControlTakeover(ctx, req)
+}
+
+func (a *CoreClientAdapter) BrowserControlResume(ctx context.Context) error {
+	if a == nil || a.engine == nil {
+		return errors.New("core client is not available")
+	}
+	return a.engine.Extensions().BrowserControlResume(ctx)
+}
+
 func (a *CoreClientAdapter) BrowserTabs(ctx context.Context) ([]coreapi.BrowserTabInfo, error) {
 	if a == nil || a.engine == nil {
 		return nil, errors.New("core client is not available")

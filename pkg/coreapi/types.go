@@ -124,6 +124,8 @@ type ExtensionService interface {
 	BrowserStatus(context.Context) (BrowserRuntimeStatus, error)
 	BrowserLaunch(ctx context.Context, req BrowserLaunchRequest) error
 	BrowserClose(ctx context.Context, req BrowserCloseRequest) error
+	BrowserControlTakeover(ctx context.Context, req BrowserControlTakeoverRequest) error
+	BrowserControlResume(ctx context.Context) error
 	BrowserTabs(ctx context.Context) ([]BrowserTabInfo, error)
 	BrowserProfiles(ctx context.Context) ([]BrowserProfileRecord, error)
 }
@@ -1154,6 +1156,16 @@ type BrowserLaunchRequest struct {
 
 type BrowserCloseRequest struct {
 	Profile string `json:"profile,omitempty"`
+}
+
+type BrowserControlTakeoverRequest struct {
+	Reason   string `json:"reason,omitempty"`
+	Note     string `json:"note,omitempty"`
+	TimeoutMS *int64 `json:"timeout_ms,omitempty"`
+}
+
+type BrowserControlResumeRequest struct {
+	Result string `json:"result,omitempty"`
 }
 
 type BrowserProfileRecord struct {

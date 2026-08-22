@@ -863,6 +863,16 @@ func (s remoteExtensionService) BrowserClose(ctx context.Context, req coreapi.Br
 	return s.engine.call(ctx, protocoljsonrpc.MethodBrowserClose, req, &out)
 }
 
+func (s remoteExtensionService) BrowserControlTakeover(ctx context.Context, req coreapi.BrowserControlTakeoverRequest) error {
+	var out map[string]any
+	return s.engine.call(ctx, protocoljsonrpc.MethodBrowserControlTakeover, req, &out)
+}
+
+func (s remoteExtensionService) BrowserControlResume(ctx context.Context) error {
+	var out map[string]any
+	return s.engine.call(ctx, protocoljsonrpc.MethodBrowserControlResume, coreapi.BrowserControlResumeRequest{}, &out)
+}
+
 func (s remoteExtensionService) BrowserTabs(ctx context.Context) ([]coreapi.BrowserTabInfo, error) {
 	var out []coreapi.BrowserTabInfo
 	if err := s.engine.call(ctx, protocoljsonrpc.MethodBrowserTabs, nil, &out); err != nil {

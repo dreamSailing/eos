@@ -209,6 +209,14 @@ func (compileTimeExtensions) BrowserClose(ctx context.Context, req BrowserCloseR
 	return nil
 }
 
+func (compileTimeExtensions) BrowserControlTakeover(ctx context.Context, req BrowserControlTakeoverRequest) error {
+	return nil
+}
+
+func (compileTimeExtensions) BrowserControlResume(ctx context.Context) error {
+	return nil
+}
+
 func (compileTimeExtensions) BrowserTabs(ctx context.Context) ([]BrowserTabInfo, error) {
 	return nil, nil
 }

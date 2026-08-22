@@ -64,6 +64,8 @@ const (
 	MethodBrowserClose               = "browser/close"
 	MethodBrowserTabs                = "browser/tabs"
 	MethodBrowserProfiles            = "browser/profiles"
+	MethodBrowserControlTakeover     = "browser/control_takeover"
+	MethodBrowserControlResume       = "browser/control_resume"
 	MethodContextPreview             = "context/preview"
 	MethodContextStats               = "context/stats"
 	MethodContextWindow              = "context/window"
@@ -237,6 +239,8 @@ func AllCoreMethods() []string {
 		MethodBrowserClose,
 		MethodBrowserTabs,
 		MethodBrowserProfiles,
+		MethodBrowserControlTakeover,
+		MethodBrowserControlResume,
 		MethodContextPreview,
 		MethodContextStats,
 		MethodContextWindow,
