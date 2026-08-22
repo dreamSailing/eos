@@ -72,11 +72,6 @@ func newUpdateCmd() *cobra.Command {
 			if outcome.CoreUpdated {
 				fmt.Print(i18n.T("update.core_updated", lang))
 			}
-			if result.ReleaseNotes != "" {
-				fmt.Println()
-				fmt.Println(i18n.T("update.release_notes", lang))
-				fmt.Println(result.ReleaseNotes)
-			}
 			return nil
 		},
 	}

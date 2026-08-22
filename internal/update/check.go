@@ -7,7 +7,6 @@ package update
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,20 +31,7 @@ type CheckResult struct {
 	// ChecksumURL 指向该 Release 的 SHA256SUMS.txt，Apply 阶段校验归档完整性。
 	ChecksumURL string `json:"checksumUrl,omitempty"`
 	DownloadURL string `json:"downloadUrl,omitempty"`
-	ReleaseNotes string `json:"releaseNotes,omitempty"`
-	ReleaseURL   string `json:"releaseUrl,omitempty"`
-}
-
-type githubRelease struct {
-	TagName string        `json:"tag_name"`
-	Body    string        `json:"body"`
-	HTMLURL string        `json:"html_url"`
-	Assets  []githubAsset `json:"assets"`
-}
-
-type githubAsset struct {
-	Name               string `json:"name"`
-	BrowserDownloadURL string `json:"browser_download_url"`
+	ReleaseURL  string `json:"releaseUrl,omitempty"`
 }
 
 func CheckLatest(ctx context.Context) (*CheckResult, error) {
@@ -60,79 +46,101 @@ func CheckLatestFor(ctx context.Context, goos, goarch string) (*CheckResult, err
 		return &CheckResult{CurrentVersion: current, HasUpdate: false}, nil
 	}
 
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", githubOwner, githubRepo)
-
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 
-	release, err := fetchLatestRelease(ctx, url)
+	latest, err := fetchLatestTag(ctx, latestReleasesPageURL())
 	if err != nil {
 		return nil, err
 	}
 
-	latest := strings.TrimSpace(release.TagName)
-	result := &CheckResult{
-		CurrentVersion: current,
-		LatestVersion:  latest,
-		HasUpdate:      isNewer(current, latest),
-		ReleaseNotes:   release.Body,
-		ReleaseURL:     release.HTMLURL,
-	}
-
-	assetName, suffix := platformAssetName(latest, goos, goarch)
-	for _, asset := range release.Assets {
-		switch {
-		case asset.Name == assetName:
-			result.AssetName = asset.Name
-			result.DownloadURL = asset.BrowserDownloadURL
-		case asset.Name == "SHA256SUMS.txt":
-			result.ChecksumURL = asset.BrowserDownloadURL
-		}
-	}
-	_ = suffix // suffix 已并入 assetName
-
-	return result, nil
+	return buildCheckResult(current, latest, goos, goarch), nil
 }
 
-// fetchLatestRelease 拉取 releases/latest 的元数据。弱网下 api.github.com
-// 瞬断常见（EOF/RST），带指数退避重试；重试共享外层 ctx 超时预算。
-func fetchLatestRelease(ctx context.Context, url string) (githubRelease, error) {
+// latestReleasesPageURL 返回 releases/latest 网页地址（非 API 端点）。
+func latestReleasesPageURL() string {
+	return fmt.Sprintf("https://github.com/%s/%s/releases/latest", githubOwner, githubRepo)
+}
+
+// fetchLatestTag 通过 releases/latest 网页重定向解析最新版本号。
+// 不走 api.github.com：未认证限流 60 次/小时/IP，共享代理出口（国内常态）
+// 极易触发 403；网页会 302 到 releases/tag/<版本>，从 Location 解析 tag
+// 不占 API 配额。与 scripts/install.ps1 同一方案。
+// 弱网下瞬断常见（EOF/RST），带指数退避重试；重试共享外层 ctx 超时预算。
+func fetchLatestTag(ctx context.Context, page string) (string, error) {
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse // 不跟随重定向，直接取 302 的 Location
+		},
+	}
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, page, nil)
 		if err != nil {
-			return githubRelease{}, fmt.Errorf("create request: %w", err)
+			return "", fmt.Errorf("create request: %w", err)
 		}
-		req.Header.Set("Accept", "application/vnd.github+json")
 		req.Header.Set("User-Agent", "EOS-Update-Check")
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := client.Do(req)
 		if err != nil {
-			lastErr = fmt.Errorf("fetch latest release: %w", err)
+			lastErr = fmt.Errorf("resolve latest release: %w", err)
 		} else {
-			if resp.StatusCode != http.StatusOK {
-				body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-				resp.Body.Close()
-				return githubRelease{}, fmt.Errorf("GitHub API returned %d: %s", resp.StatusCode, string(body))
-			}
-			var release githubRelease
-			err = json.NewDecoder(resp.Body).Decode(&release)
+			tag, err := tagFromRedirect(resp)
 			resp.Body.Close()
 			if err == nil {
-				return release, nil
+				return tag, nil
 			}
-			lastErr = fmt.Errorf("decode release: %w", err)
+			// 非 3xx/缺 Location 是终态错误（如限流页），短时间窗内结果
+			// 不变，重试无意义，直接失败。
+			return "", err
 		}
 		if attempt == 3 {
 			break
 		}
 		select {
 		case <-ctx.Done():
-			return githubRelease{}, lastErr
+			return "", lastErr
 		case <-time.After(time.Duration(attempt) * time.Second):
 		}
 	}
-	return githubRelease{}, lastErr
+	return "", lastErr
+}
+
+// tagFromRedirect 从 releases/latest 的重定向响应中解析版本号。
+// 非 3xx/缺 Location 视为终态错误（如限流页），不重试——短时间窗内结果不变。
+func tagFromRedirect(resp *http.Response) (string, error) {
+	defer resp.Body.Close()
+	loc := strings.TrimSpace(resp.Header.Get("Location"))
+	const marker = "/tag/"
+	if loc == "" || !strings.Contains(loc, marker) {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return "", fmt.Errorf("releases/latest 未返回版本重定向（HTTP %d）: %s",
+			resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	tag := strings.TrimSuffix(loc[strings.LastIndex(loc, marker)+len(marker):], "/")
+	if tag == "" {
+		return "", fmt.Errorf("releases/latest 重定向缺少版本号: %s", loc)
+	}
+	return tag, nil
+}
+
+// buildCheckResult 由最新版本号按发布资产命名约定构造检查结果。
+// 归档与校验文件 URL 均为确定性拼接（releases/download/<tag>/<资产名>，
+// 命名与 CI 产物一致），无需再请求 API 枚举 assets。
+func buildCheckResult(current, latest, goos, goarch string) *CheckResult {
+	result := &CheckResult{
+		CurrentVersion: current,
+		LatestVersion:  latest,
+		HasUpdate:      isNewer(current, latest),
+		ReleaseURL:     fmt.Sprintf("https://github.com/%s/%s/releases/tag/%s", githubOwner, githubRepo, latest),
+	}
+
+	assetName, _ := platformAssetName(latest, goos, goarch)
+	base := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s", githubOwner, githubRepo, latest)
+	result.AssetName = assetName
+	result.DownloadURL = base + "/" + assetName
+	result.ChecksumURL = base + "/SHA256SUMS.txt"
+	return result
 }
 
 // platformAssetName 返回 goos/goarch 对应的发布归档名（与 .github 发布
