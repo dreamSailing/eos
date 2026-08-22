@@ -1168,6 +1168,15 @@ type BrowserControlResumeRequest struct {
 	Result string `json:"result,omitempty"`
 }
 
+type BrowserUploadProvideRequest struct {
+	RequestID string   `json:"request_id"`
+	Paths     []string `json:"paths,omitempty"`
+}
+
+type BrowserSetDefaultProfileRequest struct {
+	Profile string `json:"profile"`
+}
+
 type BrowserProfileRecord struct {
 	Name      string `json:"name"`
 	Dir       string `json:"dir"`

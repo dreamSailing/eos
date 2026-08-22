@@ -787,6 +787,10 @@ type BrowserUploadProvideRequest struct {
 	Paths []string `json:"paths"`
 }
 
+type BrowserSetDefaultProfileRequest struct {
+	Profile string `json:"profile"`
+}
+
 type ElementPick struct {
 	Ref string `json:"ref,omitempty"`
 	Selector string `json:"selector,omitempty"`
