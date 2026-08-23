@@ -146,12 +146,11 @@ jobs:
           cp "eos-core-rs/pkg/coreapi/sidecar/core/${{ matrix.triple }}/manifest.json" "dist/$STAGE/core/${{ matrix.triple }}/"
           cd dist
           if [ "$GOOS_T" = "windows" ]; then
-            # 不用 powershell Compress-Archive：它在 Windows 上以反斜杠写入
-            # zip 条目（eos-...\core\），而 ZIP 规范要求正斜杠；解压器
-            # （Go zip / 各类工具）只按 "/" 识别目录条目，导致目录当作
-            # 文件、eos update 解压失败。改用 Windows 自带 bsdtar：
-            # tar -a 结尾按扩展名选 zip 格式且条目一律 POSIX "/"。
-            tar -a -cf "$STAGE.zip" "$STAGE"
+            # 不用 powershell Compress-Archive（反斜杠条目）也不用 GNU tar
+            # -a（Git Bash 下产出裸 tar 无 zip 结构）——用仓库内 Python 脚本
+            # 显式写 POSIX '/' 条目 + 目录条目（ZIP 规范；eos update 解压
+            # 只认正斜杠目录条目）。
+            python "$GITHUB_WORKSPACE/scripts/pack_zip.py" "$STAGE"
           else
             tar -czf "$STAGE.tar.gz" "$STAGE"
           fi
