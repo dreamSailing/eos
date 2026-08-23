@@ -7,7 +7,7 @@ package version
 
 var (
 	// AppVersion 是应用程序的版本号
-	AppVersion = "v1.0.0-beta.13"
+	AppVersion = "v1.0.0-beta.14"
 
 	// BuildCommit 是构建时的 git commit hash（通过 -ldflags 注入）
 	BuildCommit = "unknown"
