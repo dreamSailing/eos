@@ -12,6 +12,8 @@ import (
 
 	"github.com/dreamSailing/eos/internal/pkg/settings"
 	"github.com/dreamSailing/eos/internal/ui/styles"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestSettingsPanelAlwaysShowsDefaultPlanPromptStyle(t *testing.T) {
@@ -71,5 +73,103 @@ func TestSettingsPanelHidesDevelopmentOnlyRows(t *testing.T) {
 		if hiddenRows[row[0]] {
 			t.Fatalf("development-only row %q should not be visible", row[0])
 		}
+	}
+}
+
+func keyRunes(s string) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+}
+
+// selectRow 把表格光标移到稳定字段 ID 对应的行
+func selectRow(t *testing.T, panel *SettingsPanel, key string) {
+	t.Helper()
+	for i, rowKey := range panel.rowKeys {
+		if rowKey == key {
+			for panel.table.Cursor() != i {
+				panel.Update(keyRunes("j"))
+			}
+			return
+		}
+	}
+	t.Fatalf("row %q not found", key)
+}
+
+func TestSettingsPanelLanguageEditUsesChoiceMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".eos", "settings.json")
+	panel := NewSettingsPanel(styles.NewStyles(styles.DefaultDarkTheme()), settings.NewManager(path), "zh")
+	panel.LoadSettings()
+	selectRow(t, panel, "Language")
+
+	panel.Update(keyRunes("e"))
+	if !panel.editMode || panel.editChoices == nil {
+		t.Fatalf("语言应进入选择模式: editMode=%v choices=%v", panel.editMode, panel.editChoices)
+	}
+	if panel.editChoiceIndex != 0 {
+		t.Fatalf("当前值 zh 应选中第 0 项，got %d", panel.editChoiceIndex)
+	}
+
+	panel.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if panel.editChoiceIndex != 1 {
+		t.Fatalf("right 应切到第 1 项，got %d", panel.editChoiceIndex)
+	}
+	panel.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if panel.editMode {
+		t.Fatal("enter 后应退出编辑模式")
+	}
+	if panel.settings.Language != "en" {
+		t.Fatalf("Language=%q, want en", panel.settings.Language)
+	}
+}
+
+func TestSettingsPanelLanguageChoiceWrapsAround(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".eos", "settings.json")
+	panel := NewSettingsPanel(styles.NewStyles(styles.DefaultDarkTheme()), settings.NewManager(path), "zh")
+	panel.LoadSettings()
+	selectRow(t, panel, "Language")
+
+	panel.Update(keyRunes("e"))
+	panel.Update(tea.KeyMsg{Type: tea.KeyLeft}) // zh → 回绕到 en
+	if panel.editChoiceIndex != 1 {
+		t.Fatalf("left 应从 zh 回绕到 en（第 1 项），got %d", panel.editChoiceIndex)
+	}
+	panel.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if panel.settings.Language != "en" {
+		t.Fatalf("Language=%q, want en", panel.settings.Language)
+	}
+}
+
+func TestSettingsPanelThemeEditUsesChoiceMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".eos", "settings.json")
+	panel := NewSettingsPanel(styles.NewStyles(styles.DefaultDarkTheme()), settings.NewManager(path), "zh")
+	panel.LoadSettings()
+	selectRow(t, panel, "Theme")
+
+	panel.Update(keyRunes("e"))
+	if panel.editChoices == nil || len(panel.editChoices) != 3 {
+		t.Fatalf("主题应有 3 个候选，got %v", panel.editChoices)
+	}
+	panel.Update(tea.KeyMsg{Type: tea.KeyRight}) // dark → light
+	panel.Update(tea.KeyMsg{Type: tea.KeyRight}) // light → high-contrast
+	panel.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if panel.settings.Theme != "high-contrast" {
+		t.Fatalf("Theme=%q, want high-contrast", panel.settings.Theme)
+	}
+}
+
+func TestSettingsPanelFreeTextFieldStillUsesInput(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".eos", "settings.json")
+	panel := NewSettingsPanel(styles.NewStyles(styles.DefaultDarkTheme()), settings.NewManager(path), "zh")
+	panel.LoadSettings()
+	selectRow(t, panel, "MaxInjectKB")
+
+	panel.Update(keyRunes("e"))
+	if panel.editChoices != nil {
+		t.Fatal("数值字段应走文本输入，不该有候选集")
+	}
+	panel.Update(tea.KeyMsg{Type: tea.KeyCtrlU}) // 清空原值
+	panel.Update(keyRunes("9"))
+	panel.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if panel.settings.MaxInjectKB != 9 {
+		t.Fatalf("MaxInjectKB=%d, want 9", panel.settings.MaxInjectKB)
 	}
 }

@@ -35,7 +35,11 @@ type SettingsPanel struct {
 	editInput   textinput.Model
 	editKey     string
 	editValue   string
-	rowKeys     []string // 与 table 行同步的稳定字段 ID，供 saveEditValue 匹配
+	// 选择模式：固定取值集合的字段（语言/主题）不用文本输入，
+	// ←/→ 在 editChoices 里循环；nil = 该字段走文本输入。
+	editChoices     []string
+	editChoiceIndex int
+	rowKeys         []string // 与 table 行同步的稳定字段 ID，供 saveEditValue 匹配
 
 	globalPredictionEnabled bool
 	// memoryInjectionEnabled 是 CLI 全局「记忆注入」开关（~/.eos.json
@@ -44,6 +48,18 @@ type SettingsPanel struct {
 	// diffTheme 是 diff/代码块 chroma 高亮主题（~/.eos.json diff_theme，
 	// 默认 monokai），供 /diff、审批 diff 与 markdown 代码块渲染使用。
 	diffTheme string
+}
+
+// settingChoices 返回字段的合法取值集合；nil 表示自由文本编辑。
+func settingChoices(key string) []string {
+	switch key {
+	case "Language":
+		return []string{"zh", "en"}
+	case "Theme":
+		return []string{"dark", "light", "high-contrast"}
+	default:
+		return nil
+	}
 }
 
 // SettingItem 设置项
@@ -326,7 +342,7 @@ func (p *SettingsPanel) handleAction() (Panel, tea.Cmd) {
 	return p, nil
 }
 
-// enterEditMode 进入编辑模式
+// enterEditMode 进入编辑模式（枚举字段走选择模式，其余走文本输入）
 func (p *SettingsPanel) enterEditMode() (Panel, tea.Cmd) {
 	key, value := p.GetSelectedSetting()
 	if key == "" {
@@ -335,6 +351,19 @@ func (p *SettingsPanel) enterEditMode() (Panel, tea.Cmd) {
 
 	p.editKey = key
 	p.editValue = value
+	if choices := settingChoices(key); choices != nil {
+		p.editChoices = choices
+		p.editChoiceIndex = 0
+		for i, choice := range choices {
+			if choice == value {
+				p.editChoiceIndex = i
+				break
+			}
+		}
+		p.editMode = true
+		return p, nil
+	}
+	p.editChoices = nil
 	p.editInput.SetValue(value)
 	p.editInput.Focus()
 	p.editMode = true
@@ -342,25 +371,38 @@ func (p *SettingsPanel) enterEditMode() (Panel, tea.Cmd) {
 	return p, textinput.Blink
 }
 
+// exitEditMode 退出编辑模式（清掉两种编辑态的残留）
+func (p *SettingsPanel) exitEditMode() {
+	p.editMode = false
+	p.editChoices = nil
+	p.editInput.Blur()
+}
+
 // handleEditMode 处理编辑模式下的输入
 func (p *SettingsPanel) handleEditMode(msg tea.Msg) (Panel, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		switch keyMsg.String() {
 		case "esc":
-			p.editMode = false
-			p.editInput.Blur()
+			p.exitEditMode()
 			return p, nil
 		case "enter":
 			// 保存编辑值
 			p.saveEditValue()
-			p.editMode = false
-			p.editInput.Blur()
+			p.exitEditMode()
 			enabled := p.globalPredictionEnabled
 			memoryInjection := p.memoryInjectionEnabled
 			return p, func() tea.Msg {
 				return SettingsSaveMsg{Settings: p.settings, GlobalPredictionEnabled: &enabled, MemoryInjectionEnabled: &memoryInjection, DiffTheme: p.diffTheme}
 			}
+		}
+		if p.editChoices != nil {
+			switch keyMsg.String() {
+			case "left", "h":
+				p.editChoiceIndex = (p.editChoiceIndex + len(p.editChoices) - 1) % len(p.editChoices)
+			case "right", "l":
+				p.editChoiceIndex = (p.editChoiceIndex + 1) % len(p.editChoices)
+			}
+			return p, nil
 		}
 	}
 
@@ -375,7 +417,12 @@ func (p *SettingsPanel) saveEditValue() {
 		return
 	}
 
-	value := p.editInput.Value()
+	var value string
+	if p.editChoices != nil {
+		value = p.editChoices[p.editChoiceIndex]
+	} else {
+		value = p.editInput.Value()
+	}
 	switch p.editKey {
 	case "AutoContext":
 		p.settings.AutoContext = value == "true" || value == "True" || value == "1"
@@ -470,7 +517,7 @@ func (p *SettingsPanel) View() string {
 	return p.RenderBorder(content.String(), i18n.T("settings.list.title", p.language))
 }
 
-// viewEditMode 编辑模式的视图
+// viewEditMode 编辑模式的视图（选择模式渲染候选列表，文本模式渲染输入框）
 func (p *SettingsPanel) viewEditMode() string {
 	var content strings.Builder
 
@@ -481,12 +528,36 @@ func (p *SettingsPanel) viewEditMode() string {
 		i18n.T("settings.col.name", p.language),
 		p.styles.TextInfo.Render(p.editKeyLabel())))
 
-	content.WriteString(p.editInput.View())
-	content.WriteString("\n\n")
-
-	content.WriteString(p.styles.TextMuted.Render(i18n.T("settings.edit.hint", p.language)))
+	if p.editChoices != nil {
+		var opts []string
+		for i, choice := range p.editChoices {
+			label := fmt.Sprintf("%s (%s)", i18n.T("settings.choice."+choiceLabelKey(choice), p.language), choice)
+			if i == p.editChoiceIndex {
+				opts = append(opts, p.styles.TextSuccess.Render("["+label+"]"))
+			} else {
+				opts = append(opts, p.styles.TextMuted.Render(label))
+			}
+		}
+		content.WriteString(strings.Join(opts, "  "))
+		content.WriteString("\n\n")
+		content.WriteString(p.styles.TextMuted.Render(i18n.T("settings.edit.choice_hint", p.language)))
+	} else {
+		content.WriteString(p.editInput.View())
+		content.WriteString("\n\n")
+		content.WriteString(p.styles.TextMuted.Render(i18n.T("settings.edit.hint", p.language)))
+	}
 
 	return p.RenderBorder(content.String(), i18n.T("settings.edit.title", p.language))
+}
+
+// choiceLabelKey 取值 → 本地化标签的 i18n key 片段
+func choiceLabelKey(choice string) string {
+	switch choice {
+	case "high-contrast":
+		return "high_contrast"
+	default:
+		return choice
+	}
 }
 
 // SetSize 设置大小
