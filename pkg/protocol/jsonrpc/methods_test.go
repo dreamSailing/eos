@@ -10,9 +10,9 @@ func TestAllCoreMethodsFreezesMigrationSurface(t *testing.T) {
 	//     workspace/changes、workspace/rollback/{build,apply}）
 	//   - 1 移除死方法（insight/memory_snapshot，内核系统 B 清理后已无此路由）
 	// 与 generated.CoreMethods()（schema.json 单一真相源）保持一致。
-	//   + 13 浏览器方法（+upload_provide/preview_start/preview_stop/focus/set_default_profile）
-	if len(methods) != 166 {
-		t.Fatalf("AllCoreMethods() len=%d, want 166", len(methods))
+	//   + 14 浏览器方法（+upload_provide/preview_start/preview_stop/focus/set_default_profile/navigate）
+	if len(methods) != 167 {
+		t.Fatalf("AllCoreMethods() len=%d, want 167", len(methods))
 	}
 
 	seen := make(map[string]bool, len(methods))

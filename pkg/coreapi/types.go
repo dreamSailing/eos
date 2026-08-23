@@ -1177,6 +1177,10 @@ type BrowserSetDefaultProfileRequest struct {
 	Profile string `json:"profile"`
 }
 
+type BrowserNavigateRequest struct {
+	URL string `json:"url"`
+}
+
 type BrowserProfileRecord struct {
 	Name      string `json:"name"`
 	Dir       string `json:"dir"`

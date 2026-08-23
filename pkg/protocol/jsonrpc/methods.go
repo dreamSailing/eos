@@ -73,6 +73,7 @@ const (
 	MethodBrowserPreviewStop         = "browser/preview_stop"
 	MethodBrowserFocus               = "browser/focus"
 	MethodBrowserSetDefaultProfile   = "browser/set_default_profile"
+	MethodBrowserNavigate            = "browser/navigate"
 	MethodContextPreview             = "context/preview"
 	MethodContextStats               = "context/stats"
 	MethodContextWindow              = "context/window"
@@ -255,6 +256,7 @@ func AllCoreMethods() []string {
 		MethodBrowserPreviewStop,
 		MethodBrowserFocus,
 		MethodBrowserSetDefaultProfile,
+		MethodBrowserNavigate,
 		MethodContextPreview,
 		MethodContextStats,
 		MethodContextWindow,

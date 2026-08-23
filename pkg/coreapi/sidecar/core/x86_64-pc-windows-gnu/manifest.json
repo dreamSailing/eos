@@ -4,8 +4,8 @@
     "api_version":  "v1",
     "target":  "x86_64-pc-windows-gnu",
     "binary":  "eos-core.exe",
-    "sha256":  "sha256:36889557782916d4ad8a8ec6adcaf1ad3af71fa27e41aebcffe9cb2d6ff2b04c",
-    "signature":  "ed25519:apD84Yo7wKXsZlp13Wu7YLJ2JfIe09xheHI4mPL6MmYgauBMyKNt15cTT9cvrz5TCLFWznBS4SUCPCMHFm4zCg==",
+    "sha256":  "sha256:5515ecc36f6ba59d89bee8cf3d164ba0fd82092efe779204a6bfdd056902cde8",
+    "signature":  "ed25519:b3LUVrTIBXDVdCBirKQlkSBZecyv2M1GYwaR3WEcOL/oHN4kq0fZBl022w3lcJaS1FrZ9gjiOu4yT4+tFYkWAQ==",
     "min_cli_version":  "v1.0.0-beta.1",
     "features":  [
                      "initialize",
@@ -80,6 +80,7 @@
                      "browser/preview_stop",
                      "browser/focus",
                      "browser/set_default_profile",
+                     "browser/navigate",
                      "context/preview",
                      "context/stats",
                      "context/window",

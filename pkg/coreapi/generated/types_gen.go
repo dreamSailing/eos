@@ -791,6 +791,10 @@ type BrowserSetDefaultProfileRequest struct {
 	Profile string `json:"profile"`
 }
 
+type BrowserNavigateRequest struct {
+	URL string `json:"url"`
+}
+
 type ElementPick struct {
 	Ref string `json:"ref,omitempty"`
 	Selector string `json:"selector,omitempty"`
