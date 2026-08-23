@@ -280,7 +280,10 @@ func extractZip(archivePath, dstDir string) error {
 		if err != nil {
 			continue
 		}
-		if f.FileInfo().IsDir() {
+		// 目录条目判定不能只看 zip.FileInfo().IsDir()：它只认条目名以 "/"
+		// 结尾。Windows PowerShell Compress-Archive 的历史产物以反斜杠写
+		// 目录条目（...\core\），不识别会当文件落盘导致解压失败。
+		if f.FileInfo().IsDir() || strings.HasSuffix(f.Name, "/") || strings.HasSuffix(f.Name, "\\") {
 			os.MkdirAll(path, 0o755)
 			continue
 		}
@@ -353,8 +356,11 @@ func extractTarGz(archivePath, dstDir string) error {
 }
 
 // safeJoin 拒绝归档内的绝对路径与 .. 穿越，防止恶意归档逃逸出 dstDir。
+// name 先把反斜杠归一化为正斜杠：ZIP 规范要求 "/" 作分隔，但 Windows 的
+// PowerShell Compress-Archive 会以 "\" 写入条目（历史产物如此），解压器
+// 只按 "/" 识别目录后缀（zip.FileInfo().IsDir()），不归一化会把目录当文件。
 func safeJoin(dstDir, name string) (string, error) {
-	name = filepath.ToSlash(name)
+	name = filepath.ToSlash(strings.ReplaceAll(name, "\\", "/"))
 	if strings.HasPrefix(name, "/") || strings.Contains(name, "..") {
 		return "", fmt.Errorf("unsafe path in archive: %s", name)
 	}

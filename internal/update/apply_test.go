@@ -109,7 +109,7 @@ func TestApplyZipLayout(t *testing.T) {
 	}
 	zw := zip.NewWriter(zf)
 	files := map[string]string{
-		"eos-cli_v9.9.9_win/eos.exe":           "new-binary",
+		"eos-cli_v9.9.9_win/eos.exe":             "new-binary",
 		"eos-cli_v9.9.9_win/core/t/eos-core.exe": "new-core",
 	}
 	for name, content := range files {
@@ -136,6 +136,48 @@ func TestApplyZipLayout(t *testing.T) {
 		if string(got) != want {
 			t.Fatalf("%s = %q, want %q", name, got, want)
 		}
+	}
+}
+
+// TestExtractZipBackslashEntries 回归：Windows PowerShell Compress-Archive
+// 历史产物以反斜杠写 zip 条目（eos-...\core\），解压器只按 "/" 识别目录
+// 后缀（zip.FileInfo().IsDir()），不归一化会把目录条目当文件、解压失败
+// （eos update 实测报「mkdir ...\core: The system cannot find the path」）。
+func TestExtractZipBackslashEntries(t *testing.T) {
+	tmp := t.TempDir()
+	zipPath := filepath.Join(tmp, "backslash.zip")
+	zf, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(zf)
+	// 模拟 Compress-Archive 产物：条目名用反斜杠，目录条目带尾 "\"。
+	entries := []struct{ name, content string }{
+		{"eos-cli_v9.9.9_win\\core\\", ""},
+		{"eos-cli_v9.9.9_win\\eos.exe", "new-binary"},
+		{"eos-cli_v9.9.9_win\\core\\triple\\eos-core.exe", "new-core"},
+	}
+	for _, e := range entries {
+		w, err := zw.Create(e.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(e.content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	zw.Close()
+	zf.Close()
+
+	out := filepath.Join(tmp, "extract")
+	if err := extractArchive(zipPath, out); err != nil {
+		t.Fatalf("extractArchive backslash zip error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(out, "eos-cli_v9.9.9_win", "eos.exe")); err != nil {
+		t.Fatalf("eos.exe missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(out, "eos-cli_v9.9.9_win", "core", "triple", "eos-core.exe")); err != nil {
+		t.Fatalf("core binary missing: %v", err)
 	}
 }
 

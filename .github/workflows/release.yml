@@ -146,7 +146,23 @@ jobs:
           cp "eos-core-rs/pkg/coreapi/sidecar/core/${{ matrix.triple }}/manifest.json" "dist/$STAGE/core/${{ matrix.triple }}/"
           cd dist
           if [ "$GOOS_T" = "windows" ]; then
-            powershell -NoProfile -Command "Compress-Archive -Path '$STAGE' -DestinationPath '$STAGE.zip' -Force"
+            # 不用 powershell Compress-Archive：它在 Windows 上以反斜杠写入
+            # zip 条目（eos-...\core\），而 ZIP 规范要求正斜杠；解压器
+            # （Go zip / 各类工具）只按 "/" 识别目录条目，导致目录当作文件、
+            # 解压失败（eos update 实测报错）。改用 Python zipfile，显式
+            # POSIX 分隔 + 目录条目。
+            python3 - "$STAGE" <<'PYEOF'
+import sys, os, zipfile, pathlib
+stage = sys.argv[1]
+with zipfile.ZipFile(f"{stage}.zip", "w", zipfile.ZIP_DEFLATED) as z:
+    for root, dirs, files in os.walk(stage):
+        for d in sorted(dirs):
+            path = os.path.join(root, d).replace("\\", "/")
+            z.writestr(path + "/", b"")
+        for f in sorted(files):
+            path = os.path.join(root, f).replace("\\", "/")
+            z.write(os.path.join(stage, path), path)
+PYEOF
           else
             tar -czf "$STAGE.tar.gz" "$STAGE"
           fi
