@@ -77,7 +77,7 @@ func NewModelsPanel(styles *styles.Styles, lang string) *ModelsPanel {
 		table:            t,
 		models:           make([]config.ModelEntry, 0),
 		currentModel:     "",
-		actionOps:        []string{"Use", "Model", "Add", "Delete", "SyncEnv"},
+		actionOps:        []string{"Use", "Model", "Add", "Delete", "SyncEnv", "Refresh"},
 		actionIndex:      0,
 		language:         lang,
 		presetPlanModels: make(map[string][]coreapi.PlanModel),
@@ -350,6 +350,11 @@ func (p *ModelsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 				return p, func() tea.Msg {
 					return ModelSyncMsg{}
 				}
+			case "Refresh":
+				// 刷新模型列表
+				return p, func() tea.Msg {
+					return ModelRefreshMsg{}
+				}
 			}
 		case "u", "U":
 			// 直接执行使用操作
@@ -378,6 +383,11 @@ func (p *ModelsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 			// 刷新模型列表
 			return p, func() tea.Msg {
 				return ModelRefreshMsg{}
+			}
+		case "s", "S":
+			// 同步模型环境变量（对齐 help 的 S: sync；此前仅有 Enter 的 SyncEnv action）
+			return p, func() tea.Msg {
+				return ModelSyncMsg{}
 			}
 		}
 	}
