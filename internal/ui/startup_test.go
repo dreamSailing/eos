@@ -23,8 +23,12 @@ func TestTUISidecarClientOptionsRequiresVerifiedArtifact(t *testing.T) {
 	if opts.Env["EOS_MODEL_OVERRIDE"] != "test-model" {
 		t.Fatalf("EOS_MODEL_OVERRIDE=%q, want test-model", opts.Env["EOS_MODEL_OVERRIDE"])
 	}
-	if opts.Env["EOS_ACCESS_MODE"] != "workspace-write" {
-		t.Fatalf("EOS_ACCESS_MODE=%q, want workspace-write", opts.Env["EOS_ACCESS_MODE"])
+	// 沙箱轴只经 EOS_SANDBOX_MODE 单通道下发（内核不读 EOS_ACCESS_MODE）。
+	if _, ok := opts.Env["EOS_ACCESS_MODE"]; ok {
+		t.Fatalf("EOS_ACCESS_MODE=%q leaked; kernel does not read it", opts.Env["EOS_ACCESS_MODE"])
+	}
+	if opts.Env["EOS_SANDBOX_MODE"] != "workspace-write" {
+		t.Fatalf("EOS_SANDBOX_MODE=%q, want workspace-write (falls back to AccessMode)", opts.Env["EOS_SANDBOX_MODE"])
 	}
 	if opts.Env["EOS_APPROVAL_MODE"] != "on-request" {
 		t.Fatalf("EOS_APPROVAL_MODE=%q, want on-request", opts.Env["EOS_APPROVAL_MODE"])

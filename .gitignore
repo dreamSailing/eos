@@ -72,3 +72,7 @@ internal/.eos/
 *.local.json
 
 /docs/
+
+# 本地工作笔记与 agent 工具目录（不入库）
+/.workbuddy/
+/TECH_ROADMAP.md

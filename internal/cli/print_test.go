@@ -384,7 +384,7 @@ func TestPrintOptionsEnv_DoesNotInjectLegacyMode(t *testing.T) {
 	opts := PrintOptions{
 		AccessMode:      "workspace-write",
 		ApprovalMode:    "on-request",
-		SandboxMode:     "workspace",
+		SandboxMode:     "workspace-write",
 		SkipPermissions: false,
 	}
 	env := printModeEnv(opts)
@@ -396,15 +396,15 @@ func TestPrintOptionsEnv_DoesNotInjectLegacyMode(t *testing.T) {
 		if strings.EqualFold(key, "EOS_CORE_ALLOW_FALLBACK") {
 			t.Fatalf("printModeEnv leaked EOS_CORE_ALLOW_FALLBACK=%q; production must not enable fallback", value)
 		}
-	}
-	if env["EOS_ACCESS_MODE"] != "workspace-write" {
-		t.Fatalf("EOS_ACCESS_MODE = %q, want workspace-write", env["EOS_ACCESS_MODE"])
+		if strings.EqualFold(key, "EOS_ACCESS_MODE") {
+			t.Fatalf("printModeEnv leaked EOS_ACCESS_MODE=%q; kernel does not read it (single channel is EOS_SANDBOX_MODE)", value)
+		}
 	}
 	if env["EOS_APPROVAL_MODE"] != "on-request" {
 		t.Fatalf("EOS_APPROVAL_MODE = %q, want on-request", env["EOS_APPROVAL_MODE"])
 	}
-	if env["EOS_SANDBOX_MODE"] != "workspace" {
-		t.Fatalf("EOS_SANDBOX_MODE = %q, want workspace", env["EOS_SANDBOX_MODE"])
+	if env["EOS_SANDBOX_MODE"] != "workspace-write" {
+		t.Fatalf("EOS_SANDBOX_MODE = %q, want workspace-write", env["EOS_SANDBOX_MODE"])
 	}
 	if _, ok := env["EOS_SKIP_PERMISSIONS"]; ok {
 		t.Fatalf("EOS_SKIP_PERMISSIONS should be absent when SkipPermissions=false")

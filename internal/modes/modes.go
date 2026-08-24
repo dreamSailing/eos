@@ -44,12 +44,6 @@ type ApprovalModeDescriptor struct {
 	Description string
 }
 
-type SandboxModeDescriptor struct {
-	Name        string
-	Aliases     []string
-	Description string
-}
-
 var executionModeDescriptors = []ExecutionModeDescriptor{
 	{
 		Name:             "plan",
@@ -73,12 +67,12 @@ var accessModeDescriptors = []AccessModeDescriptor{
 	},
 	{
 		Name:        "workspace-write",
-		Aliases:     []string{"workspace_write", "workspace-write", "workspace", "sandbox", "workspace_sandbox", "workspace-sandbox", "工作区写入"},
+		Aliases:     []string{"workspace_write", "workspace", "sandbox", "workspace_sandbox", "workspace-sandbox", "工作区写入", "工作区沙箱"},
 		Description: "Workspace-write: allows writes inside the workspace boundary.",
 	},
 	{
 		Name:        "danger-full-access",
-		Aliases:     []string{"danger_full_access", "danger-full-access", "full_access", "full-access", "fullaccess", "allow_all", "allow-all", "完全访问权限"},
+		Aliases:     []string{"danger_full_access", "danger", "full", "full_access", "full-access", "fullaccess", "allow_all", "allow-all", "完全访问", "完全访问权限"},
 		Description: "Danger-full-access: removes the workspace boundary for privileged tools.",
 	},
 }
@@ -86,38 +80,28 @@ var accessModeDescriptors = []AccessModeDescriptor{
 var approvalModeDescriptors = []ApprovalModeDescriptor{
 	{
 		Name:        "untrusted",
-		Aliases:     []string{"cautious", "strict", "不信任"},
+		Aliases:     []string{"cautious", "strict", "unless_trusted", "unless-trusted", "不信任"},
 		Description: "Always ask before non-read-only or elevated actions.",
 	},
 	{
-		Name:        "on-failure",
-		Aliases:     []string{"on_failure", "onfailure", "失败后审批"},
-		Description: "Run within the current sandbox first and escalate only after sandbox failures.",
-	},
-	{
-		Name:        "on-request",
-		Aliases:     []string{"on_request", "onrequest", "request", "请求时审批"},
+		Name:    "on-request",
+		Aliases: []string{"on_request", "onrequest", "request", "on-failure", "on_failure", "onfailure", "失败后审批", "请求时审批"},
+		// 内核 ApprovalMode 只有三个值（untrusted/on-request/never，对标 Codex
+		// approval_policy）；on-failure 是内核解析侧的历史别名，折叠到 on-request，
+		// 不再作为独立档位宣传。
 		Description: "Allow the agent to request approval when it decides escalation is needed.",
 	},
 	{
 		Name:        "never",
 		Aliases:     []string{"no_approval", "no-approval", "skip_approval", "skip-approval", "从不审批"},
-		Description: "Never ask for approval.",
+		Description: "Never ask for approval (pending approvals are denied, not auto-approved).",
 	},
 }
 
-var sandboxModeDescriptors = []SandboxModeDescriptor{
-	{
-		Name:        "workspace",
-		Aliases:     []string{"sandbox", "workspace_sandbox", "workspace-sandbox", "工作区沙箱"},
-		Description: "Workspace sandbox: only tools constrained to the workspace stay visible.",
-	},
-	{
-		Name:        "full_access",
-		Aliases:     []string{"full-access", "fullaccess", "allow_all", "allow-all", "完全访问权限"},
-		Description: "Full access: tools may cross the workspace boundary subject to approvals.",
-	},
-}
+// sandboxModeDescriptors 不再定义独立的沙箱轴词表：沙箱轴与访问轴共用内核
+// SandboxMode 的 kebab-case 三值（read-only / workspace-write / danger-full-access，
+// 对标 Codex sandbox_mode）。历史上的 GUI 双值（workspace / full_access）只作为
+// NormalizeSandboxMode 的兼容别名保留。
 
 func NormalizeExecutionMode(mode string) string {
 	key := normalizeModeKey(mode)
@@ -203,39 +187,29 @@ func SupportedApprovalModes() []ApprovalModeDescriptor {
 	return out
 }
 
+// NormalizeSandboxMode 归一化沙箱轴输入到内核 SandboxMode 的 kebab-case 三值。
+// 历史别名（workspace / full_access / 工作区沙箱 等）全部折叠到对应规范值，
+// 与 NormalizeAccessMode 同一张词表——修复旧实现把 danger-full-access 等
+// 未知值静默降级为 workspace 的问题。
 func NormalizeSandboxMode(mode string) string {
-	key := normalizeModeKey(mode)
-	if key == "" {
-		return "workspace"
+	if strings.TrimSpace(mode) == "" {
+		return "workspace-write"
 	}
-	for _, item := range sandboxModeDescriptors {
-		if key == normalizeModeKey(item.Name) {
-			return item.Name
-		}
-		for _, alias := range item.Aliases {
-			if key == normalizeModeKey(alias) {
-				return item.Name
-			}
-		}
-	}
-	return "workspace"
+	return NormalizeAccessMode(mode)
 }
 
+// SandboxModeFromAccessMode 保留为兼容入口：沙箱轴与访问轴共用词表后即为恒等
+// 映射（规范值不变，历史 GUI 双值折叠到规范值）。
 func SandboxModeFromAccessMode(mode string) string {
-	switch NormalizeAccessMode(mode) {
-	case "danger-full-access":
-		return "full_access"
-	default:
-		return "workspace"
-	}
+	return NormalizeAccessMode(mode)
 }
 
 func ResolveAccessMode(sess ExecSession) string {
-	if normalized := NormalizeAccessMode(sess.AccessMode); strings.TrimSpace(sess.AccessMode) != "" {
-		return normalized
+	if strings.TrimSpace(sess.AccessMode) != "" {
+		return NormalizeAccessMode(sess.AccessMode)
 	}
-	if NormalizeSandboxMode(sess.SandboxMode) == "full_access" {
-		return "danger-full-access"
+	if strings.TrimSpace(sess.SandboxMode) != "" {
+		return NormalizeSandboxMode(sess.SandboxMode)
 	}
 	return "workspace-write"
 }

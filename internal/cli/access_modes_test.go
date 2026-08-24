@@ -38,3 +38,42 @@ func TestResolveModeConfigNormalizesExplicitModes(t *testing.T) {
 		t.Errorf("SkipAllChecks must be false without skipPermissions")
 	}
 }
+
+// TestResolveModeConfigSandboxAliasesFoldToKernelVocabulary 守护沙箱别名表：
+// --sandbox-mode danger-full-access / full_access 不再被静默降级为 workspace
+// （旧 NormalizeSandboxMode 只认 GUI 双值），并折叠到内核 kebab-case 规范值。
+func TestResolveModeConfigSandboxAliasesFoldToKernelVocabulary(t *testing.T) {
+	cases := []struct {
+		name        string
+		accessMode  string
+		sandboxMode string
+		want        string
+	}{
+		{name: "canonical danger via sandbox alias", sandboxMode: "danger-full-access", want: "danger-full-access"},
+		{name: "legacy full_access folds to danger", sandboxMode: "full_access", want: "danger-full-access"},
+		{name: "legacy workspace folds to workspace-write", sandboxMode: "workspace", want: "workspace-write"},
+		{name: "read-only via access flag", accessMode: "read-only", want: "read-only"},
+		{name: "explicit access flag wins over sandbox alias", accessMode: "read-only", sandboxMode: "full_access", want: "read-only"},
+		{name: "default falls back to workspace-write", want: "workspace-write"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := resolveModeConfig(tc.accessMode, "", tc.sandboxMode, false)
+			if cfg.SandboxMode != tc.want {
+				t.Fatalf("SandboxMode: got %q want %q", cfg.SandboxMode, tc.want)
+			}
+			if cfg.AccessMode != tc.want {
+				t.Fatalf("AccessMode: got %q want %q (axes share the kernel vocabulary)", cfg.AccessMode, tc.want)
+			}
+		})
+	}
+}
+
+// TestResolveModeConfigFoldsOnFailureApprovalAlias 内核 ApprovalMode 只有
+// untrusted/on-request/never 三值；on-failure 是解析侧历史别名，CLI 侧折叠。
+func TestResolveModeConfigFoldsOnFailureApprovalAlias(t *testing.T) {
+	cfg := resolveModeConfig("", "on-failure", "", false)
+	if cfg.ApprovalMode != "on-request" {
+		t.Fatalf("ApprovalMode: got %q want on-request (on-failure folds to on-request)", cfg.ApprovalMode)
+	}
+}

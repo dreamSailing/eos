@@ -120,6 +120,20 @@ func StartInteractiveTUIWithOptions(opts TUIOptions) {
 
 	m := NewAppModelFromCoreClient(client, strings.TrimSpace(opts.SessionID))
 	applyTUIStartupModel(m, opts.ModelOverride)
+	// 启动模式快照同步：沙箱/审批裁决已由 env 在内核生效，这里只把解析后的
+	// 模式对齐到 UI 快照，避免 /status、/permissions 回显空值（壳层与内核
+	// 感知脱节）。失败只告警不阻断进入 TUI。
+	if m != nil && m.adapter != nil {
+		mode := strings.TrimSpace(opts.SandboxMode)
+		if mode == "" {
+			mode = strings.TrimSpace(opts.AccessMode)
+		}
+		if mode != "" || strings.TrimSpace(opts.ApprovalMode) != "" {
+			if err := m.adapter.SyncModeSnapshots(ctx, mode, mode, opts.ApprovalMode); err != nil {
+				slog.Warn("ui.startup.permissions.snapshot_sync_failed", "sandbox_mode", mode, "approval_mode", opts.ApprovalMode, "error", err)
+			}
+		}
+	}
 	slog.Info("ui.startup.app.run")
 	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		slog.Error("ui.startup.app.run.error", "error", err)
@@ -173,14 +187,15 @@ func tuiOptionEnv(opts TUIOptions) map[string]string {
 	if len(opts.DisallowedTools) > 0 {
 		env["EOS_DISALLOWED_TOOLS"] = strings.Join(opts.DisallowedTools, ",")
 	}
-	if v := strings.TrimSpace(opts.AccessMode); v != "" {
-		env["EOS_ACCESS_MODE"] = v
+	// 沙箱轴只经 EOS_SANDBOX_MODE 单通道下发（内核不读 EOS_ACCESS_MODE）；
+	// AccessMode/SandboxMode 已由 resolveModeConfig 归一为内核 kebab-case 规范值。
+	if v := strings.TrimSpace(opts.SandboxMode); v != "" {
+		env["EOS_SANDBOX_MODE"] = v
+	} else if v := strings.TrimSpace(opts.AccessMode); v != "" {
+		env["EOS_SANDBOX_MODE"] = v
 	}
 	if v := strings.TrimSpace(opts.ApprovalMode); v != "" {
 		env["EOS_APPROVAL_MODE"] = v
-	}
-	if v := strings.TrimSpace(opts.SandboxMode); v != "" {
-		env["EOS_SANDBOX_MODE"] = v
 	}
 	// workspace-write 沙箱需要至少一个可写根；不透传工作区根时 sidecar 的沙箱策略
 	// workspace_root 为空，会导致工作区内所有写操作被拒（审批通过后仍拒绝并触发 turn 恢复卡死）。
@@ -197,7 +212,6 @@ func tuiOptionEnv(opts TUIOptions) map[string]string {
 		// EOS_APPROVAL_MODE/EOS_SANDBOX_MODE，否则内核会因 skip 与显式 mode 共存
 		// 而 fail-fast（AGENTS.md §3：壳层不做业务裁决）。
 		env["EOS_SKIP_PERMISSIONS"] = "1"
-		delete(env, "EOS_ACCESS_MODE")
 		delete(env, "EOS_APPROVAL_MODE")
 		delete(env, "EOS_SANDBOX_MODE")
 	}

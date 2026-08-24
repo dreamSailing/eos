@@ -55,6 +55,9 @@ func (compileTimeSandbox) Policy(context.Context, SessionRef) (sandbox.Policy, e
 	return sandbox.Policy{}, nil
 }
 func (compileTimeSandbox) SetPolicy(context.Context, SessionRef, sandbox.Policy) error { return nil }
+func (compileTimeSandbox) DerivePolicy(context.Context, DeriveSandboxPolicyRequest) (sandbox.Policy, error) {
+	return sandbox.Policy{}, nil
+}
 func (compileTimeSandbox) BackendStatus(context.Context) sandbox.BackendStatus {
 	return sandbox.BackendStatus{}
 }
@@ -180,6 +183,9 @@ func (compileTimePermissions) SetAccessMode(context.Context, SetModeRequest) err
 	return nil
 }
 func (compileTimePermissions) SetApprovalMode(context.Context, SetModeRequest) error {
+	return nil
+}
+func (compileTimePermissions) EnterFullAccess(context.Context, EnterFullAccessRequest) error {
 	return nil
 }
 

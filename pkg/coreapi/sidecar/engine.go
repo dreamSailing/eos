@@ -616,6 +616,14 @@ func (s remoteSandboxService) SetPolicy(ctx context.Context, ref coreapi.Session
 	}, &out)
 }
 
+func (s remoteSandboxService) DerivePolicy(ctx context.Context, req coreapi.DeriveSandboxPolicyRequest) (sandbox.Policy, error) {
+	var out sandbox.Policy
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodSandboxDerivePolicy, req, &out); err != nil {
+		return sandbox.Policy{}, err
+	}
+	return out, nil
+}
+
 func (s remoteSandboxService) BackendStatus(ctx context.Context) sandbox.BackendStatus {
 	var out sandbox.BackendStatus
 	if err := s.engine.call(ctx, protocoljsonrpc.MethodSandboxBackend, nil, &out); err == nil {
@@ -1184,6 +1192,11 @@ func (s remotePermissionService) SetAccessMode(ctx context.Context, req coreapi.
 func (s remotePermissionService) SetApprovalMode(ctx context.Context, req coreapi.SetModeRequest) error {
 	var out map[string]any
 	return s.engine.call(ctx, protocoljsonrpc.MethodPermissionApprovalModeSet, req, &out)
+}
+
+func (s remotePermissionService) EnterFullAccess(ctx context.Context, req coreapi.EnterFullAccessRequest) error {
+	var out map[string]any
+	return s.engine.call(ctx, protocoljsonrpc.MethodPermissionEnterFullAccess, req, &out)
 }
 
 type remoteContextService struct {

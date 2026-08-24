@@ -60,7 +60,7 @@ func (e *testEngine) Usage() coreapi.UsageService            { return &testUsage
 func (e *testEngine) Versions() coreapi.VersionService       { return nil }
 func (e *testEngine) Tasks() coreapi.TaskService             { return &testTaskService{} }
 func (e *testEngine) Goals() coreapi.GoalService             { return &testGoalService{} }
-func (e *testEngine) Modes() coreapi.ModeService             { return &testModeService{} }
+func (e *testEngine) Modes() coreapi.ModeService             { return &testModeService{e: e} }
 func (e *testEngine) Models() coreapi.ModelService           { return &testModelService{e: e} }
 func (e *testEngine) RemoteWorkspaces() coreapi.RemoteWorkspaceService {
 	return &testRemoteWorkspaceService{}
@@ -241,16 +241,21 @@ func (s *testPermissionService) SetAccessMode(_ context.Context, req coreapi.Set
 	s.e.permissionSnap.AccessMode = req.Mode
 	switch req.Mode {
 	case "danger-full-access", "danger_full_access", "full_access", "full-access":
-		s.e.permissionSnap.SandboxMode = "full_access"
+		s.e.permissionSnap.SandboxMode = "danger-full-access"
 	default:
 		if s.e.permissionSnap.SandboxMode == "" {
-			s.e.permissionSnap.SandboxMode = "workspace"
+			s.e.permissionSnap.SandboxMode = "workspace-write"
 		}
 	}
 	return nil
 }
 func (s *testPermissionService) SetApprovalMode(_ context.Context, req coreapi.SetModeRequest) error {
 	s.e.permissionSnap.ApprovalMode = req.Mode
+	return nil
+}
+func (s *testPermissionService) EnterFullAccess(_ context.Context, req coreapi.EnterFullAccessRequest) error {
+	s.e.permissionSnap.ApprovalMode = "never"
+	s.e.permissionSnap.SandboxMode = "danger-full-access"
 	return nil
 }
 
@@ -270,6 +275,9 @@ func (s *testSandboxService) Policy(context.Context, coreapi.SessionRef) (sandbo
 }
 func (s *testSandboxService) SetPolicy(context.Context, coreapi.SessionRef, sandbox.Policy) error {
 	return nil
+}
+func (s *testSandboxService) DerivePolicy(_ context.Context, req coreapi.DeriveSandboxPolicyRequest) (sandbox.Policy, error) {
+	return sandbox.Policy{Mode: sandbox.NormalizeMode(req.Mode)}, nil
 }
 func (s *testSandboxService) BackendStatus(context.Context) sandbox.BackendStatus {
 	return sandbox.BackendStatus{Backend: "test", Enforced: false}
@@ -364,7 +372,7 @@ func (s *testModelService) ClearSession(context.Context, coreapi.ClearSessionMod
 }
 
 // === Mode ===
-type testModeService struct{}
+type testModeService struct{ e *testEngine }
 
 func (s *testModeService) Snapshot(context.Context) (coreapi.ModeSnapshot, error) {
 	return coreapi.ModeSnapshot{}, nil
@@ -372,7 +380,14 @@ func (s *testModeService) Snapshot(context.Context) (coreapi.ModeSnapshot, error
 func (s *testModeService) SetExecutionMode(context.Context, coreapi.SetModeRequest) error {
 	return nil
 }
-func (s *testModeService) SetSandboxMode(context.Context, coreapi.SetModeRequest) error { return nil }
+
+// SetSandboxMode 模拟内核 runtime/sandbox_mode/set：同步 mode 快照与
+// permission_snapshot.sandbox_mode（内核行为见 eos-core-runtime 的
+// runtime_sandbox_mode_sync 回归测试）。
+func (s *testModeService) SetSandboxMode(_ context.Context, req coreapi.SetModeRequest) error {
+	s.e.permissionSnap.SandboxMode = req.Mode
+	return nil
+}
 func (s *testModeService) SetReasoningLevel(context.Context, coreapi.SetModeRequest) error {
 	return nil
 }

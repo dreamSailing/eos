@@ -364,7 +364,10 @@ func (m *AppModel) handlePermissionsSlash(args []string) tea.Cmd {
 			m.appendSystem(fmt.Sprintf("%s %s", m.localize("执行模式已切换为", "Execution mode switched to"), m.executionModeLabel(mode)), "success")
 		case len(args) >= 2 && strings.EqualFold(strings.TrimSpace(args[0]), "access") && isSupportedAccessModeInput(args[1]):
 			mode := modes.NormalizeAccessMode(args[1])
-			if err := m.adapter.SetAccessMode(context.Background(), mode); err != nil {
+			// 走 ApplyAccessMode 语义入口（danger 档 = 内核 enter_full_access
+			// 双轴原子推进；其余档 = derive+set policy 真实裁决路径）——单独
+			// SetAccessMode 只写 UI 快照，沙箱裁决不会跟着变。
+			if err := m.adapter.ApplyAccessMode(context.Background(), mode); err != nil {
 				m.appendSystem(err.Error(), "error")
 				return nil
 			}

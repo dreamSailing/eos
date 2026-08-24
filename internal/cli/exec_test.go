@@ -315,7 +315,7 @@ func TestExecOptionEnv_DoesNotInjectLegacyMode(t *testing.T) {
 	opts := execOptions{
 		AccessMode:     "workspace-write",
 		ApprovalMode:   "on-request",
-		Sandbox:        "workspace",
+		Sandbox:        "workspace-write",
 		SkipPermission: false,
 	}
 	env := execOptionEnv(opts)
@@ -327,8 +327,13 @@ func TestExecOptionEnv_DoesNotInjectLegacyMode(t *testing.T) {
 			t.Fatalf("execOptionEnv leaked EOS_CORE_ALLOW_FALLBACK=%q", value)
 		}
 	}
-	if env["EOS_ACCESS_MODE"] != "workspace-write" {
-		t.Fatalf("EOS_ACCESS_MODE = %q, want workspace-write", env["EOS_ACCESS_MODE"])
+	// 沙箱轴只经 EOS_SANDBOX_MODE 单通道下发：内核不读 EOS_ACCESS_MODE
+	// （历史死参数），且 AccessMode/Sandbox 均为归一化后的规范值。
+	if _, ok := env["EOS_ACCESS_MODE"]; ok {
+		t.Fatalf("execOptionEnv leaked EOS_ACCESS_MODE=%q (kernel does not read it)", env["EOS_ACCESS_MODE"])
+	}
+	if env["EOS_SANDBOX_MODE"] != "workspace-write" {
+		t.Fatalf("EOS_SANDBOX_MODE = %q, want workspace-write (Sandbox wins when set)", env["EOS_SANDBOX_MODE"])
 	}
 	if env["EOS_APPROVAL_MODE"] != "on-request" {
 		t.Fatalf("EOS_APPROVAL_MODE = %q, want on-request", env["EOS_APPROVAL_MODE"])

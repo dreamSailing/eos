@@ -238,8 +238,12 @@ func TestHandlePermissionsSlashSupportsAccessAndApprovalModes(t *testing.T) {
 	if got := snap.AccessMode; got != "read-only" {
 		t.Fatalf("accessMode=%q, want read-only", got)
 	}
-	if got := snap.SandboxMode; got != "workspace" {
-		t.Fatalf("sandboxMode=%q, want workspace", got)
+	// ApplyAccessMode 会同步 mode 快照（read-only）并把审批轴复位 on-request。
+	if got := snap.SandboxMode; got != "read-only" {
+		t.Fatalf("sandboxMode=%q, want read-only (snapshot synced)", got)
+	}
+	if got := snap.ApprovalMode; got != "on-request" {
+		t.Fatalf("approvalMode=%q, want on-request (reset on non-danger switch)", got)
 	}
 
 	app.handlePermissionsSlash([]string{"approval", "never"})
@@ -365,7 +369,7 @@ func TestHandleStatusSlashShowsAccessAndApprovalModes(t *testing.T) {
 
 	app.handleStatusSlash()
 	last := app.history[len(app.history)-1].content
-	for _, part := range []string{"访问模式", "danger-full-access", "审批模式", "never", "沙箱模式", "full_access"} {
+	for _, part := range []string{"访问模式", "danger-full-access", "审批模式", "never", "沙箱模式", "danger-full-access"} {
 		if !strings.Contains(last, part) {
 			t.Fatalf("expected status output to contain %q, got %q", part, last)
 		}

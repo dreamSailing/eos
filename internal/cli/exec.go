@@ -42,7 +42,8 @@ func newExecCmd() *cobra.Command {
 		Long:  "Execute a single prompt in headless mode without the TUI. Supports workspace, sandbox, execution-mode, output format, and timeout options.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			modes := resolveModeConfig(accessMode, approvalMode, sandbox, skipPermission)
+			access, approval := mergeConfigPermissions(cmd.Flags(), "sandbox", accessMode, approvalMode)
+			modes := resolveModeConfig(access, approval, sandbox, skipPermission)
 			return runExec(cmd.Context(), execOptions{
 				Prompt:         args[0],
 				Workspace:      strings.TrimSpace(workspace),
@@ -58,13 +59,13 @@ func newExecCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace root path")
-	cmd.Flags().StringVar(&sandbox, "sandbox", "workspace", "Sandbox mode: workspace or full_access")
+	cmd.Flags().StringVar(&sandbox, "sandbox", "workspace", "Alias of --access-mode (workspace=workspace-write, full_access=danger-full-access)")
 	cmd.Flags().StringVar(&executionMode, "execution-mode", "", "Execution mode for the AI agent")
 	cmd.Flags().StringVar(&output, "output", "text", "Output format: text, json, or stream-json")
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "Maximum execution duration (e.g. 30s, 5m)")
-	cmd.Flags().StringVar(&accessMode, "access-mode", "", "Access mode: read-only, workspace-write, or danger-full-access")
-	cmd.Flags().StringVar(&approvalMode, "approval-mode", "", "Approval mode: untrusted, on-failure, on-request, or never")
-	cmd.Flags().BoolVar(&skipPermission, "dangerously-skip-permissions", false, "Skip all permission checks")
+	cmd.Flags().StringVar(&accessMode, "access-mode", "", "Sandbox access mode: read-only, workspace-write, or danger-full-access")
+	cmd.Flags().StringVar(&approvalMode, "approval-mode", "", "Approval mode: untrusted, on-request, or never (on-failure is accepted as an alias of on-request)")
+	cmd.Flags().BoolVar(&skipPermission, "dangerously-skip-permissions", false, "Full-access preset: --access-mode danger-full-access --approval-mode never")
 
 	return cmd
 }
@@ -144,14 +145,15 @@ func runExec(ctx context.Context, opts execOptions) error {
 // 与 internal/ui/adapter.tuiOptionEnv 字段保持一致。
 func execOptionEnv(opts execOptions) map[string]string {
 	env := map[string]string{}
-	if v := strings.TrimSpace(opts.AccessMode); v != "" {
-		env["EOS_ACCESS_MODE"] = v
+	// 沙箱轴只经 EOS_SANDBOX_MODE 单通道下发（内核不读 EOS_ACCESS_MODE）；
+	// AccessMode/Sandbox 已由 resolveModeConfig 归一为内核 kebab-case 规范值。
+	if v := strings.TrimSpace(opts.Sandbox); v != "" {
+		env["EOS_SANDBOX_MODE"] = v
+	} else if v := strings.TrimSpace(opts.AccessMode); v != "" {
+		env["EOS_SANDBOX_MODE"] = v
 	}
 	if v := strings.TrimSpace(opts.ApprovalMode); v != "" {
 		env["EOS_APPROVAL_MODE"] = v
-	}
-	if v := strings.TrimSpace(opts.Sandbox); v != "" {
-		env["EOS_SANDBOX_MODE"] = v
 	}
 	if ws := strings.TrimSpace(opts.Workspace); ws != "" {
 		env["EOS_WORKSPACE_ROOT"] = ws
@@ -169,7 +171,6 @@ func execOptionEnv(opts execOptions) map[string]string {
 		// （AGENTS.md §3：壳层不做业务裁决）。resolveModeConfig 在 skip=true 时
 		// 已把 AccessMode/ApprovalMode/SandboxMode 清空，这里是防御性兜底。
 		env["EOS_SKIP_PERMISSIONS"] = "1"
-		delete(env, "EOS_ACCESS_MODE")
 		delete(env, "EOS_APPROVAL_MODE")
 		delete(env, "EOS_SANDBOX_MODE")
 	}

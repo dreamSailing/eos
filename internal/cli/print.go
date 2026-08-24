@@ -214,14 +214,15 @@ func RunPrintModeStream(ctx context.Context, query string, w io.Writer) error {
 // 与 internal/ui/adapter.tuiOptionEnv 字段保持一致。
 func printModeEnv(opts PrintOptions) map[string]string {
 	env := map[string]string{}
-	if v := strings.TrimSpace(opts.AccessMode); v != "" {
-		env["EOS_ACCESS_MODE"] = v
+	// 沙箱轴只经 EOS_SANDBOX_MODE 单通道下发（内核不读 EOS_ACCESS_MODE）；
+	// AccessMode/SandboxMode 已由 resolveModeConfig 归一为内核 kebab-case 规范值。
+	if v := strings.TrimSpace(opts.SandboxMode); v != "" {
+		env["EOS_SANDBOX_MODE"] = v
+	} else if v := strings.TrimSpace(opts.AccessMode); v != "" {
+		env["EOS_SANDBOX_MODE"] = v
 	}
 	if v := strings.TrimSpace(opts.ApprovalMode); v != "" {
 		env["EOS_APPROVAL_MODE"] = v
-	}
-	if v := strings.TrimSpace(opts.SandboxMode); v != "" {
-		env["EOS_SANDBOX_MODE"] = v
 	}
 	if ws := strings.TrimSpace(opts.Workspace); ws != "" {
 		env["EOS_WORKSPACE_ROOT"] = ws

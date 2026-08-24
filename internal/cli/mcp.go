@@ -45,7 +45,8 @@ func newMcpServeCmd() *cobra.Command {
 			"are not auto-approved. See internal/docs/mcp/SERVER.md.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			modes := resolveModeConfig(accessMode, approvalMode, sandboxMode, skipPermission)
+			access, approval := mergeConfigPermissions(cmd.Flags(), "sandbox-mode", accessMode, approvalMode)
+			modes := resolveModeConfig(access, approval, sandboxMode, skipPermission)
 			return runMcpServe(cmd.Context(), mcpServeOptions{
 				Workspace:    strings.TrimSpace(workspace),
 				AccessMode:   modes.AccessMode,
@@ -58,10 +59,10 @@ func newMcpServeCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace root path (default: current directory)")
-	cmd.Flags().StringVar(&accessMode, "access-mode", "", "Access mode: read-only, workspace-write, or danger-full-access")
-	cmd.Flags().StringVar(&approvalMode, "approval-mode", "", "Approval mode: untrusted, on-failure, on-request, or never")
-	cmd.Flags().StringVar(&sandboxMode, "sandbox-mode", "workspace", "Legacy sandbox mode alias: workspace or full_access")
-	cmd.Flags().BoolVar(&skipPermission, "dangerously-skip-permissions", false, "Compatibility alias for --access-mode danger-full-access --approval-mode never")
+	cmd.Flags().StringVar(&accessMode, "access-mode", "", "Sandbox access mode: read-only, workspace-write, or danger-full-access")
+	cmd.Flags().StringVar(&approvalMode, "approval-mode", "", "Approval mode: untrusted, on-request, or never (on-failure is accepted as an alias of on-request)")
+	cmd.Flags().StringVar(&sandboxMode, "sandbox-mode", "workspace", "Alias of --access-mode (workspace=workspace-write, full_access=danger-full-access)")
+	cmd.Flags().BoolVar(&skipPermission, "dangerously-skip-permissions", false, "Full-access preset: --access-mode danger-full-access --approval-mode never")
 	cmd.Flags().StringVar(&transport, "transport", "stdio", "Transport: stdio or sse")
 	cmd.Flags().StringVar(&listen, "listen", "127.0.0.1:8765", "SSE listen address (only used when --transport sse)")
 	return cmd
@@ -133,14 +134,15 @@ func startMcpEngine(ctx context.Context, env map[string]string) (engineprovider.
 // mcpOptionEnv 把 mcp serve flags 透传到 eos-core 子进程环境变量，与 serve/exec 一致。
 func mcpOptionEnv(opts mcpServeOptions) map[string]string {
 	env := map[string]string{}
-	if v := strings.TrimSpace(opts.AccessMode); v != "" {
-		env["EOS_ACCESS_MODE"] = v
+	// 沙箱轴只经 EOS_SANDBOX_MODE 单通道下发（内核不读 EOS_ACCESS_MODE）；
+	// AccessMode/SandboxMode 已由 resolveModeConfig 归一为内核 kebab-case 规范值。
+	if v := strings.TrimSpace(opts.SandboxMode); v != "" {
+		env["EOS_SANDBOX_MODE"] = v
+	} else if v := strings.TrimSpace(opts.AccessMode); v != "" {
+		env["EOS_SANDBOX_MODE"] = v
 	}
 	if v := strings.TrimSpace(opts.ApprovalMode); v != "" {
 		env["EOS_APPROVAL_MODE"] = v
-	}
-	if v := strings.TrimSpace(opts.SandboxMode); v != "" {
-		env["EOS_SANDBOX_MODE"] = v
 	}
 	if ws := strings.TrimSpace(opts.Workspace); ws != "" {
 		env["EOS_WORKSPACE_ROOT"] = ws
@@ -153,7 +155,6 @@ func mcpOptionEnv(opts mcpServeOptions) map[string]string {
 	}
 	if opts.SkipAll {
 		env["EOS_SKIP_PERMISSIONS"] = "1"
-		delete(env, "EOS_ACCESS_MODE")
 		delete(env, "EOS_APPROVAL_MODE")
 		delete(env, "EOS_SANDBOX_MODE")
 	}

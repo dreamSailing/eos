@@ -73,7 +73,8 @@ var rootCmd = &cobra.Command{
 
 		// Handle --print mode
 		if printQuery != "" {
-			modes := resolveModeConfig(cliAccessMode, cliApprovalMode, cliSandboxMode, cliSkipPermissions)
+			access, approval := mergeConfigPermissions(cmd.Flags(), "sandbox-mode", cliAccessMode, cliApprovalMode)
+			modes := resolveModeConfig(access, approval, cliSandboxMode, cliSkipPermissions)
 			if err := RunPrintMode(PrintOptions{
 				Query:           printQuery,
 				OutputFormat:    outputFormat,
@@ -88,14 +89,21 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
-		// Build TUI options from CLI flags
+		// Build TUI options from CLI flags. 权限模式先经 resolveModeConfig 归一
+		// （--access-mode 与 --sandbox-mode 共用内核 kebab-case 词表，显式
+		// --access-mode 优先）——TUI 路径此前透传原始值且 EOS_ACCESS_MODE 无
+		// 内核消费者，导致 --access-mode 在 TUI 下不生效。
+		resolved := func() resolvedModeConfig {
+			access, approval := mergeConfigPermissions(cmd.Flags(), "sandbox-mode", cliAccessMode, cliApprovalMode)
+			return resolveModeConfig(access, approval, cliSandboxMode, cliSkipPermissions)
+		}()
 		opts := ui.TUIOptions{
 			ModelOverride:   cliModel,
 			MaxTurns:        cliMaxTurns,
-			AccessMode:      cliAccessMode,
-			ApprovalMode:    cliApprovalMode,
-			SandboxMode:     cliSandboxMode,
-			SkipPermissions: cliSkipPermissions,
+			AccessMode:      resolved.AccessMode,
+			ApprovalMode:    resolved.ApprovalMode,
+			SandboxMode:     resolved.SandboxMode,
+			SkipPermissions: resolved.SkipAllChecks,
 		}
 		if continueChat {
 			opts.SessionID = "latest"
@@ -143,10 +151,10 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&cliMaxTurns, "max-turns", 0, "Maximum number of turns (0=unlimited)")
 	rootCmd.PersistentFlags().StringVar(&cliAllowedTools, "allowed-tools", "", "Comma-separated list of allowed tools")
 	rootCmd.PersistentFlags().StringVar(&cliDisallowedTools, "disallowed-tools", "", "Comma-separated list of disallowed tools")
-	rootCmd.PersistentFlags().StringVar(&cliAccessMode, "access-mode", "", "Access mode: read-only, workspace-write, or danger-full-access")
-	rootCmd.PersistentFlags().StringVar(&cliApprovalMode, "approval-mode", "", "Approval mode: untrusted, on-failure, on-request, or never")
-	rootCmd.PersistentFlags().StringVar(&cliSandboxMode, "sandbox-mode", "workspace", "Legacy sandbox mode alias: workspace or full_access")
-	rootCmd.PersistentFlags().BoolVar(&cliSkipPermissions, "dangerously-skip-permissions", false, "Compatibility alias for --access-mode danger-full-access --approval-mode never")
+	rootCmd.PersistentFlags().StringVar(&cliAccessMode, "access-mode", "", "Sandbox access mode: read-only, workspace-write, or danger-full-access")
+	rootCmd.PersistentFlags().StringVar(&cliApprovalMode, "approval-mode", "", "Approval mode: untrusted, on-request, or never (on-failure is accepted as an alias of on-request)")
+	rootCmd.PersistentFlags().StringVar(&cliSandboxMode, "sandbox-mode", "workspace", "Alias of --access-mode (workspace=workspace-write, full_access=danger-full-access)")
+	rootCmd.PersistentFlags().BoolVar(&cliSkipPermissions, "dangerously-skip-permissions", false, "Full-access preset: --access-mode danger-full-access --approval-mode never")
 	rootCmd.Flags().BoolVar(&cliShowVersion, "version", false, "Print the EOS version and exit")
 
 	rootCmd.AddCommand(newDocumentCmd())

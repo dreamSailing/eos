@@ -112,6 +112,9 @@ type PermissionService interface {
 	ClearPendingReview(context.Context) error
 	SetAccessMode(context.Context, SetModeRequest) error
 	SetApprovalMode(context.Context, SetModeRequest) error
+	// EnterFullAccess 走内核 permission/enter_full_access：原子推进双轴
+	// （approval=Never + sandbox=DangerFullAccess）并自动放行待审项。
+	EnterFullAccess(context.Context, EnterFullAccessRequest) error
 }
 
 type ExtensionService interface {
@@ -324,6 +327,9 @@ type EventBus interface {
 type SandboxService interface {
 	Policy(context.Context, SessionRef) (sandbox.Policy, error)
 	SetPolicy(context.Context, SessionRef, sandbox.Policy) error
+	// DerivePolicy 走内核 sandbox/derive_policy：按单一真相源派生完整 Policy
+	// （含 allow_network 等 mode-scoped 默认值），壳层不自组装。
+	DerivePolicy(context.Context, DeriveSandboxPolicyRequest) (sandbox.Policy, error)
 	BackendStatus(context.Context) sandbox.BackendStatus
 }
 
