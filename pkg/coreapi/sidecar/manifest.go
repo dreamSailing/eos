@@ -264,6 +264,28 @@ func TargetTriples(goos, goarch string) []string {
 	return out
 }
 
+// ExistingTargetTriple 返回 triples 候选序列中第一个在 root 下带 manifest 的
+// triple（主选优先、回退次之），全部缺失时返回空串。调用方应传
+// TargetTriples(goos, goarch)，使内核选择与运行时 resolver 的平台候选顺序
+// 完全一致——例如 windows/amd64 主选 msvc、回退 gnu（vendored 产物是 mingw
+// 构建，仓库内通常只有 gnu），linux 主选 gnu、回退 musl。
+func ExistingTargetTriple(root string, triples []string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return ""
+	}
+	for _, triple := range triples {
+		triple = strings.TrimSpace(triple)
+		if triple == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(root, triple, DefaultManifestName)); err == nil {
+			return triple
+		}
+	}
+	return ""
+}
+
 func parseSHA256(value string) (string, error) {
 	value = strings.TrimSpace(strings.ToLower(value))
 	value = strings.TrimPrefix(value, "sha256:")

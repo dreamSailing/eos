@@ -166,3 +166,55 @@ func TestTargetTriplesLinuxGNUPrimaryWithMuslFallback(t *testing.T) {
 		}
 	}
 }
+
+// TestExistingTargetTriplePicksFallbackWhenPrimaryMissing 复现 stage 链路的
+// 真实布局：windows/amd64 主选 msvc 仓库内不存在，vendored 产物只有 gnu
+// （mingw 构建），候选遍历必须命中 gnu 而不是报缺内核。
+func TestExistingTargetTriplePicksFallbackWhenPrimaryMissing(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "x86_64-pc-windows-gnu"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "x86_64-pc-windows-gnu", DefaultManifestName), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	got := ExistingTargetTriple(root, TargetTriples("windows", "amd64"))
+	if got != "x86_64-pc-windows-gnu" {
+		t.Fatalf("ExistingTargetTriple()=%q, want %q", got, "x86_64-pc-windows-gnu")
+	}
+}
+
+// TestExistingTargetTriplePrefersPrimaryWhenBothExist 主选与回退同时存在时
+// 必须选主选（候选顺序的优先级语义）。
+func TestExistingTargetTriplePrefersPrimaryWhenBothExist(t *testing.T) {
+	root := t.TempDir()
+	for _, triple := range TargetTriples("linux", "amd64") {
+		dir := filepath.Join(root, triple)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", triple, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, DefaultManifestName), []byte("{}"), 0o644); err != nil {
+			t.Fatalf("write manifest %s: %v", triple, err)
+		}
+	}
+
+	if got := ExistingTargetTriple(root, TargetTriples("linux", "amd64")); got != "x86_64-unknown-linux-gnu" {
+		t.Fatalf("ExistingTargetTriple()=%q, want %q", got, "x86_64-unknown-linux-gnu")
+	}
+}
+
+// TestExistingTargetTripleAllMissingAndEmptyInputs 全部候选缺失返回空串、
+// 空 root / 空候选安全返回空串，不 panic。
+func TestExistingTargetTripleAllMissingAndEmptyInputs(t *testing.T) {
+	root := t.TempDir()
+	if got := ExistingTargetTriple(root, TargetTriples("darwin", "arm64")); got != "" {
+		t.Fatalf("ExistingTargetTriple(all missing)=%q, want empty", got)
+	}
+	if got := ExistingTargetTriple("", TargetTriples("darwin", "arm64")); got != "" {
+		t.Fatalf("ExistingTargetTriple(empty root)=%q, want empty", got)
+	}
+	if got := ExistingTargetTriple(root, []string{"", "  "}); got != "" {
+		t.Fatalf("ExistingTargetTriple(blank triples)=%q, want empty", got)
+	}
+}
