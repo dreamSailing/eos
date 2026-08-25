@@ -39,6 +39,11 @@ type ApplyOutcome struct {
 //     Release 布局（exe 旁有 core/）还是 go install 布局（无 core/），都把
 //     新 core/ 落到 exe 同级——resolver 优先读 exe 同级，内核随之升级。
 func Apply(ctx context.Context, res *CheckResult, progress ProgressFn) (*ApplyOutcome, error) {
+	return ApplyWithClient(ctx, res, progress, nil)
+}
+
+// ApplyWithClient 与 Apply 同流程，允许注入显式代理客户端（nil = 默认）。
+func ApplyWithClient(ctx context.Context, res *CheckResult, progress ProgressFn, client *http.Client) (*ApplyOutcome, error) {
 	if res == nil || res.DownloadURL == "" || res.AssetName == "" {
 		return nil, errors.New("no downloadable asset for this platform")
 	}
@@ -57,7 +62,7 @@ func Apply(ctx context.Context, res *CheckResult, progress ProgressFn) (*ApplyOu
 
 	// 1. 下载归档与校验清单
 	archivePath := filepath.Join(tmpDir, res.AssetName)
-	if err := downloadTo(ctx, res.DownloadURL, archivePath, progress); err != nil {
+	if err := downloadTo(ctx, res.DownloadURL, archivePath, progress, client); err != nil {
 		return nil, fmt.Errorf("download %s: %w", res.AssetName, err)
 	}
 
@@ -66,7 +71,7 @@ func Apply(ctx context.Context, res *CheckResult, progress ProgressFn) (*ApplyOu
 		return nil, errors.New("release has no SHA256SUMS.txt asset")
 	}
 	sumsPath := filepath.Join(tmpDir, "SHA256SUMS.txt")
-	if err := downloadTo(ctx, res.ChecksumURL, sumsPath, nil); err != nil {
+	if err := downloadTo(ctx, res.ChecksumURL, sumsPath, nil, client); err != nil {
 		return nil, fmt.Errorf("download SHA256SUMS.txt: %w", err)
 	}
 	if err := verifyChecksum(archivePath, sumsPath, res.AssetName); err != nil {
@@ -133,7 +138,7 @@ var (
 	downloadRetryBackoff  = 1 * time.Second
 )
 
-func downloadTo(ctx context.Context, url, dst string, progress ProgressFn) error {
+func downloadTo(ctx context.Context, url, dst string, progress ProgressFn, client *http.Client) error {
 	var lastErr error
 	for attempt := 1; attempt <= downloadAttempts; attempt++ {
 		// 重试时若已有部分落盘且服务端支持 Range，从断点继续；
@@ -146,7 +151,7 @@ func downloadTo(ctx context.Context, url, dst string, progress ProgressFn) error
 		} else {
 			_ = os.Remove(dst)
 		}
-		written, err := downloadOnce(ctx, url, dst, offset, progress)
+		written, err := downloadOnce(ctx, url, dst, offset, progress, client)
 		if err == nil {
 			return nil
 		}
@@ -170,7 +175,7 @@ func downloadTo(ctx context.Context, url, dst string, progress ProgressFn) error
 
 // downloadOnce 执行一次下载。offset>0 时带 Range 请求；服务端返回 206
 // 则续传追加，返回 200（不支持 Range）则整体重写。返回本次写入字节数。
-func downloadOnce(ctx context.Context, url, dst string, offset int64, progress ProgressFn) (int64, error) {
+func downloadOnce(ctx context.Context, url, dst string, offset int64, progress ProgressFn, client *http.Client) (int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, err
@@ -180,7 +185,12 @@ func downloadOnce(ctx context.Context, url, dst string, offset int64, progress P
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	// client 为 nil 用默认客户端（遵循环境代理约定），与历史行为一致。
+	activeClient := http.DefaultClient
+	if client != nil {
+		activeClient = client
+	}
+	resp, err := activeClient.Do(req)
 	if err != nil {
 		return 0, err
 	}

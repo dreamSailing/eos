@@ -23,7 +23,7 @@ func TestFetchLatestTag_ParsesRedirectTag(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tag, err := fetchLatestTag(context.Background(), srv.URL)
+	tag, err := fetchLatestTag(context.Background(), srv.URL, nil)
 	if err != nil {
 		t.Fatalf("fetchLatestTag() error = %v", err)
 	}
@@ -43,7 +43,7 @@ func TestFetchLatestTag_NonRedirectIsTerminalError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := fetchLatestTag(context.Background(), srv.URL)
+	_, err := fetchLatestTag(context.Background(), srv.URL, nil)
 	if err == nil {
 		t.Fatal("expected error for non-redirect response")
 	}
@@ -70,7 +70,7 @@ func TestFetchLatestTag_RetriesTransientNetworkErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tag, err := fetchLatestTag(context.Background(), srv.URL)
+	tag, err := fetchLatestTag(context.Background(), srv.URL, nil)
 	if err != nil {
 		t.Fatalf("fetchLatestTag() error = %v", err)
 	}
@@ -103,7 +103,7 @@ func TestFetchLatestTag_TimeoutGetsFreshBudgetPerAttempt(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tag, err := fetchLatestTag(context.Background(), srv.URL)
+	tag, err := fetchLatestTag(context.Background(), srv.URL, nil)
 	if err != nil {
 		t.Fatalf("fetchLatestTag() error = %v", err)
 	}

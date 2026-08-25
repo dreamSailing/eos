@@ -39,15 +39,34 @@ func CheckLatest(ctx context.Context) (*CheckResult, error) {
 	return CheckLatestFor(ctx, runtime.GOOS, runtime.GOARCH)
 }
 
+// CheckLatestWithProxy 走显式代理地址检查更新（开关开启时的入口）；
+// 代理地址非法时 fail-fast 返回错误。
+func CheckLatestWithProxy(ctx context.Context, proxyURL string) (*CheckResult, error) {
+	client, err := NewHTTPClient(proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	return CheckLatestWithClient(ctx, client)
+}
+
+// CheckLatestWithClient 用指定客户端检查更新（nil = 默认，遵循环境代理）。
+func CheckLatestWithClient(ctx context.Context, client *http.Client) (*CheckResult, error) {
+	return checkLatestFor(ctx, runtime.GOOS, runtime.GOARCH, client)
+}
+
 // CheckLatestFor 检查 goos/goarch 平台的最新版本。抽出来便于测试注入
 // 平台组合（当前机器无法覆盖全部目标平台）。
 func CheckLatestFor(ctx context.Context, goos, goarch string) (*CheckResult, error) {
+	return checkLatestFor(ctx, goos, goarch, nil)
+}
+
+func checkLatestFor(ctx context.Context, goos, goarch string, client *http.Client) (*CheckResult, error) {
 	current := strings.TrimSpace(version.AppVersion)
 	if current == "" || current == "dev" {
 		return &CheckResult{CurrentVersion: current, HasUpdate: false}, nil
 	}
 
-	latest, err := fetchLatestTag(ctx, latestReleasesPageURL())
+	latest, err := fetchLatestTag(ctx, latestReleasesPageURL(), client)
 	if err != nil {
 		return nil, err
 	}
@@ -67,8 +86,16 @@ func latestReleasesPageURL() string {
 // 弱网下瞬断常见（EOF/RST/整段黑洞），带退避重试；每次尝试持有独立的
 // checkTimeout 预算——若共享一个总预算，首次超时（最长 15s）就几乎耗尽
 // 窗口，后续重试拿不到完整预算形同虚设（beta.14 实测如此）。
-func fetchLatestTag(ctx context.Context, page string) (string, error) {
-	client := &http.Client{
+func fetchLatestTag(ctx context.Context, page string, client *http.Client) (string, error) {
+	// client 非 nil 时取其 Transport（显式代理），否则用默认 Transport
+	//（遵循环境代理约定）；无论哪种源，检查路径统一带重定向陷阱——不跟随
+	// 302、直接取 Location 解析 tag（见下方注释）。
+	transport := http.DefaultTransport
+	if client != nil && client.Transport != nil {
+		transport = client.Transport
+	}
+	trapClient := &http.Client{
+		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse // 不跟随重定向，直接取 302 的 Location
 		},
@@ -83,7 +110,7 @@ func fetchLatestTag(ctx context.Context, page string) (string, error) {
 		}
 		req.Header.Set("User-Agent", "EOS-Update-Check")
 
-		resp, err := client.Do(req)
+		resp, err := trapClient.Do(req)
 		cancel()
 		if err != nil {
 			lastErr = fmt.Errorf("resolve latest release: %w", err)

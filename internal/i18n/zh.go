@@ -638,6 +638,18 @@ var zhText = map[string]string{
 	"update.apply_failed":        "升级安装失败: %w",
 	"update.core_updated":        "内核 core/ 已随版本同步更新\n",
 
+	// eos config 子命令
+	"config.short":                     "查看和修改全局配置",
+	"config.get.short":                 "查看配置项",
+	"config.get.long":                  "查看配置项。当前支持：update_proxy（更新代理）",
+	"config.set.short":                 "修改配置项并持久化保存",
+	"config.unknown_key":               "不支持的配置项: %s（当前支持 update_proxy）\n",
+	"config.update_proxy.on":           "更新代理: 开启（%s）\n",
+	"config.update_proxy.off":          "更新代理: 关闭（直连，遵循环境 HTTP_PROXY）\n",
+	"config.set.update_proxy.invalid":  "更新代理地址非法: %s\n",
+	"config.set.update_proxy.enabled":  "更新代理已开启: %s\n",
+	"config.set.update_proxy.disabled": "更新代理已关闭（地址保留，可随时重新开启）\n",
+
 	// 欢迎卡片
 	"welcome.tagline": "AI 领航，助你破浪前行",
 	"welcome.tip":     "● 提示  运行 /help 查看帮助  运行 /config 配置模型",

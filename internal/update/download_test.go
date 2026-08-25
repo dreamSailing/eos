@@ -64,7 +64,7 @@ func TestDownloadToResumesAfterMidBodyDrop(t *testing.T) {
 	defer srv.Close()
 
 	dst := filepath.Join(t.TempDir(), "archive.bin")
-	if err := downloadTo(context.Background(), srv.URL, dst, nil); err != nil {
+	if err := downloadTo(context.Background(), srv.URL, dst, nil, nil); err != nil {
 		t.Fatalf("downloadTo: %v", err)
 	}
 	got, err := os.ReadFile(dst)
@@ -106,7 +106,7 @@ func TestDownloadToRetriesWithFullRewriteWhenRangeUnsupported(t *testing.T) {
 	defer srv.Close()
 
 	dst := filepath.Join(t.TempDir(), "archive.bin")
-	if err := downloadTo(context.Background(), srv.URL, dst, nil); err != nil {
+	if err := downloadTo(context.Background(), srv.URL, dst, nil, nil); err != nil {
 		t.Fatalf("downloadTo: %v", err)
 	}
 	got, err := os.ReadFile(dst)
@@ -127,7 +127,7 @@ func TestDownloadToFailsAfterAttemptsExhausted(t *testing.T) {
 	defer srv.Close()
 
 	dst := filepath.Join(t.TempDir(), "archive.bin")
-	err := downloadTo(context.Background(), srv.URL, dst, nil)
+	err := downloadTo(context.Background(), srv.URL, dst, nil, nil)
 	if err == nil {
 		t.Fatal("expected error after attempts exhausted")
 	}

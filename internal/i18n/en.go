@@ -638,6 +638,18 @@ var enText = map[string]string{
 	"update.apply_failed":        "Update installation failed: %w",
 	"update.core_updated":        "Core sidecar updated to match\n",
 
+	// eos config subcommand
+	"config.short":                     "View and modify global configuration",
+	"config.get.short":                 "Show a configuration key",
+	"config.get.long":                  "Show a configuration key. Currently supported: update_proxy (update proxy)",
+	"config.set.short":                 "Set a configuration key persistently",
+	"config.unknown_key":               "Unsupported configuration key: %s (currently supported: update_proxy)\n",
+	"config.update_proxy.on":           "Update proxy: on (%s)\n",
+	"config.update_proxy.off":          "Update proxy: off (direct, following environment HTTP_PROXY)\n",
+	"config.set.update_proxy.invalid":  "Invalid update proxy URL: %s\n",
+	"config.set.update_proxy.enabled":  "Update proxy enabled: %s\n",
+	"config.set.update_proxy.disabled": "Update proxy disabled (URL kept, can be re-enabled later)\n",
+
 	// Welcome card
 	"welcome.tagline": "AI navigation, helping you ride the waves",
 	"welcome.tip":     "● Tip  Run /help for help  Run /config to configure the model",

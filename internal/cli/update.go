@@ -28,7 +28,14 @@ func newUpdateCmd() *cobra.Command {
 			fmt.Printf(i18n.T("update.current_version", lang), version.AppVersion)
 			fmt.Println(i18n.T("update.checking", lang))
 
-			result, err := update.CheckLatest(context.Background())
+			// 代理开关（config set update_proxy）生效：地址非法时构造期
+			// fail-fast——配置被手工改坏时立即报错，不静默直连掩盖。
+			proxyClient, err := update.NewHTTPClient(config.EffectiveUpdateProxyURL(&cfg))
+			if err != nil {
+				return err
+			}
+
+			result, err := update.CheckLatestWithClient(context.Background(), proxyClient)
 			if err != nil {
 				return fmt.Errorf(i18n.T("update.check_failed", lang), err)
 			}
@@ -56,13 +63,13 @@ func newUpdateCmd() *cobra.Command {
 			defer cancel()
 
 			fmt.Printf(i18n.T("update.downloading", lang), result.AssetName)
-			outcome, err := update.Apply(ctx, result, func(done, total int64) {
+			outcome, err := update.ApplyWithClient(ctx, result, func(done, total int64) {
 				if total > 0 {
 					pct := int(float64(done) / float64(total) * 100)
 					fmt.Print(fmt.Sprintf(i18n.T("update.progress", lang), pct,
 						float64(done)/1024/1024, float64(total)/1024/1024))
 				}
-			})
+			}, proxyClient)
 			if err != nil {
 				return fmt.Errorf(i18n.T("update.apply_failed", lang), err)
 			}

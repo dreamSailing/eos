@@ -218,6 +218,10 @@ type Config struct {
 	DiffTheme                    string                          `json:"diff_theme,omitempty"`         // diff/代码块 chroma 高亮主题（monokai 等）
 	LogDir                       string                          `json:"log_dir,omitempty"`            // 全局日志目录
 	FastModel                    string                          `json:"fast_model,omitempty"`         // Fast mode model name
+	// UpdateProxyEnabled/UpdateProxyURL 是更新（检查+下载）代理开关：
+	// enabled=false（默认关）时更新走直连/环境代理，url 仅在 enabled 时生效。
+	UpdateProxyEnabled bool   `json:"update_proxy_enabled,omitempty"`
+	UpdateProxyURL     string `json:"update_proxy_url,omitempty"`
 	Permissions                  *PermissionsConfig              `json:"permissions,omitempty"`        // Tool permissions
 	RemoteProviders              map[string]RemoteProviderConfig `json:"remote_providers,omitempty"`   // GitHub/Gitee OAuth/Token 配置
 	RemoteAuth                   map[string]RemoteAuthToken      `json:"remote_auth,omitempty"`        // 已授权账号（按平台）
@@ -435,6 +439,15 @@ func DiffHighlightTheme(cfg *Config) string {
 		return ""
 	}
 	return strings.TrimSpace(cfg.DiffTheme)
+}
+
+// EffectiveUpdateProxyURL 返回启用状态下的更新代理地址；
+// 开关关闭（默认）时返回空串（空 = 直连/遵循环境 HTTP_PROXY）。
+func EffectiveUpdateProxyURL(cfg *Config) string {
+	if cfg == nil || !cfg.UpdateProxyEnabled {
+		return ""
+	}
+	return strings.TrimSpace(cfg.UpdateProxyURL)
 }
 
 func Path() string {
