@@ -19,7 +19,8 @@ import (
 
 const githubOwner = "dreamSailing"
 const githubRepo = "eos"
-const checkTimeout = 15 * time.Second
+// checkTimeout 是单次尝试的超时预算。var 以便测试注入短超时。
+var checkTimeout = 15 * time.Second
 
 type CheckResult struct {
 	CurrentVersion string `json:"currentVersion"`
@@ -46,9 +47,6 @@ func CheckLatestFor(ctx context.Context, goos, goarch string) (*CheckResult, err
 		return &CheckResult{CurrentVersion: current, HasUpdate: false}, nil
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
-	defer cancel()
-
 	latest, err := fetchLatestTag(ctx, latestReleasesPageURL())
 	if err != nil {
 		return nil, err
@@ -66,7 +64,9 @@ func latestReleasesPageURL() string {
 // 不走 api.github.com：未认证限流 60 次/小时/IP，共享代理出口（国内常态）
 // 极易触发 403；网页会 302 到 releases/tag/<版本>，从 Location 解析 tag
 // 不占 API 配额。与 scripts/install.ps1 同一方案。
-// 弱网下瞬断常见（EOF/RST），带指数退避重试；重试共享外层 ctx 超时预算。
+// 弱网下瞬断常见（EOF/RST/整段黑洞），带退避重试；每次尝试持有独立的
+// checkTimeout 预算——若共享一个总预算，首次超时（最长 15s）就几乎耗尽
+// 窗口，后续重试拿不到完整预算形同虚设（beta.14 实测如此）。
 func fetchLatestTag(ctx context.Context, page string) (string, error) {
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -75,13 +75,16 @@ func fetchLatestTag(ctx context.Context, page string) (string, error) {
 	}
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, page, nil)
+		attemptCtx, cancel := context.WithTimeout(ctx, checkTimeout)
+		req, err := http.NewRequestWithContext(attemptCtx, http.MethodGet, page, nil)
 		if err != nil {
+			cancel()
 			return "", fmt.Errorf("create request: %w", err)
 		}
 		req.Header.Set("User-Agent", "EOS-Update-Check")
 
 		resp, err := client.Do(req)
+		cancel()
 		if err != nil {
 			lastErr = fmt.Errorf("resolve latest release: %w", err)
 		} else {

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestFetchLatestTag_ParsesRedirectTag 验证从 302 Location 解析 tag（含尾斜杠）。
@@ -78,6 +79,39 @@ func TestFetchLatestTag_RetriesTransientNetworkErrors(t *testing.T) {
 	}
 	if attempts < 2 {
 		t.Fatalf("expected retry after transient failure, attempts = %d", attempts)
+	}
+}
+
+// TestFetchLatestTag_TimeoutGetsFreshBudgetPerAttempt 验证每次尝试持有
+// 独立超时预算：首次请求整个超时（弱网黑洞，非瞬断）后，第二次尝试
+// 仍能拿到完整预算并成功。共享总预算的旧实现在此场景下必然失败。
+func TestFetchLatestTag_TimeoutGetsFreshBudgetPerAttempt(t *testing.T) {
+	old := checkTimeout
+	checkTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { checkTimeout = old })
+
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			<-r.Context().Done() // 模拟黑洞：挂死到本次尝试超时
+			return
+		}
+		http.Redirect(w, r,
+			"https://github.com/dreamSailing/eos/releases/tag/v3.0.0",
+			http.StatusFound)
+	}))
+	defer srv.Close()
+
+	tag, err := fetchLatestTag(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("fetchLatestTag() error = %v", err)
+	}
+	if tag != "v3.0.0" {
+		t.Fatalf("tag = %q, want v3.0.0", tag)
+	}
+	if attempts < 2 {
+		t.Fatalf("expected retry after timeout, attempts = %d", attempts)
 	}
 }
 
