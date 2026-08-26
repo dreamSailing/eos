@@ -83,8 +83,9 @@ type AppModel struct {
 	thinkingLive       strings.Builder
 	thinkingExpanded   bool
 	reasoningStartTime time.Time // 当前推理块开始时间，用于该块耗时统计
-	activeItemID       string    // current AgentMessage item being streamed
-	toolInflight       map[string]toolTrack
+	activeItemID               string // current in-progress turn item being streamed
+	agentTextCommittedThisTurn bool   // item.completed 已落 history，忽略 legacy text.final 双写
+	toolInflight               map[string]toolTrack
 	history            []historyEntry
 	delegatedThisRound bool
 	lastAgentFinal     string

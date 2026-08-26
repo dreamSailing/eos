@@ -177,6 +177,8 @@ func (m *AppModel) sendMessage() tea.Cmd {
 	m.state.Processing = true
 	m.shell.SetProcessing(true)
 	m.delegatedThisRound = false
+	m.agentTextCommittedThisTurn = false
+	m.activeItemID = ""
 	m.aiLive.Reset()
 	m.clearCurrentThinking()
 	m.shell.SetStatusHints(false, false)

@@ -823,3 +823,97 @@ func TestHandlePlanDownloadActionReportsChooserFailure(t *testing.T) {
 		t.Fatalf("expected system error entry, got %+v", last)
 	}
 }
+
+func TestStartReasoningItemDoesNotArchivePartialAgentText(t *testing.T) {
+	setTestHome(t)
+	app := newTestAppModel(t)
+	app.state.Processing = true
+	app.activeItemID = "msg_1"
+	app.aiLive.WriteString("你")
+
+	app.startReasoningItem("rs_1")
+
+	if len(app.history) != 0 {
+		t.Fatalf("reasoning start must not archive partial agent text, history len=%d", len(app.history))
+	}
+	if app.aiLive.String() != "你" {
+		t.Fatalf("aiLive=%q, want preserved partial agent text", app.aiLive.String())
+	}
+}
+
+func TestAgentMessageStreamCommitsSingleHistoryEntry(t *testing.T) {
+	setTestHome(t)
+	app := newTestAppModel(t)
+	app.state.Processing = true
+	app.currentAIStartTime = time.Now()
+
+	app.startAgentMessageItem("msg_1")
+	app.handleItemDelta(ItemDeltaMsg{ItemID: "msg_1", DeltaType: "text", Delta: "你"})
+	app.handleItemDelta(ItemDeltaMsg{ItemID: "msg_1", DeltaType: "text", Delta: "好！"})
+	app.handleItemCompleted(ItemCompletedMsg{ItemID: "msg_1", ItemType: "agent_message", Text: "你好！"})
+
+	aiCount := 0
+	var lastAI string
+	for _, e := range app.history {
+		if e.kind == "ai" {
+			aiCount++
+			lastAI = e.content
+		}
+	}
+	if aiCount != 1 {
+		t.Fatalf("want 1 ai history entry, got %d (%v)", aiCount, app.history)
+	}
+	if lastAI != "你好！" {
+		t.Fatalf("archived ai=%q, want 你好！", lastAI)
+	}
+}
+
+func TestSecondAgentSegmentDoesNotArchiveViaItemStarted(t *testing.T) {
+	setTestHome(t)
+	app := newTestAppModel(t)
+	app.state.Processing = true
+	app.currentAIStartTime = time.Now()
+
+	app.startAgentMessageItem("msg_1")
+	app.handleItemDelta(ItemDeltaMsg{ItemID: "msg_1", DeltaType: "text", Delta: "第一段"})
+	app.handleItemCompleted(ItemCompletedMsg{ItemID: "msg_1", ItemType: "agent_message", Text: "第一段"})
+
+	app.startAgentMessageItem("msg_2")
+	app.handleItemDelta(ItemDeltaMsg{ItemID: "msg_2", DeltaType: "text", Delta: "第二段"})
+	app.handleItemCompleted(ItemCompletedMsg{ItemID: "msg_2", ItemType: "agent_message", Text: "第二段"})
+
+	aiEntries := make([]string, 0)
+	for _, e := range app.history {
+		if e.kind == "ai" {
+			aiEntries = append(aiEntries, e.content)
+		}
+	}
+	if len(aiEntries) != 2 || aiEntries[0] != "第一段" || aiEntries[1] != "第二段" {
+		t.Fatalf("want two distinct ai segments, got %v", aiEntries)
+	}
+}
+
+func TestLateAgentDeltaAfterCompletionIsIgnored(t *testing.T) {
+	setTestHome(t)
+	app := newTestAppModel(t)
+	app.state.Processing = true
+	app.currentAIStartTime = time.Now()
+
+	app.startAgentMessageItem("msg_1")
+	app.handleItemDelta(ItemDeltaMsg{ItemID: "msg_1", DeltaType: "text", Delta: "你好！"})
+	app.handleItemCompleted(ItemCompletedMsg{ItemID: "msg_1", ItemType: "agent_message", Text: "你好！"})
+
+	before := len(app.history)
+	app.handleItemDelta(ItemDeltaMsg{ItemID: "msg_1", DeltaType: "text", Delta: "重复"})
+	app.handleInvokeDoneMsg(InvokeDoneMsg{})
+
+	aiCount := 0
+	for _, e := range app.history {
+		if e.kind == "ai" {
+			aiCount++
+		}
+	}
+	if aiCount != 1 {
+		t.Fatalf("late delta must not create duplicate ai entry, got %d (history grew %d→%d)", aiCount, before, len(app.history))
+	}
+}

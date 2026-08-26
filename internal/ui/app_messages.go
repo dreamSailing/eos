@@ -255,7 +255,11 @@ func (m *AppModel) refreshAILive() {
 	liveShown := live != ""
 	if live != "" {
 		if m.msgRenderer != nil {
-			blocks = append(blocks, m.msgRenderer.RenderAIResponseAt(live, 0, 0, false, time.Now()))
+			ts := m.currentAIStartTime
+			if ts.IsZero() {
+				ts = time.Now()
+			}
+			blocks = append(blocks, m.msgRenderer.RenderAIResponseAt(live, m.currentAITokens, 0, false, ts))
 		} else {
 			blocks = append(blocks, live)
 		}
@@ -335,7 +339,7 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 		m.currentAITokens += len(msg.Content) / 4
 		m.refreshAILive()
 	case "final":
-		// 完整回复：清除实时显示、保存到历史、恢复空闲状态、调度预测
+		// 完整回复：item 模型已在 item.completed 落 history 时跳过，避免双写。
 		duration := time.Since(m.currentAIStartTime)
 		m.shell.ClearLive()
 		m.aiLive.Reset()
@@ -343,8 +347,11 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 		m.shell.SetStatusHints(false, false)
 		mainContent := strings.TrimSpace(msg.Content)
 		agentContent := strings.TrimSpace(m.lastAgentFinal)
+		alreadyCommitted := m.agentTextCommittedThisTurn ||
+			(len(m.history) > 0 && m.history[len(m.history)-1].kind == "ai" &&
+				strings.TrimSpace(m.history[len(m.history)-1].content) == mainContent)
 		// 避免重复记录：如果本轮有委派且内容与 agent final 相同则跳过
-		if !(m.delegatedThisRound && mainContent != "" && agentContent != "" && mainContent == agentContent) {
+		if !alreadyCommitted && !(m.delegatedThisRound && mainContent != "" && agentContent != "" && mainContent == agentContent) {
 			m.appendHistory(historyEntry{
 				kind:          "ai",
 				content:       msg.Content,
@@ -355,6 +362,7 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 				duration:      duration,
 			})
 		}
+		m.agentTextCommittedThisTurn = false
 		m.state.Processing = false
 		m.shell.SetProcessing(false)
 		m.activeCancel = nil
@@ -376,18 +384,18 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 	return nil
 }
 
-// startAgentMessageItem begins a new text-segment item. It archives the
-// current aiLive buffer (if any) into a history entry, then resets the buffer
-// so each round of multi-round output renders as its own paragraph. This is
-// the codex-style interleaving: [text段1] → [tool] → [text段2].
+// startAgentMessageItem begins a new text-segment item. Streaming updates stay
+// in aiLive until item_completed or a tool_call archives them (codex-style:
+// ItemStarted for AgentMessage does not commit partial text).
 func (m *AppModel) startAgentMessageItem(itemID string) {
-	// Archive any accumulated live text from a previous segment.
-	if m.aiLive.Len() > 0 {
-		m.archiveAgentMessage()
+	itemID = strings.TrimSpace(itemID)
+	if itemID != "" && itemID == m.activeItemID {
+		return
 	}
 	m.activeItemID = itemID
 	m.aiLive.Reset()
 	m.currentAITokens = 0
+	m.refreshAILive()
 }
 
 // archiveAgentMessage saves the current aiLive content as a finalized history
@@ -397,6 +405,12 @@ func (m *AppModel) archiveAgentMessage() {
 	text := strings.TrimSpace(m.aiLive.String())
 	if text == "" {
 		return
+	}
+	if n := len(m.history); n > 0 {
+		last := m.history[n-1]
+		if last.kind == "ai" && strings.TrimSpace(last.content) == text {
+			return
+		}
 	}
 	duration := time.Since(m.currentAIStartTime)
 	m.appendHistory(historyEntry{
@@ -408,18 +422,29 @@ func (m *AppModel) archiveAgentMessage() {
 		tokens:        m.currentAITokens,
 		duration:      duration,
 	})
+	m.agentTextCommittedThisTurn = true
 }
 
 // handleItemDelta appends an incremental chunk to the current item's live
 // buffer and refreshes the display.
 func (m *AppModel) handleItemDelta(msg ItemDeltaMsg) {
+	itemID := strings.TrimSpace(msg.ItemID)
 	switch msg.DeltaType {
 	case "text", "":
+		if !m.acceptsAgentTextDelta(itemID) {
+			return
+		}
 		m.clearPrediction()
+		if strings.TrimSpace(msg.Delta) != "" && strings.TrimSpace(m.thinkingLive.String()) != "" {
+			m.clearCurrentThinking()
+		}
 		m.aiLive.WriteString(msg.Delta)
 		m.currentAITokens += len(msg.Delta) / 4
 		m.refreshAILive()
 	case "reasoning":
+		if itemID != "" && m.activeItemID != "" && itemID != m.activeItemID {
+			return
+		}
 		// Reasoning deltas stream into the collapsible thinking block. This
 		// mirrors the legacy ThinkingMsg path: light up the live thinking
 		// region (rendered by ThinkingMessage via refreshAILive).
@@ -432,18 +457,36 @@ func (m *AppModel) handleItemDelta(msg ItemDeltaMsg) {
 	}
 }
 
-// startReasoningItem begins a new reasoning (thinking) block. It archives any
-// in-progress text segment and resets the thinking buffer + per-block timer so
-// each reasoning block streams and is timed independently. A turn may interleave
-// reasoning → tool → reasoning, so we cannot reuse currentAIStartTime.
+// acceptsAgentTextDelta reports whether a text delta should append to aiLive.
+// After item_completed clears activeItemID, late/out-of-order deltas are ignored
+// so a finalized paragraph is not duplicated by stale stream chunks.
+func (m *AppModel) acceptsAgentTextDelta(itemID string) bool {
+	if !m.state.Processing {
+		return false
+	}
+	if m.activeItemID == "" {
+		return false
+	}
+	if itemID == "" {
+		return true
+	}
+	return itemID == m.activeItemID
+}
+
+// startReasoningItem begins a new reasoning (thinking) block. Does not archive
+// in-progress agent text — reasoning may precede or interleave with streaming
+// reply; premature archive caused duplicate assistant paragraphs.
 func (m *AppModel) startReasoningItem(itemID string) {
-	m.archiveAgentMessage()
-	m.aiLive.Reset()
+	itemID = strings.TrimSpace(itemID)
+	if itemID != "" && itemID == m.activeItemID {
+		return
+	}
 	m.activeItemID = itemID
 	m.thinkingLive.Reset()
 	m.thinkingExpanded = false
 	m.state.Thinking = true
 	m.reasoningStartTime = time.Now()
+	m.refreshAILive()
 }
 
 // handleReasoningCompleted finalizes a reasoning item: archive the thinking
