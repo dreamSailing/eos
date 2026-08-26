@@ -452,6 +452,8 @@ func (p *ModelsPanel) View() string {
 			key = "models.action.delete"
 		case "SyncEnv":
 			key = "models.action.sync_env"
+		case "Refresh":
+			key = "models.action.refresh"
 		}
 		text := i18n.T(key, p.language)
 		if i == p.actionIndex {

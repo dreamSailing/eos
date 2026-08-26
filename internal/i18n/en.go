@@ -473,6 +473,7 @@ var enText = map[string]string{
 	"models.action.add":      "Add",
 	"models.action.delete":   "Delete",
 	"models.action.sync_env": "Sync Env",
+	"models.action.refresh":  "Refresh",
 	"models.help":            "←/→: switch action | Enter: confirm | ↑/↓: select | U: use | M: plan model | A: add | D: delete | S: sync | R: refresh | Esc: close",
 	"models.plan.title":      "Select plan model",
 	"models.plan.help":       "↑/↓: select | Enter: switch | Esc: back | * = current",

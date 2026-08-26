@@ -473,6 +473,7 @@ var zhText = map[string]string{
 	"models.action.add":      "新增",
 	"models.action.delete":   "删除",
 	"models.action.sync_env": "同步环境变量",
+	"models.action.refresh":  "刷新",
 	"models.help":            "←/→: 切换操作 | Enter: 确认 | ↑/↓: 选择 | U: 使用 | M: 套餐模型 | A: 新增 | D: 删除 | S: 同步 | R: 刷新 | Esc: 关闭",
 	"models.plan.title":      "选择套餐内模型",
 	"models.plan.help":       "↑/↓: 选择 | Enter: 切换 | Esc: 返回 | * 为当前模型",

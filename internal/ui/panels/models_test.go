@@ -6,6 +6,7 @@ package panels
 // 商业使用请联系版权人获得商业授权。
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -75,5 +76,32 @@ func TestModelsPanelShortcutKeys(t *testing.T) {
 	}
 	if p := panel.GetCurrentAction(); p != "Use" {
 		t.Fatalf("actionOps = %q, want first Use with Refresh included", p)
+	}
+}
+
+// TestModelsPanelActionBarNoEmptyOption 回归：actionOps 的每一项都必须有 i18n 标签。
+// 此前 View 的映射缺少 Refresh case，操作栏渲染出空 [] 选项，→ 键会落到空项上。
+func TestModelsPanelActionBarNoEmptyOption(t *testing.T) {
+	panel := newTestModelsPanel()
+	panel.SetModels([]config.ModelEntry{{Name: "MiniMax M3", Model: "MiniMax-M3"}}, "MiniMax M3")
+
+	view := panel.View()
+	if strings.Contains(view, "[]") {
+		t.Fatalf("action bar renders an empty option:\n%s", view)
+	}
+	for _, label := range []string{"使用", "套餐模型", "新增", "删除", "同步环境变量", "刷新"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("action bar missing label %q:\n%s", label, view)
+		}
+	}
+
+	// → 从最后一项（Refresh）再按一次应直接回到第一项（Use），中间不能有空项。
+	for range len(panel.actionOps) {
+		if _, cmd := panel.Update(tea.KeyMsg{Type: tea.KeyRight}); cmd != nil {
+			cmd()
+		}
+	}
+	if got := panel.GetCurrentAction(); got != "Use" {
+		t.Fatalf("after wrapping right from last op, action = %q, want Use", got)
 	}
 }
