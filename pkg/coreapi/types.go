@@ -242,6 +242,7 @@ type RemoteWorkspaceService interface {
 
 type GitService interface {
 	Status(context.Context, GitStatusRequest) ([]GitChange, error)
+	Summary(context.Context, GitSummaryRequest) (GitSummaryResult, error)
 	Diff(context.Context, GitDiffRequest) (GitTextResult, error)
 	Branches(context.Context, GitBranchesRequest) (GitBranchesResult, error)
 	Log(context.Context, GitLogRequest) (GitLogResult, error)
@@ -1384,6 +1385,20 @@ type GitStatusRequest struct {
 type GitChange struct {
 	Path  string `json:"path"`
 	State string `json:"state"`
+}
+
+type GitSummaryRequest struct {
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
+}
+
+// GitSummaryResult 是仓库工作区概览：upstream 为空表示无上游
+//（未 push 过的分支 / detached HEAD），ahead/behind 此时为 0。
+type GitSummaryResult struct {
+	Branch   string      `json:"branch,omitempty"`
+	Upstream string      `json:"upstream,omitempty"`
+	Ahead    uint32      `json:"ahead"`
+	Behind   uint32      `json:"behind"`
+	Changes  []GitChange `json:"changes,omitempty"`
 }
 
 type GitDiffRequest struct {

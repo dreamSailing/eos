@@ -134,6 +134,7 @@ const (
 	MethodRemoteWorkspaceClearCache = "remote_workspace/clear_cache"
 	MethodRemoteRepoCurrent = "remote_repo/current"
 	MethodGitStatus = "git/status"
+	MethodGitSummary = "git/summary"
 	MethodGitDiff = "git/diff"
 	MethodGitBranches = "git/branches"
 	MethodGitLog = "git/log"
@@ -307,6 +308,7 @@ func CoreMethods() []string {
 		MethodRemoteWorkspaceClearCache,
 		MethodRemoteRepoCurrent,
 		MethodGitStatus,
+		MethodGitSummary,
 		MethodGitDiff,
 		MethodGitBranches,
 		MethodGitLog,
@@ -421,6 +423,7 @@ func MethodGroups() map[string][]string {
 		},
 		"git": {
 			MethodGitStatus,
+			MethodGitSummary,
 			MethodGitDiff,
 			MethodGitBranches,
 			MethodGitLog,

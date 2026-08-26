@@ -916,6 +916,14 @@ func (s remoteGitService) Status(ctx context.Context, req coreapi.GitStatusReque
 	return out, nil
 }
 
+func (s remoteGitService) Summary(ctx context.Context, req coreapi.GitSummaryRequest) (coreapi.GitSummaryResult, error) {
+	var out coreapi.GitSummaryResult
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodGitSummary, req, &out); err != nil {
+		return coreapi.GitSummaryResult{}, err
+	}
+	return out, nil
+}
+
 func (s remoteGitService) Diff(ctx context.Context, req coreapi.GitDiffRequest) (coreapi.GitTextResult, error) {
 	var out coreapi.GitTextResult
 	if err := s.engine.call(ctx, protocoljsonrpc.MethodGitDiff, req, &out); err != nil {

@@ -13,8 +13,9 @@ func TestAllCoreMethodsFreezesMigrationSurface(t *testing.T) {
 	//   + 14 浏览器方法（+upload_provide/preview_start/preview_stop/focus/set_default_profile/navigate）
 	//   + 4 内嵌实时视口方法（live_start/live_stop/input/history）
 	//   - 2 移除死方法（preview_start/preview_stop——live 实时流取代）
-	if len(methods) != 169 {
-		t.Fatalf("AllCoreMethods() len=%d, want 169", len(methods))
+	//   + 1 git/summary（工作区未提交/未推送提示，status -sb 单命令聚合）
+	if len(methods) != 170 {
+		t.Fatalf("AllCoreMethods() len=%d, want 170", len(methods))
 	}
 
 	seen := make(map[string]bool, len(methods))

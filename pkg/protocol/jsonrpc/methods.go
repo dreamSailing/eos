@@ -125,6 +125,7 @@ const (
 	MethodRemoteWorkspaceClearCache  = "remote_workspace/clear_cache"
 	MethodRemoteRepoCurrent          = "remote_repo/current"
 	MethodGitStatus                  = "git/status"
+	MethodGitSummary                 = "git/summary"
 	MethodGitDiff                    = "git/diff"
 	MethodGitBranches                = "git/branches"
 	MethodGitLog                     = "git/log"
@@ -310,6 +311,7 @@ func AllCoreMethods() []string {
 		MethodRemoteWorkspaceClearCache,
 		MethodRemoteRepoCurrent,
 		MethodGitStatus,
+		MethodGitSummary,
 		MethodGitDiff,
 		MethodGitBranches,
 		MethodGitLog,

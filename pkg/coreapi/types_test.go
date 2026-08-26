@@ -332,6 +332,9 @@ type compileTimeGit struct{}
 func (compileTimeGit) Status(context.Context, GitStatusRequest) ([]GitChange, error) {
 	return nil, nil
 }
+func (compileTimeGit) Summary(context.Context, GitSummaryRequest) (GitSummaryResult, error) {
+	return GitSummaryResult{}, nil
+}
 func (compileTimeGit) Diff(context.Context, GitDiffRequest) (GitTextResult, error) {
 	return GitTextResult{}, nil
 }

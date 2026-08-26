@@ -1168,6 +1168,18 @@ type GitChange struct {
 	State string `json:"state"`
 }
 
+type GitSummaryRequest struct {
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
+}
+
+type GitSummaryResult struct {
+	Branch string `json:"branch,omitempty"`
+	Upstream string `json:"upstream,omitempty"`
+	Ahead uint32 `json:"ahead"`
+	Behind uint32 `json:"behind"`
+	Changes []GitChange `json:"changes,omitempty"`
+}
+
 type GitDiffRequest struct {
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
 	Path string `json:"path,omitempty"`
