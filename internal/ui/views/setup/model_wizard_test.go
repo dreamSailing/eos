@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/ui/styles"
 	"github.com/dreamSailing/eos/pkg/coreapi"
 
@@ -111,4 +112,52 @@ func TestFixedPresetFocusCycles(t *testing.T) {
 
 	assertTabSequence(t, v, tea.KeyTab, []int{2, 0})
 	assertTabSequence(t, v, tea.KeyShiftTab, []int{2, 0})
+}
+
+// 编辑模式：显示名只读，焦点在 API Base(1)→API Key(2)→模型名(3) 循环。
+func TestEditModeFocusSkipsDisplayName(t *testing.T) {
+	v := NewModelSetupWizard(styles.NewStyles(styles.DefaultDarkTheme()), "zh")
+	v.LoadForEdit(config.ModelEntry{
+		Name:    "demo",
+		APIBase: "https://example.com/v1",
+		Model:   "demo-model",
+	})
+	if v.focusIndex != 1 {
+		t.Fatalf("focusIndex = %d, want 1 (api base)", v.focusIndex)
+	}
+	assertTabSequence(t, v, tea.KeyTab, []int{2, 3, 1})
+	assertTabSequence(t, v, tea.KeyShiftTab, []int{3, 2, 1})
+}
+
+// 编辑模式保存：固定原始条目名并标记 EditMode。
+func TestEditModeSaveUsesOriginalName(t *testing.T) {
+	v := NewModelSetupWizard(styles.NewStyles(styles.DefaultDarkTheme()), "zh")
+	v.LoadForEdit(config.ModelEntry{
+		Name:    "demo",
+		APIBase: "https://example.com/v1",
+		Model:   "demo-model",
+	})
+	v.inputs[1].SetValue("https://new.example.com/v1")
+	v.inputs[3].SetValue("new-model")
+	cmd := v.handleSave()
+	if cmd == nil {
+		t.Fatal("handleSave() = nil")
+	}
+	msg := cmd()
+	complete, ok := msg.(ModelFormCompleteMsg)
+	if !ok {
+		t.Fatalf("handleSave -> %T, want ModelFormCompleteMsg", msg)
+	}
+	if !complete.EditMode {
+		t.Fatal("EditMode = false, want true")
+	}
+	if complete.Config.Name != "demo" {
+		t.Fatalf("Name = %q, want demo", complete.Config.Name)
+	}
+	if complete.Config.APIBase != "https://new.example.com/v1" {
+		t.Fatalf("APIBase = %q", complete.Config.APIBase)
+	}
+	if complete.Config.Model != "new-model" {
+		t.Fatalf("Model = %q", complete.Config.Model)
+	}
 }

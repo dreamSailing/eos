@@ -77,7 +77,7 @@ func NewModelsPanel(styles *styles.Styles, lang string) *ModelsPanel {
 		table:            t,
 		models:           make([]config.ModelEntry, 0),
 		currentModel:     "",
-		actionOps:        []string{"Use", "Model", "Add", "Delete", "SyncEnv", "Refresh"},
+		actionOps:        []string{"Use", "Model", "Add", "Edit", "Delete", "SyncEnv", "Refresh"},
 		actionIndex:      0,
 		language:         lang,
 		presetPlanModels: make(map[string][]coreapi.PlanModel),
@@ -338,6 +338,13 @@ func (p *ModelsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 				return p, func() tea.Msg {
 					return ModelAddMsg{}
 				}
+			case "Edit":
+				// 编辑模型
+				if m := p.GetSelectedModel(); m != nil && m.Name != "" {
+					return p, func() tea.Msg {
+						return ModelEditMsg{Name: m.Name}
+					}
+				}
 			case "Delete":
 				// 删除模型
 				if m := p.GetSelectedModel(); m != nil && m.Name != "" {
@@ -371,6 +378,13 @@ func (p *ModelsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 			// 直接执行新增操作
 			return p, func() tea.Msg {
 				return ModelAddMsg{}
+			}
+		case "e", "E":
+			// 直接执行编辑操作
+			if m := p.GetSelectedModel(); m != nil && m.Name != "" {
+				return p, func() tea.Msg {
+					return ModelEditMsg{Name: m.Name}
+				}
 			}
 		case "d", "D":
 			// 直接执行删除操作
@@ -448,6 +462,8 @@ func (p *ModelsPanel) View() string {
 			key = "models.action.model"
 		case "Add":
 			key = "models.action.add"
+		case "Edit":
+			key = "models.action.edit"
 		case "Delete":
 			key = "models.action.delete"
 		case "SyncEnv":
@@ -491,6 +507,11 @@ type ModelPlanSelectMsg struct {
 
 // ModelAddMsg 添加模型消息
 type ModelAddMsg struct{}
+
+// ModelEditMsg 编辑模型消息
+type ModelEditMsg struct {
+	Name string
+}
 
 // ModelDeleteMsg 删除模型消息
 type ModelDeleteMsg struct {

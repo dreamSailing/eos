@@ -273,6 +273,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleModelPlanSelectMsg(msg)
 	case panels.ModelAddMsg:
 		return m.handleModelAddMsg(msg)
+	case panels.ModelEditMsg:
+		return m.handleModelEditMsg(msg)
 	case panels.ModelDeleteMsg:
 		return m.handleModelDeleteMsg(msg)
 	case panels.ModelSyncMsg:

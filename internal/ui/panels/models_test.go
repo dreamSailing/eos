@@ -51,6 +51,16 @@ func TestModelsPanelShortcutKeys(t *testing.T) {
 		t.Fatalf("a -> got %T, want ModelAddMsg", msg)
 	}
 
+	// e：编辑
+	panel = newTestModelsPanel()
+	panel.SetModels([]config.ModelEntry{{Name: "MiniMax M3", Model: "MiniMax-M3"}}, "MiniMax M3")
+	_, msg = runKey(t, panel, "e")
+	if editMsg, ok := msg.(ModelEditMsg); !ok {
+		t.Fatalf("e -> got %T, want ModelEditMsg", msg)
+	} else if editMsg.Name != "MiniMax M3" {
+		t.Fatalf("e -> Name = %q, want MiniMax M3", editMsg.Name)
+	}
+
 	// d：删除
 	panel = newTestModelsPanel()
 	panel.SetModels([]config.ModelEntry{{Name: "MiniMax M3", Model: "MiniMax-M3"}}, "MiniMax M3")
@@ -89,7 +99,7 @@ func TestModelsPanelActionBarNoEmptyOption(t *testing.T) {
 	if strings.Contains(view, "[]") {
 		t.Fatalf("action bar renders an empty option:\n%s", view)
 	}
-	for _, label := range []string{"使用", "套餐模型", "新增", "删除", "同步环境变量", "刷新"} {
+	for _, label := range []string{"使用", "套餐模型", "新增", "编辑", "删除", "同步环境变量", "刷新"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("action bar missing label %q:\n%s", label, view)
 		}

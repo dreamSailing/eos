@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dreamSailing/eos/internal/ai"
+	"github.com/dreamSailing/eos/internal/config"
 	"github.com/dreamSailing/eos/internal/i18n"
 	"github.com/dreamSailing/eos/internal/ui/styles"
 	"github.com/dreamSailing/eos/pkg/coreapi"
@@ -55,6 +56,9 @@ type ModelSetupView struct {
 	modelReadOnly    bool   // Model 名称是否只读（套餐类 preset 为 false，可从套餐模型中选择）
 	errMsg           string // 保存校验错误（非空时显示在配置步骤底部）
 	language         string
+
+	editMode         bool   // 编辑已有条目（跳过向导前几步）
+	editOriginalName string // 编辑时的原始条目名（upsert 键）
 
 	existingNames map[string]bool // 已配置条目名（默认显示名去重用）
 	planIndex     int             // 套餐内模型当前选中索引（选择式切换）
@@ -304,11 +308,35 @@ func (v *ModelSetupView) cyclePlanModel(delta int) {
 	}
 }
 
+// LoadForEdit 进入编辑模式：预填 API Base / Model，API Key 留空表示保持不变。
+func (v *ModelSetupView) LoadForEdit(entry config.ModelEntry) {
+	v.editMode = true
+	v.editOriginalName = strings.TrimSpace(entry.Name)
+	v.step = ModelSetupStepCustom
+	v.customProvider = true
+	v.customModel = false
+	v.apiBaseReadOnly = false
+	v.modelReadOnly = false
+	v.errMsg = ""
+
+	v.inputs[0].SetValue(v.editOriginalName)
+	v.inputs[0].Placeholder = i18n.T("setup.label.display_name", v.language)
+	v.inputs[1].SetValue(strings.TrimSpace(entry.APIBase))
+	v.inputs[1].Placeholder = i18n.T("setup.label.api_base", v.language)
+	v.inputs[2].SetValue("")
+	v.inputs[2].Placeholder = i18n.T("setup.label.api_key_keep", v.language)
+	v.inputs[3].SetValue(strings.TrimSpace(entry.Model))
+	v.inputs[3].Placeholder = i18n.T("setup.label.model_name", v.language)
+	v.focusInput(1)
+}
+
 // configFocusOrder 返回配置步骤的焦点循环顺序（只含当前模式的可编辑字段）：
 // 自定义服务商四个字段全可编辑；其余模式 API Base 只读（跳过 index 1）；
 // 套餐类 preset 的模型为选择式（含 index 3），普通 preset 模型只读（不含 index 3）。
 func (v *ModelSetupView) configFocusOrder() []int {
 	switch {
+	case v.customProvider && v.editMode:
+		return []int{1, 2, 3}
 	case v.customProvider:
 		return []int{0, 1, 2, 3}
 	case v.customModel || v.hasPlanChoice():
@@ -391,6 +419,9 @@ func (v *ModelSetupView) Update(msg tea.Msg) (*ModelSetupView, tea.Cmd) {
 				v.providerFocused = false
 				return v, nil
 			case ModelSetupStepCustom:
+				if v.editMode {
+					return v, func() tea.Msg { return SetupCancelMsg{} }
+				}
 				// 返回服务商选择
 				v.step = ModelSetupStepProvider
 				v.providerFocused = true
@@ -614,7 +645,9 @@ func (v *ModelSetupView) handleSave() tea.Cmd {
 
 	// 如果没有设置显示名称，使用默认值
 	if displayName == "" {
-		if v.customProvider {
+		if v.editMode {
+			displayName = v.editOriginalName
+		} else if v.customProvider {
 			displayName = fmt.Sprintf("model-%d", time.Now().Unix()%100000)
 		} else if v.customModel {
 			// 自定义模型：使用模型名称作为显示名称
@@ -645,16 +678,20 @@ func (v *ModelSetupView) handleSave() tea.Cmd {
 	}
 
 	return func() tea.Msg {
+		name := displayName
+		if v.editMode {
+			name = v.editOriginalName
+		}
 		return ModelFormCompleteMsg{
 			Config: SetupConfig{
-				Name:     displayName,
+				Name:     name,
 				Provider: providerID,
 				PresetID: presetID,
 				APIBase:  apiBase,
 				APIKey:   apiKey,
 				Model:    model,
 			},
-			EditMode: false,
+			EditMode: v.editMode,
 		}
 	}
 }
@@ -684,7 +721,11 @@ func (v *ModelSetupView) View() string {
 	case ModelSetupStepConfig:
 		title = i18n.T("setup.step.config", v.language)
 	case ModelSetupStepCustom:
-		title = i18n.T("setup.step.custom", v.language)
+		if v.editMode {
+			title = i18n.T("setup.step.edit", v.language)
+		} else {
+			title = i18n.T("setup.step.custom", v.language)
+		}
 	default:
 		title = i18n.T("models.action.add", v.language)
 	}
@@ -714,18 +755,34 @@ func (v *ModelSetupView) View() string {
 	case ModelSetupStepConfig, ModelSetupStepCustom:
 		// 根据选择情况渲染不同的输入框
 		if v.customProvider {
-			// 自定义服务商：显示所有字段
-			labels := []string{
-				i18n.T("setup.label.display_name", v.language),
-				i18n.T("setup.label.api_base", v.language),
-				i18n.T("setup.label.api_key", v.language),
-				i18n.T("setup.label.model_name", v.language),
-			}
-			for i, label := range labels {
-				content.WriteString(v.styles.Text.Render(label))
-				content.WriteString("\n")
-				content.WriteString(v.inputs[i].View())
+			if v.editMode {
+				content.WriteString(v.styles.TextMuted.Render(i18n.T("setup.label.display_name", v.language) + " " + v.editOriginalName))
 				content.WriteString("\n\n")
+				labels := []string{
+					i18n.T("setup.label.api_base", v.language),
+					i18n.T("setup.label.api_key", v.language),
+					i18n.T("setup.label.model_name", v.language),
+				}
+				for i, label := range labels {
+					content.WriteString(v.styles.Text.Render(label))
+					content.WriteString("\n")
+					content.WriteString(v.inputs[i+1].View())
+					content.WriteString("\n\n")
+				}
+			} else {
+				// 自定义服务商：显示所有字段
+				labels := []string{
+					i18n.T("setup.label.display_name", v.language),
+					i18n.T("setup.label.api_base", v.language),
+					i18n.T("setup.label.api_key", v.language),
+					i18n.T("setup.label.model_name", v.language),
+				}
+				for i, label := range labels {
+					content.WriteString(v.styles.Text.Render(label))
+					content.WriteString("\n")
+					content.WriteString(v.inputs[i].View())
+					content.WriteString("\n\n")
+				}
 			}
 		} else if v.customModel {
 			// 选择服务商 + 自定义模型：显示名称、API Key、模型名（API Base 固定）

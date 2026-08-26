@@ -198,6 +198,37 @@ func (m *AppModel) handleModelPlanSelectMsg(msg panels.ModelPlanSelectMsg) (tea.
 	return m, m.finalizeUpdate(nil)
 }
 
+// handleModelEdit 打开模型编辑向导（预填现有配置）。
+func (m *AppModel) handleModelEdit(msg panels.ModelEditMsg) {
+	ctx := context.Background()
+	entries, _, err := m.adapter.ModelEntries(ctx)
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("%s: %v", m.localize("加载模型失败", "Failed to load models"), err), "error")
+		return
+	}
+	var entry *config.ModelEntry
+	for _, e := range entries {
+		if e.Name == msg.Name {
+			e2 := e
+			entry = &e2
+			break
+		}
+	}
+	if entry == nil {
+		m.appendSystem(fmt.Sprintf("%s: %s", m.localize("未找到模型", "Model not found"), msg.Name), "warning")
+		return
+	}
+	if strings.TrimSpace(entry.Source) == "env" {
+		m.appendSystem(i18n.T("models.edit.forbidden", m.state.Language), "warning")
+		return
+	}
+	m.activeView = "setup"
+	wizard := setup.NewModelSetupWizard(m.styles, m.state.Language)
+	wizard.SetSize(m.width, m.height)
+	wizard.LoadForEdit(*entry)
+	m.setupView = wizard
+}
+
 // handleModelAddMsg 处理 panels.ModelAddMsg（Update 分支提取）。fall-through。
 func (m *AppModel) handleModelAddMsg(_ panels.ModelAddMsg) (tea.Model, tea.Cmd) {
 	// 添加模型 - 打开向导视图
@@ -212,6 +243,12 @@ func (m *AppModel) handleModelAddMsg(_ panels.ModelAddMsg) (tea.Model, tea.Cmd) 
 		wizard.SetExistingNames(names)
 	}
 	m.setupView = wizard
+	return m, m.finalizeUpdate(nil)
+}
+
+// handleModelEditMsg 处理 panels.ModelEditMsg（Update 分支提取）。fall-through。
+func (m *AppModel) handleModelEditMsg(msg panels.ModelEditMsg) (tea.Model, tea.Cmd) {
+	m.handleModelEdit(msg)
 	return m, m.finalizeUpdate(nil)
 }
 
