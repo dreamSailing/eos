@@ -795,6 +795,33 @@ type BrowserNavigateRequest struct {
 	URL string `json:"url"`
 }
 
+type BrowserLiveStartRequest struct {
+	MaxWidth uint32 `json:"max_width,omitempty"`
+	MaxHeight uint32 `json:"max_height,omitempty"`
+	Quality uint32 `json:"quality,omitempty"`
+}
+
+type BrowserInputRequest struct {
+	Kind string `json:"kind"`
+	Action string `json:"action,omitempty"`
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	Button string `json:"button,omitempty"`
+	ClickCount uint32 `json:"click_count,omitempty"`
+	DeltaX float64 `json:"delta_x"`
+	DeltaY float64 `json:"delta_y"`
+	Key string `json:"key,omitempty"`
+	Code string `json:"code,omitempty"`
+	KeyCode uint32 `json:"key_code"`
+	Text string `json:"text,omitempty"`
+	Modifiers uint32 `json:"modifiers"`
+	Value string `json:"value,omitempty"`
+}
+
+type BrowserHistoryRequest struct {
+	Action string `json:"action"`
+}
+
 type ElementPick struct {
 	Ref string `json:"ref,omitempty"`
 	Selector string `json:"selector,omitempty"`

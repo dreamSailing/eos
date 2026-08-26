@@ -71,11 +71,13 @@ const (
 	MethodBrowserPickStart = "browser/pick_start"
 	MethodBrowserPickStop = "browser/pick_stop"
 	MethodBrowserUploadProvide = "browser/upload_provide"
-	MethodBrowserPreviewStart = "browser/preview_start"
-	MethodBrowserPreviewStop = "browser/preview_stop"
 	MethodBrowserFocus = "browser/focus"
 	MethodBrowserSetDefaultProfile = "browser/set_default_profile"
 	MethodBrowserNavigate = "browser/navigate"
+	MethodBrowserLiveStart = "browser/live_start"
+	MethodBrowserLiveStop = "browser/live_stop"
+	MethodBrowserInput = "browser/input"
+	MethodBrowserHistory = "browser/history"
 	MethodContextPreview = "context/preview"
 	MethodContextStats = "context/stats"
 	MethodContextWindow = "context/window"
@@ -242,11 +244,13 @@ func CoreMethods() []string {
 		MethodBrowserPickStart,
 		MethodBrowserPickStop,
 		MethodBrowserUploadProvide,
-		MethodBrowserPreviewStart,
-		MethodBrowserPreviewStop,
 		MethodBrowserFocus,
 		MethodBrowserSetDefaultProfile,
 		MethodBrowserNavigate,
+		MethodBrowserLiveStart,
+		MethodBrowserLiveStop,
+		MethodBrowserInput,
+		MethodBrowserHistory,
 		MethodContextPreview,
 		MethodContextStats,
 		MethodContextWindow,
@@ -403,11 +407,13 @@ func MethodGroups() map[string][]string {
 			MethodBrowserPickStart,
 			MethodBrowserPickStop,
 			MethodBrowserUploadProvide,
-			MethodBrowserPreviewStart,
-			MethodBrowserPreviewStop,
 			MethodBrowserFocus,
 			MethodBrowserSetDefaultProfile,
 			MethodBrowserNavigate,
+			MethodBrowserLiveStart,
+			MethodBrowserLiveStop,
+			MethodBrowserInput,
+			MethodBrowserHistory,
 			MethodPluginInstall,
 			MethodPluginList,
 			MethodPluginRemove,
