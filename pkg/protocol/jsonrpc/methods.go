@@ -72,6 +72,9 @@ const (
 	MethodBrowserFocus               = "browser/focus"
 	MethodBrowserSetDefaultProfile   = "browser/set_default_profile"
 	MethodBrowserNavigate            = "browser/navigate"
+	MethodBrowserTabNew              = "browser/tab_new"
+	MethodBrowserTabSwitch           = "browser/tab_switch"
+	MethodBrowserTabClose            = "browser/tab_close"
 	MethodBrowserLiveStart           = "browser/live_start"
 	MethodBrowserLiveStop            = "browser/live_stop"
 	MethodBrowserInput               = "browser/input"
@@ -258,6 +261,9 @@ func AllCoreMethods() []string {
 		MethodBrowserFocus,
 		MethodBrowserSetDefaultProfile,
 		MethodBrowserNavigate,
+		MethodBrowserTabNew,
+		MethodBrowserTabSwitch,
+		MethodBrowserTabClose,
 		MethodBrowserLiveStart,
 		MethodBrowserLiveStop,
 		MethodBrowserInput,

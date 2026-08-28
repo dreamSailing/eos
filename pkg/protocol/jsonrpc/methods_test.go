@@ -14,8 +14,10 @@ func TestAllCoreMethodsFreezesMigrationSurface(t *testing.T) {
 	//   + 4 内嵌实时视口方法（live_start/live_stop/input/history）
 	//   - 2 移除死方法（preview_start/preview_stop——live 实时流取代）
 	//   + 1 git/summary（工作区未提交/未推送提示，status -sb 单命令聚合）
-	if len(methods) != 170 {
-		t.Fatalf("AllCoreMethods() len=%d, want 170", len(methods))
+	//   + 3 浏览器面板标签条方法（tab_new/tab_switch/tab_close，桌面端
+	//     「顶部标签条 + 工具栏 + 视口尺寸行」布局的可操作 tab 支持）
+	if len(methods) != 173 {
+		t.Fatalf("AllCoreMethods() len=%d, want 173", len(methods))
 	}
 
 	seen := make(map[string]bool, len(methods))

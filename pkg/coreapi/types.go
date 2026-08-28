@@ -1191,6 +1191,19 @@ type BrowserNavigateRequest struct {
 	URL string `json:"url"`
 }
 
+type BrowserTabNewRequest struct {
+	URL string `json:"url,omitempty"`
+}
+
+type BrowserTabSwitchRequest struct {
+	Index int `json:"index"`
+}
+
+type BrowserTabCloseRequest struct {
+	// Index 省略 = 关闭会话绑定 tab；提供 = 按 browser/tabs 序号关闭。
+	Index *int `json:"index,omitempty"`
+}
+
 type BrowserLiveStartRequest struct {
 	MaxWidth  *uint32 `json:"max_width,omitempty"`
 	MaxHeight *uint32 `json:"max_height,omitempty"`
