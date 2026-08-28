@@ -60,7 +60,7 @@ func TestDiscoverPrefersProjectPluginOverUserPluginWithSameName(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 
 	writePluginManifest(t, filepath.Join(home, ".eos", "plugins", "dup"), "dup", "user plugin")
-	writePluginManifest(t, filepath.Join(workspace, ".trae", "plugins", "dup"), "dup", "project plugin")
+	writePluginManifest(t, filepath.Join(workspace, ".eos", "plugins", "dup"), "dup", "project plugin")
 
 	items, err := Discover(workspace)
 	if err != nil {
@@ -102,7 +102,7 @@ func TestDiscoverSupportsManifestlessPlugins(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	pluginRoot := filepath.Join(workspace, ".trae", "plugins", "manifestless")
+	pluginRoot := filepath.Join(workspace, ".eos", "plugins", "manifestless")
 	mustMkdir(t, filepath.Join(pluginRoot, "skills", "review"))
 
 	items, err := Discover(workspace)
