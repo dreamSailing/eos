@@ -196,36 +196,40 @@ type RemoteRepoEntry struct {
 }
 
 type Config struct {
-	Models                       []ModelEntry                    `json:"models,omitempty"`
-	Active                       string                          `json:"active_model,omitempty"`
-	CapabilityModels             CapabilityModelRefs             `json:"capability_models,omitempty"`
-	Thinking                     ThinkingConfig                  `json:"thinking,omitempty"` // 思考模式配置
-	NextMessagePredictionEnabled *bool                           `json:"next_message_prediction_enabled,omitempty"`
+	Models                       []ModelEntry        `json:"models,omitempty"`
+	Active                       string              `json:"active_model,omitempty"`
+	CapabilityModels             CapabilityModelRefs `json:"capability_models,omitempty"`
+	Thinking                     ThinkingConfig      `json:"thinking,omitempty"` // 思考模式配置
+	NextMessagePredictionEnabled *bool               `json:"next_message_prediction_enabled,omitempty"`
 	// MemoryInjectionEnabled 是 CLI 壳层的请求级记忆注入开关（默认开）。
 	// 发 turn 时随 StartTurnRequest.use_memory 下发；注入最终裁决在内核
 	//（与全局 [memories].use_memories 求与）。nil = 未设置 = 默认开。
 	MemoryInjectionEnabled *bool `json:"memory_injection_enabled,omitempty"`
-	Agent                        AgentConfig                     `json:"agent,omitempty"`
-	MCP                          []MCPEntry                      `json:"mcp,omitempty"`                // MCP服务配置
-	Skills                       []SkillsDirEntry                `json:"skills,omitempty"`             // Skills 目录配置
-	DisabledSkills               []string                        `json:"disabled_skills,omitempty"`    // 被禁用的 skill 名称
-	Plugins                      []PluginEntry                   `json:"plugins,omitempty"`            // 插件启停覆盖配置
-	LSP                          LSPConfig                       `json:"lsp,omitempty"`                // LSP 配置
-	KnownWorkspaces              []string                        `json:"known_workspaces,omitempty"`   // 已知工作区（绝对路径）
-	LastWorkspace                string                          `json:"last_workspace,omitempty"`     // 上次前台工作区（绝对路径）
-	TrustedWorkspaces            []string                        `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
-	Language                     string                          `json:"language,omitempty"`           // 语言设置 (zh, en)
-	DiffTheme                    string                          `json:"diff_theme,omitempty"`         // diff/代码块 chroma 高亮主题（monokai 等）
-	LogDir                       string                          `json:"log_dir,omitempty"`            // 全局日志目录
-	FastModel                    string                          `json:"fast_model,omitempty"`         // Fast mode model name
+	// GitCommitReminder 是 CLI 的「git 提交提醒」开关（turn 结束且工作区有
+	// 未提交/未推送时系统提示）。nil = 未设置 = 默认开。内核 Settings 不落盘，
+	// 该开关的持久化由 CLI config 承担（与 MemoryInjectionEnabled 同款）。
+	GitCommitReminder *bool            `json:"git_commit_reminder,omitempty"`
+	Agent             AgentConfig      `json:"agent,omitempty"`
+	MCP               []MCPEntry       `json:"mcp,omitempty"`                // MCP服务配置
+	Skills            []SkillsDirEntry `json:"skills,omitempty"`             // Skills 目录配置
+	DisabledSkills    []string         `json:"disabled_skills,omitempty"`    // 被禁用的 skill 名称
+	Plugins           []PluginEntry    `json:"plugins,omitempty"`            // 插件启停覆盖配置
+	LSP               LSPConfig        `json:"lsp,omitempty"`                // LSP 配置
+	KnownWorkspaces   []string         `json:"known_workspaces,omitempty"`   // 已知工作区（绝对路径）
+	LastWorkspace     string           `json:"last_workspace,omitempty"`     // 上次前台工作区（绝对路径）
+	TrustedWorkspaces []string         `json:"trusted_workspaces,omitempty"` // 已信任的工作区（绝对路径）
+	Language          string           `json:"language,omitempty"`           // 语言设置 (zh, en)
+	DiffTheme         string           `json:"diff_theme,omitempty"`         // diff/代码块 chroma 高亮主题（monokai 等）
+	LogDir            string           `json:"log_dir,omitempty"`            // 全局日志目录
+	FastModel         string           `json:"fast_model,omitempty"`         // Fast mode model name
 	// UpdateProxyEnabled/UpdateProxyURL 是更新（检查+下载）代理开关：
 	// enabled=false（默认关）时更新走直连/环境代理，url 仅在 enabled 时生效。
-	UpdateProxyEnabled bool   `json:"update_proxy_enabled,omitempty"`
-	UpdateProxyURL     string `json:"update_proxy_url,omitempty"`
-	Permissions                  *PermissionsConfig              `json:"permissions,omitempty"`        // Tool permissions
-	RemoteProviders              map[string]RemoteProviderConfig `json:"remote_providers,omitempty"`   // GitHub/Gitee OAuth/Token 配置
-	RemoteAuth                   map[string]RemoteAuthToken      `json:"remote_auth,omitempty"`        // 已授权账号（按平台）
-	RemoteRepos                  []RemoteRepoEntry               `json:"remote_repos,omitempty"`       // 最近访问的远程仓库
+	UpdateProxyEnabled bool                            `json:"update_proxy_enabled,omitempty"`
+	UpdateProxyURL     string                          `json:"update_proxy_url,omitempty"`
+	Permissions        *PermissionsConfig              `json:"permissions,omitempty"`      // Tool permissions
+	RemoteProviders    map[string]RemoteProviderConfig `json:"remote_providers,omitempty"` // GitHub/Gitee OAuth/Token 配置
+	RemoteAuth         map[string]RemoteAuthToken      `json:"remote_auth,omitempty"`      // 已授权账号（按平台）
+	RemoteRepos        []RemoteRepoEntry               `json:"remote_repos,omitempty"`     // 最近访问的远程仓库
 }
 
 func boolPtr(v bool) *bool {
@@ -424,12 +428,21 @@ func NextMessagePredictionEnabled(cfg *Config) bool {
 }
 
 // MemoryInjectionEnabled 返回记忆注入开关；未配置时默认开
-//（对齐内核 use_memory.unwrap_or(true) 的缺省语义）。
+// （对齐内核 use_memory.unwrap_or(true) 的缺省语义）。
 func MemoryInjectionEnabled(cfg *Config) bool {
 	if cfg == nil || cfg.MemoryInjectionEnabled == nil {
 		return true
 	}
 	return *cfg.MemoryInjectionEnabled
+}
+
+// GitCommitReminderEnabled 返回 git 提交提醒开关；未配置时默认开
+// （与 Settings.git_commit_reminder 缺省语义一致）。
+func GitCommitReminderEnabled(cfg *Config) bool {
+	if cfg == nil || cfg.GitCommitReminder == nil {
+		return true
+	}
+	return *cfg.GitCommitReminder
 }
 
 // DiffHighlightTheme 返回 diff/代码块高亮主题名；空值回默认 monokai。

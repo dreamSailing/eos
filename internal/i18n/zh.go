@@ -693,6 +693,12 @@ var zhText = map[string]string{
 	// 设置面板行（显示标签）
 	"settings.row.auto_context":          "自动上下文",
 	"settings.row.desktop_notifications": "桌面通知",
+	"settings.row.git_commit_reminder":   "Git 提交提醒",
+	"git.commit.busy":                    "AI 正在处理中，请等当前回合结束后再试 /commit",
+	"git.hint.dirty":                     "工作区有 %d 个未提交文件",
+	"git.hint.ahead":                     "%d 个提交未推送",
+	"git.hint.join":                      "、",
+	"git.hint.action":                    "，输入 /commit 让我提交推送",
 	"settings.row.memory_injection":      "记忆注入",
 	"settings.row.context_limit_kb":      "上下文上限(KB)",
 	"settings.row.language":              "语言",

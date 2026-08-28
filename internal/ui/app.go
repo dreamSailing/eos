@@ -66,7 +66,7 @@ type AppModel struct {
 	helpView                 *help.HelpView
 	setupView                any // 可以是 *setup.SetupView 或 *setup.ModelSetupView
 	confirmView              *confirm.Model
-	browserTakeoverConfirm    bool
+	browserTakeoverConfirm   bool
 	actionPopup              *confirm.ActionPopup // 点击消息文本弹出的操作选择框
 	prevView                 string
 	inlinePermissionReq      *confirm.Request
@@ -77,18 +77,18 @@ type AppModel struct {
 	initialSetupFlow bool
 
 	// 消息跟踪
-	currentAIStartTime time.Time
-	currentAITokens    int
-	aiLive             strings.Builder
-	thinkingLive       strings.Builder
-	thinkingExpanded   bool
-	reasoningStartTime time.Time // 当前推理块开始时间，用于该块耗时统计
-	activeItemID               string // current in-progress turn item being streamed
-	agentTextCommittedThisTurn bool   // item.completed 已落 history，忽略 legacy text.final 双写
+	currentAIStartTime         time.Time
+	currentAITokens            int
+	aiLive                     strings.Builder
+	thinkingLive               strings.Builder
+	thinkingExpanded           bool
+	reasoningStartTime         time.Time // 当前推理块开始时间，用于该块耗时统计
+	activeItemID               string    // current in-progress turn item being streamed
+	agentTextCommittedThisTurn bool      // item.completed 已落 history，忽略 legacy text.final 双写
 	toolInflight               map[string]toolTrack
-	history            []historyEntry
-	delegatedThisRound bool
-	lastAgentFinal     string
+	history                    []historyEntry
+	delegatedThisRound         bool
+	lastAgentFinal             string
 
 	actionHits []bubbleActionHit
 
@@ -98,8 +98,8 @@ type AppModel struct {
 	selEnd    selectionCoord
 	selActive bool
 
-	pendingImagePaths   []string
-	pendingPlanDownload *planDownloadRequest
+	pendingImagePaths    []string
+	pendingPlanDownload  *planDownloadRequest
 	pendingPluginConfirm string
 
 	predictionText        string
@@ -115,10 +115,15 @@ type AppModel struct {
 	// 供 /diff、审批 diff 与 markdown 代码块渲染使用。
 	diffTheme string
 
-	// gitBranchRoot / gitBranchCheckedAt 是状态栏分支刷新的节流状态：
+	// gitSummaryRoot / gitSummaryCheckedAt 是状态栏 git 概览刷新的节流状态：
 	// 工作区变化立即刷新，否则每 gitBranchRefreshInterval 至多查一次。
-	gitBranchRoot      string
-	gitBranchCheckedAt time.Time
+	gitSummaryRoot      string
+	gitSummaryCheckedAt time.Time
+
+	// gitHintedDirty / gitHintedAhead 是上次提交提醒时的计数（-1 = 从未提示），
+	// 计数相对上次提示无变化则不重复提醒，避免刷屏。
+	gitHintedDirty int
+	gitHintedAhead int
 
 	trustPendingPath   string
 	trustPendingAction string
@@ -193,8 +198,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case ctxUsageTickMsg:
 		return m.handleCtxUsageTickMsg(msg)
-	case GitBranchMsg:
-		return m.handleGitBranchMsg(msg)
+	case GitSummaryMsg:
+		return m.handleGitSummaryMsg(msg)
+	case GitCommitHintMsg:
+		return m.handleGitCommitHintMsg(msg)
 	case tea.WindowSizeMsg:
 		return m.handleWindowSizeMsg(msg)
 	case tea.MouseMsg:

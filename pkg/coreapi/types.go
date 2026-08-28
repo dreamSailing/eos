@@ -1045,16 +1045,19 @@ type Settings struct {
 	PlanBubbleColor      string `json:"plan_bubble,omitempty"`
 	AutoContext          *bool  `json:"auto_context,omitempty"`
 	DesktopNotifications *bool  `json:"desktop_notifications,omitempty"`
-	MaxInjectKB          int    `json:"max_inject_kb,omitempty"`
-	WatchMode            string `json:"watch_mode,omitempty"`
-	WatchDebounceMs      int    `json:"watch_debounce_ms,omitempty"`
-	PollIntervalSec      int    `json:"poll_interval_sec,omitempty"`
-	Language             string `json:"language,omitempty"`
-	Theme                string `json:"theme,omitempty"`
-	Trusted              *bool  `json:"trusted,omitempty"`
-	MaxTurnTokens        int    `json:"max_turn_tokens,omitempty"`
-	MaxSessionTokens     int    `json:"max_session_tokens,omitempty"`
-	MidRiskConfirm       bool   `json:"mid_risk_confirm,omitempty"`
+	// GitCommitReminder 是「git 提交提醒」开关（turn 结束且工作区有未提交/
+	// 未推送变更时提示，点击直派 AI 提交推送）。nil = 旧配置未设置，默认开。
+	GitCommitReminder *bool  `json:"git_commit_reminder,omitempty"`
+	MaxInjectKB       int    `json:"max_inject_kb,omitempty"`
+	WatchMode         string `json:"watch_mode,omitempty"`
+	WatchDebounceMs   int    `json:"watch_debounce_ms,omitempty"`
+	PollIntervalSec   int    `json:"poll_interval_sec,omitempty"`
+	Language          string `json:"language,omitempty"`
+	Theme             string `json:"theme,omitempty"`
+	Trusted           *bool  `json:"trusted,omitempty"`
+	MaxTurnTokens     int    `json:"max_turn_tokens,omitempty"`
+	MaxSessionTokens  int    `json:"max_session_tokens,omitempty"`
+	MidRiskConfirm    bool   `json:"mid_risk_confirm,omitempty"`
 	// PromptTimeoutSecs 是询问（审批/问询）等待超时秒数（nil/0 = 一直等待）。
 	// 超时后内核自动响应：审批拒绝、问询选 (Recommended) 项。
 	PromptTimeoutSecs *int64 `json:"prompt_timeout_secs,omitempty"`
@@ -1166,8 +1169,8 @@ type BrowserCloseRequest struct {
 }
 
 type BrowserControlTakeoverRequest struct {
-	Reason   string `json:"reason,omitempty"`
-	Note     string `json:"note,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	Note      string `json:"note,omitempty"`
 	TimeoutMS *int64 `json:"timeout_ms,omitempty"`
 }
 
@@ -1195,20 +1198,20 @@ type BrowserLiveStartRequest struct {
 }
 
 type BrowserInputRequest struct {
-	Kind       string   `json:"kind"`
-	Action     string   `json:"action,omitempty"`
-	X          float64  `json:"x"`
-	Y          float64  `json:"y"`
-	Button     string   `json:"button,omitempty"`
-	ClickCount *uint32  `json:"click_count,omitempty"`
-	DeltaX     float64  `json:"delta_x"`
-	DeltaY     float64  `json:"delta_y"`
-	Key        string   `json:"key,omitempty"`
-	Code       string   `json:"code,omitempty"`
-	KeyCode    uint32   `json:"key_code"`
-	Text       string   `json:"text,omitempty"`
-	Modifiers  uint32   `json:"modifiers"`
-	Value      string   `json:"value,omitempty"`
+	Kind       string  `json:"kind"`
+	Action     string  `json:"action,omitempty"`
+	X          float64 `json:"x"`
+	Y          float64 `json:"y"`
+	Button     string  `json:"button,omitempty"`
+	ClickCount *uint32 `json:"click_count,omitempty"`
+	DeltaX     float64 `json:"delta_x"`
+	DeltaY     float64 `json:"delta_y"`
+	Key        string  `json:"key,omitempty"`
+	Code       string  `json:"code,omitempty"`
+	KeyCode    uint32  `json:"key_code"`
+	Text       string  `json:"text,omitempty"`
+	Modifiers  uint32  `json:"modifiers"`
+	Value      string  `json:"value,omitempty"`
 }
 
 type BrowserHistoryRequest struct {
@@ -1270,13 +1273,13 @@ type ModeSnapshot struct {
 }
 
 type ModelConfig struct {
-	Name                    string   `json:"name"`
-	APIBase                 string   `json:"api_base,omitempty"`
-	APIKeyMasked            string   `json:"api_key_masked,omitempty"`
-	Model                   string   `json:"model,omitempty"`
-	Source                  string   `json:"source,omitempty"`
-	Active                  bool     `json:"active"`
-	SupportsReasoningEffort bool     `json:"supports_reasoning_effort"`
+	Name                    string `json:"name"`
+	APIBase                 string `json:"api_base,omitempty"`
+	APIKeyMasked            string `json:"api_key_masked,omitempty"`
+	Model                   string `json:"model,omitempty"`
+	Source                  string `json:"source,omitempty"`
+	Active                  bool   `json:"active"`
+	SupportsReasoningEffort bool   `json:"supports_reasoning_effort"`
 	// ReasoningLevels 思考档位（空 = 未标注，前端回落通用四档；
 	// wire 档位词汇见内核 protocol model.rs：off/auto/minimal/low/medium/high/xhigh/max）。
 	ReasoningLevels []string `json:"reasoning_levels"`
@@ -1321,16 +1324,16 @@ type ModelProviderOption struct {
 }
 
 type ModelPresetOption struct {
-	ID                      string      `json:"id"`
-	Name                    string      `json:"name,omitempty"`
-	ProviderID              string      `json:"provider_id,omitempty"`
-	ModelName               string      `json:"model_name,omitempty"`
-	Plan                    string      `json:"plan,omitempty"`
-	Format                  string      `json:"format,omitempty"`
-	ContextWindow           int         `json:"context_window,omitempty"`
-	Tags                    []string    `json:"tags,omitempty"`
-	Description             string      `json:"description,omitempty"`
-	SupportsReasoningEffort bool        `json:"supports_reasoning_effort"`
+	ID                      string   `json:"id"`
+	Name                    string   `json:"name,omitempty"`
+	ProviderID              string   `json:"provider_id,omitempty"`
+	ModelName               string   `json:"model_name,omitempty"`
+	Plan                    string   `json:"plan,omitempty"`
+	Format                  string   `json:"format,omitempty"`
+	ContextWindow           int      `json:"context_window,omitempty"`
+	Tags                    []string `json:"tags,omitempty"`
+	Description             string   `json:"description,omitempty"`
+	SupportsReasoningEffort bool     `json:"supports_reasoning_effort"`
 	// ReasoningLevels 思考档位（空 = 不支持思考强度）。
 	ReasoningLevels         []string    `json:"reasoning_levels,omitempty"`
 	SupportsVision          bool        `json:"supports_vision"`
@@ -1392,7 +1395,7 @@ type GitSummaryRequest struct {
 }
 
 // GitSummaryResult 是仓库工作区概览：upstream 为空表示无上游
-//（未 push 过的分支 / detached HEAD），ahead/behind 此时为 0。
+// （未 push 过的分支 / detached HEAD），ahead/behind 此时为 0。
 type GitSummaryResult struct {
 	Branch   string      `json:"branch,omitempty"`
 	Upstream string      `json:"upstream,omitempty"`

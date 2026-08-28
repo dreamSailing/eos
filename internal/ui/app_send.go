@@ -159,7 +159,20 @@ func (m *AppModel) shouldSendMessage() (bool, tea.Cmd) {
 // 4. 异步调用适配器执行 AI 请求
 func (m *AppModel) sendMessage() tea.Cmd {
 	value := m.shell.GetInputValue()
-	expanded := value
+	return m.sendMessageText(value, true)
+}
+
+// sendMessageText 把一段文本作为用户消息直派给 AI 引擎（不经输入框）。
+// withPendingImages=true 时消费输入框上挂起的图片附件（用户主动发送路径）；
+// 程序化派发（如 /commit 提交推送指令）传 false，不碰用户未发送的附件。
+func (m *AppModel) sendMessageText(text string, withPendingImages bool) tea.Cmd {
+	if m == nil || m.adapter == nil {
+		return nil
+	}
+	if strings.TrimSpace(text) == "" && (!withPendingImages || len(m.pendingImagePaths) == 0) {
+		return nil
+	}
+	expanded := text
 	// 展开 LSP 诊断宏
 	if strings.Contains(strings.ToLower(expanded), "#problems_and_diagnostics") {
 		md := ""
@@ -171,7 +184,7 @@ func (m *AppModel) sendMessage() tea.Cmd {
 			expanded = re.ReplaceAllStringFunc(expanded, func(string) string { return md })
 		}
 	}
-	m.shell.AddToHistory(value)
+	m.shell.AddToHistory(text)
 	m.clearPrediction()
 	m.shell.ClearInput()
 	m.state.Processing = true
@@ -192,28 +205,31 @@ func (m *AppModel) sendMessage() tea.Cmd {
 	})
 
 	// 处理图片附件
-	imagePaths := m.pendingImagePaths
-	m.pendingImagePaths = nil
-	if len(imagePaths) > 0 {
-		var names []string
-		for _, p := range imagePaths {
-			b := strings.TrimSpace(filepath.Base(p))
-			if b != "" {
-				names = append(names, b)
+	var imagePaths []string
+	if withPendingImages {
+		imagePaths = m.pendingImagePaths
+		m.pendingImagePaths = nil
+		if len(imagePaths) > 0 {
+			var names []string
+			for _, p := range imagePaths {
+				b := strings.TrimSpace(filepath.Base(p))
+				if b != "" {
+					names = append(names, b)
+				}
+				if len(names) >= 4 {
+					break
+				}
 			}
-			if len(names) >= 4 {
-				break
+			if len(names) > 0 {
+				m.appendSystem(i18n.T("image.attached", m.state.Language)+strings.Join(names, ", "), "info")
+			} else {
+				m.appendSystem(i18n.T("image.attached_short", m.state.Language), "info")
 			}
-		}
-		if len(names) > 0 {
-			m.appendSystem(i18n.T("image.attached", m.state.Language)+strings.Join(names, ", "), "info")
-		} else {
-			m.appendSystem(i18n.T("image.attached_short", m.state.Language), "info")
 		}
 	}
 
 	// 显示用户消息
-	display := value
+	display := text
 	if strings.TrimSpace(display) == "" && len(imagePaths) > 0 {
 		display = i18n.T("chat.image_only", m.state.Language)
 	}

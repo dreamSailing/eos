@@ -24,6 +24,7 @@ type Settings struct {
 	PlanBubbleColor      string   `json:"plan_bubble"`
 	AutoContext          bool     `json:"auto_context"`
 	DesktopNotifications *bool    `json:"desktop_notifications,omitempty"`
+	GitCommitReminder    *bool    `json:"git_commit_reminder,omitempty"`
 	MaxInjectKB          int      `json:"max_inject_kb"`
 	WatchMode            string   `json:"watch_mode"`
 	WatchDebounceMs      int      `json:"watch_debounce_ms"`

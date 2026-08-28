@@ -189,6 +189,12 @@ func (p *SettingsPanel) updateTable() {
 		}
 		rows = append(rows, table.Row{i18n.T("settings.row.desktop_notifications", p.language), fmt.Sprintf("%v", desktopNotifications)})
 		p.rowKeys = append(p.rowKeys, "DesktopNotifications")
+		gitCommitReminder := true
+		if s.GitCommitReminder != nil {
+			gitCommitReminder = *s.GitCommitReminder
+		}
+		rows = append(rows, table.Row{i18n.T("settings.row.git_commit_reminder", p.language), fmt.Sprintf("%v", gitCommitReminder)})
+		p.rowKeys = append(p.rowKeys, "GitCommitReminder")
 		rows = append(rows, table.Row{i18n.T("settings.row.memory_injection", p.language), fmt.Sprintf("%v", p.memoryInjectionEnabled)})
 		p.rowKeys = append(p.rowKeys, "MemoryInjection(Global)")
 		rows = append(rows, table.Row{i18n.T("settings.row.context_limit_kb", p.language), fmt.Sprintf("%d", s.MaxInjectKB)})
@@ -234,6 +240,8 @@ func (p *SettingsPanel) editKeyLabel() string {
 		return i18n.T("settings.row.auto_context", p.language)
 	case "DesktopNotifications":
 		return i18n.T("settings.row.desktop_notifications", p.language)
+	case "GitCommitReminder":
+		return i18n.T("settings.row.git_commit_reminder", p.language)
 	case "MemoryInjection(Global)":
 		return i18n.T("settings.row.memory_injection", p.language)
 	case "MaxInjectKB":
@@ -429,6 +437,9 @@ func (p *SettingsPanel) saveEditValue() {
 	case "DesktopNotifications":
 		v := value == "true" || value == "True" || value == "1"
 		p.settings.DesktopNotifications = &v
+	case "GitCommitReminder":
+		v := value == "true" || value == "True" || value == "1"
+		p.settings.GitCommitReminder = &v
 	case "MaxInjectKB":
 		if v, err := strconv.Atoi(value); err == nil {
 			p.settings.MaxInjectKB = v

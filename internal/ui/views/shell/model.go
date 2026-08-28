@@ -48,25 +48,28 @@ type Model struct {
 	welcome *WelcomeCard
 
 	// 状态
-	processing       bool
-	thinking         bool
-	thinkingText     string
-	showWelcome      bool
-	language         string
-	live             string
-	liveHeight       int
-	livePanelMode    int
-	hintLive         bool
-	hintThinking     bool
-	contentH         int
-	statusAnim       int
-	ctxTokens        int
-	ctxRatio         float64
-	ctxVisible       bool
-	bgTaskCount      int
-	executionMode    string
+	processing    bool
+	thinking      bool
+	thinkingText  string
+	showWelcome   bool
+	language      string
+	live          string
+	liveHeight    int
+	livePanelMode int
+	hintLive      bool
+	hintThinking  bool
+	contentH      int
+	statusAnim    int
+	ctxTokens     int
+	ctxRatio      float64
+	ctxVisible    bool
+	bgTaskCount   int
+	executionMode string
 	// gitBranch 是当前工作区所在 git 仓库的分支（非 git 工作区为空，状态栏隐藏）。
+	// gitDirty/gitAhead 是未提交文件数与未推送提交数，非零时在分支旁加 ●/↑ 标记。
 	gitBranch        string
+	gitDirty         int
+	gitAhead         int
 	thinkingExpanded bool
 	promptOverlay    string
 	promptOverlayH   int
@@ -430,9 +433,12 @@ func (m *Model) SetExecutionMode(mode string) {
 	m.executionMode = modes.NormalizeExecutionMode(mode)
 }
 
-// SetGitBranch 设置状态栏显示的当前 git 分支（空 = 非 git 工作区，隐藏项）。
-func (m *Model) SetGitBranch(branch string) {
+// SetGitSummary 设置状态栏 git 项：分支（空 = 非 git 工作区，隐藏项）、
+// 未提交文件数与未推送提交数（非零时渲染 ●N / ↑N 标记）。
+func (m *Model) SetGitSummary(branch string, dirty, ahead int) {
 	m.gitBranch = strings.TrimSpace(branch)
+	m.gitDirty = dirty
+	m.gitAhead = ahead
 }
 
 func (m *Model) SetThinkingExpanded(v bool) {
@@ -926,7 +932,14 @@ func (m Model) renderStatusBar() string {
 		// 当前工作区所在 git 仓库分支（对齐 Codex 状态栏 git-branch 项：非 git
 		// 工作区 / 查询失败时省略，不显示错误）。
 		if m.gitBranch != "" {
-			rightParts = append(rightParts, m.styles.TextMuted.Render("⎇ "+m.gitBranch))
+			gitItem := "⎇ " + m.gitBranch
+			if m.gitDirty > 0 {
+				gitItem += fmt.Sprintf(" ●%d", m.gitDirty)
+			}
+			if m.gitAhead > 0 {
+				gitItem += fmt.Sprintf(" ↑%d", m.gitAhead)
+			}
+			rightParts = append(rightParts, m.styles.TextMuted.Render(gitItem))
 		}
 		rightParts = append(rightParts, m.styles.TextMuted.Render(i18n.T("status.exec", m.language)+executionModeLabel(m.language, m.executionMode)))
 	}

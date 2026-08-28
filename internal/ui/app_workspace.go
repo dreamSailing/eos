@@ -205,6 +205,9 @@ func (m *AppModel) handleWorkspaceReloadDoneMsg(msg WorkspaceReloadDoneMsg) (tea
 	m.refreshWorkspacePanel()
 	m.refreshMemoryPanel()
 	m.refreshRulesPanel()
+	// 新工作区是新仓库：提交提醒按全新状态重新计数。
+	m.gitHintedDirty = -1
+	m.gitHintedAhead = -1
 	return m, m.finalizeUpdate(nil)
 }
 

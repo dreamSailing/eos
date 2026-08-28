@@ -71,6 +71,9 @@ func mergeInto(dst *Settings, src Settings) {
 	if src.DesktopNotifications != nil {
 		dst.DesktopNotifications = src.DesktopNotifications
 	}
+	if src.GitCommitReminder != nil {
+		dst.GitCommitReminder = src.GitCommitReminder
+	}
 	if src.MaxInjectKB > 0 {
 		dst.MaxInjectKB = src.MaxInjectKB
 	}

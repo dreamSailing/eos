@@ -38,42 +38,45 @@ type ctxUsageTickMsg struct{}
 // ctxUsageTickMsg_PanelsUnused 避免删除时误判。
 var _ = ctxUsageTickMsg{}
 
-// gitBranchRefreshInterval 是状态栏 git 分支刷新节流间隔（工作区变化时立即刷新）。
+// gitBranchRefreshInterval 是状态栏 git 概览刷新节流间隔（工作区变化时立即刷新）。
 const gitBranchRefreshInterval = 15 * time.Second
 
-// GitBranchMsg 携带当前工作区所在 git 仓库的分支（空 = 非 git 工作区）。
-type GitBranchMsg struct {
+// GitSummaryMsg 携带当前工作区所在 git 仓库概览（Branch 空 = 非 git 工作区）。
+// 一次 git/summary 同时取分支、ahead/behind 与未提交数，供状态栏标记使用。
+type GitSummaryMsg struct {
 	Branch string
+	Dirty  int
+	Ahead  int
 }
 
-// maybeRefreshGitBranch 按节流策略发起 git 分支查询：工作区变化立即查，
+// maybeRefreshGitSummary 按节流策略发起 git 概览查询：工作区变化立即查，
 // 否则距上次查询超过 gitBranchRefreshInterval 才查（避免每 tick 起子进程）。
-func (m *AppModel) maybeRefreshGitBranch() tea.Cmd {
+func (m *AppModel) maybeRefreshGitSummary() tea.Cmd {
 	if m == nil || m.adapter == nil {
 		return nil
 	}
 	root := strings.TrimSpace(m.currentWorkspaceRoot())
 	now := time.Now()
-	if root == m.gitBranchRoot && now.Sub(m.gitBranchCheckedAt) < gitBranchRefreshInterval {
+	if root == m.gitSummaryRoot && now.Sub(m.gitSummaryCheckedAt) < gitBranchRefreshInterval {
 		return nil
 	}
-	m.gitBranchRoot = root
-	m.gitBranchCheckedAt = now
+	m.gitSummaryRoot = root
+	m.gitSummaryCheckedAt = now
 	adapter := m.adapter
 	return func() tea.Msg {
-		result, err := adapter.GitBranches(context.Background(), root)
+		result, err := adapter.GitSummary(context.Background(), root)
 		if err != nil {
 			// 非 git 工作区 / git 不可用：按 Codex 惯例省略显示，不报错。
-			return GitBranchMsg{Branch: ""}
+			return GitSummaryMsg{Branch: ""}
 		}
-		return GitBranchMsg{Branch: result.Current}
+		return GitSummaryMsg{Branch: result.Branch, Dirty: len(result.Changes), Ahead: int(result.Ahead)}
 	}
 }
 
-// handleGitBranchMsg 把分支查询结果写入状态栏。
-func (m *AppModel) handleGitBranchMsg(msg GitBranchMsg) (tea.Model, tea.Cmd) {
+// handleGitSummaryMsg 把 git 概览写入状态栏。
+func (m *AppModel) handleGitSummaryMsg(msg GitSummaryMsg) (tea.Model, tea.Cmd) {
 	if m.shell != nil {
-		m.shell.SetGitBranch(msg.Branch)
+		m.shell.SetGitSummary(msg.Branch, msg.Dirty, msg.Ahead)
 	}
 	return m, m.finalizeUpdate(nil)
 }
@@ -485,6 +488,7 @@ func (m *AppModel) handleSettingsSave(settings *settings.Settings, globalPredict
 			cfg.MemoryInjectionEnabled = &enabled
 		}
 		cfg.DiffTheme = strings.TrimSpace(diffTheme)
+		cfg.GitCommitReminder = settings.GitCommitReminder
 		if err := config.Save(cfg, path); err != nil {
 			m.appendSystem(fmt.Sprintf("Failed to save settings: %v", err), "error")
 			return
@@ -533,8 +537,8 @@ func (m *AppModel) handleCtxUsageTickMsg(_ ctxUsageTickMsg) (tea.Model, tea.Cmd)
 	} else if m.activeView == "panel" && m.activePanel == "memory" {
 		m.refreshMemoryPanel()
 	}
-	// 状态栏 git 分支：节流刷新（工作区变化立即，否则 15s 一次）。
-	if cmd := m.maybeRefreshGitBranch(); cmd != nil {
+	// 状态栏 git 概览：节流刷新（工作区变化立即，否则 15s 一次）。
+	if cmd := m.maybeRefreshGitSummary(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	cmds = append(cmds, m.ctxUsageTick())

@@ -113,6 +113,7 @@ func slashCommandHandler(m *AppModel) map[string]func(args []string) tea.Cmd {
 			}
 			return nil
 		},
+		"/commit":     func(_ []string) tea.Cmd { return m.dispatchGitCommitRequest() },
 		"/workspace":  m.handleWorkspaceSlash,
 		"/goal":       m.handleGoalSlash,
 		"/config":     func(_ []string) tea.Cmd { m.openSettingsPanel(); return nil },

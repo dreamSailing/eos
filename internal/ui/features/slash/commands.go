@@ -51,6 +51,7 @@ var Commands = []Command{
 	{Name: "/review", Group: GroupProject, Usage: "/review [path]", DescriptionZH: "汇总改动、诊断和审查入口", DescriptionEN: "Summarize changes, diagnostics, and review entry points"},
 	{Name: "/verify", Group: GroupProject, Usage: "/verify [目标说明]", DescriptionZH: "发起一次标准化验证请求", DescriptionEN: "Start a standardized verification request"},
 	{Name: "/git", Group: GroupProject, Usage: "/git status|branches|log|show|diff [args...]", DescriptionZH: "查看 Git 状态、分支、日志和差异", DescriptionEN: "Inspect Git status, branches, history, and diff"},
+	{Name: "/commit", Group: GroupProject, DescriptionZH: "让 AI 检查当前改动并按仓库规范提交推送", DescriptionEN: "Ask AI to inspect changes, then commit and push per repo conventions"},
 	{Name: "/remote", Group: GroupProject, Usage: "/remote [status]", DescriptionZH: "查看当前远程仓库上下文与本地隔离目录", DescriptionEN: "Show the current remote repository context and local sandbox path"},
 	{Name: "/compact", Group: GroupProject, DescriptionZH: "压缩当前上下文", DescriptionEN: "Compact the current context"},
 	{Name: "/export", Group: GroupProject, Usage: "/export [markdown|json] [path]", DescriptionZH: "导出当前会话为 Markdown 或 JSON", DescriptionEN: "Export current session as Markdown or JSON"},

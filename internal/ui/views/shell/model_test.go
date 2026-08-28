@@ -205,14 +205,36 @@ func TestEscDismissesSlashHintAndRestoresInputBoxPosition(t *testing.T) {
 func TestRenderStatusBarShowsGitBranchWhenSet(t *testing.T) {
 	s := styles.NewStyles(styles.GetTheme("dark"))
 	model := New(100, 30, s, "zh")
-	model.SetGitBranch("feat/memory")
+	model.SetGitSummary("feat/memory", 0, 0)
 	bar := stripANSIForTest(model.renderStatusBar())
 	if !strings.Contains(bar, "⎇ feat/memory") {
 		t.Fatalf("status bar should contain branch item, got: %s", bar)
 	}
-	model.SetGitBranch("")
+	model.SetGitSummary("", 0, 0)
 	bar = stripANSIForTest(model.renderStatusBar())
 	if strings.Contains(bar, "⎇") {
 		t.Fatalf("branch item should be hidden when branch is empty, got: %s", bar)
+	}
+}
+
+func TestRenderStatusBarShowsGitDirtyAndAheadMarkers(t *testing.T) {
+	s := styles.NewStyles(styles.GetTheme("dark"))
+	model := New(100, 30, s, "zh")
+	model.SetGitSummary("main", 3, 2)
+	bar := stripANSIForTest(model.renderStatusBar())
+	if !strings.Contains(bar, "⎇ main ●3 ↑2") {
+		t.Fatalf("status bar should contain dirty/ahead markers, got: %s", bar)
+	}
+	// 干净且同步：只有分支，无标记。
+	model.SetGitSummary("main", 0, 0)
+	bar = stripANSIForTest(model.renderStatusBar())
+	if strings.Contains(bar, "●") || strings.Contains(bar, "↑") {
+		t.Fatalf("clean synced repo should not show markers, got: %s", bar)
+	}
+	// 仅未推送：只有 ↑ 标记。
+	model.SetGitSummary("main", 0, 4)
+	bar = stripANSIForTest(model.renderStatusBar())
+	if !strings.Contains(bar, "↑4") || strings.Contains(bar, "●") {
+		t.Fatalf("ahead-only repo should show ↑4 only, got: %s", bar)
 	}
 }

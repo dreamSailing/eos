@@ -693,6 +693,12 @@ var enText = map[string]string{
 	// Settings panel rows (display labels)
 	"settings.row.auto_context":          "Auto context",
 	"settings.row.desktop_notifications": "Desktop notifications",
+	"settings.row.git_commit_reminder":   "Git commit reminder",
+	"git.commit.busy":                    "AI is busy; try /commit after the current turn finishes",
+	"git.hint.dirty":                     "%d uncommitted file(s) in the workspace",
+	"git.hint.ahead":                     "%d commit(s) not pushed",
+	"git.hint.join":                      ", ",
+	"git.hint.action":                    " — type /commit and I will commit and push",
 	"settings.row.memory_injection":      "Memory injection",
 	"settings.row.context_limit_kb":      "Context limit (KB)",
 	"settings.row.language":              "Language",

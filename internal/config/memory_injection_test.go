@@ -24,3 +24,21 @@ func TestMemoryInjectionEnabledDefaultsTrue(t *testing.T) {
 		}
 	}
 }
+
+func TestGitCommitReminderEnabledDefaultsTrue(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  *Config
+		want bool
+	}{
+		{name: "nil config", cfg: nil, want: true},
+		{name: "unset", cfg: &Config{}, want: true},
+		{name: "explicit false", cfg: &Config{GitCommitReminder: boolPtr(false)}, want: false},
+		{name: "explicit true", cfg: &Config{GitCommitReminder: boolPtr(true)}, want: true},
+	}
+	for _, tc := range cases {
+		if got := GitCommitReminderEnabled(tc.cfg); got != tc.want {
+			t.Errorf("%s: GitCommitReminderEnabled() = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

@@ -76,7 +76,8 @@ func (m *AppModel) handleInvokeDoneMsg(msg InvokeDoneMsg) (tea.Model, tea.Cmd) {
 	m.activeCancel = nil
 	m.stopRequested = false
 	_ = msg.Content
-	return m, m.finalizeUpdate(nil)
+	// turn 结束后拉一次 git 概览：决定提交提醒 + 顺带刷新状态栏 git 项。
+	return m, m.finalizeUpdate(m.scheduleGitCommitReminder())
 }
 
 // handleThinkingMsg 处理 ThinkingMsg（Update 分支提取）。

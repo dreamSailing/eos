@@ -577,7 +577,7 @@ func (a *CoreClientAdapter) SetAccessMode(ctx context.Context, mode string) erro
 //   - danger-full-access：走内核 permission/enter_full_access 原子推进双轴
 //     （approval=never + danger policy）并自动放行待审项；
 //   - 其余（read-only / workspace-write）：同步快照字符串 + sandbox/derive_policy
-//     + sandbox/set_policy 让真实裁决路径生效，并把审批轴复位内核默认 on-request
+//   - sandbox/set_policy 让真实裁决路径生效，并把审批轴复位内核默认 on-request
 //     ——离开完全访问时若不复位，中高风险工具会被 Never→Deny 静默拒绝。
 //
 // 历史问题：permission/access_mode/set 只写 UI 快照不影响裁决；单独调用会让
@@ -920,7 +920,7 @@ func (a *CoreClientAdapter) UpsertModelEntry(ctx context.Context, entry config.M
 // 套餐类 preset（如 MiniMax Token Plan）的端点与鉴权才能选对。
 //
 // 保存前后维护明文 key：内核持久化会把 eos.json 的 api_key 写成 masked 占位
-//（真实 key 进钥匙串），而当前内核的加载路径会把 masked 灌进 secrets 并屏蔽
+// （真实 key 进钥匙串），而当前内核的加载路径会把 masked 灌进 secrets 并屏蔽
 // 钥匙串——重启后 401。保存前快照明文、成功后回补，保证旧内核下可用。
 func (a *CoreClientAdapter) SaveModel(ctx context.Context, req coreapi.ModelSaveRequest) error {
 	if a == nil || a.engine == nil {
@@ -1481,6 +1481,15 @@ func (a *CoreClientAdapter) GitBranches(ctx context.Context, workspaceRoot strin
 	return a.engine.Git().Branches(ctx, coreapi.GitBranchesRequest{WorkspaceRoot: strings.TrimSpace(workspaceRoot)})
 }
 
+// GitSummary 一次取回分支/上游/ahead-behind/未提交明细，是状态栏 git 项
+// 与提交提醒的唯一数据源（比 status+branches 两次调用省一遍 RPC）。
+func (a *CoreClientAdapter) GitSummary(ctx context.Context, workspaceRoot string) (coreapi.GitSummaryResult, error) {
+	if a == nil || a.engine == nil {
+		return coreapi.GitSummaryResult{}, errors.New("core client is not available")
+	}
+	return a.engine.Git().Summary(ctx, coreapi.GitSummaryRequest{WorkspaceRoot: strings.TrimSpace(workspaceRoot)})
+}
+
 func (a *CoreClientAdapter) GitLog(ctx context.Context, req coreapi.GitLogRequest) (coreapi.GitLogResult, error) {
 	if a == nil || a.engine == nil {
 		return coreapi.GitLogResult{}, errors.New("core client is not available")
@@ -1938,6 +1947,7 @@ func coreAPISettingsFromInternal(s settings.Settings) coreapi.Settings {
 		PlanBubbleColor:      strings.TrimSpace(s.PlanBubbleColor),
 		AutoContext:          boolPtr(s.AutoContext),
 		DesktopNotifications: s.DesktopNotifications,
+		GitCommitReminder:    s.GitCommitReminder,
 		MaxInjectKB:          s.MaxInjectKB,
 		WatchMode:            strings.TrimSpace(s.WatchMode),
 		WatchDebounceMs:      s.WatchDebounceMs,
@@ -1956,6 +1966,7 @@ func settingsFromCoreAPI(s coreapi.Settings) settings.Settings {
 		PlanBubbleColor:      strings.TrimSpace(s.PlanBubbleColor),
 		AutoContext:          boolFromPtr(s.AutoContext, true),
 		DesktopNotifications: s.DesktopNotifications,
+		GitCommitReminder:    s.GitCommitReminder,
 		MaxInjectKB:          s.MaxInjectKB,
 		WatchMode:            strings.TrimSpace(s.WatchMode),
 		WatchDebounceMs:      s.WatchDebounceMs,
