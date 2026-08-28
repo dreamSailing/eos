@@ -20,7 +20,7 @@ func TestMergeMCPEntriesIncludesEnabledPluginServers(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	pluginRoot := filepath.Join(workspace, ".claude", "plugins", "formatter")
+	pluginRoot := filepath.Join(workspace, ".eos", "plugins", "formatter")
 	writePluginManifest(t, pluginRoot, "formatter", "formatter plugin")
 	raw := `{
   "mcpServers": {
@@ -58,7 +58,7 @@ func TestMergeMCPEntriesSkipsDisabledPluginServers(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	pluginRoot := filepath.Join(workspace, ".claude", "plugins", "formatter")
+	pluginRoot := filepath.Join(workspace, ".eos", "plugins", "formatter")
 	writePluginManifest(t, pluginRoot, "formatter", "formatter plugin")
 	if err := os.WriteFile(filepath.Join(pluginRoot, ".mcp.json"), []byte(`{"mcpServers":{"plugin-db":{"command":"db-server"}}}`), 0o644); err != nil {
 		t.Fatalf("write .mcp.json: %v", err)

@@ -17,7 +17,7 @@ func TestDiscoverFindsManifestPluginsAndComponents(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	userPlugin := filepath.Join(home, ".claude", "plugins", "shared-plugin")
+	userPlugin := filepath.Join(home, ".eos", "plugins", "shared-plugin")
 	projectPlugin := filepath.Join(workspace, ".eos", "plugins", "review-kit")
 	writePluginManifest(t, userPlugin, "shared-plugin", "shared plugin")
 	writePluginManifest(t, projectPlugin, "review-kit", "review plugin")
@@ -60,7 +60,7 @@ func TestDiscoverPrefersProjectPluginOverUserPluginWithSameName(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 
 	writePluginManifest(t, filepath.Join(home, ".eos", "plugins", "dup"), "dup", "user plugin")
-	writePluginManifest(t, filepath.Join(workspace, ".claude", "plugins", "dup"), "dup", "project plugin")
+	writePluginManifest(t, filepath.Join(workspace, ".trae", "plugins", "dup"), "dup", "project plugin")
 
 	items, err := Discover(workspace)
 	if err != nil {
@@ -102,7 +102,7 @@ func TestDiscoverSupportsManifestlessPlugins(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	pluginRoot := filepath.Join(workspace, ".claude", "plugins", "manifestless")
+	pluginRoot := filepath.Join(workspace, ".trae", "plugins", "manifestless")
 	mustMkdir(t, filepath.Join(pluginRoot, "skills", "review"))
 
 	items, err := Discover(workspace)
@@ -144,7 +144,7 @@ func TestPersistentDataDirSanitizesPluginName(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 
 	got := PersistentDataDir("formatter@internal")
-	want := filepath.Join(home, ".claude", "plugins", "data", "formatter-internal")
+	want := filepath.Join(home, ".eos", "plugins", "data", "formatter-internal")
 	if filepath.Clean(got) != filepath.Clean(want) {
 		t.Fatalf("PersistentDataDir()=%q, want %q", got, want)
 	}

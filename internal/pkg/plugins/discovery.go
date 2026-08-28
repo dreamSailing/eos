@@ -60,14 +60,12 @@ func ResolveScanDirs(workspaceRoot string) []string {
 
 	if home, err := os.UserHomeDir(); err == nil {
 		addDir(filepath.Join(home, ".eos", "plugins"))
-		addDir(filepath.Join(home, ".claude", "plugins"))
 		addDir(filepath.Join(home, ".trae", "plugins"))
 	}
 
 	workspaceRoot = strings.TrimSpace(workspaceRoot)
 	if workspaceRoot != "" {
 		addDir(filepath.Join(workspaceRoot, ".eos", "plugins"))
-		addDir(filepath.Join(workspaceRoot, ".claude", "plugins"))
 		addDir(filepath.Join(workspaceRoot, ".trae", "plugins"))
 	}
 
@@ -142,7 +140,7 @@ func PersistentDataDir(name string) string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".claude", "plugins", "data", name)
+	return filepath.Join(home, ".eos", "plugins", "data", name)
 }
 
 func (m Manifest) Components() []string {
@@ -206,6 +204,8 @@ func discoverInRoot(root string) ([]Manifest, error) {
 }
 
 func loadManifest(root string) (Manifest, bool) {
+	// .claude-plugin/plugin.json 是插件打包格式（commands/agents/skills/hooks/
+	// mcp/lsp 目录约定同源），与「读取 .claude 目录」无关——后者已移除，格式保留。
 	manifestPath := filepath.Join(root, ".claude-plugin", "plugin.json")
 	raw, err := os.ReadFile(manifestPath)
 	hasManifest := err == nil
