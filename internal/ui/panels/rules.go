@@ -50,7 +50,7 @@ func NewRulesPanel(styles *styles.Styles, lang string) *RulesPanel {
 	vp.MouseWheelEnabled = true
 	vp.MouseWheelDelta = 3
 	ed := uinput.New()
-	ed.SetPlaceholder("Edit Rules.md here...")
+	ed.SetPlaceholder("Edit EOS.md here...")
 	p := &RulesPanel{
 		BasePanel: NewBasePanel("rules"),
 		styles:    styles,
