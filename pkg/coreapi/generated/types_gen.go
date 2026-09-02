@@ -1010,6 +1010,7 @@ type ModelConfig struct {
 	ProviderID string `json:"provider_id,omitempty"`
 	APIType string `json:"api_type,omitempty"`
 	PresetID string `json:"preset_id,omitempty"`
+	ContextWindow int64 `json:"context_window,omitempty"`
 	EditKind string `json:"edit_kind,omitempty"`
 	CanEdit bool `json:"can_edit"`
 	CanDelete bool `json:"can_delete"`

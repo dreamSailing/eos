@@ -1301,9 +1301,11 @@ type ModelConfig struct {
 	ProviderID      string   `json:"provider_id,omitempty"`
 	Format          string   `json:"format,omitempty"`
 	PresetID        string   `json:"preset_id,omitempty"`
-	EditKind        string   `json:"edit_kind,omitempty"`
-	CanEdit         bool     `json:"can_edit"`
-	CanDelete       bool     `json:"can_delete"`
+	// ContextWindow 上下文窗口（tokens）。0 = 未标注（自定义/旧数据）；内核 model/list 按目录回填。
+	ContextWindow int64  `json:"context_window,omitempty"`
+	EditKind      string `json:"edit_kind,omitempty"`
+	CanEdit       bool   `json:"can_edit"`
+	CanDelete     bool   `json:"can_delete"`
 }
 
 // ProviderEndpoint 服务商一个接入端点 = (plan, format) 组合。
