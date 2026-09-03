@@ -16,8 +16,9 @@ func TestAllCoreMethodsFreezesMigrationSurface(t *testing.T) {
 	//   + 1 git/summary（工作区未提交/未推送提示，status -sb 单命令聚合）
 	//   + 3 浏览器面板标签条方法（tab_new/tab_switch/tab_close，桌面端
 	//     「顶部标签条 + 工具栏 + 视口尺寸行」布局的可操作 tab 支持）
-	if len(methods) != 173 {
-		t.Fatalf("AllCoreMethods() len=%d, want 173", len(methods))
+	//   + 1 model/verify（新增/编辑模型前的连通测试，桌面端向导前置校验）
+	if len(methods) != 174 {
+		t.Fatalf("AllCoreMethods() len=%d, want 174", len(methods))
 	}
 
 	seen := make(map[string]bool, len(methods))

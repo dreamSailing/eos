@@ -113,6 +113,7 @@ const (
 	MethodModelBundledMcp            = "model/bundled_mcp"
 	MethodModelUpsert                = "model/upsert"
 	MethodModelSave                  = "model/save"
+	MethodModelVerify                = "model/verify"
 	MethodModelDelete                = "model/delete"
 	MethodModelActivate              = "model/activate"
 	MethodModelSyncEnv               = "model/sync_env"
@@ -302,6 +303,7 @@ func AllCoreMethods() []string {
 		MethodModelBundledMcp,
 		MethodModelUpsert,
 		MethodModelSave,
+		MethodModelVerify,
 		MethodModelDelete,
 		MethodModelActivate,
 		MethodModelSyncEnv,

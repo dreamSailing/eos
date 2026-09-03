@@ -74,6 +74,9 @@ const (
 	MethodBrowserFocus = "browser/focus"
 	MethodBrowserSetDefaultProfile = "browser/set_default_profile"
 	MethodBrowserNavigate = "browser/navigate"
+	MethodBrowserTabNew = "browser/tab_new"
+	MethodBrowserTabSwitch = "browser/tab_switch"
+	MethodBrowserTabClose = "browser/tab_close"
 	MethodBrowserLiveStart = "browser/live_start"
 	MethodBrowserLiveStop = "browser/live_stop"
 	MethodBrowserInput = "browser/input"
@@ -119,6 +122,7 @@ const (
 	MethodModelBundledMCP = "model/bundled_mcp"
 	MethodModelUpsert = "model/upsert"
 	MethodModelSave = "model/save"
+	MethodModelVerify = "model/verify"
 	MethodModelDelete = "model/delete"
 	MethodModelActivate = "model/activate"
 	MethodModelSyncEnv = "model/sync_env"
@@ -248,6 +252,9 @@ func CoreMethods() []string {
 		MethodBrowserFocus,
 		MethodBrowserSetDefaultProfile,
 		MethodBrowserNavigate,
+		MethodBrowserTabNew,
+		MethodBrowserTabSwitch,
+		MethodBrowserTabClose,
 		MethodBrowserLiveStart,
 		MethodBrowserLiveStop,
 		MethodBrowserInput,
@@ -293,6 +300,7 @@ func CoreMethods() []string {
 		MethodModelBundledMCP,
 		MethodModelUpsert,
 		MethodModelSave,
+		MethodModelVerify,
 		MethodModelDelete,
 		MethodModelActivate,
 		MethodModelSyncEnv,
@@ -412,6 +420,9 @@ func MethodGroups() map[string][]string {
 			MethodBrowserFocus,
 			MethodBrowserSetDefaultProfile,
 			MethodBrowserNavigate,
+			MethodBrowserTabNew,
+			MethodBrowserTabSwitch,
+			MethodBrowserTabClose,
 			MethodBrowserLiveStart,
 			MethodBrowserLiveStop,
 			MethodBrowserInput,
@@ -468,6 +479,7 @@ func MethodGroups() map[string][]string {
 			MethodModelBundledMCP,
 			MethodModelUpsert,
 			MethodModelSave,
+			MethodModelVerify,
 			MethodModelDelete,
 			MethodModelActivate,
 			MethodModelSyncEnv,

@@ -431,6 +431,7 @@ type Settings struct {
 	PlanBubble string `json:"plan_bubble,omitempty"`
 	AutoContext bool `json:"auto_context,omitempty"`
 	DesktopNotifications bool `json:"desktop_notifications,omitempty"`
+	GitCommitReminder bool `json:"git_commit_reminder,omitempty"`
 	MaxInjectKB int64 `json:"max_inject_kb"`
 	WatchMode string `json:"watch_mode,omitempty"`
 	WatchDebounceMs int64 `json:"watch_debounce_ms"`
@@ -795,6 +796,18 @@ type BrowserNavigateRequest struct {
 	URL string `json:"url"`
 }
 
+type BrowserTabNewRequest struct {
+	URL string `json:"url,omitempty"`
+}
+
+type BrowserTabSwitchRequest struct {
+	Index uint64 `json:"index"`
+}
+
+type BrowserTabCloseRequest struct {
+	Index uint64 `json:"index,omitempty"`
+}
+
 type BrowserLiveStartRequest struct {
 	MaxWidth uint32 `json:"max_width,omitempty"`
 	MaxHeight uint32 `json:"max_height,omitempty"`
@@ -1008,7 +1021,7 @@ type ModelConfig struct {
 	SupportsTools bool `json:"supports_tools"`
 	ReasoningLevels []string `json:"reasoning_levels"`
 	ProviderID string `json:"provider_id,omitempty"`
-	APIType string `json:"api_type,omitempty"`
+	Format string `json:"format,omitempty"`
 	PresetID string `json:"preset_id,omitempty"`
 	ContextWindow int64 `json:"context_window,omitempty"`
 	EditKind string `json:"edit_kind,omitempty"`
@@ -1093,6 +1106,12 @@ type ModelNameRequest struct {
 	Name string `json:"name"`
 }
 
+type ModelVerifyResponse struct {
+	Ok bool `json:"ok"`
+	LatencyMs uint64 `json:"latency_ms"`
+	Message string `json:"message,omitempty"`
+}
+
 type ModelContextRequest struct {
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
@@ -1164,11 +1183,6 @@ type GitStatusRequest struct {
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
 }
 
-type GitChange struct {
-	Path string `json:"path"`
-	State string `json:"state"`
-}
-
 type GitSummaryRequest struct {
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
 }
@@ -1179,6 +1193,11 @@ type GitSummaryResult struct {
 	Ahead uint32 `json:"ahead"`
 	Behind uint32 `json:"behind"`
 	Changes []GitChange `json:"changes,omitempty"`
+}
+
+type GitChange struct {
+	Path string `json:"path"`
+	State string `json:"state"`
 }
 
 type GitDiffRequest struct {

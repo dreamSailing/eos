@@ -463,6 +463,14 @@ type ModelNameRequest struct {
 	Name string `json:"name"`
 }
 
+// ModelVerifyResponse 是 model/verify 的响应：对「将要保存」的模型配置做
+// 真实连通测试的结果。ok=false 时 message 携带面向用户的失败原因。
+type ModelVerifyResponse struct {
+	Ok        bool   `json:"ok"`
+	LatencyMs uint64 `json:"latency_ms"`
+	Message   string `json:"message,omitempty"`
+}
+
 type ModelContextRequest struct {
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
 	SessionID     string `json:"session_id,omitempty"`
