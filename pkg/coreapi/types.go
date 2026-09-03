@@ -1267,9 +1267,12 @@ type CostItem struct {
 	ReplyTokens       *int      `json:"reply_tokens,omitempty"`
 	CachedInputTokens *int      `json:"cached_input_tokens,omitempty"`
 	TotalTokens       *int      `json:"total_tokens,omitempty"`
-	CostUSD           *float64  `json:"cost_usd,omitempty"`
-	UsageKnown        bool      `json:"usage_known"`
-	CostKnown         bool      `json:"cost_known"`
+	// ContextInputTokens 是该 turn 最近一次请求的真实 prompt tokens ≈ 上下文规模；
+	// InputTokens 是各步累加的计费口径（多轮 ReAct 会远超窗口，不能当占用展示）。
+	ContextInputTokens *int      `json:"context_input_tokens,omitempty"`
+	CostUSD            *float64  `json:"cost_usd,omitempty"`
+	UsageKnown         bool      `json:"usage_known"`
+	CostKnown          bool      `json:"cost_known"`
 }
 
 type VersionItem struct {
