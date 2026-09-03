@@ -75,6 +75,9 @@ const (
 	EventTypeTurnModelDownshift        EventType = "turn.model_downshift"
 	EventTypeTurnContextWindowExceeded EventType = "turn.context_window_exceeded"
 	EventTypeTurnToolLoopExhausted     EventType = "turn.tool_loop_exhausted"
+	// EventTypeTurnTokenUsage 内核每步模型响应后广播的累计 usage 快照（Droppable
+	// 计量事件），壳层转发给前端实时刷新上下文用量/输出速率。
+	EventTypeTurnTokenUsage EventType = "turn.token_usage"
 )
 
 type Envelope struct {
