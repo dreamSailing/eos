@@ -1198,6 +1198,7 @@ type GitSummaryResult struct {
 type GitChange struct {
 	Path string `json:"path"`
 	State string `json:"state"`
+	Staged bool `json:"staged"`
 }
 
 type GitDiffRequest struct {
@@ -1248,6 +1249,60 @@ type GitShowResult struct {
 	Branch string `json:"branch,omitempty"`
 	Revision string `json:"revision,omitempty"`
 	Text string `json:"text"`
+}
+
+type GitReposRequest struct {
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
+}
+
+type GitReposResult struct {
+	Repos []GitRepoSummary `json:"repos,omitempty"`
+}
+
+type GitRepoSummary struct {
+	Root string `json:"root"`
+	Name string `json:"name,omitempty"`
+	Primary bool `json:"primary"`
+	Summary GitSummaryResult `json:"summary"`
+}
+
+type GitStageRequest struct {
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
+	Paths []string `json:"paths,omitempty"`
+	All bool `json:"all"`
+	Unstage bool `json:"unstage"`
+}
+
+type GitCommitRequest struct {
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+type GitCommitResult struct {
+	Hash string `json:"hash,omitempty"`
+	Branch string `json:"branch,omitempty"`
+}
+
+type GitPushRequest struct {
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
+}
+
+type GitPushResult struct {
+	Status string `json:"status,omitempty"`
+	Branch string `json:"branch,omitempty"`
+	Conflicts []string `json:"conflicts,omitempty"`
+}
+
+type GitAbortMergeRequest struct {
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
+}
+
+type GitSuggestMessageRequest struct {
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
+}
+
+type GitSuggestMessageResult struct {
+	Message string `json:"message,omitempty"`
 }
 
 type ChangedFile struct {

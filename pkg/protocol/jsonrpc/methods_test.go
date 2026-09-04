@@ -19,8 +19,10 @@ func TestAllCoreMethodsFreezesMigrationSurface(t *testing.T) {
 	//   + 1 model/verify（新增/编辑模型前的连通测试，桌面端向导前置校验）
 	//   + 1 turn/resume（续跑失败 turn：不追加用户消息，内核按已提交历史续写；
 	//     对齐 codex resume 语义，桌面端错误面板「重试」按钮的新链路）
-	if len(methods) != 175 {
-		t.Fatalf("AllCoreMethods() len=%d, want 175", len(methods))
+	//   + 6 git 操作方法（repos/stage/commit/push/merge_abort/suggest_message，
+	//     桌面端 git 提交推送操作台：确定性 git 命令 + 一次性 LLM 提交信息）
+	if len(methods) != 181 {
+		t.Fatalf("AllCoreMethods() len=%d, want 181", len(methods))
 	}
 
 	seen := make(map[string]bool, len(methods))

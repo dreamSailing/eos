@@ -134,6 +134,12 @@ const (
 	MethodGitBranches                = "git/branches"
 	MethodGitLog                     = "git/log"
 	MethodGitShow                    = "git/show"
+	MethodGitRepos                   = "git/repos"
+	MethodGitStage                   = "git/stage"
+	MethodGitCommit                  = "git/commit"
+	MethodGitPush                    = "git/push"
+	MethodGitMergeAbort              = "git/merge_abort"
+	MethodGitSuggestMessage          = "git/suggest_message"
 	MethodInsightPredictNextUser     = "insight/predict_next_user_message"
 	MethodInsightPlanSnapshot        = "insight/plan_snapshot"
 	MethodMemorySnapshot             = "memory/snapshot"
@@ -325,6 +331,12 @@ func AllCoreMethods() []string {
 		MethodGitBranches,
 		MethodGitLog,
 		MethodGitShow,
+		MethodGitRepos,
+		MethodGitStage,
+		MethodGitCommit,
+		MethodGitPush,
+		MethodGitMergeAbort,
+		MethodGitSuggestMessage,
 		MethodInsightPredictNextUser,
 		MethodInsightPlanSnapshot,
 		MethodMemorySnapshot,
