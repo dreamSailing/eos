@@ -268,6 +268,21 @@ eos mcp serve --transport sse --listen 127.0.0.1:8765 --workspace "/abs/workspac
 
 文档见：[internal/docs/mcp/SERVER.md](./internal/docs/mcp/SERVER.md)
 
+### 4) `eos web`
+
+在浏览器里运行 EOS 桌面端工作台 UI：本地 HTTP 服务静态前端，通过 WebSocket 把
+`BridgeService` RPC 与事件流桥接到 eos-core sidecar。仅监听 127.0.0.1。
+
+```bash
+eos web                                   # 默认 127.0.0.1:8788，自动打开浏览器
+eos web --listen 127.0.0.1:9000 --workspace "/abs/workspace" --no-open
+```
+
+前端产物目录解析顺序：`--ui-dir` → `EOS_WEB_UI_DIR` → 工作目录/可执行文件目录
+相邻的 `eos-app-src/frontend/dist`（或 `frontend/dist`）。构建发布版需先构建
+eos-app 前端（`cd eos-app-src/frontend && npm run build`），或显式传 `--ui-dir`。
+
+
 ## MCP 与浏览器自动化
 
 EOS 既可以作为 MCP Server 对外提供工具，也可以作为 MCP 客户端连接外部 MCP 服务。

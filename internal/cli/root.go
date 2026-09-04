@@ -165,6 +165,7 @@ func init() {
 	rootCmd.AddCommand(newServeCmd())
 	rootCmd.AddCommand(newBridgeCmd())
 	rootCmd.AddCommand(newMcpCmd())
+	rootCmd.AddCommand(newWebCmd())
 	rootCmd.AddCommand(newHiddenLegalCmd())
 }
 
