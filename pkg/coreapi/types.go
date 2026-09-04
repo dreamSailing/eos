@@ -272,6 +272,10 @@ type RoleService interface {
 type TurnService interface {
 	Start(context.Context, StartTurnRequest) (Turn, error)
 	Interrupt(context.Context, TurnRef) error
+	// Resume 续跑失败 turn（turn/resume）：不追加用户消息，内核按已提交
+	// 历史重建请求续写。ref.TurnID 生成规则同 Start（可由调用方预生成，
+	// 供事件订阅过滤）。
+	Resume(context.Context, TurnRef) (Turn, error)
 }
 
 type ApprovalService interface {

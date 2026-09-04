@@ -17,8 +17,10 @@ func TestAllCoreMethodsFreezesMigrationSurface(t *testing.T) {
 	//   + 3 浏览器面板标签条方法（tab_new/tab_switch/tab_close，桌面端
 	//     「顶部标签条 + 工具栏 + 视口尺寸行」布局的可操作 tab 支持）
 	//   + 1 model/verify（新增/编辑模型前的连通测试，桌面端向导前置校验）
-	if len(methods) != 174 {
-		t.Fatalf("AllCoreMethods() len=%d, want 174", len(methods))
+	//   + 1 turn/resume（续跑失败 turn：不追加用户消息，内核按已提交历史续写；
+	//     对齐 codex resume 语义，桌面端错误面板「重试」按钮的新链路）
+	if len(methods) != 175 {
+		t.Fatalf("AllCoreMethods() len=%d, want 175", len(methods))
 	}
 
 	seen := make(map[string]bool, len(methods))

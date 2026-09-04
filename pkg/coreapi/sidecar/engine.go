@@ -452,6 +452,14 @@ func (s remoteTurnService) Interrupt(ctx context.Context, ref coreapi.TurnRef) e
 	return s.engine.call(ctx, protocoljsonrpc.MethodTurnInterrupt, ref, &out)
 }
 
+func (s remoteTurnService) Resume(ctx context.Context, ref coreapi.TurnRef) (coreapi.Turn, error) {
+	var out coreapi.Turn
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodTurnResume, ref, &out); err != nil {
+		return coreapi.Turn{}, err
+	}
+	return out, nil
+}
+
 type remoteApprovalService struct {
 	engine *RemoteEngine
 }

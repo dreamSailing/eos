@@ -161,6 +161,7 @@ const (
 	MethodEventUnsubscribe = "event/unsubscribe"
 	MethodTurnStart = "turn/start"
 	MethodTurnInterrupt = "turn/interrupt"
+	MethodTurnResume = "turn/resume"
 	MethodToolCatalog = "tool/catalog"
 	MethodToolExecute = "tool/execute"
 	MethodToolTraces = "tool/traces"
@@ -339,6 +340,7 @@ func CoreMethods() []string {
 		MethodEventUnsubscribe,
 		MethodTurnStart,
 		MethodTurnInterrupt,
+		MethodTurnResume,
 		MethodToolCatalog,
 		MethodToolExecute,
 		MethodToolTraces,
@@ -562,6 +564,7 @@ func MethodGroups() map[string][]string {
 		"turn": {
 			MethodTurnStart,
 			MethodTurnInterrupt,
+			MethodTurnResume,
 		},
 		"usage": {
 			MethodUsageSummary,

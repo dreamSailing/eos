@@ -156,6 +156,7 @@ const (
 	MethodEventUnsubscribe           = "event/unsubscribe"
 	MethodTurnStart                  = "turn/start"
 	MethodTurnInterrupt              = "turn/interrupt"
+	MethodTurnResume                 = "turn/resume"
 	MethodToolCatalog                = "tool/catalog"
 	MethodToolExecute                = "tool/execute"
 	MethodToolTraces                 = "tool/traces"
@@ -342,6 +343,7 @@ func AllCoreMethods() []string {
 		MethodEventUnsubscribe,
 		MethodTurnStart,
 		MethodTurnInterrupt,
+		MethodTurnResume,
 		MethodToolCatalog,
 		MethodToolExecute,
 		MethodToolTraces,
