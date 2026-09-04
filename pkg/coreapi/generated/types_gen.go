@@ -1388,8 +1388,16 @@ type MemoryDocument struct {
 	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
+type ProjectMemorySummary struct {
+	Key string `json:"key,omitempty"`
+	Root string `json:"root,omitempty"`
+	Name string `json:"name,omitempty"`
+	Documents []MemoryDocument `json:"documents"`
+}
+
 type MemorySnapshot struct {
 	Documents []MemoryDocument `json:"documents,omitempty"`
+	Projects []ProjectMemorySummary `json:"projects,omitempty"`
 }
 
 type SaveMemoryRequest struct {

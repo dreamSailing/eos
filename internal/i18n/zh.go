@@ -709,8 +709,10 @@ var zhText = map[string]string{
 	// 面板底部提示
 	"rules.footer.editing":  "Ctrl+S 保存 · Esc 取消编辑 · Tab 切换范围",
 	"rules.footer.browse":   "Tab 切换范围 · E 编辑 · R 刷新 · Esc 返回",
+	"memory.scope.global":    "全局",
+	"memory.scope.project":   "项目",
 	"memory.footer.editing": "Ctrl+S 保存笔记 · Esc 取消",
-	"memory.footer.browse":  "Tab 切换文件 · A 添加笔记 · R 刷新 · Esc 返回",
+	"memory.footer.browse":  "Tab 切换文件 · 1/2 切换全局/项目 · A 添加笔记 · R 刷新 · Esc 返回",
 	"lsp.footer.detail":     "Esc 返回 · R 刷新",
 	"lsp.footer.list":       "Enter 详情 · R 刷新 · Esc 返回",
 }

@@ -93,7 +93,15 @@ func slashCommandHandler(m *AppModel) map[string]func(args []string) tea.Cmd {
 			return nil
 		},
 		"/context": func(_ []string) tea.Cmd { m.openContextPanel(); return nil },
-		"/memory":  func(_ []string) tea.Cmd { m.openMemoryPanel(); return nil },
+		"/memory": func(args []string) tea.Cmd {
+			m.openMemoryPanel()
+			if len(args) > 0 && strings.EqualFold(strings.TrimSpace(args[0]), "project") {
+				if panel, ok := m.panels["memory"].(*panels.MemoryPanel); ok && panel != nil {
+					panel.SelectProjectScope()
+				}
+			}
+			return nil
+		},
 		"/cost": func(_ []string) tea.Cmd {
 			m.clearPrediction()
 			m.activeView = "panel"

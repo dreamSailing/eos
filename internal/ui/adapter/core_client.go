@@ -1344,13 +1344,14 @@ func (a *CoreClientAdapter) MemorySnapshot(ctx context.Context) (coreapi.MemoryS
 	return a.engine.Memory().Snapshot(ctx)
 }
 
-// SaveMemory 写一条 ad_hoc 记忆笔记（内核 memory/save 落
-// ~/.eos/memories/extensions/ad_hoc/notes/，空内容会被内核拒绝）。
-func (a *CoreClientAdapter) SaveMemory(ctx context.Context, content string) error {
+// SaveMemory 写一条 ad_hoc 记忆笔记（内核 memory/save；scope 为 "project" 落
+// 当前项目分区，默认落全局分区 ~/.eos/memories/extensions/ad_hoc/notes/，
+// 空内容会被内核拒绝）。
+func (a *CoreClientAdapter) SaveMemory(ctx context.Context, scope, content string) error {
 	if a == nil || a.engine == nil {
 		return errors.New("core client is not available")
 	}
-	return a.engine.Memory().Save(ctx, coreapi.SaveMemoryRequest{Content: content})
+	return a.engine.Memory().Save(ctx, coreapi.SaveMemoryRequest{Scope: scope, Content: content})
 }
 
 // === Extensions / Insights ===

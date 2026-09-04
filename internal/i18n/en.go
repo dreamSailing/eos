@@ -709,8 +709,10 @@ var enText = map[string]string{
 	// Panel footer hints
 	"rules.footer.editing":  "Ctrl+S save · Esc cancel edit · Tab switch scope",
 	"rules.footer.browse":   "Tab switch scope · E edit · R refresh · Esc back",
+	"memory.scope.global":    "Global",
+	"memory.scope.project":   "Project",
 	"memory.footer.editing": "Ctrl+S save note · Esc cancel",
-	"memory.footer.browse":  "Tab switch file · A add note · R refresh · Esc back",
+	"memory.footer.browse":  "Tab switch file · 1/2 global/project · A add note · R refresh · Esc back",
 	"lsp.footer.detail":     "Esc back · R refresh",
 	"lsp.footer.list":       "Enter details · R refresh · Esc back",
 }

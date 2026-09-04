@@ -1281,10 +1281,10 @@ type CostItem struct {
 	TotalTokens       *int      `json:"total_tokens,omitempty"`
 	// ContextInputTokens 是该 turn 最近一次请求的真实 prompt tokens ≈ 上下文规模；
 	// InputTokens 是各步累加的计费口径（多轮 ReAct 会远超窗口，不能当占用展示）。
-	ContextInputTokens *int      `json:"context_input_tokens,omitempty"`
-	CostUSD            *float64  `json:"cost_usd,omitempty"`
-	UsageKnown         bool      `json:"usage_known"`
-	CostKnown          bool      `json:"cost_known"`
+	ContextInputTokens *int     `json:"context_input_tokens,omitempty"`
+	CostUSD            *float64 `json:"cost_usd,omitempty"`
+	UsageKnown         bool     `json:"usage_known"`
+	CostKnown          bool     `json:"cost_known"`
 }
 
 type VersionItem struct {
@@ -1562,8 +1562,17 @@ type MemoryDocument struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
+// ProjectMemorySummary 是当前活动项目分区记忆（内核 snapshot.projects 至多一项）。
+type ProjectMemorySummary struct {
+	Key       string           `json:"key,omitempty"`
+	Root      string           `json:"root,omitempty"`
+	Name      string           `json:"name,omitempty"`
+	Documents []MemoryDocument `json:"documents"`
+}
+
 type MemorySnapshot struct {
-	Documents []MemoryDocument `json:"documents,omitempty"`
+	Documents []MemoryDocument       `json:"documents,omitempty"`
+	Projects  []ProjectMemorySummary `json:"projects,omitempty"`
 }
 
 type RoleConfig struct {

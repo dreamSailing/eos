@@ -239,12 +239,46 @@ func (m *AppModel) refreshMemoryPanel() {
 	}
 	snap, err := m.adapter.MemorySnapshot(context.Background())
 	if err != nil {
-		panel.SetData(nil)
+		panel.SetData(nil, nil)
 		return
 	}
 	summary := memorySnapshotDocument(snap, "memory_summary.md")
 	handbook := memorySnapshotDocument(snap, "MEMORY.md")
-	panel.SetData([]panels.MemoryDoc{panelMemoryDoc(summary), panelMemoryDoc(handbook)})
+	panel.SetData([]panels.MemoryDoc{panelMemoryDoc(summary), panelMemoryDoc(handbook)}, panelProjectMemory(snap))
+}
+
+// panelProjectMemory 投影当前活动项目分区（snapshot.projects 至多一项）。
+func panelProjectMemory(snapshot coreapi.MemorySnapshot) *panels.MemoryProject {
+	if len(snapshot.Projects) == 0 {
+		return nil
+	}
+	project := snapshot.Projects[0]
+	var docs [2]panels.MemoryDoc
+	for i, scope := range memoryDocScopesList() {
+		docs[i] = panelMemoryDoc(memorySnapshotDocumentOf(project.Documents, scope))
+	}
+	return &panels.MemoryProject{
+		Key:  project.Key,
+		Root: project.Root,
+		Name: project.Name,
+		Docs: docs,
+	}
+}
+
+// memoryDocScopesList 与内核 panel_snapshot 的文档顺序一致。
+func memoryDocScopesList() [2]string {
+	return [2]string{"memory_summary.md", "MEMORY.md"}
+}
+
+// memorySnapshotDocumentOf 从指定文档集合中取 scope 对应文档（缺失返回零值）。
+func memorySnapshotDocumentOf(documents []coreapi.MemoryDocument, scope string) coreapi.MemoryDocument {
+	scope = strings.ToLower(strings.TrimSpace(scope))
+	for _, doc := range documents {
+		if strings.EqualFold(strings.TrimSpace(doc.Scope), scope) {
+			return doc
+		}
+	}
+	return coreapi.MemoryDocument{Scope: scope}
 }
 
 // overlayCenter 将弹框内容居中叠加到底层视图之上。
@@ -360,7 +394,7 @@ func (m *AppModel) handleMemorySave(msg panels.MemorySaveMsg) {
 		m.appendSystem(i18n.T("memory.note_empty", m.state.Language), "warning")
 		return
 	}
-	if err := m.adapter.SaveMemory(context.Background(), content); err != nil {
+	if err := m.adapter.SaveMemory(context.Background(), msg.Scope, content); err != nil {
 		m.appendSystem(fmt.Sprintf(i18n.T("toast.memory_save_failed", m.state.Language), err), "error")
 		return
 	}
