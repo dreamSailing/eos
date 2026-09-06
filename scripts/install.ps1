@@ -46,14 +46,25 @@ try {
     Write-Host "目标版本: $Version (windows/$Arch)"
 
     $verNum = $Version.TrimStart("v")
-    $asset = "eos-cli_v${verNum}_windows-${Arch}.zip"
+    # 资产名前缀 2026-09-06 起统一 eos_ 口径；旧版本（≤beta.23）只有
+    # eos-cli_ 前缀资产，下载失败时回退旧名（显式 -Version 装旧版本的场景）。
+    $asset = "eos_v${verNum}_windows-${Arch}.zip"
+    $legacyAsset = "eos-cli_v${verNum}_windows-${Arch}.zip"
     $baseUrl = "https://github.com/$Repo/releases/download/$Version"
 
     $tmp = New-Item -ItemType Directory -Force -Path (Join-Path $env:TEMP ([System.Guid]::NewGuid().ToString()))
     $assetPath = Join-Path $tmp $asset
 
     Write-Host "下载 $asset ..."
-    Invoke-WebRequest -Uri "$baseUrl/$asset" -OutFile $assetPath -UseBasicParsing
+    try {
+        Invoke-WebRequest -Uri "$baseUrl/$asset" -OutFile $assetPath -UseBasicParsing
+    } catch {
+        # 旧版本（≤beta.23）只有 eos-cli_ 前缀资产，回退旧名再试一次。
+        Write-Host "新资产名不可用，回退旧名 $legacyAsset ..."
+        $asset = $legacyAsset
+        $assetPath = Join-Path $tmp $asset
+        Invoke-WebRequest -Uri "$baseUrl/$asset" -OutFile $assetPath -UseBasicParsing
+    }
     if (-not (Test-Path $assetPath)) { throw "下载失败（$Version 可能没有 windows-$Arch 归档）" }
 
     Write-Host "校验 SHA256 ..."
