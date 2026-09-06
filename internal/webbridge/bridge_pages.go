@@ -77,6 +77,10 @@ func (s *BridgeService) StartLSP(language string) BootstrapState {
 	return s.capabilityService().StartLSP(language)
 }
 
+func (s *BridgeService) InstallLSP(language string) BootstrapState {
+	return s.capabilityService().InstallLSP(language)
+}
+
 func (s *BridgeService) ReloadSkills() (BootstrapState, error) {
 	return s.capabilityService().ReloadSkills()
 }

@@ -105,6 +105,7 @@ type bridgeRuntimeGateway interface {
 	CoreListLSPRPC(context.Context) ([]adapter.LSPServer, error)
 	CoreDetectLSPRPC(context.Context, string) (string, error)
 	CoreStartLSPRPC(context.Context, string) (string, error)
+	CoreInstallLSPRPC(context.Context, string) (string, error)
 	CoreListSkillsRPC(context.Context) ([]adapter.SkillInfo, error)
 	CoreReloadSkillsRPC(context.Context) error
 	CoreSetSkillEnabledRPC(context.Context, string, bool) error

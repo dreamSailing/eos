@@ -41,6 +41,7 @@ const (
 	MethodLSPList = "lsp/list"
 	MethodLSPDetect = "lsp/detect"
 	MethodLSPStart = "lsp/start"
+	MethodLSPInstall = "lsp/install"
 	MethodLSPDiagnostics = "lsp/diagnostics"
 	MethodLSPDiagnosticsSummary = "lsp/diagnostics/summary"
 	MethodConfigRulesGet = "config/rules/get"
@@ -226,6 +227,7 @@ func CoreMethods() []string {
 		MethodLSPList,
 		MethodLSPDetect,
 		MethodLSPStart,
+		MethodLSPInstall,
 		MethodLSPDiagnostics,
 		MethodLSPDiagnosticsSummary,
 		MethodConfigRulesGet,
@@ -478,6 +480,7 @@ func MethodGroups() map[string][]string {
 			MethodLSPList,
 			MethodLSPDetect,
 			MethodLSPStart,
+			MethodLSPInstall,
 			MethodLSPDiagnostics,
 			MethodLSPDiagnosticsSummary,
 		},

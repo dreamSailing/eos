@@ -456,7 +456,7 @@ func serveMockServerWithWriteMethods(t *testing.T, conn net.Conn, workspace stri
 					{Language: "go", Status: "running"},
 				})
 
-			case protocoljsonrpc.MethodLSPDetect, protocoljsonrpc.MethodLSPStart:
+			case protocoljsonrpc.MethodLSPDetect, protocoljsonrpc.MethodLSPStart, protocoljsonrpc.MethodLSPInstall:
 				resp, _ = protocoljsonrpc.NewResultResponse(req.ID, map[string]string{"message": "ok"})
 
 			case protocoljsonrpc.MethodExtensionsSkillsList:
@@ -934,6 +934,26 @@ func TestStdioGatewayDetectLSPViaPipe(t *testing.T) {
 	msg, err := gateway.CoreDetectLSPRPC(ctx, "go")
 	if err != nil {
 		t.Fatalf("CoreDetectLSPRPC() error = %v", err)
+	}
+	if msg != "ok" {
+		t.Fatalf("message = %q, want ok", msg)
+	}
+}
+
+func TestStdioGatewayInstallLSPViaPipe(t *testing.T) {
+	client, serverConn := newPipeStdioClient(t)
+	defer client.Close()
+	defer serverConn.Close()
+
+	serveMockServerWithWriteMethods(t, serverConn, t.TempDir(), "")
+	gateway := NewStdioGateway(client)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	msg, err := gateway.CoreInstallLSPRPC(ctx, "go")
+	if err != nil {
+		t.Fatalf("CoreInstallLSPRPC() error = %v", err)
 	}
 	if msg != "ok" {
 		t.Fatalf("message = %q, want ok", msg)

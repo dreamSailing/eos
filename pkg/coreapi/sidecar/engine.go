@@ -802,6 +802,14 @@ func (s remoteLSPService) Start(ctx context.Context, req coreapi.LSPLanguageRequ
 	return out, nil
 }
 
+func (s remoteLSPService) Install(ctx context.Context, req coreapi.LSPLanguageRequest) (string, error) {
+	var out string
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodLSPInstall, req, &out); err != nil {
+		return "", err
+	}
+	return out, nil
+}
+
 func (s remoteLSPService) Diagnostics(ctx context.Context) ([]string, error) {
 	var out []string
 	if err := s.engine.call(ctx, protocoljsonrpc.MethodLSPDiagnostics, nil, &out); err != nil {

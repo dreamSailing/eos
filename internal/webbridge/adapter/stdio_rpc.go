@@ -1062,6 +1062,23 @@ func (g *StdioGateway) StartLSP(language string) string {
 	return ""
 }
 
+func (g *StdioGateway) CoreInstallLSPRPC(ctx context.Context, language string) (string, error) {
+	var out struct {
+		Message string `json:"message"`
+	}
+	if err := g.client.Call(ctx, protocoljsonrpc.MethodLSPInstall, coreapi.LSPLanguageRequest{Language: strings.TrimSpace(language)}, &out); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out.Message), nil
+}
+
+func (g *StdioGateway) InstallLSP(language string) string {
+	if msg, err := g.CoreInstallLSPRPC(rpcCtx(), language); err == nil {
+		return msg
+	}
+	return ""
+}
+
 func (g *StdioGateway) CoreListSkillsRPC(ctx context.Context) ([]SkillInfo, error) {
 	var out []coreapi.SkillInfo
 	if err := g.client.Call(ctx, protocoljsonrpc.MethodExtensionsSkillsList, nil, &out); err != nil {

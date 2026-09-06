@@ -110,6 +110,24 @@ func (svc *CapabilityService) StartLSP(language string) BootstrapState {
 	return s.LoadBootstrap()
 }
 
+func (svc *CapabilityService) InstallLSP(language string) BootstrapState {
+	s := svc.bridge
+	if s == nil {
+		return BootstrapState{}
+	}
+	message, err := s.installLSPRPC(language)
+	language = strings.TrimSpace(language)
+	s.stateMu.Lock()
+	if err != nil {
+		s.pushNotificationLocked("LSP 安装失败", fallbackText(err.Error(), language), "warning")
+	} else {
+		s.pushNotificationLocked("LSP Installed", fallbackText(message, language), "success")
+	}
+	s.emitShellUpdated()
+	s.stateMu.Unlock()
+	return s.LoadBootstrap()
+}
+
 func (svc *CapabilityService) ReloadSkills() (BootstrapState, error) {
 	s := svc.bridge
 	if s == nil {

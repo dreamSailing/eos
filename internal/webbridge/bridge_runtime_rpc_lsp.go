@@ -6,7 +6,7 @@ import (
 	"github.com/dreamSailing/eos/internal/webbridge/adapter"
 )
 
-// LSP 域 RPC：LSP 服务器列表 + 检测 / 启动。
+// LSP 域 RPC：LSP 服务器列表 + 检测 / 启动 / 一键安装。
 
 func (s *BridgeService) lspServersReadOnly() []adapter.LSPServer {
 	return coreValueOrNil(
@@ -42,6 +42,19 @@ func (s *BridgeService) startLSPRPC(language string) (string, error) {
 	text, err := coreOnlyResult(
 		gateway,
 		func(g bridgeRuntimeGateway) (string, error) { return g.CoreStartLSPRPC(coreCtx(), language) },
+	)
+	return strings.TrimSpace(text), err
+}
+
+func (s *BridgeService) installLSPRPC(language string) (string, error) {
+	gateway, err := requireRuntimeGateway(s)
+	if err != nil {
+		return "", err
+	}
+	language = strings.TrimSpace(language)
+	text, err := coreOnlyResult(
+		gateway,
+		func(g bridgeRuntimeGateway) (string, error) { return g.CoreInstallLSPRPC(coreCtx(), language) },
 	)
 	return strings.TrimSpace(text), err
 }

@@ -154,6 +154,9 @@ func (compileTimeLSP) Detect(context.Context, LSPLanguageRequest) (string, error
 func (compileTimeLSP) Start(context.Context, LSPLanguageRequest) (string, error) {
 	return "", nil
 }
+func (compileTimeLSP) Install(context.Context, LSPLanguageRequest) (string, error) {
+	return "", nil
+}
 func (compileTimeLSP) Diagnostics(context.Context) ([]string, error) { return nil, nil }
 func (compileTimeLSP) DiagnosticsSummary(context.Context) (LSPDiagnosticsSummary, error) {
 	return LSPDiagnosticsSummary{}, nil

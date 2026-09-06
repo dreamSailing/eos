@@ -464,6 +464,7 @@ type Core interface {
 	ListLSP() []LSPServer
 	DetectLSP(string) string
 	StartLSP(string) string
+	InstallLSP(string) string
 	LSPDiagnostics() []string
 	PermissionSnapshot() PermissionSnapshot
 	PendingReview() PendingReview

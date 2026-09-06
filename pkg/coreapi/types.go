@@ -93,6 +93,7 @@ type LSPService interface {
 	List(context.Context) ([]LSPServer, error)
 	Detect(context.Context, LSPLanguageRequest) (string, error)
 	Start(context.Context, LSPLanguageRequest) (string, error)
+	Install(context.Context, LSPLanguageRequest) (string, error)
 	Diagnostics(context.Context) ([]string, error)
 	DiagnosticsSummary(context.Context) (LSPDiagnosticsSummary, error)
 }
