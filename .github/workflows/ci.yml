@@ -5,6 +5,9 @@ on:
     branches: ["*"]
   pull_request:
     branches: ["*"]
+  # 手动触发：bot（sync-vendored-sidecar）推送不会递归触发 workflow，
+  # 内核重签后需手动跑一次验证（与 core-rs/app 的恢复版一致）。
+  workflow_dispatch:
 
 jobs:
   build-and-test:
