@@ -68,10 +68,7 @@ fi
 echo "目标版本: ${VERSION} (${OS}/${ARCH})"
 
 VER_NUM="${VERSION#v}"
-# 资产名前缀 2026-09-06 起统一 eos_ 口径；旧版本（≤beta.23）只有
-# eos-cli_ 前缀资产，下载失败时回退旧名（显式 -v 装旧版本的场景）。
-ASSET="eos_v${VER_NUM}_${OS}-${ARCH}.tar.gz"
-LEGACY_ASSET="eos-cli_v${VER_NUM}_${OS}-${ARCH}.tar.gz"
+ASSET="eos-cli_v${VER_NUM}_${OS}-${ARCH}.tar.gz"
 BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
 
 TMP="$(mktemp -d)"
@@ -84,14 +81,6 @@ trap 'rm -rf "$TMP"' EXIT
 #   - 校验不过自动删档重下，防止截断的包被安装。
 WANT=""
 VERIFIED=""
-# 先按新名找 SHA256SUMS 条目；旧版本（≤beta.23）无 eos_ 资产，切旧名。
-if [ -s "${TMP}/SHA256SUMS.txt" ] || curl -fsSL --max-time 30     -o "${TMP}/SHA256SUMS.txt" "${BASE_URL}/SHA256SUMS.txt" 2>/dev/null; then
-  if ! grep -q " ${ASSET}\$" "${TMP}/SHA256SUMS.txt" 2>/dev/null; then
-    if grep -q " ${LEGACY_ASSET}\$" "${TMP}/SHA256SUMS.txt" 2>/dev/null; then
-      ASSET="$LEGACY_ASSET"
-    fi
-  fi
-fi
 for round in 1 2 3 4 5; do
   if [ -z "$WANT" ]; then
     curl -fL --http1.1 --retry 2 --connect-timeout 10 --max-time 30 \

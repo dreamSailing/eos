@@ -123,7 +123,7 @@ func TestBuildCheckResult_ConstructsDeterministicURLs(t *testing.T) {
 	if !r.HasUpdate {
 		t.Fatal("HasUpdate should be true from beta.9 to beta.10")
 	}
-	wantAsset := "eos_v1.0.0-beta.10_windows-amd64.zip"
+	wantAsset := "eos-cli_v1.0.0-beta.10_windows-amd64.zip"
 	if r.AssetName != wantAsset {
 		t.Fatalf("AssetName = %q, want %q", r.AssetName, wantAsset)
 	}

@@ -45,8 +45,8 @@ func TestApplyEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 构造新版归档：eos_v9.9.9/eos + core/<triple>/eos-core
-	archivePath, assetName, wantSum := buildTestArchive(t, tmp, "eos", "eos_v9.9.9_test")
+	// 构造新版归档：eos-cli_v9.9.9/eos + core/<triple>/eos-core
+	archivePath, assetName, wantSum := buildTestArchive(t, tmp, "eos", "eos-cli_v9.9.9_test")
 	sumsPath := filepath.Join(tmp, "SHA256SUMS.txt")
 	if err := os.WriteFile(sumsPath, []byte(fmt.Sprintf("%s  %s\n", wantSum, assetName)), 0o644); err != nil {
 		t.Fatal(err)
@@ -72,7 +72,7 @@ func TestApplyEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Base(stageRoot) != "eos_v9.9.9_test" {
+	if filepath.Base(stageRoot) != "eos-cli_v9.9.9_test" {
 		t.Fatalf("stageRoot = %q, want wrapped dir", stageRoot)
 	}
 	if err := replaceBinary(filepath.Join(stageRoot, "eos"), exePath); err != nil {
@@ -109,8 +109,8 @@ func TestApplyZipLayout(t *testing.T) {
 	}
 	zw := zip.NewWriter(zf)
 	files := map[string]string{
-		"eos_v9.9.9_win/eos.exe":             "new-binary",
-		"eos_v9.9.9_win/core/t/eos-core.exe": "new-core",
+		"eos-cli_v9.9.9_win/eos.exe":             "new-binary",
+		"eos-cli_v9.9.9_win/core/t/eos-core.exe": "new-core",
 	}
 	for name, content := range files {
 		w, err := zw.Create(name)
@@ -153,9 +153,9 @@ func TestExtractZipBackslashEntries(t *testing.T) {
 	zw := zip.NewWriter(zf)
 	// 模拟 Compress-Archive 产物：条目名用反斜杠，目录条目带尾 "\"。
 	entries := []struct{ name, content string }{
-		{"eos_v9.9.9_win\\core\\", ""},
-		{"eos_v9.9.9_win\\eos.exe", "new-binary"},
-		{"eos_v9.9.9_win\\core\\triple\\eos-core.exe", "new-core"},
+		{"eos-cli_v9.9.9_win\\core\\", ""},
+		{"eos-cli_v9.9.9_win\\eos.exe", "new-binary"},
+		{"eos-cli_v9.9.9_win\\core\\triple\\eos-core.exe", "new-core"},
 	}
 	for _, e := range entries {
 		w, err := zw.Create(e.name)
@@ -173,10 +173,10 @@ func TestExtractZipBackslashEntries(t *testing.T) {
 	if err := extractArchive(zipPath, out); err != nil {
 		t.Fatalf("extractArchive backslash zip error: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(out, "eos_v9.9.9_win", "eos.exe")); err != nil {
+	if _, err := os.Stat(filepath.Join(out, "eos-cli_v9.9.9_win", "eos.exe")); err != nil {
 		t.Fatalf("eos.exe missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(out, "eos_v9.9.9_win", "core", "triple", "eos-core.exe")); err != nil {
+	if _, err := os.Stat(filepath.Join(out, "eos-cli_v9.9.9_win", "core", "triple", "eos-core.exe")); err != nil {
 		t.Fatalf("core binary missing: %v", err)
 	}
 }

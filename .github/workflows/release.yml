@@ -132,7 +132,7 @@ jobs:
           DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           GOOS_T="${{ matrix.goos }}"
           BIN="eos"; [ "$GOOS_T" = "windows" ] && BIN="eos.exe"
-          STAGE="eos_${VERSION}_${{ matrix.goos }}-${{ matrix.goarch }}"
+          STAGE="eos-cli_${VERSION}_${{ matrix.goos }}-${{ matrix.goarch }}"
           mkdir -p "dist/$STAGE/core/${{ matrix.triple }}"
           # 目标三元组显式下发（native runner 上与宿主一致；darwin/amd64 为交叉）。
           export CGO_ENABLED=1 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}
@@ -154,11 +154,6 @@ jobs:
           else
             tar -czf "$STAGE.tar.gz" "$STAGE"
           fi
-          # 兼容副本：≤beta.23 的旧客户端 eos update 按 eos-cli_ 前缀拼资产
-          # 名，同内容再放一份旧名（SHA256SUMS 覆盖两份），升级链不断。
-          # 新资产名统一 eos_ 口径后，稳定一两个版本可移除副本。
-          cp "$STAGE.$([ "$GOOS_T" = "windows" ] && echo zip || echo tar.gz)" \
-             "eos-cli_${VERSION}_${{ matrix.goos }}-${{ matrix.goarch }}.$([ "$GOOS_T" = "windows" ] && echo zip || echo tar.gz)"
           rm -rf "$STAGE"
           echo "== dist =="; ls -la
 
@@ -191,7 +186,7 @@ jobs:
         run: |
           VERSION="${{ inputs.version || github.ref_name }}"
           gh release create "$VERSION" dist/* \
-            --title "eos $VERSION" \
+            --title "EOS CLI $VERSION" \
             --notes "三端生产包（Windows / macOS / Linux），内核为构建时 eos-core-rs 指定 ref 的签名产物。校验见 SHA256SUMS.txt。" \
             --repo "$GITHUB_REPOSITORY" 2>/dev/null \
           || gh release upload "$VERSION" dist/* --clobber --repo "$GITHUB_REPOSITORY"
