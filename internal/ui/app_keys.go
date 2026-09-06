@@ -11,9 +11,9 @@ package ui
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/state"
-	"github.com/dreamSailing/eos/internal/ui/views/shell"
+	"github.com/eosaios/eos/internal/i18n"
+	"github.com/eosaios/eos/internal/state"
+	"github.com/eosaios/eos/internal/ui/views/shell"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

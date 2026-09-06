@@ -10,10 +10,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/pkg/settings"
-	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/eosaios/eos/internal/config"
+	"github.com/eosaios/eos/internal/i18n"
+	"github.com/eosaios/eos/internal/pkg/settings"
+	"github.com/eosaios/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"

@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/eosaios/eos/internal/ui/styles"
 )
 
 // 文本流前缀。首行用语义前缀，续行统一两空格缩进。

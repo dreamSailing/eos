@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/eosaios/eos/internal/pkg/utils"
 
 	"github.com/gen2brain/beeep"
 )

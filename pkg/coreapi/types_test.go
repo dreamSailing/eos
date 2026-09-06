@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreamSailing/eos/pkg/protocol"
-	"github.com/dreamSailing/eos/pkg/sandbox"
+	"github.com/eosaios/eos/pkg/protocol"
+	"github.com/eosaios/eos/pkg/sandbox"
 )
 
 type compileTimeEngine struct{}

@@ -8,8 +8,8 @@ package ai
 import (
 	"testing"
 
-	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/internal/config"
+	"github.com/eosaios/eos/pkg/coreapi"
 )
 
 // applyTestCatalog 注入一个最小测试 catalog，让 o1/o1-mini/o1-preview 被识别为

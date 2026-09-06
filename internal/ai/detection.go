@@ -8,7 +8,7 @@ package ai
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/config"
+	"github.com/eosaios/eos/internal/config"
 )
 
 // DetectThinkingCapability 尝试从模型名称检测思考能力

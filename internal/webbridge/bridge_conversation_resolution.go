@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // isPromptResolvedEvent 判定事件是否为内核侧审批/问询"已处理"通知。

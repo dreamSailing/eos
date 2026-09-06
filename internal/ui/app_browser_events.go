@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/ui/views/confirm"
+	"github.com/eosaios/eos/internal/i18n"
+	"github.com/eosaios/eos/internal/ui/views/confirm"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

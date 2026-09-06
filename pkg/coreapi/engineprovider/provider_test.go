@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
-	coreapijsonrpc "github.com/dreamSailing/eos/pkg/coreapi/jsonrpc"
-	"github.com/dreamSailing/eos/pkg/coreapi/sidecar"
-	protocoljsonrpc "github.com/dreamSailing/eos/pkg/protocol/jsonrpc"
+	"github.com/eosaios/eos/pkg/coreapi"
+	coreapijsonrpc "github.com/eosaios/eos/pkg/coreapi/jsonrpc"
+	"github.com/eosaios/eos/pkg/coreapi/sidecar"
+	protocoljsonrpc "github.com/eosaios/eos/pkg/protocol/jsonrpc"
 )
 
 func TestSelectAutoUsesRustWhenRequiredMethodsArePresent(t *testing.T) {

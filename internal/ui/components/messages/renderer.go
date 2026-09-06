@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/ui/render"
-	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/eosaios/eos/internal/ui/render"
+	"github.com/eosaios/eos/internal/ui/styles"
 )
 
 // Renderer 消息渲染器

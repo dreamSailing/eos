@@ -12,9 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
-	"github.com/dreamSailing/eos/pkg/protocol"
-	"github.com/dreamSailing/eos/pkg/sandbox"
+	"github.com/eosaios/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/protocol"
+	"github.com/eosaios/eos/pkg/sandbox"
 )
 
 // newTestEngine 返回一个完整 mock 的 coreapi.Engine，所有 service 实现都把

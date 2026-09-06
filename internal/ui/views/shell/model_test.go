@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/eosaios/eos/internal/ui/styles"
 )
 
 var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)

@@ -132,7 +132,7 @@ func checkGitHubLatest(proxyURL string) (*UpdateCheckResult, error) {
 	return result, nil
 }
 
-const githubAppOwner = "dreamSailing"
+const githubAppOwner = "eosaios"
 const githubAppRepo = "eos-app"
 
 // releaseLatestPageURL 返回 releases/latest 网页地址（非 API 端点）。

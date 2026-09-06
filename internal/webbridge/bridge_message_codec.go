@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/pkg/coreapi"
 )
 
 // chatMessagesFromRuntime 把内核持久化的 SessionMessage 列表重建为前端 ChatMessage。

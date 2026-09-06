@@ -11,8 +11,8 @@ import (
 	"os"
 	"strings"
 
-	coreapijsonrpc "github.com/dreamSailing/eos/pkg/coreapi/jsonrpc"
-	"github.com/dreamSailing/eos/pkg/protocol/jsonrpc"
+	coreapijsonrpc "github.com/eosaios/eos/pkg/coreapi/jsonrpc"
+	"github.com/eosaios/eos/pkg/protocol/jsonrpc"
 
 	"github.com/spf13/cobra"
 )

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dreamSailing/eos/pkg/protocol"
-	protocoljsonrpc "github.com/dreamSailing/eos/pkg/protocol/jsonrpc"
+	"github.com/eosaios/eos/pkg/protocol"
+	protocoljsonrpc "github.com/eosaios/eos/pkg/protocol/jsonrpc"
 )
 
 type runtimeJSONRPCEventFilter struct {

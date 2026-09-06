@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // runtimeItemKind 从 turn.item_* 事件的 payload 中提取 item.kind。

@@ -26,11 +26,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
-	"github.com/dreamSailing/eos/pkg/coreapi"
-	coreapijsonrpc "github.com/dreamSailing/eos/pkg/coreapi/jsonrpc"
-	"github.com/dreamSailing/eos/pkg/protocol"
-	protocoljsonrpc "github.com/dreamSailing/eos/pkg/protocol/jsonrpc"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/pkg/coreapi"
+	coreapijsonrpc "github.com/eosaios/eos/pkg/coreapi/jsonrpc"
+	"github.com/eosaios/eos/pkg/protocol"
+	protocoljsonrpc "github.com/eosaios/eos/pkg/protocol/jsonrpc"
 )
 
 // newPipeStdioClient creates a StdioClient whose stream is wired to a

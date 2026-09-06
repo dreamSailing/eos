@@ -12,7 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/eosaios/eos/internal/ui/styles"
 
 	xansi "github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
-	"github.com/dreamSailing/eos/pkg/sandbox"
+	"github.com/eosaios/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/sandbox"
 )
 
 // 运行模式 RPC：执行模式 / 沙箱模式 / 推理等级的只读快照与写入。

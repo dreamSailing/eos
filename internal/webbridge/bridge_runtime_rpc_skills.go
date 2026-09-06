@@ -3,7 +3,7 @@ package webbridge
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // Skills 域 RPC：技能列表只读 + 重载 / 启停。

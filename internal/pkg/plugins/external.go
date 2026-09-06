@@ -9,7 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/eosaios/eos/internal/pkg/utils"
 	"strings"
 )
 

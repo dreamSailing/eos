@@ -19,10 +19,10 @@ import (
 	"io"
 	"sync"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
-	coreapijsonrpc "github.com/dreamSailing/eos/pkg/coreapi/jsonrpc"
-	"github.com/dreamSailing/eos/pkg/coreapi/sidecar"
-	protocoljsonrpc "github.com/dreamSailing/eos/pkg/protocol/jsonrpc"
+	"github.com/eosaios/eos/pkg/coreapi"
+	coreapijsonrpc "github.com/eosaios/eos/pkg/coreapi/jsonrpc"
+	"github.com/eosaios/eos/pkg/coreapi/sidecar"
+	protocoljsonrpc "github.com/eosaios/eos/pkg/protocol/jsonrpc"
 )
 
 // RequiredMethods 是 TUI 启动时要求 eos-core 必须实现的方法集。

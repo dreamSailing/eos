@@ -34,7 +34,7 @@
 ### 变更
 
 - 仓库地址、安装包发布链接与文档链接统一更新为 GitHub 正式地址。
-- Go 模块路径升级为 `github.com/dreamSailing/eos`。
+- Go 模块路径升级为 `github.com/eosaios/eos`。
 
 ### 修复
 

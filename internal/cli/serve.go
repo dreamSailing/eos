@@ -10,10 +10,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/serve"
-	"github.com/dreamSailing/eos/pkg/coreapi/engineprovider"
-	"github.com/dreamSailing/eos/pkg/coreapi/sidecar"
-	"github.com/dreamSailing/eos/pkg/protocol/jsonrpc"
+	"github.com/eosaios/eos/internal/serve"
+	"github.com/eosaios/eos/pkg/coreapi/engineprovider"
+	"github.com/eosaios/eos/pkg/coreapi/sidecar"
+	"github.com/eosaios/eos/pkg/protocol/jsonrpc"
 
 	"github.com/spf13/cobra"
 )

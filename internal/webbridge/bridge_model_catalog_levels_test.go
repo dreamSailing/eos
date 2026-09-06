@@ -3,7 +3,7 @@ package webbridge
 import (
 	"testing"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // 档位（reasoningLevels）必须完整透传到前端目录：preset 级（如方舟套餐

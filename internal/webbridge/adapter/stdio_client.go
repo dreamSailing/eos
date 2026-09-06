@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreamSailing/eos/pkg/coreapi/sidecar"
-	protocoljsonrpc "github.com/dreamSailing/eos/pkg/protocol/jsonrpc"
+	"github.com/eosaios/eos/pkg/coreapi/sidecar"
+	protocoljsonrpc "github.com/eosaios/eos/pkg/protocol/jsonrpc"
 )
 
 // StdioClientOptions configures how the stdio JSON-RPC client connects to an

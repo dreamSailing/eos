@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
-	sidecarclient "github.com/dreamSailing/eos/pkg/coreapi/sidecar/client"
-	"github.com/dreamSailing/eos/pkg/protocol/jsonrpc"
+	"github.com/eosaios/eos/pkg/coreapi"
+	sidecarclient "github.com/eosaios/eos/pkg/coreapi/sidecar/client"
+	"github.com/eosaios/eos/pkg/protocol/jsonrpc"
 )
 
 const packagedCoreBinary2 = `C:/home/eos/eos-cli/pkg/coreapi/sidecar/binaries/x86_64-pc-windows-gnu/eos-core.exe`

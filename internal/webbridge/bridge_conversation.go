@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
-	"github.com/dreamSailing/eos/pkg/protocol"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/pkg/protocol"
 )
 
 func turnRollbacksFromMessages(messages []ChatMessage) ([]TurnRollback, error) {

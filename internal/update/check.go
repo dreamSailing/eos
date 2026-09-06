@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/version"
+	"github.com/eosaios/eos/internal/version"
 )
 
-const githubOwner = "dreamSailing"
+const githubOwner = "eosaios"
 const githubRepo = "eos"
 // checkTimeout 是单次尝试的超时预算。var 以便测试注入短超时。
 var checkTimeout = 15 * time.Second

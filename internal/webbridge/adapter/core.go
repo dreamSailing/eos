@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/coreapi"
 )
 
 type Event struct {

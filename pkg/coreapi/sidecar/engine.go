@@ -10,11 +10,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
-	coreapijsonrpc "github.com/dreamSailing/eos/pkg/coreapi/jsonrpc"
-	"github.com/dreamSailing/eos/pkg/protocol"
-	protocoljsonrpc "github.com/dreamSailing/eos/pkg/protocol/jsonrpc"
-	"github.com/dreamSailing/eos/pkg/sandbox"
+	"github.com/eosaios/eos/pkg/coreapi"
+	coreapijsonrpc "github.com/eosaios/eos/pkg/coreapi/jsonrpc"
+	"github.com/eosaios/eos/pkg/protocol"
+	protocoljsonrpc "github.com/eosaios/eos/pkg/protocol/jsonrpc"
+	"github.com/eosaios/eos/pkg/sandbox"
 )
 
 var ErrCallerUnavailable = errors.New("core sidecar caller is unavailable")

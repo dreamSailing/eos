@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 func hasConfiguredModel(models []ModelCard) bool {

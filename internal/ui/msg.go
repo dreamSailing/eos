@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	uiadapter "github.com/dreamSailing/eos/internal/ui/adapter"
-	"github.com/dreamSailing/eos/internal/update"
-	"github.com/dreamSailing/eos/pkg/protocol"
+	uiadapter "github.com/eosaios/eos/internal/ui/adapter"
+	"github.com/eosaios/eos/internal/update"
+	"github.com/eosaios/eos/pkg/protocol"
 )
 
 // Msg 是所有消息类型的接口

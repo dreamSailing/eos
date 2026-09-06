@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/ui"
+	"github.com/eosaios/eos/internal/ui"
 
 	"github.com/spf13/cobra"
 )

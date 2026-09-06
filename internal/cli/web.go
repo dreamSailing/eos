@@ -8,8 +8,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge"
-	"github.com/dreamSailing/eos/pkg/coreapi/sidecar"
+	"github.com/eosaios/eos/internal/webbridge"
+	"github.com/eosaios/eos/pkg/coreapi/sidecar"
 
 	"github.com/spf13/cobra"
 )

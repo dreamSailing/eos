@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // Bridge 运行期内部状态类型（非前端 DTO，不跨进程传输）。

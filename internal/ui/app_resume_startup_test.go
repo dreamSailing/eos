@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/coreapi"
 )
 
 // TestStartupResumeNoOpWithoutSession 验证 pendingResumeSession 为 nil 时

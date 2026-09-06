@@ -3,7 +3,7 @@ package webbridge
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // worktree RPC：worktree 列表只读，以及创建 / 删除。

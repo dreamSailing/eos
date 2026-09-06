@@ -1,7 +1,7 @@
 # EOS CLI 官方安装脚本（Windows PowerShell）
 #
 # 用法：
-#   irm https://raw.githubusercontent.com/dreamSailing/eos/main/scripts/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/eosaios/eos/main/scripts/install.ps1 | iex
 #   .\install.ps1 -Version v1.0.0-beta.3
 #
 # 行为：GitHub Releases 拉取 windows 归档 → SHA256 校验 → 安装到
@@ -14,7 +14,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Repo = "dreamSailing/eos"
+$Repo = "eosaios/eos"
 
 if (-not $InstallDir) {
     $InstallDir = Join-Path $env:LOCALAPPDATA "Programs\eos"

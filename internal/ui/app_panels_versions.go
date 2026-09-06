@@ -20,7 +20,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/ui/panels"
+	"github.com/eosaios/eos/internal/ui/panels"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

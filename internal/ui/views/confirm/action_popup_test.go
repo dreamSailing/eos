@@ -8,7 +8,7 @@ package confirm
 import (
 	"testing"
 
-	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/eosaios/eos/internal/ui/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

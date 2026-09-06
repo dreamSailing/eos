@@ -3,7 +3,7 @@ package webbridge
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // 版本域 RPC：版本列表只读 + 回滚 / 删除 / 清空写操作。

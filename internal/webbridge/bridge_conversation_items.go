@@ -3,7 +3,7 @@ package webbridge
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // bridge_conversation_items.go 处理结构化 ThreadItem 列表的累积。

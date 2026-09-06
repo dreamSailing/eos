@@ -87,8 +87,8 @@ func hasForbiddenString(t *testing.T, path string) bool {
 	}
 	for _, imp := range file.Imports {
 		importPath := strings.Trim(imp.Path.Value, `"`)
-		if importPath == "github.com/dreamSailing/eos/cmd/eos-tool-host" ||
-			strings.HasPrefix(importPath, "github.com/dreamSailing/eos/cmd/eos-tool-host/") {
+		if importPath == "github.com/eosaios/eos/cmd/eos-tool-host" ||
+			strings.HasPrefix(importPath, "github.com/eosaios/eos/cmd/eos-tool-host/") {
 			return true
 		}
 	}

@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // remote workspace RPC：远程仓库列表 + 当前仓库只读，以及打开 / 忘记 / 清缓存。

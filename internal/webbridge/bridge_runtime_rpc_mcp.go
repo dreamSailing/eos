@@ -3,7 +3,7 @@ package webbridge
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // MCP 域 RPC：服务器列表只读 + 新增 / 导入 / 删除 / 启停。

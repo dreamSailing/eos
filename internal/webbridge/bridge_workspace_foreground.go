@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 func (s *BridgeService) resolveForegroundWorkspaceWithSnapshotAndLast(preferred string, runtimeSnapshot adapter.RuntimeSnapshot, persistedLastWorkspace string) string {

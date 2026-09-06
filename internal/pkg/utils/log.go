@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/config"
+	"github.com/eosaios/eos/internal/config"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 

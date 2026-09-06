@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/dreamSailing/eos/pkg/protocol"
+	"github.com/eosaios/eos/pkg/protocol"
 )
 
 func TestProtocolEnvelopeToEventNormalizesRustTurnEventAndKeepsTopLevelTurnID(t *testing.T) {

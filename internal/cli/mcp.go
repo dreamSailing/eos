@@ -10,8 +10,8 @@ import (
 	"os"
 	"strings"
 
-	mcpserver "github.com/dreamSailing/eos/internal/mcp/server"
-	"github.com/dreamSailing/eos/pkg/coreapi/engineprovider"
+	mcpserver "github.com/eosaios/eos/internal/mcp/server"
+	"github.com/eosaios/eos/pkg/coreapi/engineprovider"
 
 	"github.com/spf13/cobra"
 )

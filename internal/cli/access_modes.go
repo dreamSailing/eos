@@ -3,8 +3,8 @@ package cli
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/internal/modes"
+	"github.com/eosaios/eos/internal/config"
+	"github.com/eosaios/eos/internal/modes"
 	"github.com/spf13/pflag"
 )
 

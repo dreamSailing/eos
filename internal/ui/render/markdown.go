@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	uistyles "github.com/dreamSailing/eos/internal/ui/styles"
+	uistyles "github.com/eosaios/eos/internal/ui/styles"
 
 	"github.com/charmbracelet/glamour"
 	gansi "github.com/charmbracelet/glamour/ansi"

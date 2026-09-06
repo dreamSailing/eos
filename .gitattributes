@@ -30,3 +30,7 @@ go.work.sum text eol=lf
 *.so   binary
 *.dylib binary
 *.pem  binary
+
+# vendored 内核二进制：显式阻断 EOL/文本转换——checkout 时 CRLF→LF 会损坏 exe
+# 且造成 sha256 与 manifest 不配对（Windows 开发机克隆即损坏）。
+pkg/coreapi/sidecar/core/** -text

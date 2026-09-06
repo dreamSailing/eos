@@ -10,7 +10,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/i18n"
+	"github.com/eosaios/eos/internal/webbridge/i18n"
 )
 
 // runBackgroundCommand 启动一个脱离服务生命周期的进程（如 open 浏览器），

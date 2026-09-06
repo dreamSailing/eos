@@ -6,7 +6,7 @@ package webbridge
 // 商业使用请联系版权人获得商业授权。
 
 import (
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/coreapi"
 )
 
 // NetworkInspect 返回模型 API 流量记录快照（network/list）。

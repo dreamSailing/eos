@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/dreamSailing/eos/pkg/coreapi/sidecar"
+	"github.com/eosaios/eos/pkg/coreapi/sidecar"
 )
 
 func bridgeRuntimeGatewayCoreBinDir() string {

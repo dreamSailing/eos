@@ -8,7 +8,7 @@ package adapter
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/pkg/protocol"
+	"github.com/eosaios/eos/pkg/protocol"
 )
 
 // bridge 边界说明: 本文件已脱离 bridge 依赖。

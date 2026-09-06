@@ -24,13 +24,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/ai"
-	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/internal/pkg/settings"
-	"github.com/dreamSailing/eos/pkg/coreapi"
-	sidecarclient "github.com/dreamSailing/eos/pkg/coreapi/sidecar/client"
-	"github.com/dreamSailing/eos/pkg/protocol"
-	protocoljsonrpc "github.com/dreamSailing/eos/pkg/protocol/jsonrpc"
+	"github.com/eosaios/eos/internal/ai"
+	"github.com/eosaios/eos/internal/config"
+	"github.com/eosaios/eos/internal/pkg/settings"
+	"github.com/eosaios/eos/pkg/coreapi"
+	sidecarclient "github.com/eosaios/eos/pkg/coreapi/sidecar/client"
+	"github.com/eosaios/eos/pkg/protocol"
+	protocoljsonrpc "github.com/eosaios/eos/pkg/protocol/jsonrpc"
 )
 
 // CoreClientAdapter wraps sidecar.Client 和其底层 coreapi.Engine。

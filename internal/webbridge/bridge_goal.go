@@ -14,7 +14,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/coreapi"
 )
 
 // GoalSnapshot 是 BootstrapState 的目标快照（Goal 为 nil 表示当前会话无目标）。

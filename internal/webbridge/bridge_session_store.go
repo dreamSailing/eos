@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/pkg/coreapi"
 )
 
 func (s *BridgeService) findOrRestoreSession(workspacePath, sessionID string) *sessionState {

@@ -232,7 +232,7 @@ func generateTest(schema Schema, outDir string) error {
 	b.WriteString("import (\n")
 	b.WriteString("\t\"sort\"\n")
 	b.WriteString("\t\"testing\"\n\n")
-	b.WriteString("\t\"github.com/dreamSailing/eos/pkg/protocol/jsonrpc\"\n")
+	b.WriteString("\t\"github.com/eosaios/eos/pkg/protocol/jsonrpc\"\n")
 	b.WriteString(")\n\n")
 
 	b.WriteString("func TestGeneratedMethodsCoverAllCoreMethods(t *testing.T) {\n")

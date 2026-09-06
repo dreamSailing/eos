@@ -8,7 +8,7 @@ package adapter
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/pkg/protocol"
+	"github.com/eosaios/eos/pkg/protocol"
 )
 
 func newAdapterEvent(eventType protocol.EventType, legacyType, requestID, message string, payload map[string]any) Event {

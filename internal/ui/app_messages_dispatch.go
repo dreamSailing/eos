@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/ui/views/setup"
+	"github.com/eosaios/eos/internal/i18n"
+	"github.com/eosaios/eos/internal/ui/views/setup"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

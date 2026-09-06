@@ -1,7 +1,7 @@
 package webbridge
 
 import (
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // runtime 只读洞察：用量 / 成本 / 诊断类快照查询。

@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/pkg/events"
-	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/eosaios/eos/internal/pkg/events"
+	"github.com/eosaios/eos/internal/pkg/utils"
 )
 
 // Manager LSP 管理器

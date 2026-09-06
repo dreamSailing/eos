@@ -10,7 +10,7 @@ package lsp
 import (
 	"context"
 	"fmt"
-	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/eosaios/eos/internal/pkg/utils"
 	"os"
 	"os/exec"
 	"path/filepath"

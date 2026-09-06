@@ -14,9 +14,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/internal/i18n"
-	sidecarclient "github.com/dreamSailing/eos/pkg/coreapi/sidecar/client"
+	"github.com/eosaios/eos/internal/config"
+	"github.com/eosaios/eos/internal/i18n"
+	sidecarclient "github.com/eosaios/eos/pkg/coreapi/sidecar/client"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

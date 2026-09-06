@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreamSailing/eos/internal/version"
+	"github.com/eosaios/eos/internal/version"
 )
 
 // TestPrintVersionOutput 验证版本输出包含 AppVersion 与运行平台。

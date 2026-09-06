@@ -21,7 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/eosaios/eos/internal/pkg/utils"
 )
 
 // Client LSP 客户端

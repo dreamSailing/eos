@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // 会话级静默看门狗超时（修复点 #5a）。

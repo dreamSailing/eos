@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/config"
+	"github.com/eosaios/eos/internal/config"
 )
 
 func MergeMCPEntries(cfg *config.Config, workspaceRoot string) []config.MCPEntry {

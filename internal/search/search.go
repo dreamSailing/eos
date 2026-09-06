@@ -8,7 +8,7 @@ package search
 import (
 	"bufio"
 	"errors"
-	"github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/eosaios/eos/internal/pkg/utils"
 	"io"
 	"os"
 	"path/filepath"

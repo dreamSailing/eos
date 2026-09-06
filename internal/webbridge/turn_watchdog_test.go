@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // TestTurnWatchdogTimerResetsOnEachEvent 验证每收到一个事件 timer 被 Reset，

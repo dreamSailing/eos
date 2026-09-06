@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
-	"github.com/dreamSailing/eos/internal/version"
+	"github.com/eosaios/eos/internal/version"
 	"github.com/spf13/cobra"
 )
 

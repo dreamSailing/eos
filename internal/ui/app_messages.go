@@ -19,10 +19,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/state"
-	"github.com/dreamSailing/eos/internal/ui/components/messages"
-	"github.com/dreamSailing/eos/internal/ui/render"
+	"github.com/eosaios/eos/internal/i18n"
+	"github.com/eosaios/eos/internal/state"
+	"github.com/eosaios/eos/internal/ui/components/messages"
+	"github.com/eosaios/eos/internal/ui/render"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

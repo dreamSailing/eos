@@ -1,4 +1,4 @@
-module github.com/dreamSailing/eos
+module github.com/eosaios/eos
 
 go 1.25.5
 

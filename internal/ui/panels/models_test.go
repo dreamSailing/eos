@@ -11,8 +11,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/eosaios/eos/internal/config"
+	"github.com/eosaios/eos/internal/ui/styles"
 )
 
 func newTestModelsPanel() *ModelsPanel {

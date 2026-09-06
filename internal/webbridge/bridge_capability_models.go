@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 func (svc *CapabilityService) UpsertModel(name, base, keyMasked, model string) (BootstrapState, error) {

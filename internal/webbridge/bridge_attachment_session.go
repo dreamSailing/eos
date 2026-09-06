@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 func (svc *AttachmentService) PrepareForSession(paths []string, workspace string) ([]AttachmentRef, []adapter.Attachment, error) {

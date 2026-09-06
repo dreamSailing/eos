@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/ui/styles"
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/internal/i18n"
+	"github.com/eosaios/eos/internal/ui/styles"
+	"github.com/eosaios/eos/pkg/coreapi"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/viewport"

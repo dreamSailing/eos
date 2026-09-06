@@ -3,7 +3,7 @@ package adapter
 import (
 	"testing"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/coreapi"
 )
 
 func TestSessionMetaFromCoreAPIExtractsSandboxMode(t *testing.T) {

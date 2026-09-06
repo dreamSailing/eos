@@ -14,8 +14,8 @@ import (
 	"context"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/internal/update"
+	"github.com/eosaios/eos/internal/config"
+	"github.com/eosaios/eos/internal/update"
 )
 
 // checkForUpdates checks for updates in the background

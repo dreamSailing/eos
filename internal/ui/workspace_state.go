@@ -8,7 +8,7 @@ package ui
 import (
 	"log/slog"
 
-	"github.com/dreamSailing/eos/internal/config"
+	"github.com/eosaios/eos/internal/config"
 )
 
 // saveWorkspaceConfig 持久化工作区记忆。保存失败（磁盘满/权限）不阻断

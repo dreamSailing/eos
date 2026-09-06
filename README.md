@@ -6,9 +6,9 @@ EOS 是一个开源的终端 AI 编码助手，当前以 Rust Core 作为核心�
 
 当前 `v1.0.0-beta.3` 起提供三端（Windows / macOS / Linux × amd64+arm64）生产包与 SHA256SUMS 校验，Windows 提供安装器与便携压缩包双通道，并与 EOS App 的桌面分发版本保持同版号。
 
-- 项目仓库：https://github.com/dreamSailing/eos
-- 问题反馈：https://github.com/dreamSailing/eos/issues
-- 版本发布：https://github.com/dreamSailing/eos/releases
+- 项目仓库：https://github.com/eosaios/eos
+- 问题反馈：https://github.com/eosaios/eos/issues
+- 版本发布：https://github.com/eosaios/eos/releases
 
 ## 项目定位
 
@@ -85,13 +85,13 @@ EOS 不是单一的“问答 CLI”，而是一个完整的本地 AI 工作台�
 macOS / Linux：
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/dreamSailing/eos@main/scripts/install.sh | bash
+curl -fsSL https://cdn.jsdelivr.net/gh/eosaios/eos@main/scripts/install.sh | bash
 ```
 
 Windows（PowerShell）：
 
 ```powershell
-irm https://raw.githubusercontent.com/dreamSailing/eos/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/eosaios/eos/main/scripts/install.ps1 | iex
 ```
 
 安装后运行 `eos` 即可；`eos version` 查看版本，`eos update` 一键自升级（含 Rust 内核 core/ 同步更新）。
@@ -99,15 +99,15 @@ irm https://raw.githubusercontent.com/dreamSailing/eos/main/scripts/install.ps1 
 已安装 Go 工具链的用户也可以（内核内嵌，首次运行自动释放）：
 
 ```bash
-go install github.com/dreamSailing/eos@latest
+go install github.com/eosaios/eos@latest
 ```
 
-安装包（tar.gz / zip 与 Windows 安装器）仍从 Releases 获取：https://github.com/dreamSailing/eos/releases
+安装包（tar.gz / zip 与 Windows 安装器）仍从 Releases 获取：https://github.com/eosaios/eos/releases
 
 从源码编译：
 
 ```bash
-git clone https://github.com/dreamSailing/eos.git
+git clone https://github.com/eosaios/eos.git
 cd eos
 go mod tidy
 go build -o eos
@@ -336,5 +336,5 @@ EOS 当前不内置浏览器驱动，推荐通过 Playwright MCP 接入真实浏
 
 ## 联系方式
 
-- 问题反馈：https://github.com/dreamSailing/eos/issues
+- 问题反馈：https://github.com/eosaios/eos/issues
 - 商业合作 / 授权咨询：smart-os@qq.com

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // 计划 / 记忆域 RPC：plan snapshot + memory snapshot 只读查询、

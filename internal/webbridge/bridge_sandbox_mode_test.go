@@ -5,9 +5,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
-	"github.com/dreamSailing/eos/pkg/coreapi"
-	"github.com/dreamSailing/eos/pkg/sandbox"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/sandbox"
 )
 
 // sandboxModeGatewayStub 是一个最小 gateway stub，用于隔离测试沙箱模式的

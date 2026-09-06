@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dreamSailing/eos/internal/cli"
-	_ "github.com/dreamSailing/eos/internal/pkg/utils"
+	"github.com/eosaios/eos/internal/cli"
+	_ "github.com/eosaios/eos/internal/pkg/utils"
 )
 
 func main() {

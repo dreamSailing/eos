@@ -12,7 +12,7 @@ import (
 	"log/slog"
 	"strings"
 
-	coreapi "github.com/dreamSailing/eos/pkg/coreapi"
+	coreapi "github.com/eosaios/eos/pkg/coreapi"
 )
 
 // browserEventName 前端订阅名：内核 browser.* 事件原样转发（壳层只透传

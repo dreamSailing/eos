@@ -68,7 +68,7 @@ func TestDispatchCallArgumentDecoding(t *testing.T) {
 	s := newDispatchTestServer()
 	// ReadClipboardText 无参数返回空串（web 模式剪贴板不支持），验证
 	// 空参数列表 + 单返回值的分发路径。
-	result, err := s.dispatchCall("github.com/dreamSailing/eos-gui/internal/app.BridgeService.ReadClipboardText", []json.RawMessage{})
+	result, err := s.dispatchCall("github.com/eosaios/eos-gui/internal/app.BridgeService.ReadClipboardText", []json.RawMessage{})
 	if err != nil {
 		t.Fatalf("ReadClipboardText failed: %v", err)
 	}

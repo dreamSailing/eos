@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/coreapi"
 )
 
 // ModelResolution 描述用户输入解析到的目标。

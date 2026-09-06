@@ -10,10 +10,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/update"
-	"github.com/dreamSailing/eos/internal/version"
+	"github.com/eosaios/eos/internal/config"
+	"github.com/eosaios/eos/internal/i18n"
+	"github.com/eosaios/eos/internal/update"
+	"github.com/eosaios/eos/internal/version"
 	"github.com/spf13/cobra"
 )
 

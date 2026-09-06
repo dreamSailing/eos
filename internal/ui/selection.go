@@ -14,7 +14,7 @@ package ui
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/eosaios/eos/internal/i18n"
 
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbletea"

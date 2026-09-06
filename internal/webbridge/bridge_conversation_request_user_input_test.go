@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/pkg/coreapi"
 )
 
 // 真实事件回放：2026-08-08 sess_132 的 turn.request_user_input（Plan 模式计划问题）。

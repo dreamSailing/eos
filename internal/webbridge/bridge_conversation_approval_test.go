@@ -3,8 +3,8 @@ package webbridge
 import (
 	"testing"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
-	"github.com/dreamSailing/eos/internal/webbridge/i18n"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/i18n"
 )
 
 func TestIsApprovalPromptKind(t *testing.T) {

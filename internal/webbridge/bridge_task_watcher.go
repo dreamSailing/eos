@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // taskWatcherInterval 任务页刷新粒度：AI 起了 dev server / 进程退出之后，

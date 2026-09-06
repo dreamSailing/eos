@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 func copyAttachmentIntoWorkspace(source string, workspace string) (string, error) {

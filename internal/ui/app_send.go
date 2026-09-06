@@ -23,13 +23,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/ai"
-	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/pkg/clip"
-	"github.com/dreamSailing/eos/internal/ui/features/slash"
-	"github.com/dreamSailing/eos/internal/ui/panels"
-	"github.com/dreamSailing/eos/internal/ui/views/setup"
-	"github.com/dreamSailing/eos/internal/ui/views/shell"
+	"github.com/eosaios/eos/internal/ai"
+	"github.com/eosaios/eos/internal/i18n"
+	"github.com/eosaios/eos/internal/pkg/clip"
+	"github.com/eosaios/eos/internal/ui/features/slash"
+	"github.com/eosaios/eos/internal/ui/panels"
+	"github.com/eosaios/eos/internal/ui/views/setup"
+	"github.com/eosaios/eos/internal/ui/views/shell"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

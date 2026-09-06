@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreamSailing/eos/internal/config"
+	"github.com/eosaios/eos/internal/config"
 )
 
 func TestMergeMCPEntriesIncludesEnabledPluginServers(t *testing.T) {

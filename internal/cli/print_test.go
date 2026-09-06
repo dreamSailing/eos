@@ -23,11 +23,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
-	"github.com/dreamSailing/eos/pkg/coreapi/engineprovider"
-	"github.com/dreamSailing/eos/pkg/coreapi/sidecar"
-	"github.com/dreamSailing/eos/pkg/protocol"
-	protocoljsonrpc "github.com/dreamSailing/eos/pkg/protocol/jsonrpc"
+	"github.com/eosaios/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/coreapi/engineprovider"
+	"github.com/eosaios/eos/pkg/coreapi/sidecar"
+	"github.com/eosaios/eos/pkg/protocol"
+	protocoljsonrpc "github.com/eosaios/eos/pkg/protocol/jsonrpc"
 )
 
 func TestPrintResult_JSONOutput(t *testing.T) {

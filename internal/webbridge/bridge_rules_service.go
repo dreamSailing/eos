@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/i18n"
+	"github.com/eosaios/eos/internal/webbridge/i18n"
 )
 
 func defaultRulesTemplate() string {

@@ -26,11 +26,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/pkg/filedialog"
-	"github.com/dreamSailing/eos/internal/ui/adapter"
-	"github.com/dreamSailing/eos/internal/ui/panels"
-	"github.com/dreamSailing/eos/internal/ui/views/confirm"
+	"github.com/eosaios/eos/internal/i18n"
+	"github.com/eosaios/eos/internal/pkg/filedialog"
+	"github.com/eosaios/eos/internal/ui/adapter"
+	"github.com/eosaios/eos/internal/ui/panels"
+	"github.com/eosaios/eos/internal/ui/views/confirm"
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"

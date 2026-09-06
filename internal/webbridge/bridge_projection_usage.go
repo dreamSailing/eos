@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // Usage 域 projection：成本明细、用量汇总、版本记录加载与计数展示 helper。

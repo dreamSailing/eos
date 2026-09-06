@@ -2,7 +2,7 @@
 # EOS CLI 官方安装脚本（macOS / Linux）
 #
 # 用法：
-#   curl -fsSL https://cdn.jsdelivr.net/gh/dreamSailing/eos@main/scripts/install.sh | bash
+#   curl -fsSL https://cdn.jsdelivr.net/gh/eosaios/eos@main/scripts/install.sh | bash
 #   ./install.sh --version v1.0.0          # 安装指定版本
 #   ./install.sh --bin ~/.local/bin --dir ~/.local/share/eos
 #
@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-REPO="dreamSailing/eos"
+REPO="eosaios/eos"
 VERSION=""
 BIN_DIR="${EOS_INSTALL_BIN:-$HOME/.local/bin}"
 DIST_DIR="${EOS_INSTALL_DIR:-$HOME/.local/share/eos}"
@@ -104,7 +104,7 @@ for round in 1 2 3 4 5; do
   fi
   echo "下载未完成，重试 (${round}/5)..."
 done
-[ -n "$VERIFIED" ] || err "下载失败：网络不稳定或 ${BASE_URL} 不可达。建议：1) 重新运行本脚本（支持断点续传）  2) 配置代理后重试  3) go install github.com/dreamSailing/eos@latest  4) 手动下载 ${BASE_URL}/${ASSET}"
+[ -n "$VERIFIED" ] || err "下载失败：网络不稳定或 ${BASE_URL} 不可达。建议：1) 重新运行本脚本（支持断点续传）  2) 配置代理后重试  3) go install github.com/eosaios/eos@latest  4) 手动下载 ${BASE_URL}/${ASSET}"
 echo "SHA256 校验通过"
 
 echo "安装到 ${DIST_DIR} ..."

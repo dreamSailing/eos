@@ -19,11 +19,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/ui/features/slash"
-	"github.com/dreamSailing/eos/internal/ui/panels"
-	"github.com/dreamSailing/eos/internal/version"
+	"github.com/eosaios/eos/internal/config"
+	"github.com/eosaios/eos/internal/i18n"
+	"github.com/eosaios/eos/internal/ui/features/slash"
+	"github.com/eosaios/eos/internal/ui/panels"
+	"github.com/eosaios/eos/internal/version"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

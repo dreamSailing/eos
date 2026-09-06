@@ -15,8 +15,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/internal/i18n"
+	"github.com/eosaios/eos/internal/config"
+	"github.com/eosaios/eos/internal/i18n"
 )
 
 // gitCommitInstruction 是 /commit 直派给 AI 的内置指令

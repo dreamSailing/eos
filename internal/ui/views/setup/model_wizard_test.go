@@ -8,10 +8,10 @@ package setup
 import (
 	"testing"
 
-	"github.com/dreamSailing/eos/internal/ai"
-	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/internal/ui/styles"
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/internal/ai"
+	"github.com/eosaios/eos/internal/config"
+	"github.com/eosaios/eos/internal/ui/styles"
+	"github.com/eosaios/eos/pkg/coreapi"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

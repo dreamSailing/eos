@@ -96,7 +96,7 @@ func TestAssetDigestFromChecksums(t *testing.T) {
 func TestTagFromRedirect_ParsesRedirectTag(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r,
-			"https://github.com/dreamSailing/eos-app/releases/tag/v1.2.3/",
+			"https://github.com/eosaios/eos-app/releases/tag/v1.2.3/",
 			http.StatusFound)
 	}))
 	defer srv.Close()
@@ -147,7 +147,7 @@ func TestFetchReleaseTag_RetriesTransientNetworkErrors(t *testing.T) {
 			panic(http.ErrAbortHandler) // 模拟瞬断：连接被服务端中断
 		}
 		http.Redirect(w, r,
-			"https://github.com/dreamSailing/eos-app/releases/tag/v2.0.0",
+			"https://github.com/eosaios/eos-app/releases/tag/v2.0.0",
 			http.StatusFound)
 	}))
 	defer srv.Close()

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/pkg/coreapi"
 )
 
 // 403 等失败路径没有任何 turn.item_* 事件，IsPlaceholder 只在 item 事件翻转——

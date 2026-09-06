@@ -51,7 +51,7 @@ func TestImportBoundary(t *testing.T) {
 		prefix string
 		msg    string
 	}{
-		{"github.com/dreamSailing/eos/internal/tools", "adapter 禁止直接依赖 internal/tools，请改用 coreapi.Engine"},
+		{"github.com/eosaios/eos/internal/tools", "adapter 禁止直接依赖 internal/tools，请改用 coreapi.Engine"},
 	}
 
 	eachImport(t, func(filePath, path string) {
@@ -72,20 +72,20 @@ func TestImportBoundary(t *testing.T) {
 
 func TestAllowedImports(t *testing.T) {
 	allowed := map[string]bool{
-		"github.com/dreamSailing/eos/internal/ai":                true,
-		"github.com/dreamSailing/eos/internal/config":            true,
-		"github.com/dreamSailing/eos/internal/pkg/settings":      true,
-		"github.com/dreamSailing/eos/pkg/coreapi":                true,
-		"github.com/dreamSailing/eos/pkg/coreapi/jsonrpc":        true,
-		"github.com/dreamSailing/eos/pkg/coreapi/sidecar":        true,
-		"github.com/dreamSailing/eos/pkg/coreapi/sidecar/client": true,
-		"github.com/dreamSailing/eos/pkg/protocol":               true,
-		"github.com/dreamSailing/eos/pkg/protocol/jsonrpc":       true,
+		"github.com/eosaios/eos/internal/ai":                true,
+		"github.com/eosaios/eos/internal/config":            true,
+		"github.com/eosaios/eos/internal/pkg/settings":      true,
+		"github.com/eosaios/eos/pkg/coreapi":                true,
+		"github.com/eosaios/eos/pkg/coreapi/jsonrpc":        true,
+		"github.com/eosaios/eos/pkg/coreapi/sidecar":        true,
+		"github.com/eosaios/eos/pkg/coreapi/sidecar/client": true,
+		"github.com/eosaios/eos/pkg/protocol":               true,
+		"github.com/eosaios/eos/pkg/protocol/jsonrpc":       true,
 	}
 
 	eachImport(t, func(filePath, path string) {
-		if strings.HasPrefix(path, "github.com/dreamSailing/eos/internal/") ||
-			strings.HasPrefix(path, "github.com/dreamSailing/eos/pkg/") {
+		if strings.HasPrefix(path, "github.com/eosaios/eos/internal/") ||
+			strings.HasPrefix(path, "github.com/eosaios/eos/pkg/") {
 			if !allowed[path] {
 				t.Errorf("%s: unexpected internal/pkg import %q not in allowlist — if legitimate, update TestAllowedImports", filePath, path)
 			}

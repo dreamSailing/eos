@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/coreapi"
 )
 
 func TestRemoteEngineWithRealSidecar(t *testing.T) {

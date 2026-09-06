@@ -14,11 +14,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
-	coreapijsonrpc "github.com/dreamSailing/eos/pkg/coreapi/jsonrpc"
-	"github.com/dreamSailing/eos/pkg/protocol"
-	protocoljsonrpc "github.com/dreamSailing/eos/pkg/protocol/jsonrpc"
-	"github.com/dreamSailing/eos/pkg/sandbox"
+	"github.com/eosaios/eos/pkg/coreapi"
+	coreapijsonrpc "github.com/eosaios/eos/pkg/coreapi/jsonrpc"
+	"github.com/eosaios/eos/pkg/protocol"
+	protocoljsonrpc "github.com/eosaios/eos/pkg/protocol/jsonrpc"
+	"github.com/eosaios/eos/pkg/sandbox"
 )
 
 // StdioGateway is a read-only JSON-RPC gateway backed by an external

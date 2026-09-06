@@ -8,8 +8,8 @@ package ui
 import (
 	"testing"
 
-	uiadapter "github.com/dreamSailing/eos/internal/ui/adapter"
-	"github.com/dreamSailing/eos/pkg/protocol"
+	uiadapter "github.com/eosaios/eos/internal/ui/adapter"
+	"github.com/eosaios/eos/pkg/protocol"
 )
 
 func TestConvertEventApprovalRequired(t *testing.T) {

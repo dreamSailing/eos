@@ -3,7 +3,7 @@ package webbridge
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
 )
 
 // 设置 / 权限域 RPC：GUI 设置、权限快照（全局 + 会话级）、会话 core 查找。

@@ -17,7 +17,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/coreapi"
 
 	"github.com/mark3labs/mcp-go/server"
 )

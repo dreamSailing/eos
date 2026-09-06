@@ -3,7 +3,7 @@ package webbridge
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/webbridge/i18n"
+	"github.com/eosaios/eos/internal/webbridge/i18n"
 )
 
 func (s *BridgeService) guiLanguage() string {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/coreapi"
 )
 
 func resolveFixtures() ([]coreapi.ModelConfig, *coreapi.ModelCatalogState) {

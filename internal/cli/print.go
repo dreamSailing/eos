@@ -25,13 +25,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/ai"
-	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/pkg/coreapi"
-	"github.com/dreamSailing/eos/pkg/coreapi/engineprovider"
-	"github.com/dreamSailing/eos/pkg/coreapi/sidecar"
-	sidecarclient "github.com/dreamSailing/eos/pkg/coreapi/sidecar/client"
-	"github.com/dreamSailing/eos/pkg/protocol"
+	"github.com/eosaios/eos/internal/ai"
+	"github.com/eosaios/eos/internal/config"
+	"github.com/eosaios/eos/pkg/coreapi"
+	"github.com/eosaios/eos/pkg/coreapi/engineprovider"
+	"github.com/eosaios/eos/pkg/coreapi/sidecar"
+	sidecarclient "github.com/eosaios/eos/pkg/coreapi/sidecar/client"
+	"github.com/eosaios/eos/pkg/protocol"
 )
 
 const rustCoreStoreDirEnv = "EOS_CORE_STORE_DIR"

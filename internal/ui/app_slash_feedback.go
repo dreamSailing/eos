@@ -12,7 +12,7 @@ import (
 	"runtime"
 )
 
-const eosIssuesURL = "https://github.com/dreamSailing/eos-app/issues"
+const eosIssuesURL = "https://github.com/eosaios/eos-app/issues"
 
 // handleFeedbackSlash /feedback — 在系统浏览器打开 GitHub Issues 意见反馈页。
 func (m *AppModel) handleFeedbackSlash(_ []string) tea.Cmd {

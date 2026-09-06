@@ -21,12 +21,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/ai"
-	"github.com/dreamSailing/eos/internal/config"
-	"github.com/dreamSailing/eos/internal/i18n"
-	"github.com/dreamSailing/eos/internal/pkg/settings"
-	"github.com/dreamSailing/eos/internal/ui/panels"
-	"github.com/dreamSailing/eos/pkg/coreapi"
+	"github.com/eosaios/eos/internal/ai"
+	"github.com/eosaios/eos/internal/config"
+	"github.com/eosaios/eos/internal/i18n"
+	"github.com/eosaios/eos/internal/pkg/settings"
+	"github.com/eosaios/eos/internal/ui/panels"
+	"github.com/eosaios/eos/pkg/coreapi"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

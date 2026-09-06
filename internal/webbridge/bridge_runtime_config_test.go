@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dreamSailing/eos/internal/webbridge/adapter"
-	"github.com/dreamSailing/eos/pkg/coreapi/sidecar"
+	"github.com/eosaios/eos/internal/webbridge/adapter"
+	"github.com/eosaios/eos/pkg/coreapi/sidecar"
 )
 
 func TestBridgeRuntimeGatewayDefaultIsRustStdio(t *testing.T) {

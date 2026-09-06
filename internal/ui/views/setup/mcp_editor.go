@@ -8,9 +8,9 @@ package setup
 import (
 	"strings"
 
-	"github.com/dreamSailing/eos/internal/i18n"
-	uinput "github.com/dreamSailing/eos/internal/ui/components/input"
-	"github.com/dreamSailing/eos/internal/ui/styles"
+	"github.com/eosaios/eos/internal/i18n"
+	uinput "github.com/eosaios/eos/internal/ui/components/input"
+	"github.com/eosaios/eos/internal/ui/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

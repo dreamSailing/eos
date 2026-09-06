@@ -6,9 +6,9 @@ EOS is an open-source terminal AI coding assistant with Rust Core as its core ru
 
 Since `v1.0.0-beta.3`, releases ship production packages for three platforms (Windows / macOS / Linux, amd64 + arm64) with SHA256SUMS verification. Windows offers both a setup installer and a portable archive, version-aligned with the EOS App desktop distribution.
 
-- Repository: https://github.com/dreamSailing/eos
-- Issues: https://github.com/dreamSailing/eos/issues
-- Releases: https://github.com/dreamSailing/eos/releases
+- Repository: https://github.com/eosaios/eos
+- Issues: https://github.com/eosaios/eos/issues
+- Releases: https://github.com/eosaios/eos/releases
 
 ## What EOS Is
 
@@ -85,13 +85,13 @@ One-line install (recommended; detects your platform, verifies SHA256, sets up P
 macOS / Linux:
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/dreamSailing/eos@main/scripts/install.sh | bash
+curl -fsSL https://cdn.jsdelivr.net/gh/eosaios/eos@main/scripts/install.sh | bash
 ```
 
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/dreamSailing/eos/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/eosaios/eos/main/scripts/install.ps1 | iex
 ```
 
 Then run `eos`. Use `eos version` to check the version and `eos update` to self-upgrade (the Rust core sidecar is updated together with the binary).
@@ -99,15 +99,15 @@ Then run `eos`. Use `eos version` to check the version and `eos update` to self-
 If you already have the Go toolchain (the Rust core is embedded and self-extracts on first run):
 
 ```bash
-go install github.com/dreamSailing/eos@latest
+go install github.com/eosaios/eos@latest
 ```
 
-Packages (tar.gz / zip plus the Windows installer) remain available at https://github.com/dreamSailing/eos/releases
+Packages (tar.gz / zip plus the Windows installer) remain available at https://github.com/eosaios/eos/releases
 
 ### 2) Build from Source
 
 ```bash
-git clone https://github.com/dreamSailing/eos.git
+git clone https://github.com/eosaios/eos.git
 cd eos
 go mod tidy
 go build -o eos
@@ -321,5 +321,5 @@ This project is released under the EOS Non-Commercial License v1.1. See [LICENSE
 
 ## Contact
 
-- Issues: https://github.com/dreamSailing/eos/issues
+- Issues: https://github.com/eosaios/eos/issues
 - Commercial licensing: smart-os@qq.com

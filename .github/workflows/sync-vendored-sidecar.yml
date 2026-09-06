@@ -107,7 +107,7 @@ jobs:
         run: |
           repo="${INPUT_REPO}"
           if [ -z "$repo" ]; then repo="${SECRET_REPO}"; fi
-          if [ -z "$repo" ]; then repo="dreamSailing/eos-core-rs"; fi
+          if [ -z "$repo" ]; then repo="eosaios/eos-core-rs"; fi
           echo "repo=$repo" >> "$GITHUB_OUTPUT"
           echo "Using eos-core-rs repo: $repo"
 
