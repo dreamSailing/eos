@@ -6,7 +6,6 @@ package cli
 // 商业使用请联系版权人获得商业授权。
 
 import (
-	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -14,10 +13,7 @@ import (
 	"github.com/dreamSailing/eos/internal/ui"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
-
-var cfgFile string
 
 var (
 	printQuery         string
@@ -139,10 +135,8 @@ func Execute() error {
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
-
-	// 全局 flags
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.eos.yaml)")
+	// 全局 flags（配置读写统一走 internal/config 的 ~/.eos.json，
+	// 不设 cobra/viper 配置线——历史上 viper 读的 ~/.eos.yaml 无任何消费方）。
 	rootCmd.PersistentFlags().StringVarP(&printQuery, "print", "p", "", "Run a single query in headless mode and print the result")
 	rootCmd.PersistentFlags().StringVar(&outputFormat, "output-format", "text", "Output format for print mode: text, json, stream-json")
 	rootCmd.PersistentFlags().BoolVarP(&continueChat, "continue", "c", false, "Continue the most recent conversation")
@@ -168,28 +162,4 @@ func init() {
 	rootCmd.AddCommand(newMcpCmd())
 	rootCmd.AddCommand(newWebCmd())
 	rootCmd.AddCommand(newHiddenLegalCmd())
-}
-
-// initConfig 读取配置文件与环境变量。
-func initConfig() {
-	if cfgFile != "" {
-		slog.Info("cli.config.file_set", "path", cfgFile)
-		viper.SetConfigFile(cfgFile)
-	} else {
-		home, err := os.UserHomeDir()
-		cobra.CheckErr(err)
-		slog.Debug("cli.config.search", "home", home)
-		viper.AddConfigPath(home)
-		viper.SetConfigType("yaml")
-		viper.SetConfigName(".eos")
-	}
-
-	viper.AutomaticEnv()
-
-	if err := viper.ReadInConfig(); err == nil {
-		slog.Info("cli.config.loaded", "path", viper.ConfigFileUsed())
-		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
-	} else {
-		slog.Debug("cli.config.not_loaded", "error", err.Error())
-	}
 }
