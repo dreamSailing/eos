@@ -485,7 +485,7 @@ func serveMockServerWithWriteMethods(t *testing.T, conn net.Conn, workspace stri
 				})
 
 			case protocoljsonrpc.MethodUsageCostSummary:
-				resp, _ = protocoljsonrpc.NewResultResponse(req.ID, map[string]string{"summary": "$0.01"})
+				resp, _ = protocoljsonrpc.NewResultResponse(req.ID, map[string]string{"text": "$0.01"})
 
 			case protocoljsonrpc.MethodVersionsList:
 				resp, _ = protocoljsonrpc.NewResultResponse(req.ID, []coreapi.VersionItem{

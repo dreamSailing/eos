@@ -1527,13 +1527,14 @@ func (g *StdioGateway) ContextStats() ContextStats {
 }
 
 func (g *StdioGateway) CoreCostSummaryRPC(ctx context.Context) (string, error) {
+	// 内核 usage/cost_summary 返回 {"text": "..."}。此前读 "summary" 恒为空。
 	var out struct {
-		Summary string `json:"summary"`
+		Text string `json:"text"`
 	}
 	if err := g.client.Call(ctx, protocoljsonrpc.MethodUsageCostSummary, nil, &out); err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(out.Summary), nil
+	return strings.TrimSpace(out.Text), nil
 }
 
 func (g *StdioGateway) CoreCallRPC(ctx context.Context, method string, params json.RawMessage) (json.RawMessage, error) {
