@@ -162,6 +162,7 @@ func init() {
 	rootCmd.AddCommand(newUpdateCmd())
 	rootCmd.AddCommand(newConfigCmd())
 	rootCmd.AddCommand(newVersionCmd())
+	rootCmd.AddCommand(newDoctorCmd())
 	rootCmd.AddCommand(newServeCmd())
 	rootCmd.AddCommand(newBridgeCmd())
 	rootCmd.AddCommand(newMcpCmd())
