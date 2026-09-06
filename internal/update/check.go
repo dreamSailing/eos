@@ -27,7 +27,7 @@ type CheckResult struct {
 	LatestVersion  string `json:"latestVersion"`
 	HasUpdate      bool   `json:"hasUpdate"`
 	// AssetName / DownloadURL 指向当前平台对应的发布归档
-	// （eos-cli_<版本>_<goos>-<goarch>.tar.gz / .zip），而非裸二进制。
+	// （eos_<版本>_<goos>-<goarch>.tar.gz / .zip），而非裸二进制。
 	AssetName string `json:"assetName,omitempty"`
 	// ChecksumURL 指向该 Release 的 SHA256SUMS.txt，Apply 阶段校验归档完整性。
 	ChecksumURL string `json:"checksumUrl,omitempty"`
@@ -175,11 +175,14 @@ func buildCheckResult(current, latest, goos, goarch string) *CheckResult {
 
 // platformAssetName 返回 goos/goarch 对应的发布归档名（与 .github 发布
 // 资产命名约定一致）：非 Windows 为 .tar.gz，Windows 为 .zip。
+// 资产名前缀统一 eos_ 口径（2026-09-06 起）；≤beta.23 的归档是 eos-cli_
+// 前缀，release 流水线对新版本同时上传同内容旧名副本，旧客户端升级
+// 拼旧名仍可命中。
 func platformAssetName(tag, goos, goarch string) (string, string) {
 	tag = strings.TrimPrefix(strings.TrimSpace(tag), "v")
 	suffix := ".tar.gz"
 	if goos == "windows" {
 		suffix = ".zip"
 	}
-	return fmt.Sprintf("eos-cli_v%s_%s-%s%s", tag, goos, goarch, suffix), suffix
+	return fmt.Sprintf("eos_v%s_%s-%s%s", tag, goos, goarch, suffix), suffix
 }

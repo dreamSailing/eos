@@ -59,10 +59,10 @@ func TestPlatformAssetName(t *testing.T) {
 		tag, goos, goarch string
 		want              string
 	}{
-		{"v1.0.0-beta.3", "darwin", "arm64", "eos-cli_v1.0.0-beta.3_darwin-arm64.tar.gz"},
-		{"v1.0.0-beta.3", "darwin", "amd64", "eos-cli_v1.0.0-beta.3_darwin-amd64.tar.gz"},
-		{"v1.0.0-beta.3", "linux", "amd64", "eos-cli_v1.0.0-beta.3_linux-amd64.tar.gz"},
-		{"v1.0.0-beta.3", "windows", "amd64", "eos-cli_v1.0.0-beta.3_windows-amd64.zip"},
+		{"v1.0.0-beta.3", "darwin", "arm64", "eos_v1.0.0-beta.3_darwin-arm64.tar.gz"},
+		{"v1.0.0-beta.3", "darwin", "amd64", "eos_v1.0.0-beta.3_darwin-amd64.tar.gz"},
+		{"v1.0.0-beta.3", "linux", "amd64", "eos_v1.0.0-beta.3_linux-amd64.tar.gz"},
+		{"v1.0.0-beta.3", "windows", "amd64", "eos_v1.0.0-beta.3_windows-amd64.zip"},
 	}
 	for _, c := range cases {
 		got, _ := platformAssetName(c.tag, c.goos, c.goarch)

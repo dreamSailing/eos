@@ -377,7 +377,7 @@ func safeJoin(dstDir, name string) (string, error) {
 	return filepath.Join(dstDir, filepath.FromSlash(name)), nil
 }
 
-// singleRootDir 归档通常形如 eos-cli_<ver>_<target>/...，返回唯一顶层目录；
+// singleRootDir 归档通常形如 eos_<ver>_<target>/...，返回唯一顶层目录；
 // 顶层即文件时（无包裹目录）返回解压根目录。
 func singleRootDir(extractDir string) (string, error) {
 	entries, err := os.ReadDir(extractDir)
