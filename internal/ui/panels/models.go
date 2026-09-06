@@ -430,9 +430,9 @@ func (p *ModelsPanel) View() string {
 	content.WriteString("\n\n")
 
 	if p.currentModel != "" {
-		content.WriteString(fmt.Sprintf("%s %s\n\n",
+		fmt.Fprintf(&content, "%s %s\n\n",
 			i18n.T("models.current", p.language),
-			p.styles.TextSuccess.Render(p.currentModel)))
+			p.styles.TextSuccess.Render(p.currentModel))
 	}
 
 	content.WriteString(p.table.View())
@@ -478,9 +478,9 @@ func (p *ModelsPanel) View() string {
 			opStrs = append(opStrs, p.styles.TextMuted.Render(text))
 		}
 	}
-	content.WriteString(fmt.Sprintf("%s %s\n\n",
+	fmt.Fprintf(&content, "%s %s\n\n",
 		i18n.T("models.action", p.language),
-		strings.Join(opStrs, "  ")))
+		strings.Join(opStrs, "  "))
 
 	content.WriteString(p.styles.TextMuted.Render(i18n.T("models.help", p.language)))
 

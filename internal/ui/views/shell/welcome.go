@@ -177,11 +177,6 @@ func (w *WelcomeCard) View() string {
 	}
 
 	// 计算布局
-	logoWidth := len(logoLines[0])
-	logoStartX := (contentWidth - logoWidth) / 2
-	if logoStartX < 0 {
-		logoStartX = 0
-	}
 	logoStartY := (contentHeight - 12) / 2
 	if logoStartY < 1 {
 		logoStartY = 1
@@ -196,9 +191,7 @@ func (w *WelcomeCard) View() string {
 	}
 
 	// Logo 行
-	for _, line := range logoLines {
-		lines = append(lines, line)
-	}
+	lines = append(lines, logoLines...)
 
 	// 副标题行
 	lines = append(lines, "")
@@ -290,14 +283,15 @@ func (w *WelcomeCard) renderLogoLine(line string, lineIdx int) string {
 func (w *WelcomeCard) renderTipLine(line string) string {
 	var builder strings.Builder
 	for _, ch := range line {
-		if ch == '●' {
+		switch ch {
+		case '●':
 			builder.WriteString(lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#6366f1")).
 				Bold(true).
 				Render(string(ch)))
-		} else if ch == ' ' {
+		case ' ':
 			builder.WriteString(" ")
-		} else {
+		default:
 			builder.WriteString(lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#64748b")).
 				Render(string(ch)))

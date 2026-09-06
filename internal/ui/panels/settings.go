@@ -519,9 +519,9 @@ func (p *SettingsPanel) View() string {
 			opStrs = append(opStrs, p.styles.TextMuted.Render(text))
 		}
 	}
-	content.WriteString(fmt.Sprintf("%s %s\n\n",
+	fmt.Fprintf(&content, "%s %s\n\n",
 		i18n.T("models.action", p.language),
-		strings.Join(opStrs, "  ")))
+		strings.Join(opStrs, "  "))
 
 	content.WriteString(p.styles.TextMuted.Render(i18n.T("settings.help", p.language)))
 
@@ -535,9 +535,9 @@ func (p *SettingsPanel) viewEditMode() string {
 	content.WriteString(p.styles.PanelTitle.Render(i18n.T("settings.edit.title", p.language)))
 	content.WriteString("\n\n")
 
-	content.WriteString(fmt.Sprintf("%s: %s\n\n",
+	fmt.Fprintf(&content, "%s: %s\n\n",
 		i18n.T("settings.col.name", p.language),
-		p.styles.TextInfo.Render(p.editKeyLabel())))
+		p.styles.TextInfo.Render(p.editKeyLabel()))
 
 	if p.editChoices != nil {
 		var opts []string

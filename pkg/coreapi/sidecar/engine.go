@@ -610,7 +610,7 @@ type remoteSandboxService struct {
 
 func (s remoteSandboxService) Policy(ctx context.Context, ref coreapi.SessionRef) (sandbox.Policy, error) {
 	var out sandbox.Policy
-	if err := s.engine.call(ctx, protocoljsonrpc.MethodSandboxPolicy, coreapi.SandboxPolicyRequest{SessionID: ref.SessionID}, &out); err != nil {
+	if err := s.engine.call(ctx, protocoljsonrpc.MethodSandboxPolicy, coreapi.SandboxPolicyRequest(ref), &out); err != nil {
 		return sandbox.Policy{}, err
 	}
 	return out, nil

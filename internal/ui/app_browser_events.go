@@ -89,11 +89,9 @@ func (m *AppModel) handleBrowserDownloadDoneMsg(msg BrowserDownloadDoneMsg) (tea
 func (m *AppModel) handleBrowserPickSelectedMsg(msg BrowserPickSelectedMsg) (tea.Model, tea.Cmd) {
 	chip := msg.FormatPickChip()
 	current := m.shell.GetInputValue()
-	next := current
+	next := chip
 	if strings.TrimSpace(current) != "" {
 		next = current + "\\n" + chip
-	} else {
-		next = chip
 	}
 	m.shell.SetInputValue(next)
 	m.appendSystem(fmt.Sprintf("[browser] %s: %s", i18n.T("browser.pick.inserted", m.state.Language), chip), "info")

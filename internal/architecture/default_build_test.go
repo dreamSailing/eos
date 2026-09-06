@@ -123,10 +123,7 @@ func isInsideComment(text string, idx int) bool {
 		return false
 	}
 	lastClose := strings.LastIndex(text[:idx], "*/")
-	if lastClose > lastOpen {
-		return false
-	}
-	return true
+	return lastClose <= lastOpen
 }
 
 // _ = runtime.Caller

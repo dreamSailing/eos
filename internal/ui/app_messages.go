@@ -351,7 +351,8 @@ func (m *AppModel) handleAIResponse(msg AIResponseMsg) tea.Cmd {
 			(len(m.history) > 0 && m.history[len(m.history)-1].kind == "ai" &&
 				strings.TrimSpace(m.history[len(m.history)-1].content) == mainContent)
 		// 避免重复记录：如果本轮有委派且内容与 agent final 相同则跳过
-		if !alreadyCommitted && !(m.delegatedThisRound && mainContent != "" && agentContent != "" && mainContent == agentContent) {
+		if !alreadyCommitted &&
+			(!m.delegatedThisRound || mainContent == "" || agentContent == "" || mainContent != agentContent) {
 			m.appendHistory(historyEntry{
 				kind:          "ai",
 				content:       msg.Content,

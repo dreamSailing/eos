@@ -26,9 +26,7 @@ func (svc *AutomationService) SaveAutomationTemplate(req AutomationSaveRequest) 
 	if err := validateCronSchedule(schedule); err != nil {
 		return s.LoadBootstrap(), fmt.Errorf("cron 表达式不合法：%v", err)
 	}
-	if schedule != "" && !req.Enabled {
-		// 有表达式但未启用，允许保存（用户可稍后启用）
-	}
+	// 有表达式但未启用时同样允许保存（用户可稍后启用），无需额外校验。
 
 	id := strings.TrimSpace(req.OriginalID)
 	isEdit := id != ""

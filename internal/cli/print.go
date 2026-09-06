@@ -193,7 +193,6 @@ func RunPrintModeStream(ctx context.Context, query string, w io.Writer) error {
 			case protocol.EventTypeTextFinal:
 				text := firstNonEmpty("", payload, "text", "message")
 				if text != "" {
-					content = text
 					fmt.Fprint(w, text)
 				}
 				return nil

@@ -468,7 +468,7 @@ func (m *ThinkingMessage) Render(s *styles.Styles, width int) string {
 			case "doing":
 				statusIcon = s.TextInfo.Render("●")
 			}
-			result.WriteString(fmt.Sprintf("  %s %s\n", statusIcon, step.Description))
+			fmt.Fprintf(&result, "  %s %s\n", statusIcon, step.Description)
 		}
 
 		// 详细内容

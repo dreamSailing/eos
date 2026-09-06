@@ -1414,7 +1414,7 @@ func (m *AppModel) handleShareSlash() tea.Cmd {
 		if role == "" {
 			role = "unknown"
 		}
-		sb.WriteString(fmt.Sprintf("**%s**: %s\n\n", role, strings.TrimSpace(msg.Content)))
+		fmt.Fprintf(&sb, "**%s**: %s\n\n", role, strings.TrimSpace(msg.Content))
 	}
 
 	content := sb.String()
@@ -1533,9 +1533,9 @@ func (m *AppModel) pluginInstallCmd(source string) tea.Cmd {
 		// 用户在 TUI 按 y 确认 → 二次调用带 confirm_permissions=true
 		if out.NeedsConfirm && len(out.Permissions) > 0 {
 			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("🔒 插件 %s v%s 需要以下权限：\n", out.Name, out.Version))
+			fmt.Fprintf(&sb, "🔒 插件 %s v%s 需要以下权限：\n", out.Name, out.Version)
 			for _, perm := range out.Permissions {
-				sb.WriteString(fmt.Sprintf("  • %s\n", perm))
+				fmt.Fprintf(&sb, "  • %s\n", perm)
 			}
 			sb.WriteString("\n按 y 确认安装，其他键取消")
 			m.appendSystem(sb.String(), "warning")
@@ -1641,13 +1641,13 @@ func (m *AppModel) pluginSearchCmd(query string) tea.Cmd {
 			return
 		}
 		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("🔍 找到 %d 个插件：\n", out.Total))
+		fmt.Fprintf(&sb, "🔍 找到 %d 个插件：\n", out.Total)
 		for _, p := range out.Results {
 			perms := strings.Join(p.Permissions, ", ")
 			if perms != "" {
 				perms = fmt.Sprintf(" [权限: %s]", perms)
 			}
-			sb.WriteString(fmt.Sprintf("  📦 %s v%s — %s（by %s）%s\n", p.Name, p.Version, p.Description, p.Author, perms))
+			fmt.Fprintf(&sb, "  📦 %s v%s — %s（by %s）%s\n", p.Name, p.Version, p.Description, p.Author, perms)
 		}
 		sb.WriteString("\n用 /plugin install <名称> 安装")
 		m.appendSystem(sb.String(), "info")

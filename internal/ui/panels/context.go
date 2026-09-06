@@ -382,8 +382,8 @@ func (p *ContextPanel) viewDetail() string {
 	content.WriteString("\n\n")
 
 	// 消息元信息
-	content.WriteString(fmt.Sprintf("%s: %s\n", i18n.T("ctx.col.role", p.language), p.styles.TextInfo.Render(selected.Role)))
-	content.WriteString(fmt.Sprintf("%s: %d\n", i18n.T("ctx.col.tokens", p.language), selected.Tokens))
+	fmt.Fprintf(&content, "%s: %s\n", i18n.T("ctx.col.role", p.language), p.styles.TextInfo.Render(selected.Role))
+	fmt.Fprintf(&content, "%s: %d\n", i18n.T("ctx.col.tokens", p.language), selected.Tokens)
 	content.WriteString("\n")
 
 	// 消息内容

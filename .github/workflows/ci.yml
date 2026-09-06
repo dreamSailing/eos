@@ -11,6 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # golangci-lint --new-from-rev=HEAD~1 需要至少两个提交的历史
+          fetch-depth: 0
       - name: Install system dependencies
         # golang.design/x/clipboard 在 Linux 通过 cgo 绑定 X11 剪贴板，
         # 编译需要 X11 头文件；eos-cli 虽仅 Windows 分发，但 Linux job
@@ -28,6 +31,14 @@ jobs:
         run: go build ./...
       - name: Vet
         run: go vet ./...
+      - name: Lint
+        # .golangci.yml 已迁移 v2 格式；存量 lint 债（errcheck/dupl/unused 等
+        # 历史问题，见 eos-core-rs OPTIMIZATION_BACKLOG.md P2）用 new-from-rev
+        # 只卡新增代码，避免首跑即红。存量债清零后移除该参数。
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.13.2
+          args: --new-from-rev=HEAD~1
       - name: Test
         run: go test ./... -timeout 300s
 

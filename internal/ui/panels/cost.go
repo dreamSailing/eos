@@ -215,18 +215,18 @@ func (p *CostPanel) View() string {
 	// 总计信息
 	content.WriteString(p.styles.TextInfo.Render(i18n.T("cost.summary.title", p.language) + ":"))
 	content.WriteString("\n")
-	content.WriteString(fmt.Sprintf("  %s: %d\n",
-		i18n.T("cost.summary.rounds", p.language), p.totalStats.TotalRounds))
-	content.WriteString(fmt.Sprintf("  %s: %s\n",
-		i18n.T("cost.summary.input", p.language), p.totalStats.TotalInput))
-	content.WriteString(fmt.Sprintf("  %s: %s\n",
-		i18n.T("cost.summary.reply", p.language), p.totalStats.TotalReply))
-	content.WriteString(fmt.Sprintf("  %s: %s",
-		i18n.T("cost.summary.total", p.language), p.totalStats.TotalTokens))
+	fmt.Fprintf(&content, "  %s: %d\n",
+		i18n.T("cost.summary.rounds", p.language), p.totalStats.TotalRounds)
+	fmt.Fprintf(&content, "  %s: %s\n",
+		i18n.T("cost.summary.input", p.language), p.totalStats.TotalInput)
+	fmt.Fprintf(&content, "  %s: %s\n",
+		i18n.T("cost.summary.reply", p.language), p.totalStats.TotalReply)
+	fmt.Fprintf(&content, "  %s: %s",
+		i18n.T("cost.summary.total", p.language), p.totalStats.TotalTokens)
 	if p.totalStats.TotalDuration > 0 && p.totalStats.TotalRounds > 0 {
-		content.WriteString(fmt.Sprintf("\n  %s: %dms",
+		fmt.Fprintf(&content, "\n  %s: %dms",
 			i18n.T("cost.summary.avg_duration", p.language),
-			p.totalStats.TotalDuration/p.totalStats.TotalRounds))
+			p.totalStats.TotalDuration/p.totalStats.TotalRounds)
 	}
 	content.WriteString("\n\n")
 
@@ -255,9 +255,9 @@ func (p *CostPanel) View() string {
 			opStrs = append(opStrs, p.styles.TextMuted.Render(text))
 		}
 	}
-	content.WriteString(fmt.Sprintf("%s %s\n\n",
+	fmt.Fprintf(&content, "%s %s\n\n",
 		i18n.T("models.action", p.language),
-		strings.Join(opStrs, "  ")))
+		strings.Join(opStrs, "  "))
 
 	content.WriteString(p.styles.TextMuted.Render(i18n.T("cost.help", p.language)))
 

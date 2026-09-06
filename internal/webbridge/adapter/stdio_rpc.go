@@ -1754,7 +1754,6 @@ func (g *StdioGateway) coreTurnStreamRPC(ctx context.Context, sessionID, turnID 
 		defer close(out)
 		defer unsubscribe()
 		defer cancel()
-		terminalSeen := false
 		startDoneCh := startDone
 		var fallbackTimer <-chan time.Time
 		var fallbackEvent Event
@@ -1764,9 +1763,6 @@ func (g *StdioGateway) coreTurnStreamRPC(ctx context.Context, sessionID, turnID 
 				return
 			case result := <-startDoneCh:
 				startDoneCh = nil
-				if terminalSeen {
-					return
-				}
 				status := strings.TrimSpace(result.turn.Status)
 				if result.err != nil {
 					event := newRequestFailedEvent(turnID, result.err.Error())
@@ -1812,7 +1808,6 @@ func (g *StdioGateway) coreTurnStreamRPC(ctx context.Context, sessionID, turnID 
 					return
 				}
 				if stdioIsTerminalCoreTurnEvent(event) {
-					terminalSeen = true
 					return
 				}
 			}

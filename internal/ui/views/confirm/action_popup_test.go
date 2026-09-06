@@ -51,8 +51,7 @@ func TestActionPopupEnterEmitsSelectedAction(t *testing.T) {
 	})
 
 	// 选中第二项后回车
-	if _, _ = p.Update(tea.KeyMsg{Type: tea.KeyDown}); true {
-	}
+	_, _ = p.Update(tea.KeyMsg{Type: tea.KeyDown})
 	updated, cmd := p.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	_ = updated
 	msg := cmd()

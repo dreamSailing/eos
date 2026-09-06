@@ -237,10 +237,10 @@ func (p *MCPPanel) View() string {
 
 	content.WriteString(p.styles.PanelTitle.Render(i18n.T("mcp.manager.title", p.language)))
 	content.WriteString("\n\n")
-	content.WriteString(fmt.Sprintf("%s: %d %s\n\n",
+	fmt.Fprintf(&content, "%s: %d %s\n\n",
 		i18n.T("cmd.mcp", p.language),
 		len(p.servers),
-		i18n.T("mcp.header", p.language)))
+		i18n.T("mcp.header", p.language))
 
 	if len(p.servers) == 0 {
 		content.WriteString(i18n.T("mcp.empty", p.language))
@@ -288,9 +288,9 @@ func (p *MCPPanel) View() string {
 			opStrs = append(opStrs, p.styles.TextMuted.Render(text))
 		}
 	}
-	content.WriteString(fmt.Sprintf("%s %s\n\n",
+	fmt.Fprintf(&content, "%s %s\n\n",
 		i18n.T("mcp.action", p.language),
-		strings.Join(opStrs, "  ")))
+		strings.Join(opStrs, "  "))
 
 	content.WriteString(p.styles.TextMuted.Render(
 		i18n.T("mcp.help", p.language)))

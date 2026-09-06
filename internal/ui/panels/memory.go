@@ -198,15 +198,14 @@ func (p *MemoryPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 
 		switch msg.String() {
 		case "tab", "right", "l":
-			docs := p.currentDocs()
-			p.tab = (p.tab + 1) % len(docs)
+			// currentDocs 返回 *[2]MemoryDoc，len 需解引用取实际数组长度
+			p.tab = (p.tab + 1) % len(*p.currentDocs())
 			p.updateViewContent()
 			return p, nil
 		case "shift+tab", "left", "h":
-			docs := p.currentDocs()
 			p.tab--
 			if p.tab < 0 {
-				p.tab = len(docs) - 1
+				p.tab = len(*p.currentDocs()) - 1
 			}
 			p.updateViewContent()
 			return p, nil
