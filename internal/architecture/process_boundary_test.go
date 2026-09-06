@@ -47,6 +47,28 @@ var allowedProcessExecCalls = map[string]int{
 	// 系统动作，与剪贴板同类，非工具/代理执行路径，不走 GuardedRunner。
 	"internal/ui/app_slash_feedback.go:openInBrowser:exec.Command":    3,
 	"pkg/coreapi/sidecar/process_client.go:StartProcess:exec.Command": 1,
+	// webbridge（eos web / GUI 桥）的系统动作调用点：全部是用户可见的系统
+	// 集成（开终端/开目录/开浏览器/打开第三方应用/PortableGit 安装引导/
+	// 更新安装与重启/拉起 eos-core 子进程），与 filedialog、openInBrowser
+	// 同类——非模型驱动的工具/代理执行路径，不经 GuardedRunner。
+	// stdio 网关原型（stdio_client.go）后续接入沙箱执行时再迁移并移除条目。
+	"internal/webbridge/adapter/stdio_client.go:startProcessLocked:exec.Command":          1,
+	"internal/webbridge/bridge_feedback.go:OpenExternalURL:exec.Command":                  3,
+	"internal/webbridge/bridge_terminal_other.go:startBridgeTerminalBackend:exec.Command": 1,
+	"internal/webbridge/bridge_terminal_shell_install.go:extractPortableGit:exec.Command": 1,
+	"internal/webbridge/external_apps.go:linuxTerminalCommand:exec.Command":               1,
+	"internal/webbridge/external_apps.go:openTerminalApp:exec.Command":                    2,
+	"internal/webbridge/external_apps.go:openThirdPartyApp:exec.Command":                  3,
+	"internal/webbridge/open_directory.go:OpenDirectory:exec.Command":                     3,
+	"internal/webbridge/reveal_path.go:RevealPath:exec.Command":                           2,
+	"internal/webbridge/reveal_path.go:openDirectoryNoMkdir:exec.Command":                 3,
+	"internal/webbridge/server_helpers.go:runBackgroundCommand:exec.Command":              1,
+	"internal/webbridge/update_install_darwin.go:detachMacOSDmg:exec.Command":             1,
+	"internal/webbridge/update_install_darwin.go:fallbackMacOSOpenDmg:exec.Command":       1,
+	"internal/webbridge/update_install_darwin.go:mountMacOSDmg:exec.Command":              1,
+	"internal/webbridge/update_install_darwin.go:replaceMacOSBundle:exec.Command":         1,
+	"internal/webbridge/update_install_darwin.go:scheduleMacOSRelaunch:exec.Command":      1,
+	"internal/webbridge/update_launch_other.go:launchUpdateInstaller:exec.Command":        1,
 }
 
 func TestProcessExecutionCallSitesAreClassified(t *testing.T) {
