@@ -337,4 +337,4 @@ EOS 当前不内置浏览器驱动，推荐通过 Playwright MCP 接入真实浏
 ## 联系方式
 
 - 问题反馈：https://github.com/eosaios/eos/issues
-- 商业合作 / 授权咨询：smart-os@qq.com
+- 商业合作 / 授权咨询：legal@eosaios.com

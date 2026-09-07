@@ -322,4 +322,4 @@ This project is released under the EOS Non-Commercial License v1.1. See [LICENSE
 ## Contact
 
 - Issues: https://github.com/eosaios/eos/issues
-- Commercial licensing: smart-os@qq.com
+- Commercial licensing: legal@eosaios.com

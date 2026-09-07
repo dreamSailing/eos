@@ -315,7 +315,7 @@ func (m *AppModel) handleHiddenLegalSlash() tea.Cmd {
 	m.appendSystem("Copyright (c) 2026 EOSAIOS", "info")
 	m.appendSystem("License: EOS Non-Commercial License v1.1 (EOS-NCL-1.1)", "info")
 	m.appendSystem("SPDX-License-Identifier: EOS-NCL-1.1", "info")
-	m.appendSystem("Contact: smart-os@qq.com", "info")
+	m.appendSystem("Contact: legal@eosaios.com", "info")
 	m.appendSystem(fmt.Sprintf("Version: %s | Commit: %s | Build: %s", version.AppVersion, version.BuildCommit, version.BuildDate), "info")
 	return nil
 }
