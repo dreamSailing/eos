@@ -1,6 +1,6 @@
 package webbridge
 
-// Copyright (c) 2026 DreamSailing
+// Copyright (c) 2026 EOSAIOS
 // SPDX-License-Identifier: EOS-NCL-1.1
 
 // server_helpers.go 是 web 模式服务壳的小工具函数与用户可见文案。

@@ -1,6 +1,6 @@
 package webbridge
 
-// Copyright (c) 2026 DreamSailing
+// Copyright (c) 2026 EOSAIOS
 // SPDX-License-Identifier: EOS-NCL-1.1
 
 // 领域 service 声明：每个 service 持有 bridge 反向引用，由 BridgeService

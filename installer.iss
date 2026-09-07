@@ -2,7 +2,7 @@
 AppId={{EOS-2026-UNIQUE-ID}
 AppName=EOS
 AppVersion=1.0.0-beta.3
-AppPublisher=DreamSailing
+AppPublisher=EOSAIOS
 AppPublisherURL=https://github.com/eosaios/eos
 AppSupportURL=https://github.com/eosaios/eos/issues
 AppUpdatesURL=https://github.com/eosaios/eos/releases/latest

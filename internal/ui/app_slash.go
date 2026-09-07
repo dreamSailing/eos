@@ -312,7 +312,7 @@ func (m *AppModel) tryInvokeSkillSlash(skillName string, args []string) bool {
 }
 
 func (m *AppModel) handleHiddenLegalSlash() tea.Cmd {
-	m.appendSystem("Copyright (c) 2026 DreamSailing", "info")
+	m.appendSystem("Copyright (c) 2026 EOSAIOS", "info")
 	m.appendSystem("License: EOS Non-Commercial License v1.1 (EOS-NCL-1.1)", "info")
 	m.appendSystem("SPDX-License-Identifier: EOS-NCL-1.1", "info")
 	m.appendSystem("Contact: smart-os@qq.com", "info")

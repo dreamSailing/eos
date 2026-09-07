@@ -1,6 +1,6 @@
 package webbridge
 
-// Copyright (c) 2026 DreamSailing
+// Copyright (c) 2026 EOSAIOS
 // SPDX-License-Identifier: EOS-NCL-1.1
 
 // server_events.go 是 WS 事件扇出 hub：BridgeService 的 emitEvent 注入点。

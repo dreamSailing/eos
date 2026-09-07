@@ -1,6 +1,6 @@
 package webbridge
 
-// Copyright (c) 2026 DreamSailing
+// Copyright (c) 2026 EOSAIOS
 // SPDX-License-Identifier: EOS-NCL-1.1
 
 // server_dispatch.go 实现 POST /wails/call：Wails v3 Call.ByName 协议的
